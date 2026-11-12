@@ -3,6 +3,7 @@ import { Settings, LogOut, Sparkles, Bell, CheckCheck, Trash2, X, Activity, User
 import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminRobotControlTab } from './tabs/AdminRobotControlTab';
+import { AdminRobotManagementTab } from './tabs/AdminRobotManagementTab';
 import { AdminKnowledgePage } from './tabs/AdminKnowledgePage';
 import { AdminDepartmentTab } from './tabs/AdminDepartmentTab';
 import { AdminStaffTab } from './tabs/AdminStaffTab';
@@ -28,6 +29,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Dashboard',
         'Operations',
         'Robot Control',
+        'Manage Robot',
         'Knowledge',
         'Hotel Content',
         'Advertisements',
@@ -51,6 +53,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [operationsSubTab, setOperationsSubTab] = useState('requests');
   const [robotSubTab, setRobotSubTab] = useState('lidar');
+  const [manageRobotSubTab, setManageRobotSubTab] = useState('robot_profile');
   const [knowledgeSubTab, setKnowledgeSubTab] = useState('sources');
 
   // Real-time Notifications Center State
@@ -171,6 +174,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Dashboard',     label: t('adminDashboard') },
     { id: 'Operations',    label: t('adminOperations') },
     { id: 'Robot Control', label: t('adminRobotControl') },
+    { id: 'Manage Robot',  label: t('adminManageRobot') },
     { id: 'Knowledge',     label: t('adminKnowledge') },
     { id: 'Advertisements',label: t('adminAdvertisements') },
     { id: 'Department',    label: t('adminDepartment') },
@@ -284,6 +288,42 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         }}
                       >
                         {t('adminSubWorkflow')}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Manage Robot sub-items */}
+                  {item.id === 'Manage Robot' && activeMenu === 'Manage Robot' && (
+                    <div className="ml-3 pl-3 border-l my-0.5 space-y-0.5" style={{ borderColor: '#262626' }}>
+                      <button
+                        onClick={() => setManageRobotSubTab('robot_profile')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: ['robot_profile', 'profile'].includes(manageRobotSubTab) ? '#262626' : 'transparent',
+                          color: ['robot_profile', 'profile'].includes(manageRobotSubTab) ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('adminSubRobotProfile')}
+                      </button>
+                      <button
+                        onClick={() => setManageRobotSubTab('robot_jobs')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: ['robot_jobs', 'history'].includes(manageRobotSubTab) ? '#262626' : 'transparent',
+                          color: ['robot_jobs', 'history'].includes(manageRobotSubTab) ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('adminSubRobotJobs')}
+                      </button>
+                      <button
+                        onClick={() => setManageRobotSubTab('robot_maintenance')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: ['robot_maintenance', 'maintenance'].includes(manageRobotSubTab) ? '#262626' : 'transparent',
+                          color: ['robot_maintenance', 'maintenance'].includes(manageRobotSubTab) ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('adminSubRobotMaintenance')}
                       </button>
                     </div>
                   )}
@@ -492,7 +532,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
         {/* Dynamic Tab Body */}
-        <main className={`flex-1 min-h-0 ${activeMenu === 'Robot Control' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
+        <main className={`flex-1 min-h-0 ${activeMenu === 'Robot Control' || activeMenu === 'Manage Robot' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
 
           {activeMenu === 'Dashboard' && (
             <AdminDashboardTab
@@ -515,6 +555,13 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               currentUser={currentUser}
               subTabProp={robotSubTab}
               onSelectSubTab={setRobotSubTab}
+            />
+          )}
+
+          {activeMenu === 'Manage Robot' && (
+            <AdminRobotManagementTab
+              initialView={manageRobotSubTab}
+              onSwitchSubTab={setManageRobotSubTab}
             />
           )}
 

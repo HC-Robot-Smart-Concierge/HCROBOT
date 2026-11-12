@@ -13,6 +13,11 @@ import heapq
 import math
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+try:
+    from .zone_geometry import distance_to_zone, zone_points, points_bounds
+except ImportError:  # Direct script execution on the Pi.
+    from zone_geometry import distance_to_zone, zone_points, points_bounds
+
 Point = Tuple[float, float]
 
 ROBOT_RADIUS_M = 0.16
@@ -21,12 +26,18 @@ PLAN_RESOLUTION_M = 0.05
 
 
 def point_in_zone(x: float, y: float, zone: Dict, margin: float = 0.0) -> bool:
-    """Zone hinh chu nhat theo truc: tam (x, y), kich thuoc width x height (met)."""
+    """Polygon or rotated rectangle in map metres, with optional robot clearance."""
+    if zone.get("vertices") is not None:
+        return distance_to_zone(x, y, zone) <= margin + 1e-9
     half_w = float(zone.get("width") or 0.0) / 2.0 + margin
     half_h = float(zone.get("height") or 0.0) / 2.0 + margin
     zx = float(zone.get("x") or 0.0)
     zy = float(zone.get("y") or 0.0)
-    return (zx - half_w) <= x <= (zx + half_w) and (zy - half_h) <= y <= (zy + half_h)
+    angle = math.radians(float(zone.get("yaw") or 0.0))
+    dx, dy = x - zx, y - zy
+    local_x = dx * math.cos(angle) + dy * math.sin(angle)
+    local_y = -dx * math.sin(angle) + dy * math.cos(angle)
+    return abs(local_x) <= half_w + 1e-9 and abs(local_y) <= half_h + 1e-9
 
 
 def zones_of_type(zones: Iterable[Dict], *types: str) -> List[Dict]:
@@ -88,11 +99,19 @@ class PlanGrid:
 
         # Vung cam: robot (tam) khong duoc vao vung noi rong them ban kinh robot.
         for zone in keepout_zones:
-            half_w = float(zone.get("width") or 0.0) / 2.0 + robot_radius
-            half_h = float(zone.get("height") or 0.0) / 2.0 + robot_radius
-            zx, zy = float(zone.get("x") or 0.0), float(zone.get("y") or 0.0)
-            x0, y0 = self.to_cell(zx - half_w, zy - half_h)
-            x1, y1 = self.to_cell(zx + half_w, zy + half_h)
+            if zone.get("vertices") is not None:
+                min_x, min_y, max_x, max_y = points_bounds(zone_points(zone))
+                x0, y0 = self.to_cell(min_x - robot_radius, min_y - robot_radius)
+                x1, y1 = self.to_cell(max_x + robot_radius, max_y + robot_radius)
+            else:
+                half_w = float(zone.get("width") or 0.0) / 2.0 + robot_radius
+                half_h = float(zone.get("height") or 0.0) / 2.0 + robot_radius
+                zx, zy = float(zone.get("x") or 0.0), float(zone.get("y") or 0.0)
+                angle = math.radians(float(zone.get("yaw") or 0.0))
+                extent_x = abs(math.cos(angle)) * half_w + abs(math.sin(angle)) * half_h
+                extent_y = abs(math.sin(angle)) * half_w + abs(math.cos(angle)) * half_h
+                x0, y0 = self.to_cell(zx - extent_x, zy - extent_y)
+                x1, y1 = self.to_cell(zx + extent_x, zy + extent_y)
             for cy in range(max(0, y0), min(self.h, y1 + 1)):
                 wy = self.cell_center_y(cy)
                 for cx in range(max(0, x0), min(self.w, x1 + 1)):

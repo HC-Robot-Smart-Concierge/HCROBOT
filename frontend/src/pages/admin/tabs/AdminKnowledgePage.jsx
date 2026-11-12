@@ -2245,7 +2245,7 @@ Tài liệu cung cấp thông tin tra cứu cho Robot Concierge và khách lưu 
 |---|---|---|---|
 | Hồ Bơi Vô Cực | Tầng 5 | 06:00 - 22:00 | Miễn phí |
 | Phòng Tập Gym | Tầng 5 | Mở cửa 24/7 | Miễn phí |
-| Nhà Hàng Buffet | Tầng 2 | 06:30 - 22:00 | Đã gồm trong phòng / 350.000đ |
+| Gọi Món Tận Phòng 24/7 | Tầng 2 (Bếp Trung Tâm) | Mở 24/7 | Theo thực đơn Room Service |
 
 ---
 

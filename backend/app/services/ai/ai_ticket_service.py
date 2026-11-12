@@ -1,13 +1,14 @@
 import logging
 import random
 from typing import Optional, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.support_request import SupportRequest
 from app.models.support import HumanSupportSession
 from app.services.maintenance_request_service import get_or_create_maintenance_request
-from app.services.bell_request_service import get_or_create_bell_request
+from app.services.bell_request_service import get_or_create_bell_request, BELL_DEPARTMENT_ID, BELL_SERVICE_TYPE_ID
+from app.services.ai.constants import is_lost_found_text
 from app.api.v1.endpoints.operations.shared import create_department_notification
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,43 @@ async def create_maintenance_voice_ticket(db: AsyncSession, room_number: str, it
 
 
 async def create_bell_voice_ticket(db: AsyncSession, room_number: str, items: str) -> tuple[SupportRequest, bool]:
+    if is_lost_found_text(items):
+        ticket_code = f"BS-{random.randint(1000, 99999)}"
+        req = SupportRequest(
+            ticket_code=ticket_code,
+            source="HCRobot Concierge AI Chat",
+            title=f"Báo cáo đồ thất lạc Phòng {room_number}: {items}",
+            room_number=room_number,
+            guest_name=f"Guest (Room {room_number})",
+            description=items,
+            department_id=BELL_DEPARTMENT_ID,
+            service_type_id=BELL_SERVICE_TYPE_ID,
+            status="Pending",
+            request_type="lost_found",
+        )
+        db.add(req)
+        await db.flush()
+        await create_department_notification(
+            db=db,
+            department="Bell Services",
+            title=f"Robot AI: Báo cáo Đồ thất lạc #{ticket_code}",
+            description=f"Phòng {room_number}: {items}",
+            request_id=req.id,
+            request_type="bell_service",
+            type="Request",
+        )
+        await create_department_notification(
+            db=db,
+            department="Reception",
+            title=f"Robot AI: Yêu cầu Bellman từ Khách Phòng {room_number}",
+            description=f"Phiếu #{ticket_code}: {items}",
+            request_id=req.id,
+            request_type="bell_service",
+            type="Request",
+        )
+        await db.commit()
+        return req, True
+
     request, created = await get_or_create_bell_request(
         db, room_number=room_number, description=items,
         source="HCRobot Concierge AI Chat", notify_reception=True,
@@ -85,12 +123,11 @@ async def create_live_call_session(
             sentiment="Neutral",
             status="Active",
             linked_request_id=req.id,
-            call_started_at=datetime.utcnow(),
+            call_started_at=datetime.now(timezone.utc).replace(tzinfo=None),
             messages=[{"speaker": "guest", "text": prompt}],
         )
         db.add(human_session)
         await db.flush()
-        support_session_id = human_session.id
 
         await create_department_notification(
             db=db,
@@ -137,12 +174,11 @@ async def auto_create_ticket(
     if not room_number:
         logger.warning(f"[AITicketService] auto_create_ticket skipped: missing room_number for action '{action}'.")
         return ""
-    rm = str(room_number).strip()
+    rm = room_number.strip()
 
     try:
         if action in ["room_service", "restaurant"]:
             import uuid
-            from datetime import timedelta
             from sqlalchemy import select, or_, desc
             from sqlalchemy.orm import selectinload
             from app.models.room_service import RoomServiceOrder, OrderItem
@@ -171,7 +207,7 @@ async def auto_create_ticket(
             clean_room = rm.upper().replace("ROOM", "").strip()
 
             # Kiểm tra gộp đơn trong vòng 10 phút gần nhất nếu đã có đơn Pending
-            merge_window_start = datetime.utcnow() - timedelta(minutes=10)
+            merge_window_start = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=10)
             existing_pending_stmt = (
                 select(RoomServiceOrder)
                 .options(selectinload(RoomServiceOrder.order_items))
@@ -209,7 +245,7 @@ async def auto_create_ticket(
                     )
                     db.add(new_oi)
 
-                existing_order.updated_at = datetime.utcnow()
+                existing_order.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 if items and (not existing_order.note or items not in existing_order.note):
                     existing_order.note = f"{existing_order.note}; Gộp thêm: {items}" if existing_order.note else f"Gộp thêm: {items}"
 
@@ -226,7 +262,7 @@ async def auto_create_ticket(
                     sr_items_dict[item_name_clean] = sr_items_dict.get(item_name_clean, 0) + 1
                     sr.items = [{"name": k, "qty": v} for k, v in sr_items_dict.items()]
                     sr.description = ", ".join([f"{v}x {k}" if v > 1 else k for k, v in sr_items_dict.items()])
-                    sr.updated_at = datetime.utcnow()
+                    sr.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
                 await create_department_notification(
                     db=db,
@@ -359,6 +395,35 @@ async def auto_create_ticket(
             req, _ = await create_bell_voice_ticket(db, rm, items)
             return req.ticket_code
 
+        elif action == "emotion_alert":
+            loc = rm if (rm and rm != "General") else "Main Lobby Kiosk"
+            ticket_code = f"EA-{random.randint(1000, 99999)}"
+            req = SupportRequest(
+                ticket_code=ticket_code,
+                source="HCRobot Emotion AI",
+                title=f"Cảnh báo AI: Khách có biểu cảm khó chịu tại {loc}",
+                room_number=loc,
+                guest_name=f"Guest ({loc})" if rm else "Khách tại Sảnh Kiosk",
+                description=items or "Camera AI phát hiện khách có biểu cảm khó chịu trong khi giao tiếp với Robot Kiosk.",
+                department_id="DEP-CONCIERGE",
+                service_type_id="ST-CONCIERGE",
+                status="Pending",
+                priority="High",
+                request_type="emotion_alert",
+            )
+            db.add(req)
+            await create_department_notification(
+                db=db,
+                department="Concierge",
+                title=f"Cảnh báo Khẩn #{ticket_code}: Khách có biểu cảm khó chịu",
+                description=f"Vị trí {loc}: {items}",
+                request_id=req.id,
+                request_type="concierge",
+                type="Alert",
+            )
+            await db.commit()
+            return ticket_code
+
         elif action == "maintenance":
             ticket_code, _, _ = await create_maintenance_voice_ticket(db, rm, items)
             return ticket_code
@@ -452,12 +517,14 @@ async def auto_create_ticket(
 
                     # Đồng bộ sang RoomServiceOrder nếu đây là đơn phòng/ẩm thực
                     try:
+                        from sqlalchemy import or_
+                        from app.models import RoomServiceOrder
                         clean_t_code = (active_req.ticket_code or "").replace("ORD-", "").replace("REQ-", "").strip()
                         stmt_rs = select(RoomServiceOrder).where(
                             or_(
                                 RoomServiceOrder.support_request_id == active_req.id,
                                 RoomServiceOrder.id == active_req.id,
-                                (RoomServiceOrder.order_number == clean_t_code) if clean_t_code else False,
+                                (RoomServiceOrder.order_number == clean_t_code) if clean_t_code else (RoomServiceOrder.id == active_req.id),
                             )
                         )
                         res_rs = await db.execute(stmt_rs)
@@ -569,30 +636,32 @@ async def auto_create_ticket(
                 )
                 await db.commit()
             return ticket_code
+        else:
             # Default Reception & General Service Request
             ticket_code = f"REC-{random.randint(1000, 99999)}"
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="HCRobot Concierge AI Chat",
-                title=f"Yêu cầu Lễ tân từ Phòng {rm}: {items}",
-                room_number=rm,
-                description=items,
-                guest_name=f"Guest (Room {rm})",
-                department_id="DEP-RECEPTION",
-                service_type_id="ST-RECEPTION",
-                status="Pending",
-            )
-            db.add(req)
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Lễ tân mới #{ticket_code}",
-                description=f"Phòng {rm}: {items}",
-                request_id=req.id,
-                request_type="reception",
-                type="Request",
-            )
-            await db.commit()
+            if db:
+                req = SupportRequest(
+                    ticket_code=ticket_code,
+                    source="HCRobot Concierge AI Chat",
+                    title=f"Yêu cầu Lễ tân từ Phòng {rm}: {items}",
+                    room_number=rm,
+                    description=items,
+                    guest_name=f"Guest (Room {rm})",
+                    department_id="DEP-RECEPTION",
+                    service_type_id="ST-RECEPTION",
+                    status="Pending",
+                )
+                db.add(req)
+                await create_department_notification(
+                    db=db,
+                    department="Reception",
+                    title=f"Robot AI: Yêu cầu Lễ tân mới #{ticket_code}",
+                    description=f"Phòng {rm}: {items}",
+                    request_id=req.id,
+                    request_type="reception",
+                    type="Request",
+                )
+                await db.commit()
             return ticket_code
 
     except Exception as e:
@@ -639,7 +708,7 @@ async def background_extract_and_create_ticket(
 
         async with AsyncSessionLocal() as bg_db:
             created_ticket_code = await auto_create_ticket(
-                bg_db, target_action, str(room_number).strip(), items_desc
+                bg_db, target_action, room_number.strip(), items_desc
             )
             if created_ticket_code:
                 logger.info(

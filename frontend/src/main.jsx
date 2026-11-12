@@ -5,6 +5,14 @@ import { ErrorBoundary } from './components/common/ErrorBoundary.jsx';
 import { LanguageProvider } from './context/LanguageContext.jsx';
 import './index.css';
 
+// Tự động reload khi gặp lỗi chunk preload sau khi deploy bản mới
+window.addEventListener('vite:preloadError', () => {
+  if (!sessionStorage.getItem('vite_preload_retry')) {
+    sessionStorage.setItem('vite_preload_retry', '1');
+    window.location.reload();
+  }
+});
+
 // Chỉ bật Service Worker ở bản build Production; ở môi trường Dev (npm run dev), tự động gỡ SW cũ và xóa cache để tránh kẹt trang chủ trên điện thoại.
 const shouldEnablePwa = Boolean(import.meta.env.PROD);
 

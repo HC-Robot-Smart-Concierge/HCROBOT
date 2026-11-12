@@ -175,3 +175,49 @@ export function getCallSignalingWsUrl(sessionId, role = 'guest', name = 'Guest')
   return `${protocol}//${host}${BASE_URL}/ws/video-call/${encodeURIComponent(sessionId)}?role=${encodeURIComponent(role)}&name=${encodeURIComponent(name)}`;
 }
 
+/**
+ * 7. Lay danh sach canh bao khach hang co bieu cam kho chiu cho Concierge
+ */
+export async function fetchConciergeEmotionAlerts(statusFilter = null) {
+  const query = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : '';
+  return await fetchWithFallback(`${BASE_URL}/emotion-alerts${query}`, {}, []);
+}
+
+/**
+ * 8. Tao canh bao xu ly khach co bieu cam kho chiu gui toi Concierge
+ */
+export async function createConciergeEmotionAlert(alertData) {
+  return await fetchWithFallback(
+    `${BASE_URL}/emotion-alerts`,
+    {
+      method: 'POST',
+      body: JSON.stringify(alertData),
+    },
+    {
+      id: `EA-${Date.now()}`,
+      ticket_code: `EA-${Math.floor(1000 + Math.random() * 9000)}`,
+      ...alertData,
+      request_type: 'emotion_alert',
+      status: 'Pending',
+      created_at: new Date().toISOString(),
+    }
+  );
+}
+
+/**
+ * 9. Cap nhat trang thai xu ly canh bao khach hang kho chiu (Pending -> In Progress -> Completed)
+ */
+export async function updateConciergeEmotionAlertStatus(requestId, statusData) {
+  return await fetchWithFallback(
+    `${BASE_URL}/emotion-alerts/${encodeURIComponent(requestId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(statusData),
+    },
+    {
+      id: requestId,
+      ...statusData,
+    }
+  );
+}
+

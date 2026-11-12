@@ -39,6 +39,13 @@ async def _submit_bell_for_chat(db, room_number, items, english):
     """Create the Bellman ticket before replying, so the guest hears the real ticket code."""
     try:
         request, created = await create_bell_voice_ticket(db, room_number, items)
+        if (request.extra_data or {}).get("request_type") == "lost_found":
+            msg = (
+                f"Your lost & found report for Room {room_number} has been sent to Bell Services (ticket #{request.ticket_code}). Our team is checking and will contact you shortly."
+                if english else
+                f"Dạ Rora đã tiếp nhận báo cáo đồ thất lạc của Phòng {room_number} và chuyển tới bộ phận Bellman / Lost & Found, mã phiếu #{request.ticket_code}. Nhân viên đang kiểm tra và sẽ liên hệ quý khách ngay ạ."
+            )
+            return request.ticket_code, msg
         return request.ticket_code, bell_request_message(request, created, english)
     except Exception:
         await db.rollback()
@@ -58,7 +65,6 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     """
     p_lower = (prompt or "").lower().strip()
     r_lower = (reply or "").lower().strip()
-    combined = f"{p_lower} {r_lower}".strip()
 
     # Neu cau hoi nhac toi phong khong ton tai hoac phan hoi thong bao phong khong ton tai -> Tuyet doi khong bat ban do
     cand_room = extract_room_number(p_lower)
@@ -179,7 +185,7 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     if (room_4xx_match or room_3xx_match or is_general_room_query) and is_service_order_context and not has_explicit_nav:
         return None
 
-    room_nav_match = bool((room_4xx_match or room_3xx_match or is_general_room_query) and (not is_service_order_context or has_explicit_nav))
+    room_nav_match = (room_4xx_match is not None or room_3xx_match is not None or is_general_room_query) and (not is_service_order_context or has_explicit_nav)
 
     has_nav_intent = (
         room_nav_match or
@@ -288,7 +294,7 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     # 7. Nếu khách hỏi đường lên phòng nghỉ chung chung (không trùng các tiện ích trên)
     if is_general_room_query:
         if room_number:
-            clean_rn = str(room_number).strip()
+            clean_rn = room_number.strip()
             if re.match(r'^(?:40[1-9]|30[1-9])$', clean_rn):
                 return f"room_{clean_rn}"
         return None
@@ -335,9 +341,9 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     ) or is_fault_report(request.prompt)
     is_menu_action = any(k in prompt_lower_req for k in ["menu", "thực đơn", "thuc don", "đặt món", "gọi món", "order", "đồ ăn", "thức ăn", "dịch vụ phòng", "room service"])
 
+    from app.services.cache.redis_service import redis_service
     cached_ai = None
-    if not pending_intent_exist and not is_status_query_req and not has_room_in_prompt and not is_actionable_service and not is_menu_action:
-        from app.services.cache.redis_service import redis_service
+    if not request.rag_context and not pending_intent_exist and not is_status_query_req and not has_room_in_prompt and not is_actionable_service and not is_menu_action:
         cached_ai = await redis_service.get_ai_cache(request.prompt, request.language or "vi")
     if cached_ai and cached_ai.get("full_text"):
         reply = cached_ai["full_text"]
@@ -397,6 +403,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     initial_state = {
         "session_id": sid,
         "prompt": request.prompt,
+        "rag_context": request.rag_context,
         "language": request.language,
         "lang_name": cur_lang_name,
         "lang_code": cur_lang_code,
@@ -454,6 +461,18 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     status_q_type = graph_result.get("status_query_type")
     support_session_id = None
     call_ticket_code = None
+
+    emotion_lower = (request.emotion or "").strip().lower()
+    if emotion_lower in ["unhappy", "annoyed", "angry", "upset", "frustrated", "khó chịu", "kho chiu"]:
+        alert_loc = current_room or "Main Lobby Kiosk"
+        asyncio.create_task(
+            background_extract_and_create_ticket(
+                request.prompt,
+                alert_loc,
+                "emotion_alert",
+                f"Khách có biểu cảm khó chịu ({request.emotion}) khi giao tiếp tại Kiosk: {request.prompt}",
+            )
+        )
 
     if is_video_call:
         support_session_id, call_ticket_code = await create_live_call_session(
@@ -566,7 +585,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
         )) and any(k in prompt_l for k in ["khăn", "khan", "gối", "chăn", "nệm", "dép", "bàn chải", "dầu gội", "sữa tắm", "massage", "giặt ủi", "dọn phòng", "món", "cơm", "nước", "đồ ăn"])
         fast_hit = None if is_action_svc else ollama_service.check_fast_path_full(request.prompt, request.language)
         if fast_hit:
-            reply, lang_name, lang_code, act_type, act_payload = fast_hit
+            reply, _lang_name, lang_code, act_type, act_payload = fast_hit
             dest_key = act_payload.get("destination_key") if isinstance(act_payload, dict) else None
             if not dest_key and act_type != "none":
                 dest_key = _detect_destination_poi(request.prompt, reply, current_room)
@@ -674,9 +693,9 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
             return
 
-        # 3. NẾU LÀ FAQ: TRUY VẤN VÀ CẮT GỌT RAG CONTEXT (HARNESS CONTEXT PRUNING)
+        # 3. TRUY VẤN VÀ CẮT GỌT RAG CONTEXT TỪ KNOWLEDGE BASE CHO CÂU HỎI THÔNG TIN
         rag_context = request.rag_context
-        if category == "faq" and not rag_context:
+        if category in ("faq", "conversation", "chitchat") and not rag_context and len(request.prompt.strip()) > 3:
             try:
                 retrieval_res = await retrieval_node({"prompt": request.prompt})
                 rag_context = retrieval_res.get("rag_context", "")

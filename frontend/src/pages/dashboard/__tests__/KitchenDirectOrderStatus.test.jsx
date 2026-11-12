@@ -111,4 +111,32 @@ describe('Kitchen Direct Order Status & Guest Contact Workflow Tests', () => {
     expect(rejectModalContent).toContain('Hết nguyên liệu chế biến');
     expect(rejectModalContent).toContain('Tạm hết đồ dùng / vật dụng yêu cầu');
   });
+
+  it('uses Admin/Bellman/Maintenance RoomServiceFrame portal shell for Kitchen', () => {
+    const staffLayoutContent = fs.readFileSync(
+      path.resolve(__dirname, '../../../layouts/StaffLayout.jsx'),
+      'utf8'
+    );
+    const frameContent = fs.readFileSync(
+      path.resolve(__dirname, '../../../components/dashboard/RoomServiceFrame.jsx'),
+      'utf8'
+    );
+    const kitchenMenuContent = fs.readFileSync(
+      path.resolve(__dirname, '../../staff/KitchenMenuManagementPage.jsx'),
+      'utf8'
+    );
+
+    expect(staffLayoutContent).toMatch(/usesAdminStylePortal[\s\S]*'kitchen'/);
+    expect(frameContent).toContain("brand: 'KITCHEN PORTAL'");
+    expect(frameContent).toContain("portal === 'kitchen' && navButton('KitchenMenu'");
+    expect(kitchenContent).toContain('StaffPageHeader');
+    expect(kitchenContent).toContain('staff-page-body');
+    expect(kitchenContent).toContain('staff-request-filters');
+    expect(kitchenMenuContent).toContain('StaffPageHeader');
+    expect(kitchenMenuContent).toContain('staff-page-body');
+    expect(kitchenMenuContent).toContain('Pagination');
+    expect(kitchenMenuContent).toContain('paginatedFoods');
+    expect(kitchenMenuContent).toContain('paginatedMenus');
+    expect(kitchenMenuContent).toContain('paginatedMenuItems');
+  });
 });

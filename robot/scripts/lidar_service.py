@@ -49,6 +49,7 @@ if ROBOT_DIR not in sys.path:
 
 from scripts.pi_battery_estimator import PiBatteryEstimator  # noqa: E402
 from scripts.pi_power_monitor import PiPowerMonitor  # noqa: E402
+from scripts.zone_geometry import polygon_geometry  # noqa: E402
 from scripts.nav_planner import PlanGrid, plan_path, point_in_zone, zones_of_type  # noqa: E402
 from scripts.ros_map_io import load_ros_map_yaml, read_ros_map_info  # noqa: E402
 
@@ -1462,7 +1463,7 @@ free_thresh: 0.196
         clean = []
         for z in zones or []:
             try:
-                clean.append({
+                candidate = {
                     "id": str(z.get("id", "")),
                     "name": str(z.get("name", "")),
                     "type": str(z.get("type", "KEEP_OUT")).upper(),
@@ -1470,8 +1471,12 @@ free_thresh: 0.196
                     "y": float(z.get("y", 0.0)),
                     "width": float(z.get("width", 0.0)),
                     "height": float(z.get("height", 0.0)),
+                    "yaw": float(z.get("yaw") or 0.0),
                     "speed_limit": z.get("speed_limit"),
-                })
+                }
+                if z.get("vertices") is not None:
+                    candidate.update(polygon_geometry(z["vertices"]))
+                clean.append(candidate)
             except (TypeError, ValueError):
                 continue
         with self._lock:

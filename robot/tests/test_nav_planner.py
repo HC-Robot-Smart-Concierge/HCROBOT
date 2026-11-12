@@ -9,6 +9,26 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts import lidar_service  # noqa: E402
 from scripts.nav_planner import PlanGrid, plan_path, point_in_zone  # noqa: E402
 
+
+class TestRotatedZones(unittest.TestCase):
+    def test_pi_zone_sync_keeps_rotation_for_endpoint_checks(self):
+        core = lidar_service.RPLidarSLAMCore(port="/dev/null")
+        core.set_nav_zones([dict(id="z", name="Rotated", type="NO_STOP", x=2, y=2,
+                                 width=2, height=.4, yaw=90)])
+        self.assertEqual(core.nav_zones[0]["yaw"], 90)
+        self.assertTrue(point_in_zone(2, 2.8, core.nav_zones[0]))
+
+    def test_rotated_keepout_blocks_cells_beyond_old_horizontal_bounds(self):
+        zone = dict(x=2, y=2, width=2, height=.4, yaw=90)
+        self.assertTrue(point_in_zone(2, 2.8, zone))
+        self.assertFalse(point_in_zone(2.8, 2, zone))
+        grid = PlanGrid([0] * 1600, 40, 40, .1, 0, 0,
+                        keepout_zones=[zone], robot_radius=0, inflate_margin=0)
+        x, y = grid.to_cell(2.05, 2.85)
+        self.assertTrue(grid.blocked[y * grid.w + x])
+        x, y = grid.to_cell(2.85, 2.05)
+        self.assertFalse(grid.blocked[y * grid.w + x])
+
 RES = 0.05
 
 

@@ -1,9 +1,7 @@
 import time
-import re
 import random
-from datetime import datetime
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,9 +12,9 @@ from app.services.maintenance_request_service import get_or_create_maintenance_r
 from app.services.bell_request_service import (
     BELL_DEPARTMENT_ID, BELL_SERVICE_TYPE_ID, bell_request_message, get_or_create_bell_request,
 )
+from app.services.ai.constants import is_lost_found_text
 from app.schemas.operations import (
     ReceptionRequestCreate,
-    ReceptionRequestUpdate,
     ReceptionRequestResponse,
     ReceptionDashboardResponse,
     RoomPinVerifyRequest,
@@ -40,7 +38,7 @@ def normalize_nfc_uid(uid: Optional[str]) -> str:
     """Chuẩn hóa mã UID thẻ NFC: xóa dấu :, gạch ngang, khoảng trắng và chuyển chữ thường."""
     if not uid:
         return ""
-    return str(uid).replace(":", "").replace("-", "").replace(" ", "").strip().lower()
+    return uid.replace(":", "").replace("-", "").replace(" ", "").strip().lower()
 
 
 # =====================================================================
@@ -277,12 +275,13 @@ async def verify_room_pin(
             prefix = "ORD"
             dept_name_str = "Room Service"
             req_type_str = "room_service"
-        elif any(k in act_lower for k in ["bell", "hành lý"]):
+        elif any(k in act_lower for k in ["bell", "hành lý", "hành lí", "thất lạc", "mất đồ", "quên đồ", "lost"]):
             dept_id = BELL_DEPARTMENT_ID
             svc_id = BELL_SERVICE_TYPE_ID
             prefix = "BS"
             dept_name_str = "Bell Services"
-            req_type_str = "bell_service"
+            items_check = f"{act_lower} {(payload.items or payload.note or '').lower()}"
+            req_type_str = "lost_found" if is_lost_found_text(items_check) else "luggage"
         else:
             dept_id = "DEP-HOUSEKEEPING"
             svc_id = "ST-HOUSEKEEPING"
@@ -292,9 +291,16 @@ async def verify_room_pin(
         ticket_code = f"{prefix}-{code_num}"
 
         items_str = payload.items or payload.note or "Yêu cầu dịch vụ phòng qua Kiosk"
+        req_title = (
+            f"Báo cáo đồ thất lạc Phòng {room.room_number}: {items_str}"
+            if req_type_str == "lost_found"
+            else f"Hỗ trợ hành lý Phòng {room.room_number}: {items_str}"
+            if dept_id == "DEP-BELL"
+            else f"Yêu cầu từ Kiosk (Phòng {room.room_number})"
+        )
         new_req = SupportRequest(
             ticket_code=ticket_code,
-            title=f"Yêu cầu từ Kiosk (Phòng {room.room_number})",
+            title=req_title,
             description=items_str,
             department_id=dept_id,
             service_type_id=svc_id,
@@ -303,12 +309,13 @@ async def verify_room_pin(
             guest_name=room.current_guest_name or "Hotel Guest",
             source=f"Robot Kiosk ({verification_type} Verified)",
             status="Pending",
+            request_type=req_type_str,
         )
         if dept_id == "DEP-MAINTENANCE":
             new_req, created, merged = await get_or_create_maintenance_request(db, new_req)
             duplicate = not created and not merged
             ticket_code = new_req.ticket_code
-        elif dept_id == BELL_DEPARTMENT_ID:
+        elif dept_id == BELL_DEPARTMENT_ID and req_type_str != "lost_found":
             # Notifies Bell Services itself; a repeated open request returns its ticket.
             new_req, created = await get_or_create_bell_request(
                 db, room_number=room.room_number, description=items_str,
@@ -350,17 +357,18 @@ async def verify_room_pin(
 
     return RoomPinVerifyResponse(
         verified=True,
+        success=True,
         room_number=room.room_number,
         guest_name=room.current_guest_name,
         ticket_code=ticket_code,
         verification_type=verification_type,
-        tag_code=room.tag_code,
+        tagCode=room.tag_code,
         duplicate=duplicate,
         merged=merged,
         message=(
             bell_request_message(bell_ticket, created=not duplicate) if bell_ticket
-            else merged_maintenance_message(ticket_code) if merged
-            else duplicate_maintenance_message(ticket_code) if duplicate else pin_success_msg
+            else merged_maintenance_message(ticket_code or "") if merged
+            else duplicate_maintenance_message(ticket_code or "") if duplicate else pin_success_msg
         )
     )
 
@@ -438,12 +446,13 @@ async def verify_room_nfc(
             prefix = "ORD"
             dept_name_str = "Room Service"
             req_type_str = "room_service"
-        elif any(k in act_lower for k in ["bell", "hành lý"]):
+        elif any(k in act_lower for k in ["bell", "hành lý", "hành lí", "thất lạc", "mất đồ", "quên đồ", "lost"]):
             dept_id = BELL_DEPARTMENT_ID
             svc_id = BELL_SERVICE_TYPE_ID
             prefix = "BS"
             dept_name_str = "Bell Services"
-            req_type_str = "bell_service"
+            items_check = f"{act_lower} {(payload.items or payload.note or '').lower()}"
+            req_type_str = "lost_found" if is_lost_found_text(items_check) else "luggage"
         else:
             dept_id = "DEP-HOUSEKEEPING"
             svc_id = "ST-HOUSEKEEPING"
@@ -453,9 +462,16 @@ async def verify_room_nfc(
         ticket_code = f"{prefix}-{code_num}"
 
         items_str = payload.items or payload.note or "Yêu cầu dịch vụ phòng qua Kiosk (Thẻ NFC)"
+        req_title_nfc = (
+            f"Báo cáo đồ thất lạc Phòng {matched_room.room_number} (NFC): {items_str}"
+            if req_type_str == "lost_found"
+            else f"Hỗ trợ hành lý Phòng {matched_room.room_number} (NFC): {items_str}"
+            if dept_id == "DEP-BELL"
+            else f"Yêu cầu từ Kiosk (Phòng {matched_room.room_number} - Thẻ NFC)"
+        )
         new_req = SupportRequest(
             ticket_code=ticket_code,
-            title=f"Yêu cầu từ Kiosk (Phòng {matched_room.room_number} - Thẻ NFC)",
+            title=req_title_nfc,
             description=items_str,
             department_id=dept_id,
             service_type_id=svc_id,
@@ -464,12 +480,13 @@ async def verify_room_nfc(
             guest_name=matched_room.current_guest_name or "Hotel Guest",
             source="Robot Kiosk (NFC Verified)",
             status="Pending",
+            request_type=req_type_str,
         )
         if dept_id == "DEP-MAINTENANCE":
             new_req, created, merged = await get_or_create_maintenance_request(db, new_req)
             duplicate = not created and not merged
             ticket_code = new_req.ticket_code
-        elif dept_id == BELL_DEPARTMENT_ID:
+        elif dept_id == BELL_DEPARTMENT_ID and req_type_str != "lost_found":
             # Notifies Bell Services itself; a repeated open request returns its ticket.
             new_req, created = await get_or_create_bell_request(
                 db, room_number=matched_room.room_number, description=items_str,
@@ -511,17 +528,18 @@ async def verify_room_nfc(
 
     return RoomPinVerifyResponse(
         verified=True,
+        success=True,
         room_number=matched_room.room_number,
         guest_name=matched_room.current_guest_name,
         ticket_code=ticket_code,
         verification_type="NFC",
-        tag_code=matched_room.tag_code,
+        tagCode=matched_room.tag_code,
         duplicate=duplicate,
         merged=merged,
         message=(
             bell_request_message(bell_ticket, created=not duplicate) if bell_ticket
-            else merged_maintenance_message(ticket_code) if merged
-            else duplicate_maintenance_message(ticket_code) if duplicate else nfc_success_msg
+            else merged_maintenance_message(ticket_code or "") if merged
+            else duplicate_maintenance_message(ticket_code or "") if duplicate else nfc_success_msg
         )
     )
 

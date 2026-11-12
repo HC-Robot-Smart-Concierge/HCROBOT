@@ -169,3 +169,95 @@ async def test_all_operations_dashboards_and_endpoints():
         assert patch_res.status_code == 200
         assert patch_res.json()["status"] == "Completed"
 
+        # 12. Test Bellman 2 Core Flows: Luggage & Lost & Found
+        lug_res = await ac.post("/api/v1/operations/bell-services/requests", json={
+            "title": "Mang hành lý lên phòng (2 kiện)",
+            "location": "Room 302",
+            "guest_name": "Mr. Nguyen",
+            "reporter": "Bellman Desk",
+            "description": "Khách cần mang 2 vali lớn lên phòng 302",
+            "request_type": "luggage",
+        })
+        assert lug_res.status_code == 201
+        assert lug_res.json()["request_type"] == "luggage"
+
+        lf_res = await ac.post("/api/v1/operations/bell-services/requests", json={
+            "title": "Báo cáo đồ thất lạc: Ví da màu đen",
+            "location": "Room 305",
+            "guest_name": "Ms. Tran",
+            "reporter": "HCRobot Kiosk",
+            "description": "Khách báo để quên ví da đen tại sảnh chờ",
+            "request_type": "lost_found",
+        })
+        assert lf_res.status_code == 201
+        lf_data = lf_res.json()
+        assert lf_data["request_type"] == "lost_found"
+
+        # Test PATCH /bell-services/requests/{id}
+        upd_bell = await ac.patch(
+            f"/api/v1/operations/bell-services/requests/{lf_data['ticket_code']}",
+            json={"status": "In Progress", "assigned_to": "Marcus T."},
+        )
+        assert upd_bell.status_code == 200
+        assert upd_bell.json()["status"] == "In Progress"
+        assert upd_bell.json()["assigned_to"] == "Marcus T."
+
+        # 13. Test Concierge Emotion Alert Workflow (Moved from Bellman to Concierge)
+        unique_kiosk = f"Main Lobby Kiosk Test-{random.randint(1000, 9999)}"
+        em_res = await ac.post("/api/v1/operations/concierge/emotion-alerts", json={
+            "title": "Cảnh báo AI: Khách có biểu cảm khó chịu tại Sảnh",
+            "location": unique_kiosk,
+            "guest_name": "Khách tại Sảnh",
+            "reporter": "HCRobot Emotion AI",
+            "description": "Camera AI phát hiện khách có biểu cảm khó chịu",
+            "emotion_type": "Unhappy",
+        })
+        assert em_res.status_code == 201
+        em_data = em_res.json()
+        assert em_data["ticket_code"].startswith("EA-")
+        assert em_data["request_type"] == "emotion_alert"
+        assert em_data["duplicate"] is False
+
+        # Verify 90s duplicate suppression returns existing alert with duplicate=True
+        dup_res = await ac.post("/api/v1/operations/concierge/emotion-alerts", json={
+            "title": "Cảnh báo AI: Khách có biểu cảm khó chịu tại Sảnh",
+            "location": unique_kiosk,
+            "guest_name": "Khách tại Sảnh",
+            "reporter": "HCRobot Emotion AI",
+            "description": "Camera AI phát hiện khách có biểu cảm khó chịu",
+        })
+        assert dup_res.status_code == 201
+        assert dup_res.json()["id"] == em_data["id"]
+        assert dup_res.json()["duplicate"] is True
+
+        # Verify GET /concierge/emotion-alerts contains the new alert
+        alerts_res = await ac.get("/api/v1/operations/concierge/emotion-alerts")
+        assert alerts_res.status_code == 200
+        alert_codes = [a["ticket_code"] for a in alerts_res.json()]
+        assert em_data["ticket_code"] in alert_codes
+
+        # Verify GET /dashboard/concierge live call is NOT polluted by EA-* alerts
+        concierge_dash_res = await ac.get("/api/v1/operations/dashboard/concierge")
+        assert concierge_dash_res.status_code == 200
+        concierge_dash = concierge_dash_res.json()
+        if concierge_dash.get("current_request"):
+            assert not concierge_dash["current_request"]["ticket_code"].startswith("EA-")
+        assert concierge_dash["active_emotion_alerts_count"] >= 1
+
+        # Verify PATCH /concierge/emotion-alerts/{ticket_code} (Claim -> Complete)
+        upd_em = await ac.patch(
+            f"/api/v1/operations/concierge/emotion-alerts/{em_data['ticket_code']}",
+            json={"status": "In Progress", "assigned_to": "Concierge Specialist"},
+        )
+        assert upd_em.status_code == 200
+        assert upd_em.json()["status"] == "In Progress"
+        assert upd_em.json()["assigned_to"] == "Concierge Specialist"
+
+        done_em = await ac.patch(
+            f"/api/v1/operations/concierge/emotion-alerts/{em_data['ticket_code']}",
+            json={"status": "Completed", "assigned_to": "Concierge Specialist"},
+        )
+        assert done_em.status_code == 200
+        assert done_em.json()["status"] == "Completed"
+
+

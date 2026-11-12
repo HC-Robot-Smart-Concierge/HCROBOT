@@ -56,7 +56,10 @@ import {
 } from 'lucide-react';
 
 const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
-const PI5_API = `http://${PI5_IP}:8000/api/v1`;
+const PI5_API =
+  typeof window !== 'undefined' && window.location.protocol === 'https:'
+    ? '/api/v1/operations/robot/pi5'
+    : (import.meta.env.VITE_PI5_API_URL || `http://${PI5_IP}:8000/api/v1`);
 // Tu quet xe that: tu luc bam den khi frontier_explorer chay mat ~20-30 s
 // (kiem tra Pi/LiDAR/encoder + bat Nav2 + dem nguoc 10 s an toan).
 const EXPLORE_START_GRACE_MS = 60000;

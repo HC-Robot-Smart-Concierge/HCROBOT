@@ -53,5 +53,15 @@ describe('RoomServiceMenuManagementPage Component & Contract Tests', () => {
     expect(content).toContain('nước khoáng');
     expect(content).toContain('nuoc khoang');
   });
+
+  it('integrates Pagination component matching Admin standard (pageSize = 10)', () => {
+    const filePath = path.resolve(__dirname, '../../../pages/staff/RoomServiceMenuManagementPage.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
+
+    expect(content).toContain("import { Pagination } from '../../components/common/Pagination';");
+    expect(content).toContain('paginatedServices');
+    expect(content).toContain('const pageSize = 10');
+    expect(content).toContain('<Pagination');
+  });
 });
 

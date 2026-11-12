@@ -9,7 +9,8 @@
 
 - **Phạm vi bảo toàn:** Không can thiệp thư mục `/robot`, ROS2, ESP32, motor, LiDAR, cảm biến, bản đồ, POI hoặc điều hướng. Không sửa các hook giọng nói dùng chung toàn cục (`useSpeechSynthesis.js`, `useSpeechRecognition.js`). Không log dữ liệu nhạy cảm (Base64 audio, token, nội dung hội thoại mặc định) ra console sản phẩm.
 
-### Tóm tắt kiến trúc luồng Video Call hai chiều:
+### Tóm tắt kiến trúc luồng Video Call hai chiều
+
 1. **Khắc phục điểm nghẽn chiều Staff -> Robot:**
    - Xử lý treo cờ `isPlayingAudioRef` và `isAiSpeakingRef` trong `processAudioQueue` khi `AudioContext.resume()` bị trình duyệt giữ ở trạng thái pending (chưa có user gesture). Chỉ bật `isAiSpeakingRef = true` khi âm thanh thực sự bắt đầu phát (`PLAY_STARTED`), bọc `ctx.resume()` bằng timeout `400 ms` và bổ sung `playbackWatchdogRef` tự động giải phóng khóa nếu sự kiện `onended` không kích hoạt.
    - Bổ sung bộ thu âm **Call Audio Stream STT Adapter** đọc trực tiếp từ `localStreamRef.current` (16 kHz Mono PCM WAV theo ngưỡng khoảng lặng VAD) gửi về `/api/v1/ai/stt/transcribe`. Nhờ đó phía Staff và Robot vẫn nhận diện được giọng nói ngay cả khi `webkitSpeechRecognition` bị trình duyệt abort (mở 2 tab cùng máy hoặc xung đột WebRTC trên iOS Safari/Chrome).
@@ -62,14 +63,17 @@ STT_STARTED
 ## 3. NGUYÊN NHÂN GỐC RỄ ĐÃ XÁC MINH TRONG CODE & RUNTIME
 
 ### 3.1. Treo cờ `isPlayingAudioRef` và `isAiSpeakingRef` (`MessengerVideoCallModal.jsx`)
+
 - Khi `AudioContext` đang ở trạng thái `suspended` mà chưa có tương tác người dùng trực tiếp, Promise `ctx.resume()` treo vô thời hạn. Do đó `handleAudioFinished()` không bao giờ chạy, `isAiSpeakingRef.current` kẹt vĩnh viễn ở `true`, và mọi câu nói tiếp theo của Staff đều bị chặn bỏ.
 - Giải pháp: Chỉ bật cờ phát khi audio thực sự bắt đầu phát, bổ sung watchdog timeout 400ms và fallback giải phóng hàng đợi.
 
 ### 3.2. Nhận diện sai khi khách nói xen kẽ hai ngôn ngữ
+
 - Trước đây `recognition.lang` gán cứng `en-US` cho `role === 'guest'`. Khi khách nói tiếng Việt, bộ nhận diện nhận nhầm thành chuỗi ASCII vô nghĩa.
 - Giải pháp: Bổ sung Audio-Based Bilingual STT Adapter chấm điểm âm học song song `vi-VN` và `en-US`, kết hợp nút chọn chế độ nghe trực tiếp.
 
 ### 3.3. Hiện tượng bất đối xứng âm thanh mộc WebRTC
+
 1. Cả hai bên đều gắn AudioTrack từ micro vào kết nối P2P (`pc.addTrack(track, stream)`). Tiếng nói mộc thực tế luôn được phát đi từ cả hai phía.
 2. Robot Kiosk chạy trên PC/Kiosk chạm: Trình duyệt đã ghi nhận User Gesture -> Thẻ `<video ref={remoteVideoRef}>` tự động mở loa và phát tiếng Việt mộc bình thường.
 3. Trên iOS Safari / Mobile Browser của Staff: Autoplay policy chặn phát tự động âm thanh nếu chưa chạm trực tiếp vào thẻ video. Khi `remoteVideoRef.current.play()` ném lỗi `NotAllowedError`, mã nguồn đặt `remoteVideoRef.current.muted = true` để giữ luồng hình ảnh. Phụ đề text và giọng đọc AI (qua AudioContext riêng) vẫn chạy bình thường.
@@ -80,6 +84,7 @@ STT_STARTED
 ## 4. CƠ CHẾ STT ĐA NGỮ (BILINGUAL AUDIO STT) & GIỚI HẠN KỸ THUẬT
 
 ### 4.1. Kiến trúc thu âm và nhận diện
+
 - **Call Audio Stream STT Adapter (`MessengerVideoCallModal.jsx`):**
   - Tách luồng âm thanh từ `localStreamRef.current.getAudioTracks()` vào một `AudioContext` `16000 Hz` riêng biệt với `ScriptProcessorNode` (`4096` mẫu/khung ~ 256 ms).
   - Theo dõi năng lượng âm thanh RMS (`calculateFrameRms`): bắt đầu ghi khi `rms >= 0.013` (kèm 1 khung pre-roll) và tự động cắt câu khi gặp khoảng lặng `>= 3` khung liên tiếp (`~768 ms`) hoặc đạt độ dài tối đa `~7.1 s`.
@@ -91,6 +96,7 @@ STT_STARTED
   - Hàm `_score_bilingual_candidates` chấm điểm cả 2 ứng viên dựa trên độ tự tin âm học, dấu tiếng Việt, từ neo tiếng Việt so với tiếng Anh, và độ phủ từ.
 
 ### 4.2. Cơ chế chống trùng lặp (Deduplication)
+
 - Khi `inputLangMode === 'auto'` và bộ thu âm Audio Stream VAD đang bắt được tín hiệu giọng nói thực tế (`lastAudioVadSpeechAtRef`), kết quả tạm từ `webkitSpeechRecognition` được giữ trong timer dự phòng `1250 ms`. Khi kết quả song ngữ từ `/api/v1/ai/stt/transcribe` trả về, hệ thống hủy timer dự phòng và chỉ commit duy nhất kết quả từ Audio STT.
 - Mọi lời gọi `commitSpokenText` đều đi qua `evaluateSpokenTextCommit`: nếu cùng một nội dung đã được commit trong vòng `2200 ms`, lần gọi thứ hai bị từ chối với lý do `DUPLICATE_UTTERANCE`.
 

@@ -51,13 +51,14 @@ export function composeMapPose(mapToOdom, odom) {
   };
 }
 
-// parseLaserScan supplies degrees + distance; the laser is 8 cm ahead of base_link.
+// parseLaserScan supplies degrees + distance; LiDAR is centred on base_link.
 export function laserPointToMap(point, pose) {
   if (!Number.isFinite(point.distance) || !Number.isFinite(point.angle)) return null;
   const angle = pose.yaw + point.angle * Math.PI / 180;
   return {
-    x: pose.x + 0.08 * Math.cos(pose.yaw) + point.distance * Math.cos(angle),
-    y: pose.y + 0.08 * Math.sin(pose.yaw) + point.distance * Math.sin(angle),
+    // LiDAR is centred on the 33 x 17 cm body (base_link); no extra XY offset.
+    x: pose.x + point.distance * Math.cos(angle),
+    y: pose.y + point.distance * Math.sin(angle),
   };
 }
 

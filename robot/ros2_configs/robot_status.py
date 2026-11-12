@@ -27,7 +27,7 @@ def lidar_clearances(
     """Khoảng hở nhỏ nhất (cm) từ MÉP thân xe tới vật cản ở 4 phía.
 
     points: [{'angle': độ CCW (0 = trước), 'distance': m}] tính từ tâm LiDAR, LiDAR
-    lắp lệch lên trước tâm xe lidar_x (laser_joint trong lidar.xacro). Không có điểm => None.
+    nằm ở tâm thân xe, lidar_x = 0 (laser_joint trong lidar.xacro). Không có điểm => None.
     """
     best: Dict[str, Optional[float]] = {s: None for s in SIDES}
     for p in points:

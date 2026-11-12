@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useLanguage } from '../../../context/LanguageContext';
 import {
   ROS_TOPICS,
@@ -24,6 +24,7 @@ import {
   updateRos2KeepoutMask,
 } from '../../../services/workflowApi';
 import { buildCostmapImage, pathMsgToPoints } from './physicalMapCostmap';
+import { drawPolygonZone } from './physicalMapZoneDrawing';
 import {
   amclPoseIsReliable, composeMapPose, laserPointToMap, localizationFromManager, navigationBlockingReason,
   obstacleClearanceAt, sendNav2Endpoint, TURN_CLEARANCE_M,
@@ -32,11 +33,22 @@ import {
   endpointPlacementViolation,
   endpointZoneViolation,
   isPointInZone,
+  normalizeZoneYaw,
+  rotateZoneFromPointer,
+  zoneRotationHandle,
   resizeZoneFromCorner,
   speedZoneStatus,
   zoneEndpointConflict,
   zoneCorners,
   zoneFromCorners,
+  isPolygonZone,
+  MAX_ZONE_VERTICES,
+  polygonValidationError,
+  zoneFromVertices,
+  translateZone,
+  removeZoneVertex,
+  insertZoneVertex,
+  polygonEdgeAtPoint,
 } from './physicalMapZones';
 import {
   OTTO_ENDPOINT_TEMPLATES,
@@ -58,7 +70,6 @@ import {
   Navigation,
   Layers,
   RotateCcw,
-  Radio,
   Eye,
   EyeOff,
   ShieldCheck,
@@ -74,7 +85,32 @@ import {
   Crosshair,
   Home,
   Square,
+  PanelRightClose,
+  PanelRightOpen,
+  Gamepad2,
+  ShieldBan,
+  LocateFixed,
+  Gauge,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  MoveHorizontal,
 } from 'lucide-react';
+import { PANEL_SECTIONS, fitCanvasSize, loadPanelState, nextPanelState, savePanelState } from './physicalMapPanel';
+import PhysicalMapPopup from './PhysicalMapPopup';
+import {
+  DEFAULT_VIEW, MAX_ZOOM, clampView, fitWidthView, isDefaultView, mapFrame, panView, wheelZoomFactor, zoomViewAt,
+} from './physicalMapView';
+
+// Icon cho tung phan cua thanh ben phai (thu tu = PANEL_SECTIONS)
+const PANEL_ICONS = {
+  telemetry: Gauge,
+  nav2: Compass,
+  pose: LocateFixed,
+  WAYPOINTS: MapPin,
+  ZONES: ShieldBan,
+  TELEOP: Gamepad2,
+};
 
 const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
 const PI5_API = `http://${PI5_IP}:8000/api/v1`;
@@ -201,35 +237,21 @@ export const LAB_GEOMETRIC_OBSTACLES = [
   { id: 'pillar_bot_left', x: 0.35, y: -1.30, width: 0.40, height: 0.40, label: 'Kệ Thiết Bị' },
 ];
 
+// config.view (tuy chon) = zoom/keo map (physicalMapView.js); khong co = "vua khung" nhu cu.
 export const transformWorldToCanvas = (worldX, worldY, canvasWidth, canvasHeight, config = LAYOUT2_CONFIG) => {
-  const pad = 40;
-  const availWidth = canvasWidth - pad * 2;
-  const availHeight = canvasHeight - pad * 2;
-
-  const scaleX = availWidth / config.widthMeters;
-  const scaleY = availHeight / config.heightMeters;
-  const scale = Math.min(scaleX, scaleY);
+  const { scale, offsetX, offsetY } = mapFrame(canvasWidth, canvasHeight, config);
 
   const relX = worldX - config.originX;
   const relY = worldY - config.originY;
 
-  const px = pad + (availWidth - config.widthMeters * scale) / 2 + relX * scale;
-  const py = pad + (availHeight - config.heightMeters * scale) / 2 + (config.heightMeters - relY) * scale;
+  const px = offsetX + relX * scale;
+  const py = offsetY + (config.heightMeters - relY) * scale;
 
   return { x: px, y: py, scale };
 };
 
 export const transformCanvasToWorld = (canvasX, canvasY, canvasWidth, canvasHeight, config = LAYOUT2_CONFIG) => {
-  const pad = 40;
-  const availWidth = canvasWidth - pad * 2;
-  const availHeight = canvasHeight - pad * 2;
-
-  const scaleX = availWidth / config.widthMeters;
-  const scaleY = availHeight / config.heightMeters;
-  const scale = Math.min(scaleX, scaleY);
-
-  const offsetX = pad + (availWidth - config.widthMeters * scale) / 2;
-  const offsetY = pad + (availHeight - config.heightMeters * scale) / 2;
+  const { scale, offsetX, offsetY } = mapFrame(canvasWidth, canvasHeight, config);
 
   const relX = (canvasX - offsetX) / scale;
   const relY = config.heightMeters - (canvasY - offsetY) / scale;
@@ -319,7 +341,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
   // Che do Ghim nhieu Endpoint truc tiep tren ban do (Click de them)
   const [isAddEndpointMode, setIsAddEndpointMode] = useState(false);
-  const [addEndpointType, setAddEndpointType] = useState('WAYPOINT'); // 'WAYPOINT' | 'CHARGER' | 'PARK'
+  const [addEndpointType, setAddEndpointType] = useState('PARK'); // 'CHARGER' | 'PARK'
   const [navigatingEndpointId, setNavigatingEndpointId] = useState(null);
   const [hoveredEndpointId, setHoveredEndpointId] = useState(null);
   const clickStartRef = useRef(null);
@@ -327,13 +349,37 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Che do chon va sua Endpoint / Zone
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
+  const [selectedZoneVertex, setSelectedZoneVertex] = useState(null);
+  const [zoneEdgeHover, setZoneEdgeHover] = useState(null);
+  const deleteZoneVertexRef = useRef(null);
+  useEffect(() => { setSelectedZoneVertex(null); setZoneEdgeHover(null); }, [selectedZone?.id]);
   const [hasUnsavedEndpoints, setHasUnsavedEndpoints] = useState(false);
   const [hasUnsavedZones, setHasUnsavedZones] = useState(false);
   const [isSavingEndpoints, setIsSavingEndpoints] = useState(false);
   const [isSavingZones, setIsSavingZones] = useState(false);
 
-  // Tab hien thi o Right Control Panel: 'WAYPOINTS' | 'ZONES' | 'TELEOP'
-  const [activeRightTab, setActiveRightTab] = useState('WAYPOINTS');
+  // Thanh icon la noi duy nhat chuyen phan; luu ca phan dang mo khi tai lai.
+  const [panel, setPanel] = useState(() => ({ ...loadPanelState(), open: false }));
+  const closePopup = useCallback(() => setPanel((current) => ({ ...current, open: false })), []);
+  const openPanelSection = (section) => setPanel({ open: true, section });
+  const handlePanelRail = (key) => setPanel((current) => nextPanelState(current, key));
+  useEffect(() => {
+    savePanelState(panel);
+  }, [panel]);
+
+  // Canvas map gian theo khung chua (truoc day co dinh 850 x 560, toi da 960 x 640 px)
+  const canvasHostRef = useRef(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 850, height: 560 });
+  useEffect(() => {
+    const host = canvasHostRef.current;
+    if (!host || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(([entry]) => {
+      const next = fitCanvasSize(entry.contentRect.width, entry.contentRect.height);
+      setCanvasSize((prev) => (prev.width === next.width && prev.height === next.height ? prev : next));
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
 
   // Dat vi tri ban dau (2D Pose Estimate): click chon vi tri, keo de chon huong dau xe
   const [isPoseSetMode, setIsPoseSetMode] = useState(false);
@@ -341,16 +387,40 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const [isSettingPose, setIsSettingPose] = useState(false);
 
   // Keo tha tren Canvas
+  const zoneEditRef = useRef(null);
+  const [zoneCursor, setZoneCursor] = useState(null);
   const [dragState, setDragState] = useState(null);
   const isDraggingRef = useRef(false);
+  const panLastRef = useRef(null); // vi tri chuot lan truoc khi keo map (px canvas)
 
   // Ve vung bang chuot: chon loai vung roi keo hinh chu nhat tren map
   const [zoneDrawType, setZoneDrawType] = useState(null); // null | 'KEEP_OUT' | 'SPEED_ZONE' | 'NO_STOP'
+  const [zoneDrawShape, setZoneDrawShape] = useState('rectangle');
   const [zoneDraft, setZoneDraft] = useState(null); // { type, a: {x,y}, b: {x,y} } toa do the gioi
 
   // Ban do dang chon (thong so tu .yaml) va anh map (.pgm giai ma thanh canvas)
   const [mapLayouts, setMapLayouts] = useState([]);
   const [mapConfig, setMapConfig] = useState(LAYOUT2_CONFIG);
+  // Zoom/keo map (lan chuot, keo vung trong / chuot phai, nut goc duoi phai). Doi map => ve "vua khung".
+  const [mapView, setMapView] = useState(DEFAULT_VIEW);
+  const viewConfig = useMemo(() => ({ ...mapConfig, view: mapView }), [mapConfig, mapView]);
+  const viewConfigRef = useRef(viewConfig);
+  viewConfigRef.current = viewConfig;
+  useEffect(() => {
+    setMapView(DEFAULT_VIEW);
+    setZoneDrawType(null);
+    setZoneDraft(null);
+    setDragState(null);
+    setSelectedZoneVertex(null);
+    setZoneEdgeHover(null);
+    zoneEditRef.current = null;
+    clickStartRef.current = null;
+  }, [mapConfig.mapId]);
+  useEffect(() => {
+    setMapView((v) => clampView(v, canvasSize.width, canvasSize.height, mapConfig));
+  }, [canvasSize, mapConfig]);
+  const zoomMapBy = (factor) =>
+    setMapView((v) => zoomViewAt(v, factor, canvasSize.width / 2, canvasSize.height / 2, canvasSize.width, canvasSize.height, mapConfig));
   const [mapImage, setMapImage] = useState(null);
   const isLegacyMap = mapConfig.mapId === LAYOUT2_CONFIG.mapId;
   const navigationMapReady = isRosConnected && nav2Runtime.mode === 'NAVIGATION' && nav2Runtime.activeMap === mapConfig.mapId;
@@ -839,15 +909,15 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Chuyen doi Toa do Thuc (Meters) sang Canvas Pixels
   const worldToCanvas = useCallback(
     (worldX, worldY, canvasWidth, canvasHeight) =>
-      transformWorldToCanvas(worldX, worldY, canvasWidth, canvasHeight, mapConfig),
-    [mapConfig]
+      transformWorldToCanvas(worldX, worldY, canvasWidth, canvasHeight, viewConfig),
+    [viewConfig]
   );
 
   // Chuyen doi Canvas Pixels sang Toa do Thuc (Meters)
   const canvasToWorld = useCallback(
     (canvasX, canvasY, canvasWidth, canvasHeight) =>
-      transformCanvasToWorld(canvasX, canvasY, canvasWidth, canvasHeight, mapConfig),
-    [mapConfig]
+      transformCanvasToWorld(canvasX, canvasY, canvasWidth, canvasHeight, viewConfig),
+    [viewConfig]
   );
 
   // ==========================================
@@ -859,7 +929,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     window.alert(message);
   };
 
-  const handleAddEndpoint = (type = 'WAYPOINT', customCoords = null) => {
+  const handleAddEndpoint = (type = 'PARK', customCoords = null) => {
     const tmpl = getEndpointTemplateInfo(type);
     const count = endpoints.length + 1;
     const typeLabel = type === 'CHARGER' ? 'Trạm Sạc' : type === 'PARK' ? 'Điểm Đỗ' : 'Điểm Mốc';
@@ -883,7 +953,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setSelectedEndpoint(newEp);
     setSelectedZone(null);
     setHasUnsavedEndpoints(true);
-    setActiveRightTab('WAYPOINTS');
+    openPanelSection('WAYPOINTS');
     setNavStatus(`Đã tạo ${newEp.name} tại (${newEp.x}m, ${newEp.y}m)`);
 
     saveWaypoint(newEp).catch((err) => {
@@ -1017,34 +1087,86 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const conflict = zoneEndpointConflict(newZone, endpoints);
     if (conflict) {
       rejectZoneRule(conflict.message);
-      return;
+      return false;
     }
     const nextList = [...zones, newZone];
     setZones(nextList);
     setSelectedZone(newZone);
     setSelectedEndpoint(null);
-    setActiveRightTab('ZONES');
+    openPanelSection('ZONES');
     persistZone(newZone, nextList, `Đã tạo vùng "${newZone.name}" (${newZone.width} x ${newZone.height} m)`);
+    return true;
   };
+
+  const finishPolygon = () => {
+    const vertices = zoneDraft?.vertices || [];
+    const error = polygonValidationError(vertices);
+    if (error) {
+      rejectZoneRule(error);
+      return;
+    }
+    if (handleAddZone(zoneDrawType, zoneFromVertices(vertices))) {
+      setZoneDraft(null);
+      setZoneDrawType(null);
+    }
+  };
+
+  const handleDeleteSelectedVertex = () => {
+    if (!isPolygonZone(selectedZone) || selectedZoneVertex === null || !showZones
+      || zoneDrawType || isPoseSetMode || isAddEndpointMode || dragState || isDraggingRef.current) return false;
+    const result = removeZoneVertex(selectedZone, selectedZoneVertex);
+    const conflict = result.zone && zoneEndpointConflict(result.zone, endpoints);
+    if (result.error || conflict) {
+      rejectZoneRule(result.error || conflict.message);
+      return true;
+    }
+    const updated = result.zone;
+    const nextList = zones.map((z) => z.id === updated.id ? updated : z);
+    setZones(nextList);
+    setSelectedZone(updated);
+    setSelectedZoneVertex(null);
+    persistZone(updated, nextList, `Đã xóa đỉnh ${selectedZoneVertex + 1} của vùng "${updated.name}" • Còn ${updated.vertices.length} đỉnh`);
+    return true;
+  };
+  // The keyboard listener is stable; keep its vertex action on the current selection.
+  deleteZoneVertexRef.current = handleDeleteSelectedVertex;
 
   const toggleZoneDraw = (type) => {
     setZoneDraft(null);
     setZoneDrawType((cur) => (cur === type ? null : type));
+    setShowZones(true);
     setIsAddEndpointMode(false);
     setIsPoseSetMode(false);
-    setActiveRightTab('ZONES');
+    setPoseDraft(null);
+    setSelectedEndpoint(null);
+    setSelectedZone(null);
+    closePopup();
+  };
+
+  const startPointPlacement = (type) => {
+    setAddEndpointType(type);
+    setIsAddEndpointMode(true);
+    setShowEndpoints(true);
+    setIsPoseSetMode(false);
+    setPoseDraft(null);
+    setZoneDrawType(null);
+    setZoneDraft(null);
+    setSelectedEndpoint(null);
+    setSelectedZone(null);
+    closePopup();
+    setNavStatus('Click trên bản đồ để đặt điểm mốc. Nhấn Esc để hủy.');
   };
 
   const handleUpdateSelectedZone = (field, value) => {
-    if (!selectedZone) return;
+    if (!selectedZone) return false;
     const updated = { ...selectedZone, [field]: value };
     // Doi loai sang cam dung/cam vao, hoac doi tam/kich thuoc bang o nhap => de len endpoint?
     // (Doi ten/mo ta thi khong xet, de vung cu lo de endpoint van sua ten duoc.)
-    const geometryChange = ['type', 'x', 'y', 'width', 'height'].includes(field);
+    const geometryChange = ['type', 'x', 'y', 'width', 'height', 'yaw'].includes(field);
     const conflict = geometryChange && zoneEndpointConflict(updated, endpoints);
     if (conflict) {
       rejectZoneRule(conflict.message);
-      return;
+      return false;
     }
     setSelectedZone(updated);
     const nextList = zones.map((z) => (z.id === updated.id ? updated : z));
@@ -1054,6 +1176,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (rosClientRef.current?.isConnected) {
       rosClientRef.current.publish('/hotel_zones', 'std_msgs/String', createZoneSyncMsg(nextList));
     }
+    return true;
   };
 
   // KEEP_OUT -> mask Keepout Filter, SPEED_ZONE -> mask Speed Filter cua Nav2
@@ -1140,15 +1263,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     ctx.fillRect(0, 0, width, height);
 
     // 2. Tinh toan padding va ti le thu phong
-    const pad = 40;
-    const availWidth = width - pad * 2;
-    const availHeight = height - pad * 2;
-    const scale = Math.min(availWidth / mapConfig.widthMeters, availHeight / mapConfig.heightMeters);
-    const offsetX = pad + (availWidth - mapConfig.widthMeters * scale) / 2;
-    const offsetY = pad + (availHeight - mapConfig.heightMeters * scale) / 2;
-
-    const roomW = mapConfig.widthMeters * scale;
-    const roomH = mapConfig.heightMeters * scale;
+    // (cung cong thuc voi worldToCanvas, gom ca zoom/keo map)
+    const { scale, offsetX, offsetY, roomW, roomH } = mapFrame(width, height, viewConfig);
 
     // Nen phong Lab
     ctx.fillStyle = '#1E293B';
@@ -1158,6 +1274,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (mapImage) {
       ctx.save();
       ctx.globalAlpha = 0.95;
+      // Phong to (moi o >= 3 px): ve o luoi sac net thay vi lam mo
+      if (scale * (mapConfig.resolution || 0.05) >= 3) ctx.imageSmoothingEnabled = false;
       ctx.drawImage(mapImage, offsetX, offsetY, roomW, roomH);
       ctx.restore();
     }
@@ -1195,15 +1313,32 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (showZones && zones.length > 0) {
       for (const zone of zones) {
         const isSelected = selectedZone?.id === zone.id;
+        if (isPolygonZone(zone)) {
+          drawPolygonZone(ctx, zone.vertices.map((p) => worldToCanvas(p.x, p.y, width, height)), {
+            color: zone.type === 'KEEP_OUT' ? '#EF4444' : zone.type === 'SPEED_ZONE' ? '#F59E0B' : '#FB7185',
+            label: zone.name, selected: isSelected,
+            selectedVertex: isSelected ? selectedZoneVertex : null,
+            edgeHover: isSelected && zoneEdgeHover?.zoneId === zone.id ? {
+              edgeIndex: zoneEdgeHover.edgeIndex,
+              point: worldToCanvas(zoneEdgeHover.point.x, zoneEdgeHover.point.y, width, height),
+            } : null,
+            active: zone.type === 'SPEED_ZONE' && isPointInZone(robotPose.x, robotPose.y, zone),
+          });
+          continue;
+        }
         const halfW = (Number(zone.width) || 1.0) / 2;
         const halfH = (Number(zone.height) || 1.0) / 2;
         const zx = Number(zone.x) || 0;
         const zy = Number(zone.y) || 0;
 
-        const tl = worldToCanvas(zx - halfW, zy + halfH, width, height);
-        const br = worldToCanvas(zx + halfW, zy - halfH, width, height);
-        const zw = Math.max(8, br.x - tl.x);
-        const zh = Math.max(8, br.y - tl.y);
+        const center = worldToCanvas(zx, zy, width, height);
+        const zw = 2 * halfW * scale;
+        const zh = 2 * halfH * scale;
+        const tl = { x: -zw / 2, y: -zh / 2 };
+        const br = { x: zw / 2, y: zh / 2 };
+        ctx.save();
+        ctx.translate(center.x, center.y);
+        ctx.rotate(-normalizeZoneYaw(zone.yaw) * Math.PI / 180);
 
         const isKeepOut = zone.type === 'KEEP_OUT';
         const isSpeed = zone.type === 'SPEED_ZONE';
@@ -1260,9 +1395,25 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           ctx.fillStyle = '#FFFFFF';
           [tl.x, br.x].forEach((hx) => {
             [tl.y, br.y].forEach((hy) => {
-              ctx.fillRect(hx - 3, hy - 3, 6, 6);
+              ctx.fillRect(hx - 5, hy - 5, 10, 10);
+              ctx.strokeStyle = '#22D3EE';
+              ctx.strokeRect(hx - 5, hy - 5, 10, 10);
             });
           });
+          ctx.beginPath();
+          ctx.moveTo(0, tl.y);
+          ctx.lineTo(0, tl.y - 28);
+          ctx.strokeStyle = '#22D3EE';
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(0, tl.y - 28, 9, 0, Math.PI * 2);
+          ctx.fillStyle = '#0891B2';
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('↻', 0, tl.y - 23);
         }
 
         // Nhãn tên vùng nhỏ gọn tinh tế
@@ -1278,11 +1429,17 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         ctx.font = 'bold 9px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(labelText.length > 20 ? labelText.slice(0, 18) + '...' : labelText, tl.x + 3 + textW / 2, tl.y + 13);
+        ctx.restore();
       }
     }
 
     // 4b. Vung dang ve bang chuot (chua tha): khung net dut + kich thuoc
-    if (zoneDraft) {
+    if (zoneDraft?.vertices) {
+      drawPolygonZone(ctx, zoneDraft.vertices.map((p) => worldToCanvas(p.x, p.y, width, height)), {
+        color: ZONE_TEMPLATES.find((t) => t.type === zoneDraft.type)?.color || '#22D3EE', draft: true,
+        hover: zoneDraft.cursor && worldToCanvas(zoneDraft.cursor.x, zoneDraft.cursor.y, width, height),
+      });
+    } else if (zoneDraft) {
       const { a, b } = zoneDraft;
       const tl = worldToCanvas(Math.min(a.x, b.x), Math.max(a.y, b.y), width, height);
       const br = worldToCanvas(Math.max(a.x, b.x), Math.min(a.y, b.y), width, height);
@@ -1593,6 +1750,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     zones,
     selectedEndpoint,
     selectedZone,
+    selectedZoneVertex,
+    zoneEdgeHover,
     invertHeading,
     poseDraft,
     worldToCanvas,
@@ -1600,7 +1759,27 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     navigatingEndpointId,
     hoveredEndpointId,
     zoneDraft,
+    canvasSize,
+    viewConfig,
   ]);
+
+  // Lan chuot tren map = zoom quanh con tro. Gan listener thuong (passive: false) vi onWheel cua
+  // React la passive -> khong chan duoc cuon trang.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+    const onWheel = (e) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const mx = (e.clientX - rect.left) * (canvas.width / rect.width);
+      const my = (e.clientY - rect.top) * (canvas.height / rect.height);
+      const factor = wheelZoomFactor(e.deltaY, e.deltaMode);
+      setMapView((v) => zoomViewAt(v, factor, mx, my, canvas.width, canvas.height, viewConfigRef.current));
+    };
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+  }, []);
 
   // ==========================================
   // TUONG TAC CHUOT (SELECT, DRAG & DROP)
@@ -1608,10 +1787,23 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const handleCanvasMouseDown = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    e.currentTarget.focus({ preventScroll: true });
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    zoneEditRef.current = null;
+    setZoneEdgeHover(null);
     const rect = canvas.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
     const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+
+    // Chuot phai / chuot giua = keo map (dung duoc ca khi dang o che do ghim/ve vung/dat vi tri)
+    if (e.button === 1 || e.button === 2) {
+      e.preventDefault();
+      panLastRef.current = { x: canvasX, y: canvasY };
+      setDragState({ type: 'PAN' });
+      isDraggingRef.current = true;
+      return;
+    }
 
     // 0. Che do Dat vi tri ban dau: click = vi tri, keo = huong dau xe
     if (isPoseSetMode) {
@@ -1629,7 +1821,24 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
     // 0c. Che do Ve vung: nhan chuot = 1 goc, keo toi goc doi dien, tha chuot = tao vung
     if (zoneDrawType) {
-      const p = { x: worldX, y: worldY };
+      const p = { x: Number(worldX.toFixed(3)), y: Number(worldY.toFixed(3)) };
+      if (zoneDrawShape === 'polygon') {
+        const vertices = zoneDraft?.vertices || [];
+        if (vertices.length >= 3) {
+          const first = worldToCanvas(vertices[0].x, vertices[0].y, canvas.width, canvas.height);
+          if (Math.hypot(canvasX - first.x, canvasY - first.y) <= 12) {
+            finishPolygon();
+            return;
+          }
+        }
+        if (vertices.length >= MAX_ZONE_VERTICES) {
+          rejectZoneRule('Đa giác tối đa 64 đỉnh. Bấm Hoàn tất hoặc Bỏ đỉnh cuối để chỉnh lại.');
+          return;
+        }
+        if (vertices.some((v) => Math.hypot(v.x - p.x, v.y - p.y) < 0.005)) return;
+        setZoneDraft({ type: zoneDrawType, vertices: [...vertices, p], cursor: p });
+        return;
+      }
       setZoneDraft({ type: zoneDrawType, a: p, b: p });
       setDragState({ type: 'ZONE_DRAW' });
       isDraggingRef.current = true;
@@ -1637,22 +1846,65 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
 
     // 0d. Vung dang chon: nhan trung o vuong o goc (<= 8px) => keo de doi kich thuoc
-    if (showZones && selectedZone) {
-      const corners = zoneCorners(selectedZone);
-      const hit = Object.keys(corners).find((key) => {
-        const c = worldToCanvas(corners[key].x, corners[key].y, canvas.width, canvas.height);
-        return Math.hypot(canvasX - c.x, canvasY - c.y) <= 8;
+    if (showZones && isPolygonZone(selectedZone)) {
+      const vertex = selectedZone.vertices.findIndex((p) => {
+        const c = worldToCanvas(p.x, p.y, canvas.width, canvas.height);
+        return Math.hypot(canvasX - c.x, canvasY - c.y) <= 12;
       });
+      if (vertex >= 0) {
+        setSelectedZoneVertex(vertex);
+        clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
+        setDragState({ type: 'ZONE_VERTEX', id: selectedZone.id, vertex, orig: selectedZone });
+        isDraggingRef.current = true;
+        return;
+      }
+      const edge = polygonEdgeAtPoint(
+        selectedZone.vertices.map((p) => worldToCanvas(p.x, p.y, canvas.width, canvas.height)),
+        { x: canvasX, y: canvasY }
+      );
+      if (edge) {
+        const result = insertZoneVertex(selectedZone, edge.edgeIndex, { x: worldX, y: worldY });
+        if (result.error) { rejectZoneRule(result.error); return; }
+        setSelectedZone(result.zone);
+        setSelectedZoneVertex(result.vertexIndex);
+        setZones((prev) => prev.map((z) => z.id === selectedZone.id ? result.zone : z));
+        zoneEditRef.current = result.zone;
+        clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
+        // Commit on release, so one press can insert and drag without saving an intermediate shape.
+        setDragState({ type: 'ZONE_VERTEX', id: selectedZone.id, vertex: result.vertexIndex,
+          orig: selectedZone, editBase: result.zone, inserted: true });
+        isDraggingRef.current = true;
+        return;
+      }
+    } else if (showZones && selectedZone) {
+      const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, viewConfig);
+      const rotation = zoneRotationHandle(selectedZone, 28 / scale);
+      const handle = worldToCanvas(rotation.x, rotation.y, canvas.width, canvas.height);
+      if (Math.hypot(canvasX - handle.x, canvasY - handle.y) <= 12) {
+        clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
+        setDragState({ type: 'ZONE_ROTATE', id: selectedZone.id, orig: { ...selectedZone },
+          startPoint: { x: worldX, y: worldY } });
+        isDraggingRef.current = true;
+        return;
+      }
+      const corners = zoneCorners(selectedZone);
+      const center = worldToCanvas(selectedZone.x, selectedZone.y, canvas.width, canvas.height);
+      const hit = Math.hypot(canvasX - center.x, canvasY - center.y) > 4 && Object.keys(corners).map((key) => {
+        const c = worldToCanvas(corners[key].x, corners[key].y, canvas.width, canvas.height);
+        return { key, distance: Math.hypot(canvasX - c.x, canvasY - c.y) };
+      }).sort((a, b) => a.distance - b.distance).find((c) => c.distance <= 12)?.key;
       if (hit) {
         clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
         setDragState({
           type: 'ZONE_RESIZE', id: selectedZone.id, corner: hit,
-          orig: { x: selectedZone.x, y: selectedZone.y, width: selectedZone.width, height: selectedZone.height },
+          orig: { ...selectedZone },
         });
         isDraggingRef.current = true;
         return;
       }
     }
+
+    setSelectedZoneVertex(null);
 
     // 1. Kiem tra click trúng Endpoint (r <= 18px)
     if (showEndpoints) {
@@ -1662,7 +1914,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         if (dist <= 18) {
           setSelectedEndpoint(ep);
           setSelectedZone(null);
-          setActiveRightTab('WAYPOINTS');
+          openPanelSection('WAYPOINTS');
           clickStartRef.current = {
             type: 'ENDPOINT',
             ep,
@@ -1688,15 +1940,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (showZones) {
       for (let i = zones.length - 1; i >= 0; i--) {
         const zone = zones[i];
-        const halfW = (Number(zone.width) || 1.0) / 2;
-        const halfH = (Number(zone.height) || 1.0) / 2;
-        const tl = worldToCanvas(zone.x - halfW, zone.y + halfH, canvas.width, canvas.height);
-        const br = worldToCanvas(zone.x + halfW, zone.y - halfH, canvas.width, canvas.height);
-
-        if (canvasX >= tl.x && canvasX <= br.x && canvasY >= tl.y && canvasY <= br.y) {
+        if (isPointInZone(worldX, worldY, zone)) {
           setSelectedZone(zone);
           setSelectedEndpoint(null);
-          setActiveRightTab('ZONES');
+          openPanelSection('ZONES');
           clickStartRef.current = {
             type: 'ZONE',
             zone,
@@ -1711,6 +1958,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             mouseStartY: canvasY,
             initX: zone.x,
             initY: zone.y,
+            orig: { ...zone },
           });
           isDraggingRef.current = true;
           return;
@@ -1718,10 +1966,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       }
     }
 
-    // 3. Neu khong trung: Bo chon (Khong tu dong chay robot khi click vung trong)
+    // 3. Neu khong trung: Bo chon (Khong tu dong chay robot khi click vung trong); giu chuot keo = keo map
     setSelectedEndpoint(null);
     setSelectedZone(null);
     clickStartRef.current = null;
+    panLastRef.current = { x: canvasX, y: canvasY };
+    setDragState({ type: 'PAN' });
+    isDraggingRef.current = true;
   };
 
   const handleCanvasMouseMove = (e) => {
@@ -1730,6 +1981,40 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const rect = canvas.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+    if (zoneDrawType && zoneDrawShape === 'polygon' && zoneDraft?.vertices && !dragState) {
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      setZoneDraft((draft) => draft && { ...draft, cursor: { x: worldX, y: worldY } });
+    }
+    if (!dragState && showZones && isPolygonZone(selectedZone)) {
+      const vertex = selectedZone.vertices.some((p) => {
+        const c = worldToCanvas(p.x, p.y, canvas.width, canvas.height);
+        return Math.hypot(canvasX - c.x, canvasY - c.y) <= 12;
+      });
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      const edge = !vertex && polygonEdgeAtPoint(
+        selectedZone.vertices.map((p) => worldToCanvas(p.x, p.y, canvas.width, canvas.height)),
+        { x: canvasX, y: canvasY }
+      );
+      const canInsert = selectedZone.vertices.length < MAX_ZONE_VERTICES;
+      if (edge && canInsert) {
+        const p = canvasToWorld(edge.point.x, edge.point.y, canvas.width, canvas.height);
+        setZoneEdgeHover({ zoneId: selectedZone.id, edgeIndex: edge.edgeIndex, point: { x: p.worldX, y: p.worldY } });
+      } else setZoneEdgeHover(null);
+      setZoneCursor(vertex ? 'crosshair' : edge ? (canInsert ? 'copy' : 'not-allowed')
+        : isPointInZone(worldX, worldY, selectedZone) ? 'move' : null);
+    } else if (!dragState && showZones && selectedZone) {
+      const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, viewConfig);
+      const rotation = zoneRotationHandle(selectedZone, 28 / scale);
+      const rh = worldToCanvas(rotation.x, rotation.y, canvas.width, canvas.height);
+      const corner = Object.values(zoneCorners(selectedZone)).some((p) => {
+        const c = worldToCanvas(p.x, p.y, canvas.width, canvas.height);
+        return Math.hypot(canvasX - c.x, canvasY - c.y) <= 12;
+      });
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      setZoneCursor(Math.hypot(canvasX - rh.x, canvasY - rh.y) <= 12 ? 'grab'
+        : corner ? 'crosshair' : isPointInZone(worldX, worldY, selectedZone) ? 'move' : null);
+    } else if (!dragState) setZoneCursor(null);
 
     // Kiem tra hover len Endpoint khi khong keo tha de tao con tro chuot pointer
     if (!dragState && showEndpoints) {
@@ -1753,6 +2038,24 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       }
     }
 
+    if (dragState.type === 'PAN') {
+      const last = panLastRef.current;
+      panLastRef.current = { x: canvasX, y: canvasY };
+      if (last) {
+        const dx = canvasX - last.x;
+        const dy = canvasY - last.y;
+        setMapView((v) => panView(v, dx, dy, canvas.width, canvas.height, mapConfig));
+      }
+      return;
+    }
+
+    if (clickStartRef.current) {
+      const moved = Math.hypot(canvasX - clickStartRef.current.startX, canvasY - clickStartRef.current.startY);
+      if (moved > 6) {
+        clickStartRef.current.hasMoved = true;
+      }
+    }
+
     if (dragState.type === 'POSE') {
       const dx = canvasX - dragState.mouseStartX;
       const dy = canvasY - dragState.mouseStartY;
@@ -1763,22 +2066,39 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       return;
     }
 
-    if (dragState.type === 'ZONE_DRAW' || dragState.type === 'ZONE_RESIZE') {
+    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE', 'ZONE_VERTEX'].includes(dragState.type) && !clickStartRef.current?.hasMoved) return;
+
+    if (dragState.type === 'ZONE_VERTEX') {
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      const base = dragState.editBase || dragState.orig;
+      const vertices = base.vertices.map((p, i) => i === dragState.vertex
+        ? { x: Number(worldX.toFixed(3)), y: Number(worldY.toFixed(3)) } : p);
+      const updated = { ...base, ...zoneFromVertices(vertices) };
+      zoneEditRef.current = updated;
+      setSelectedZone(updated);
+      setZones((prev) => prev.map((z) => z.id === updated.id ? updated : z));
+      return;
+    }
+
+    if (['ZONE_DRAW', 'ZONE_RESIZE', 'ZONE_ROTATE'].includes(dragState.type)) {
       const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
       if (dragState.type === 'ZONE_DRAW') {
         setZoneDraft((prev) => (prev ? { ...prev, b: { x: worldX, y: worldY } } : prev));
-      } else if (selectedZone) {
+      } else {
         const updated = {
-          ...selectedZone,
-          ...resizeZoneFromCorner(selectedZone, dragState.corner, { x: worldX, y: worldY }),
+          ...dragState.orig,
+          ...(dragState.type === 'ZONE_ROTATE'
+            ? rotateZoneFromPointer(dragState.orig, dragState.startPoint, { x: worldX, y: worldY }, e.shiftKey)
+            : resizeZoneFromCorner(dragState.orig, dragState.corner, { x: worldX, y: worldY })),
         };
+        zoneEditRef.current = updated;
         setSelectedZone(updated);
         setZones((prev) => prev.map((z) => (z.id === dragState.id ? updated : z)));
       }
       return;
     }
 
-    const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, mapConfig);
+    const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, viewConfig);
     const dxMeters = (canvasX - dragState.mouseStartX) / scale;
     const dyMeters = -(canvasY - dragState.mouseStartY) / scale;
 
@@ -1792,7 +2112,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     } else if (dragState.type === 'ZONE') {
       const newX = Number((dragState.initX + dxMeters).toFixed(2));
       const newY = Number((dragState.initY + dyMeters).toFixed(2));
-      const updated = { ...selectedZone, x: newX, y: newY };
+      const updated = translateZone(dragState.orig, newX - dragState.initX, newY - dragState.initY);
+      zoneEditRef.current = updated;
       setSelectedZone(updated);
       setZones((prev) => prev.map((z) => (z.id === dragState.id ? updated : z)));
     }
@@ -1806,6 +2127,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setDragState(null);
     isDraggingRef.current = false;
     clickStartRef.current = null;
+
+    panLastRef.current = null;
+    if (finishedDrag?.type === 'PAN') return;
 
     // Tha chuot sau khi ve: tao vung (qua nho = bam nham, bo qua) va thoat che do ve
     if (finishedDrag?.type === 'ZONE_DRAW') {
@@ -1822,20 +2146,25 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
 
     // Keo/doi kich thuoc vung xong: de len endpoint => tra ve cho cu + bao; khong thi luu + cap nhat Nav2
-    if ((finishedDrag?.type === 'ZONE' || finishedDrag?.type === 'ZONE_RESIZE') && clickCandidate?.hasMoved) {
-      const zone = zones.find((z) => z.id === finishedDrag.id);
+    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE', 'ZONE_VERTEX'].includes(finishedDrag?.type) && (clickCandidate?.hasMoved || finishedDrag.inserted)) {
+      const zone = zoneEditRef.current || zones.find((z) => z.id === finishedDrag.id);
       const conflict = zone && zoneEndpointConflict(zone, endpoints);
-      if (conflict) {
-        const orig = finishedDrag.type === 'ZONE'
-          ? { x: finishedDrag.initX, y: finishedDrag.initY }
-          : finishedDrag.orig;
+      const geometryError = isPolygonZone(zone) && polygonValidationError(zone.vertices);
+      if (conflict || geometryError) {
+        const orig = finishedDrag.orig;
         const reverted = { ...zone, ...orig };
         setZones((prev) => prev.map((z) => (z.id === zone.id ? reverted : z)));
         setSelectedZone(reverted);
-        rejectZoneRule(conflict.message);
+        if (finishedDrag.inserted) setSelectedZoneVertex(null);
+        rejectZoneRule(geometryError || conflict.message);
       } else if (zone) {
-        persistZone(zone, zones, `Đã cập nhật vùng "${zone.name}" (${zone.width} x ${zone.height} m)`);
+        const nextList = zones.map((z) => z.id === zone.id ? zone : z);
+        setZones(nextList);
+        persistZone(zone, nextList, finishedDrag.inserted
+          ? `Đã thêm đỉnh ${finishedDrag.vertex + 1} vào vùng "${zone.name}" • ${zone.vertices.length} đỉnh`
+          : `Đã cập nhật vùng "${zone.name}" (${Number(zone.width).toFixed(2)} × ${Number(zone.height).toFixed(2)} m • ${normalizeZoneYaw(zone.yaw)}°)`);
       }
+      zoneEditRef.current = null;
     }
 
     // Keo endpoint vao vung cam dung/cam vao => tra ve cho cu + bao
@@ -1860,6 +2189,21 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (clickCandidate?.type === 'ENDPOINT' && !clickCandidate.hasMoved) {
       handleNavigateToEndpoint(clickCandidate.ep);
     }
+  };
+
+  const handleCanvasPointerCancel = () => {
+    panLastRef.current = null;
+    if (dragState?.orig && dragState.type.startsWith('ZONE')) {
+      setZones((prev) => prev.map((z) => z.id === dragState.id ? dragState.orig : z));
+      setSelectedZone(dragState.orig);
+      if (dragState.inserted) setSelectedZoneVertex(null);
+    }
+    zoneEditRef.current = null;
+    clickStartRef.current = null;
+    isDraggingRef.current = false;
+    setDragState(null);
+    setZoneDraft(null);
+    setPoseDraft(null);
   };
 
   // ==========================================
@@ -1972,11 +2316,17 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   };
 
   // Dieu khien Teleop thu cong
-  const sendTeleopCommand = (commandDirection, linearVel, angularVel) => {
+  const physicalTeleopRef = useRef({ timer: null, command: null, deliver: null });
+  const deliverTeleopCommand = (commandDirection, linearVel, angularVel) => {
+    if (rosClientRef.current?.isConnected) {
+      rosClientRef.current.publishManualCmdVel(linearVel, angularVel);
+      return;
+    }
+    if (nav2Runtime.mode === 'EXPLORING') {
+      setNavStatus('Mất kết nối ROS: chưa thể nhường quyền lái tay. Kết nối lại hoặc dừng tự quét.');
+      return;
+    }
     if (connectionMode === 'pi5') {
-      if (rosClientRef.current?.isConnected) {
-        rosClientRef.current.publish('/robot/nav_cancel', 'std_msgs/Empty', {});
-      }
       try {
         // Thanh trượt chỉ áp dụng cho tiến/lùi. Xoay tại chỗ gửi speed=null để
         // Pi dùng TELEOP_PWM_TURN riêng (lidar_service.py).
@@ -1995,17 +2345,36 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       return;
     }
 
-    if (rosClientRef.current?.isConnected) {
-      try {
-        rosClientRef.current.publish(ROS_TOPICS.CMD_VEL, ROS_MSG_TYPES.TWIST, {
-          linear: { x: linearVel, y: 0.0, z: 0.0 },
-          angular: { x: 0.0, y: 0.0, z: angularVel },
-        });
-      } catch (err) {
-        console.warn('[AdminPhysicalMapTab] ROS2 cmd_vel error:', err);
-      }
+  };
+  physicalTeleopRef.current.deliver = deliverTeleopCommand;
+  const sendTeleopCommand = (commandDirection, linearVel, angularVel) => {
+    const control = physicalTeleopRef.current;
+    if (control.timer) clearInterval(control.timer);
+    control.timer = null;
+    control.command = commandDirection === 'stop' ? null : commandDirection;
+    control.deliver(commandDirection, linearVel, angularVel);
+    if (control.command) {
+      control.timer = setInterval(() => control.deliver(commandDirection, linearVel, angularVel), 100);
     }
   };
+  useEffect(() => {
+    const release = () => {
+      const control = physicalTeleopRef.current;
+      if (control.timer) clearInterval(control.timer);
+      control.timer = null;
+      if (control.command) control.deliver('stop', 0, 0);
+      control.command = null;
+    };
+    window.addEventListener('blur', release);
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
+    return () => {
+      window.removeEventListener('blur', release);
+      window.removeEventListener('pointerup', release);
+      window.removeEventListener('pointercancel', release);
+      release();
+    };
+  }, []);
 
   const handleStop = () => {
     // Che do ROS 2: huy goal Nav2 (bridge goi cancel_goal + gui stop cho Pi); chi /cmd_vel=0
@@ -2024,15 +2393,29 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Keyboard controls WASD
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (e.defaultPrevented) return;
       const key = e.key.toLowerCase();
       if (key === 'escape') {
+        setSelectedZoneVertex(null);
         // Huy ve vung dang do dang
         setZoneDrawType(null);
         setZoneDraft(null);
+        setIsAddEndpointMode(false);
+        setIsPoseSetMode(false);
+        setPoseDraft(null);
         setDragState((cur) => (cur?.type === 'ZONE_DRAW' ? null : cur));
         return;
       }
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (key === 'delete') {
+        if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.isContentEditable
+          && !e.target.closest?.('[role="dialog"], [role="textbox"]') && deleteZoneVertexRef.current?.()) {
+          e.preventDefault();
+        }
+        return;
+      }
+      // Space activates focused popup buttons; it must not also send a motor command.
+      if (e.target.closest?.('[role="dialog"]') && [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) return;
       if (key === 'w' || key === 'arrowup') {
         e.preventDefault();
         sendTeleopCommand('forward', maxLinearSpeed, 0.0);
@@ -2052,9 +2435,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     };
 
     const handleKeyUp = (e) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
       const key = e.key.toLowerCase();
-      if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+      if (physicalTeleopRef.current.command && ['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
         sendTeleopCommand('stop', 0.0, 0.0);
       }
     };
@@ -2068,288 +2450,50 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     };
   }, [maxLinearSpeed]);
 
+  const mapActions = [
+    { key: 'laser', Icon: Zap, title: 'Laser LiDAR', label: `Laser: ${showLaserScan ? 'BẬT' : 'TẮT'} (${scanPoints.length} điểm)`, description: `${scanPoints.length} điểm quét đang được nhận. Bật để hiển thị các điểm LiDAR trên bản đồ.`, active: showLaserScan, onClick: () => setShowLaserScan((value) => !value) },
+    { key: 'rays', Icon: showLaserRays ? Eye : EyeOff, title: 'Tia quét LiDAR', label: `Tia quét: ${showLaserRays ? 'BẬT' : 'TẮT'}`, description: 'Hiển thị đường tia từ robot đến các điểm quét LiDAR.', active: showLaserRays, onClick: () => setShowLaserRays((value) => !value) },
+    { key: 'zones', Icon: ShieldCheck, title: 'Hiển thị vùng', label: `Hiển thị vùng (${zones.length})`, description: `${zones.length} vùng trên bản đồ. Thay đổi hiển thị không tắt các quy tắc của vùng.`, active: showZones, onClick: () => setShowZones((value) => !value) },
+    { key: 'endpoints', Icon: MapPin, title: 'Hiển thị điểm mốc', label: `Hiển thị điểm mốc (${endpoints.length})`, description: `${endpoints.length} điểm mốc, trạm sạc và điểm đỗ trên bản đồ.`, active: showEndpoints, onClick: () => setShowEndpoints((value) => !value) },
+    { key: 'costmap', Icon: Layers, title: 'Costmap Nav2', label: `Costmap Nav2${costmapVersion === 0 ? ' (chưa có dữ liệu)' : ''}: ${showCostmap ? 'BẬT' : 'TẮT'}`, description: costmapVersion === 0 ? 'Chưa nhận được costmap từ Nav2. Khi có dữ liệu, đỏ là vật cản hoặc vùng cấm; cam là khoảng nới an toàn.' : 'Đỏ là vật cản hoặc vùng cấm; cam là khoảng nới an toàn quanh vật cản.', active: showCostmap, onClick: () => setShowCostmap((value) => !value) },
+    { key: 'heading', Icon: Compass, title: 'Hướng hiển thị robot', label: invertHeading ? 'Đảo đầu: 180°' : 'Đầu chuẩn: 0°', description: 'Đảo hướng hiển thị đầu xe và góc quét LiDAR 180° khi bị ngược với thực tế.', active: invertHeading, onClick: () => setInvertHeading((value) => !value) },
+  ];
+  const popupAction = mapActions.find((action) => action.key === panel.section);
+  const popupTitle = PANEL_SECTIONS.find((section) => section.key === panel.section)?.label
+    || popupAction?.title
+    || (panel.section === 'ADD' ? 'Thêm vào bản đồ' : 'Vệt di chuyển');
+
   return (
     <div className="flex flex-col h-full bg-slate-900 text-slate-100 overflow-hidden font-sans">
-      {/* Top Header: Title, Realtime Status & Switch Mode */}
-      <header className="h-14 px-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-cyan-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
-            <Radio className="w-4 h-4 animate-pulse" />
-          </div>
-          <div>
-            <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-2">
-              <span>HC-ROBOT • BẢN ĐỒ VẬT LÝ & KHÔNG GIAN THỰC TẾ (SLAM LAB)</span>
-            </h1>
-            <p className="text-[11px] text-slate-400 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block animate-ping" />
-              <span>{navStatus}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Center: O chon ban do SLAM (robot/maps/*.yaml) */}
-        <label
-          className="hidden md:flex items-center bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-xs"
-          title={`${mapConfig.widthMeters}m × ${mapConfig.heightMeters}m • ${mapConfig.resolution}m/ô • gốc (${mapConfig.originX}, ${mapConfig.originY})`}
-        >
-          <Layers className="w-3.5 h-3.5 text-cyan-400 mr-1.5 shrink-0" />
-          <span className="text-[11px] font-semibold text-slate-400 mr-1.5">Bản đồ:</span>
-          <select
-            value={mapConfig.mapId}
-            onChange={(e) => handleSelectMap(e.target.value)}
-            disabled={mapLayouts.length === 0}
-            className="bg-slate-900 text-[11px] font-semibold text-slate-200 outline-none cursor-pointer disabled:cursor-not-allowed max-w-[220px]"
-          >
-            {mapLayouts.length === 0 && (
-              <option value={mapConfig.mapId}>{mapConfig.mapId}{isLegacyMap ? ' (gốc Lab)' : ''}</option>
-            )}
-            {mapLayouts.map((m) => (
-              <option key={m.map_id} value={m.map_id}>
-                {m.name}
-                {m.map_id === LAYOUT2_CONFIG.mapId ? ' (gốc Lab)' : ''} • {m.width_m}×{m.height_m}m
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* Right: Target Selector (Pi 5 vs ROS 2) & Status Pill */}
-        <div className="flex items-center gap-2">
-          {/* Toggle Target */}
-          <div className="flex items-center bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs">
-            <button
-              onClick={() => setConnectionMode('pi5')}
-              className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
-                connectionMode === 'pi5'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Cpu className="w-3 h-3" />
-              <span>Xe Thật Pi 5</span>
-            </button>
-            <button
-              onClick={() => setConnectionMode('ros2')}
-              className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
-                connectionMode === 'ros2'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Activity className="w-3 h-3" />
-              <span>ROS 2</span>
-            </button>
-          </div>
-
-          {/* Connection status badge */}
-          <div
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 border ${
-              isWsConnected
-                ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800/80'
-                : 'bg-rose-950/80 text-rose-400 border-rose-800/80'
-            }`}
-          >
-            {isWsConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">
-              {isWsConnected
-                ? connectionMode === 'pi5'
-                  ? `Pi 5 (${pi5Ip})`
-                  : 'ROS 2 Live'
-                : 'Mất kết nối'}
-            </span>
-          </div>
-        </div>
-      </header>
-
       {/* Main Workspace: Canvas Map Area + Right Control Panel */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="relative flex-1 min-h-0 flex overflow-hidden">
         {/* Left: Canvas Lab Viewport */}
-        <div className="flex-1 relative flex flex-col items-center justify-center p-3 bg-slate-950 overflow-hidden select-none">
-          {/* Quick Endpoint Strip & Mode Toggle */}
-          <div className="w-full max-w-[960px] mb-2 z-20 flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-slate-900/95 border border-slate-800 shadow-lg text-xs backdrop-blur-md">
-            {/* Left: Nut bat/tat che do Ghim Endpoint */}
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => setIsAddEndpointMode(!isAddEndpointMode)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-sm ${
-                  isAddEndpointMode
-                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white ring-2 ring-emerald-400 animate-pulse'
-                    : 'bg-blue-600 hover:bg-blue-500 text-white'
-                }`}
-                title={isAddEndpointMode ? 'Nhấn để tắt chế độ ghim' : 'Bật để click thêm nhiều điểm mốc trực tiếp trên bản đồ'}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{isAddEndpointMode ? 'Đang Ghim (Click Map)' : '+ Ghim Endpoint'}</span>
-              </button>
-
-              {isAddEndpointMode && (
-                <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
-                  <button
-                    type="button"
-                    onClick={() => setAddEndpointType('WAYPOINT')}
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
-                      addEndpointType === 'WAYPOINT' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Waypoint
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAddEndpointType('CHARGER')}
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
-                      addEndpointType === 'CHARGER' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Trạm Sạc
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAddEndpointType('PARK')}
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
-                      addEndpointType === 'PARK' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Điểm Đỗ
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Right: Quick Endpoint Navigation Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto max-w-full py-0.5 scrollbar-thin">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
-                Bấm để tới:
-              </span>
-              {endpoints.length === 0 ? (
-                <span className="text-[10px] text-slate-500 italic">Chưa có điểm mốc nào</span>
-              ) : (
-                endpoints.map((ep) => {
-                  const tmpl = getEndpointTemplateInfo(ep.type);
-                  const isNavTarget = isNavigating && navigatingEndpointId === ep.id;
-                  const isSelected = selectedEndpoint?.id === ep.id;
-
-                  return (
-                    <button
-                      key={ep.id}
-                      type="button"
-                      onClick={() => handleNavigateToEndpoint(ep)}
-                      className={`px-2 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1.5 shrink-0 cursor-pointer transition-all border ${
-                        isNavTarget
-                          ? 'bg-cyan-600 text-white border-cyan-400 shadow-md ring-2 ring-cyan-400/50 animate-pulse'
-                          : isSelected
-                          ? 'bg-slate-800 text-cyan-300 border-cyan-500'
-                          : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700 hover:border-slate-600'
-                      }`}
-                      title={`Bấm để robot di chuyển ngay tới ${ep.name} (${ep.x.toFixed(2)}m, ${ep.y.toFixed(2)}m)`}
-                    >
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: tmpl.color || ep.color }}
-                      />
-                      <span className="truncate max-w-[100px]">{ep.name}</span>
-                      {isNavTarget && <Navigation className="w-2.5 h-2.5 text-white animate-spin" />}
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Floating Controls Overlay o goc tren trai */}
-          <div className="absolute top-14 left-5 z-10 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md p-1.5 rounded-lg border border-slate-800 shadow-xl text-xs">
-            <button
-              onClick={() => setShowLaserScan(!showLaserScan)}
-              className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
-                showLaserScan ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              <Zap className="w-3 h-3" />
-              <span>Laser: {showLaserScan ? 'BẬT' : 'TẮT'}</span>
-            </button>
-
-            <button
-              onClick={() => setShowLaserRays(!showLaserRays)}
-              className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
-                showLaserRays ? 'bg-cyan-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-              }`}
-              title="Vẽ các đường tia quét từ robot tới điểm va chạm"
-            >
-              {showLaserRays ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-              <span>Rays</span>
-            </button>
-
-            <button
-              onClick={() => setShowZones(!showZones)}
-              className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
-                showZones ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-              }`}
-              title="Bật/Tắt hiển thị Vùng chức năng (Keep-out, Speed, No-stop)"
-            >
-              <ShieldCheck className="w-3 h-3" />
-              <span>Vùng ({zones.length})</span>
-            </button>
-
-            <button
-              onClick={() => setShowEndpoints(!showEndpoints)}
-              className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
-                showEndpoints ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-              }`}
-              title="Bật/Tắt hiển thị Điểm mốc"
-            >
-              <MapPin className="w-3 h-3" />
-              <span>Điểm ({endpoints.length})</span>
-            </button>
-
-            {(
-              <button
-                onClick={() => setShowCostmap(!showCostmap)}
-                className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
-                  showCostmap ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-                }`}
-                title="Costmap Nav2: đỏ = vật cản / vùng cấm (xe chạm là va chạm), cam = vùng nới an toàn quanh vật cản"
-              >
-                <Layers className="w-3 h-3" />
-                <span>Costmap{costmapVersion === 0 ? ' (chưa có)' : ''}</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => setTrail([])}
-              className="px-2.5 py-1 rounded text-[11px] font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Xóa Vệt</span>
-            </button>
-
-            <button
-              onClick={() => setInvertHeading(!invertHeading)}
-              className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
-                invertHeading ? 'bg-amber-600 text-white shadow-sm' : 'bg-slate-800 text-slate-400 hover:text-white'
-              }`}
-              title="Đảo hướng đầu xe và góc quét LiDAR 180 độ nếu ngược hướng thực tế"
-            >
-              <Compass className="w-3 h-3" />
-              <span>{invertHeading ? 'Đảo Đầu: 180°' : 'Đầu Chuẩn: 0°'}</span>
-            </button>
-
-            {scanPoints.length > 0 && (
-              <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-400 text-[10px] font-mono">
-                {scanPoints.length} pts
-              </span>
-            )}
-          </div>
-
+        <div className="flex-1 min-w-0 relative flex flex-col items-center justify-center p-3 bg-slate-950 overflow-hidden select-none">
           {/* Canvas Render Element */}
+          {/* Khung chua canvas: kich thuoc do bang ResizeObserver -> canvas dung bang khung (map to ra
+              khi thu gon panel ben phai). Canvas absolute de kich thuoc canvas khong day khung ra. */}
+          <div ref={canvasHostRef} className="relative w-full flex-1 min-h-0">
           <canvas
+            tabIndex={0}
+            aria-label="Bản đồ: bấm cạnh đa giác để thêm đỉnh, kéo đỉnh để sửa, nhấn Delete để xóa đỉnh đã chọn"
             ref={canvasRef}
-            width={850}
-            height={560}
-            onMouseDown={handleCanvasMouseDown}
-            onMouseMove={handleCanvasMouseMove}
-            onMouseUp={handleCanvasMouseUp}
-            onMouseLeave={() => setHoveredEndpointId(null)}
-            className={`w-full h-full max-w-[960px] max-h-[640px] rounded-xl border border-slate-800 shadow-2xl bg-slate-900 object-contain ${
-              zoneDrawType
+            width={canvasSize.width}
+            height={canvasSize.height}
+            onPointerDown={handleCanvasMouseDown}
+            onPointerMove={handleCanvasMouseMove}
+            onPointerUp={handleCanvasMouseUp}
+            onPointerCancel={handleCanvasPointerCancel}
+            onPointerLeave={() => {
+              setHoveredEndpointId(null);
+              setZoneEdgeHover(null);
+              if (dragState?.type === 'PAN') handleCanvasMouseUp();
+            }}
+            style={{ touchAction: 'none', cursor: !zoneDrawType && !isPoseSetMode && !isAddEndpointMode ? (dragState ? 'grabbing' : zoneCursor || undefined) : undefined }}
+            onContextMenu={(e) => e.preventDefault()}
+            className={`absolute inset-0 w-full h-full rounded-xl border border-slate-800 shadow-2xl bg-slate-900 ${
+              dragState?.type === 'PAN'
+                ? 'cursor-grabbing'
+                : zoneDrawType
                 ? 'cursor-crosshair'
                 : dragState
                 ? 'cursor-grabbing'
@@ -2359,7 +2503,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 ? 'cursor-copy'
                 : hoveredEndpointId
                 ? 'cursor-pointer'
-                : 'cursor-default'
+                : 'cursor-grab'
             } ${
               zoneDrawType
                 ? 'ring-2 ring-amber-500/70'
@@ -2370,6 +2514,57 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 : ''
             }`}
           />
+          {/* Zoom map: lan chuot = zoom quanh con tro; keo vung trong / chuot phai = di chuyen map */}
+          <div
+            role="group"
+            aria-label="Thu phóng bản đồ"
+            className="absolute bottom-3 right-3 z-20 flex flex-col items-stretch gap-1 p-1 rounded-lg bg-slate-950/90 border border-slate-700 shadow-xl text-slate-200"
+          >
+            <button
+              type="button"
+              onClick={() => zoomMapBy(1.25)}
+              disabled={mapView.zoom >= MAX_ZOOM - 1e-6}
+              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              title="Phóng to (hoặc lăn chuột lên trên map)"
+              aria-label="Phóng to"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </button>
+            <div className="text-center text-[10px] font-mono text-slate-400 select-none" aria-live="polite">
+              {Math.round(mapView.zoom * 100)}%
+            </div>
+            <button
+              type="button"
+              onClick={() => zoomMapBy(0.8)}
+              disabled={mapView.zoom <= 1 + 1e-6}
+              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              title="Thu nhỏ (hoặc lăn chuột xuống)"
+              aria-label="Thu nhỏ"
+            >
+              <ZoomOut className="w-4 h-4" />
+            </button>
+            <div className="h-px bg-slate-700 my-0.5" />
+            <button
+              type="button"
+              onClick={() => setMapView(fitWidthView(canvasSize.width, canvasSize.height, mapConfig))}
+              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 cursor-pointer"
+              title="Vừa chiều ngang: map dọc phủ kín bề ngang, kéo lên/xuống để xem phần còn lại"
+              aria-label="Vừa chiều ngang"
+            >
+              <MoveHorizontal className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setMapView(DEFAULT_VIEW)}
+              disabled={isDefaultView(mapView)}
+              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              title="Xem toàn bộ map (vừa khung)"
+              aria-label="Xem toàn bộ map"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+          </div>
+          </div>
 
           {/* Dong ho toc do (encoder) + huy hieu vung giam toc - de demo thay xe cham lai */}
           {isRosConnected && (
@@ -2424,8 +2619,18 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           )}
 
           {zoneDrawType && (
-            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-lg bg-amber-950/90 border border-amber-700 text-[11px] font-semibold text-amber-200 shadow-xl">
-              Vẽ vùng {ZONE_TEMPLATES.find((t) => t.type === zoneDrawType)?.badge}: nhấn giữ chuột ở 1 góc → kéo tới góc đối diện → thả chuột (Esc để hủy)
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-2 rounded-lg bg-amber-950/95 border border-amber-700 text-[11px] font-semibold text-amber-200 shadow-xl max-w-[90%]">
+              {zoneDrawShape === 'polygon' ? (
+                <>
+                  <p>Vẽ {ZONE_TEMPLATES.find((t) => t.type === zoneDrawType)?.badge}: chấm từng đỉnh theo thứ tự quanh vùng. Bấm đỉnh đầu hoặc Hoàn tất để đóng hình.</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span>{zoneDraft?.vertices?.length || 0}/64 đỉnh</span>
+                    <button type="button" disabled={(zoneDraft?.vertices?.length || 0) < 3} onClick={finishPolygon} className="rounded bg-emerald-700 px-2 py-1 text-white disabled:opacity-40 cursor-pointer">Hoàn tất</button>
+                    <button type="button" disabled={!zoneDraft?.vertices?.length} onClick={() => setZoneDraft((draft) => draft && { ...draft, vertices: draft.vertices.slice(0, -1) })} className="rounded bg-slate-700 px-2 py-1 text-white disabled:opacity-40 cursor-pointer">Bỏ đỉnh cuối</button>
+                    <button type="button" onClick={() => { setZoneDraft(null); setZoneDrawType(null); }} className="rounded border border-amber-700 px-2 py-1 cursor-pointer">Hủy (Esc)</button>
+                  </div>
+                </>
+              ) : <>Vẽ vùng {ZONE_TEMPLATES.find((t) => t.type === zoneDrawType)?.badge}: nhấn giữ chuột ở 1 góc → kéo tới góc đối diện → thả chuột (Esc để hủy)</>}
             </div>
           )}
 
@@ -2509,6 +2714,21 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 <span className="font-bold text-cyan-400">
                   ({Number(selectedZone.x).toFixed(2)}, {Number(selectedZone.y).toFixed(2)})
                 </span>
+                {isPolygonZone(selectedZone) ? (
+                  <>
+                    <span className="ml-2 text-cyan-300">Đa giác · {selectedZone.vertices.length} đỉnh</span>
+                    <span className={selectedZoneVertex === null ? 'text-slate-400' : 'text-amber-300'}>
+                      {selectedZoneVertex === null ? 'Chọn đỉnh để kéo hoặc xóa' : `Đã chọn đỉnh ${selectedZoneVertex + 1}`}
+                    </span>
+                    <span className="text-slate-400">· Bấm cạnh để thêm đỉnh</span>
+                    <button type="button" onClick={handleDeleteSelectedVertex}
+                      disabled={selectedZoneVertex === null || selectedZone.vertices.length <= 3 || !!dragState}
+                      title={selectedZone.vertices.length <= 3 ? 'Đa giác phải giữ ít nhất 3 đỉnh' : 'Xóa đỉnh đang chọn và nối hai đỉnh liền kề (Delete)'}
+                      className="ml-1 flex items-center gap-1 rounded border border-rose-800 bg-rose-950/60 px-2 py-1 text-rose-300 hover:bg-rose-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                      <Trash2 className="h-3 w-3" /> Xóa đỉnh (Delete)
+                    </button>
+                  </>
+                ) : <>
                 <span className="text-slate-400 ml-1">KT:</span>
                 <input
                   type="number"
@@ -2532,6 +2752,17 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                   title="Chiều dài (m)"
                 />
                 <span>m</span>
+                <input
+                  type="number"
+                  step="15"
+                  value={normalizeZoneYaw(selectedZone.yaw)}
+                  onChange={(e) => handleUpdateSelectedZone('yaw', normalizeZoneYaw(e.target.value))}
+                  className="w-12 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-white focus:outline-none"
+                  aria-label="Góc xoay vùng (độ)"
+                  title="Góc xoay vùng (độ)"
+                />
+                <span>°</span>
+                </>}
               </div>
 
               {/* Nut Luu Vung */}
@@ -2696,17 +2927,15 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             </div>
           )}
 
-          {/* Bottom helper text */}
-          <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between w-full max-w-[960px]">
-            <span className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block animate-pulse" />
-              <span>Bấm vào điểm mốc bất kỳ để điều hướng robot tới đó • Bật <strong>'Ghim Endpoint'</strong> để click tạo nhiều điểm mốc trên bản đồ ({mapConfig.widthMeters}m × {mapConfig.heightMeters}m)</span>
-            </span>
+          <div className="mt-2 flex w-full items-center gap-2">
+            <p role="status" aria-live="polite" className="min-w-0 flex-1 truncate text-[11px] text-cyan-300" title={navStatus}>
+              {navStatus}
+            </p>
             {isNavigating && (
               <button
                 type="button"
                 onClick={handleStop}
-                className="px-2 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-700 text-rose-300 font-bold cursor-pointer text-[10px] flex items-center gap-1 transition-colors"
+                className="shrink-0 px-2 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-700 text-rose-300 font-bold cursor-pointer text-[10px] flex items-center gap-1 transition-colors"
               >
                 <Square className="w-2.5 h-2.5 fill-current" />
                 <span>Dừng xe</span>
@@ -2715,10 +2944,72 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           </div>
         </div>
 
-        {/* Right: Workspace Control Panel với 3 TAB y hệt Giả lập */}
-        <div className="w-84 xl:w-96 bg-slate-900 border-l border-slate-800 flex flex-col p-3 overflow-y-auto space-y-3">
+        {/* Chi hien phan duoc chon tu thanh icon ben phai. */}
+        {panel.open && (
+        <PhysicalMapPopup key={panel.section} title={popupTitle} onClose={closePopup}>
+          {panel.section === 'ADD' && (
+            <div className="space-y-4">
+              <p className="text-xs leading-relaxed text-slate-400">Chọn loại cần thêm, sau đó đặt trực tiếp trên bản đồ.</p>
+              <div className="space-y-2">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Điểm mốc / Point</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { type: 'CHARGER', label: 'Trạm sạc', Icon: Battery },
+                    { type: 'PARK', label: 'Điểm đỗ', Icon: Home },
+                  ].map(({ type, label, Icon }) => (
+                    <button key={type} type="button" onClick={() => startPointPlacement(type)} className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/60 px-2 py-3 text-xs font-semibold text-blue-200 transition-colors hover:border-blue-500 hover:bg-blue-950/60">
+                      <Icon className="h-5 w-5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-500">Click trên map để đặt điểm. Nhấn Esc để hủy.</p>
+              </div>
+              <div className="space-y-2 border-t border-slate-800 pt-3">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Vùng / Zone</h3>
+                {ZONE_TEMPLATES.map((template) => (
+                  <button key={template.type} type="button" onClick={() => toggleZoneDraw(template.type)} className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/60 p-3 text-left transition-colors hover:border-slate-500 hover:bg-slate-800">
+                    <ShieldBan className="h-5 w-5 shrink-0" style={{ color: template.color }} />
+                    <span>
+                      <span className="block text-xs font-bold" style={{ color: template.color }}>{template.badge}</span>
+                      <span className="mt-1 block text-[11px] leading-relaxed text-slate-400">{template.description}</span>
+                    </span>
+                  </button>
+                ))}
+                <p className="text-[11px] text-slate-500">Nhấn giữ và kéo trên map để vẽ vùng. Nhấn Esc để hủy.</p>
+              </div>
+            </div>
+          )}
+          {popupAction && (
+            <div className="space-y-4">
+              <p className="text-xs leading-relaxed text-slate-400">{popupAction.description}</p>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={popupAction.active}
+                aria-label={popupAction.title}
+                onClick={popupAction.onClick}
+                className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950/70 p-3 text-xs font-semibold hover:border-cyan-700"
+              >
+                <span>{popupAction.key === 'heading' ? popupAction.label : 'Hiển thị trên bản đồ'}</span>
+                <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${popupAction.active ? 'bg-cyan-500' : 'bg-slate-700'}`}>
+                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${popupAction.active ? 'translate-x-[18px] left-0' : 'left-0.5'}`} />
+                </span>
+              </button>
+            </div>
+          )}
+          {panel.section === 'trail' && (
+            <div className="space-y-3">
+              <p className="text-xs leading-relaxed text-slate-400">Xóa đường vệt đã di chuyển đang hiển thị trên bản đồ.</p>
+              <button type="button" onClick={() => { setTrail([]); closePopup(); }} className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold hover:bg-slate-600">
+                <RotateCcw className="h-4 w-4" />
+                Xóa vệt di chuyển
+              </button>
+            </div>
+          )}
           {/* Card 1: Telemetry Realtime & Hardware */}
-          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800">
+          {panel.section === 'telemetry' && (
+          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 scroll-mt-3">
             <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-2">
               <span className="flex items-center gap-1.5">
                 <Activity className="w-3.5 h-3.5 text-cyan-400" />
@@ -2762,9 +3053,80 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             </div>
           </div>
 
+          )}
+
           {/* Card Nav2 (che do ROS 2): bat map_server + AMCL + Nav2 voi map dang chon */}
-          {(
-            <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2">
+          {panel.section === 'nav2' && (
+            <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2 scroll-mt-3">
+              <label
+          className="flex items-center w-full bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-xs"
+          title={`${mapConfig.widthMeters}m × ${mapConfig.heightMeters}m • ${mapConfig.resolution}m/ô • gốc (${mapConfig.originX}, ${mapConfig.originY})`}
+        >
+          <Layers className="w-3.5 h-3.5 text-cyan-400 mr-1.5 shrink-0" />
+          <span className="text-[11px] font-semibold text-slate-400 mr-1.5">Bản đồ:</span>
+          <select
+            value={mapConfig.mapId}
+            onChange={(e) => handleSelectMap(e.target.value)}
+            disabled={mapLayouts.length === 0}
+            className="bg-slate-900 text-[11px] font-semibold text-slate-200 outline-none cursor-pointer disabled:cursor-not-allowed flex-1 min-w-0"
+          >
+            {mapLayouts.length === 0 && (
+              <option value={mapConfig.mapId}>{mapConfig.mapId}{isLegacyMap ? ' (gốc Lab)' : ''}</option>
+            )}
+            {mapLayouts.map((m) => (
+              <option key={m.map_id} value={m.map_id}>
+                {m.name}
+                {m.map_id === LAYOUT2_CONFIG.mapId ? ' (gốc Lab)' : ''} • {m.width_m}×{m.height_m}m
+              </option>
+            ))}
+          </select>
+        </label>
+              <div className="flex flex-wrap items-center gap-2">
+          {/* Toggle Target */}
+          <div className="flex items-center bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs">
+            <button
+              onClick={() => setConnectionMode('pi5')}
+              className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
+                connectionMode === 'pi5'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Cpu className="w-3 h-3" />
+              <span>Xe Thật Pi 5</span>
+            </button>
+            <button
+              onClick={() => setConnectionMode('ros2')}
+              className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
+                connectionMode === 'ros2'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Activity className="w-3 h-3" />
+              <span>ROS 2</span>
+            </button>
+          </div>
+
+          {/* Connection status badge */}
+          <div
+            className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 border ${
+              isWsConnected
+                ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800/80'
+                : 'bg-rose-950/80 text-rose-400 border-rose-800/80'
+            }`}
+          >
+            {isWsConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+            <span>
+              {isWsConnected
+                ? connectionMode === 'pi5'
+                  ? `Pi 5 (${pi5Ip})`
+                  : 'ROS 2 Live'
+                : 'Mất kết nối'}
+            </span>
+          </div>
+        </div>
+              <div className="h-px bg-slate-800 my-3" />
               <div className="flex items-center justify-between text-xs font-bold text-slate-300">
                 <span className="flex items-center gap-1.5">
                   <Navigation className="w-3.5 h-3.5 text-orange-400" />
@@ -2803,7 +3165,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           )}
 
           {/* Card 2: Dat vi tri ban dau (Initial Pose / 2D Pose Estimate) */}
-          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2">
+          {panel.section === 'pose' && (
+          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2 scroll-mt-3">
             <div className="flex items-center justify-between text-xs font-bold text-slate-300">
               <span className="flex items-center gap-1.5">
                 <Crosshair className="w-3.5 h-3.5 text-emerald-400" />
@@ -2820,6 +3183,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                   setPoseDraft(null);
                   setSelectedEndpoint(null);
                   setSelectedZone(null);
+                  setIsAddEndpointMode(false);
+                  setZoneDrawType(null);
+                  setZoneDraft(null);
+                  closePopup();
                 }}
                 disabled={isSettingPose || !navigationMapReady}
                 className={`px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border ${
@@ -2890,71 +3257,14 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             )}
           </div>
 
-          {/* TAB SELECTOR: WAYPOINTS vs ZONES vs TELEOP */}
-          <div className="flex rounded-lg bg-slate-950 p-1 border border-slate-800 text-xs">
-            <button
-              onClick={() => setActiveRightTab('WAYPOINTS')}
-              className={`flex-1 py-1.5 rounded text-[11px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
-                activeRightTab === 'WAYPOINTS'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <MapPin className="w-3.5 h-3.5" />
-              <span>Điểm Mốc ({endpoints.length})</span>
-            </button>
-            <button
-              onClick={() => setActiveRightTab('ZONES')}
-              className={`flex-1 py-1.5 rounded text-[11px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
-                activeRightTab === 'ZONES'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Vùng ({zones.length})</span>
-            </button>
-            <button
-              onClick={() => setActiveRightTab('TELEOP')}
-              className={`flex-1 py-1.5 rounded text-[11px] font-bold cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
-                activeRightTab === 'TELEOP'
-                  ? 'bg-amber-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>Điều Khiển</span>
-            </button>
-          </div>
+          )}
 
           {/* NOI DUNG TAB 1: DANH SACH DIEM MOC (WAYPOINTS) */}
-          {activeRightTab === 'WAYPOINTS' && (
+          {panel.section === 'WAYPOINTS' && (
             <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
               {/* Toolbar them & luu endpoint */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setIsAddEndpointMode(!isAddEndpointMode)}
-                    className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
-                      isAddEndpointMode
-                        ? 'bg-emerald-600 text-white animate-pulse ring-1 ring-emerald-300'
-                        : 'bg-indigo-600/80 hover:bg-indigo-600 text-white'
-                    }`}
-                    title="Bật chế độ ghim để click tạo điểm mốc trực tiếp trên bản đồ"
-                  >
-                    <Crosshair className="w-3 h-3" />
-                    <span>{isAddEndpointMode ? 'Đang Ghim' : 'Ghim Map'}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleAddEndpoint('WAYPOINT')}
-                    className="px-2 py-1 rounded bg-blue-600/80 hover:bg-blue-600 text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
-                    title="Thêm điểm Waypoint trung gian"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Waypoint</span>
-                  </button>
                   <button
                     type="button"
                     onClick={() => handleAddEndpoint('CHARGER')}
@@ -2990,6 +3300,22 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                   <span>{isSavingEndpoints ? 'Lưu...' : 'Lưu'}</span>
                 </button>
               </div>
+
+              {isAddEndpointMode && (
+                <label className="flex items-center gap-2 rounded-lg border border-blue-500/50 bg-blue-950/40 p-2 text-[11px] text-blue-200">
+                  <Crosshair className="w-3.5 h-3.5 shrink-0" />
+                  <span>Ghim trên map:</span>
+                  <select
+                    aria-label="Loại điểm mốc cần ghim"
+                    value={addEndpointType}
+                    onChange={(e) => setAddEndpointType(e.target.value)}
+                    className="min-w-0 flex-1 rounded bg-slate-900 p-1 text-slate-100 outline-none"
+                  >
+                    <option value="CHARGER">Trạm Sạc</option>
+                    <option value="PARK">Điểm Đỗ</option>
+                  </select>
+                </label>
+              )}
 
               {/* Danh sach Waypoints */}
               <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
@@ -3066,8 +3392,18 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           )}
 
           {/* NOI DUNG TAB 2: DANH SACH VUNG CHUC NANG (ZONES) */}
-          {activeRightTab === 'ZONES' && (
+          {panel.section === 'ZONES' && (
             <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
+              <div className="flex items-center gap-2 text-[11px] text-slate-300">
+                <span>Hình vẽ:</span>
+                {[['rectangle', 'Chữ nhật'], ['polygon', 'Đa giác (Polygon)']].map(([shape, label]) => (
+                  <button key={shape} type="button" aria-pressed={zoneDrawShape === shape}
+                    onClick={() => { setZoneDrawShape(shape); setZoneDraft(null); setZoneDrawType(null); }}
+                    className={`rounded border px-2 py-1 cursor-pointer ${zoneDrawShape === shape ? 'border-cyan-500 bg-cyan-950 text-cyan-200' : 'border-slate-700 bg-slate-800'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
               {/* Toolbar them & luu zone */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
@@ -3076,7 +3412,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                     className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
                       zoneDrawType === 'KEEP_OUT' ? 'bg-rose-600 ring-2 ring-white/70' : 'bg-rose-600/80 hover:bg-rose-600'
                     }`}
-                    title="Vẽ khu vực cấm vào: kéo chuột trên bản đồ. Nav2 sẽ đi đường vòng, không nhận endpoint bên trong."
+                    title="Vẽ khu vực cấm vào theo hình đã chọn. Nav2 sẽ đi đường vòng, không nhận endpoint bên trong."
                   >
                     <Plus className="w-3 h-3" />
                     <span>{zoneDrawType === 'KEEP_OUT' ? 'Đang Vẽ...' : 'Cấm Vào'}</span>
@@ -3086,7 +3422,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                     className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
                       zoneDrawType === 'SPEED_ZONE' ? 'bg-amber-600 ring-2 ring-white/70' : 'bg-amber-600/80 hover:bg-amber-600'
                     }`}
-                    title="Vẽ vùng giới hạn tốc độ: kéo chuột trên bản đồ. Robot tự chạy chậm lại khi vào vùng."
+                    title="Vẽ vùng giới hạn tốc độ theo hình đã chọn. Robot tự chạy chậm lại khi vào vùng."
                   >
                     <Plus className="w-3 h-3" />
                     <span>{zoneDrawType === 'SPEED_ZONE' ? 'Đang Vẽ...' : 'Tốc Độ'}</span>
@@ -3096,7 +3432,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                     className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
                       zoneDrawType === 'NO_STOP' ? 'bg-pink-600 ring-2 ring-white/70' : 'bg-pink-600/80 hover:bg-pink-600'
                     }`}
-                    title="Vẽ vùng cấm dừng: kéo chuột trên bản đồ. Robot được đi ngang qua nhưng không nhận endpoint bên trong."
+                    title="Vẽ vùng cấm dừng theo hình đã chọn. Robot được đi ngang qua nhưng không nhận endpoint bên trong."
                   >
                     <Plus className="w-3 h-3" />
                     <span>{zoneDrawType === 'NO_STOP' ? 'Đang Vẽ...' : 'Cấm Dừng'}</span>
@@ -3131,6 +3467,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                       onClick={() => {
                         setSelectedZone(zone);
                         setSelectedEndpoint(null);
+                        setZoneDrawType(null);
+                        setZoneDraft(null);
                       }}
                       className={`p-2 rounded-lg border flex items-center justify-between transition-colors cursor-pointer ${
                         isSelected
@@ -3143,7 +3481,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                         <div className="truncate">
                           <span className="text-xs font-semibold text-slate-200 block truncate">{zone.name}</span>
                           <span className="text-[10px] text-slate-400 font-mono block">
-                            Tâm ({Number(zone.x).toFixed(2)}, {Number(zone.y).toFixed(2)}) • {Number(zone.width).toFixed(1)}m×{Number(zone.height).toFixed(1)}m
+                            {isPolygonZone(zone) ? `Đa giác · ${zone.vertices.length} đỉnh` : `${Number(zone.width).toFixed(1)}m×${Number(zone.height).toFixed(1)}m`}
+                            {' • '}Tâm ({Number(zone.x).toFixed(2)}, {Number(zone.y).toFixed(2)})
                             {isSpeed && ` • ${zone.speed_limit}m/s`}
                           </span>
                         </div>
@@ -3155,6 +3494,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                             e.stopPropagation();
                             setSelectedZone(zone);
                             setSelectedEndpoint(null);
+                            setZoneDrawType(null);
+                            setZoneDraft(null);
                           }}
                           className="p-1 rounded text-slate-400 hover:text-cyan-400 hover:bg-slate-800 cursor-pointer transition-colors"
                           title="Sửa vùng"
@@ -3180,7 +3521,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           )}
 
           {/* NOI DUNG TAB 3: TELEOP DIEU KHIEN THU CONG */}
-          {activeRightTab === 'TELEOP' && (
+          {panel.section === 'TELEOP' && (
             <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-3">
               <div className="flex items-center justify-between text-xs font-bold text-slate-300">
                 <span className="flex items-center gap-1.5">
@@ -3277,6 +3618,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           )}
 
           {/* Hardware connection info */}
+          {panel.section === 'telemetry' && (
           <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
             <span className="font-bold text-slate-300 block">Thông Tin Kết Nối Thực Tế:</span>
             <div className="flex justify-between text-[10px]">
@@ -3292,7 +3634,99 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               <span className="text-amber-400 font-mono">{scanPoints.length} điểm</span>
             </div>
           </div>
-        </div>
+          )}
+        </PhysicalMapPopup>
+        )}
+
+        {/* Thanh icon: luon hien; bam icon mo dung phan, bam lai icon dang mo de thu gon */}
+        <nav
+          data-physical-map-sidebar
+          aria-label="Bảng điều khiển bản đồ"
+          className="w-12 shrink-0 bg-[#E9E5DC] border-l border-[#BFBFBD] flex flex-col items-center gap-1 py-2 overflow-y-auto [&>button]:shrink-0 [&>div]:shrink-0"
+        >
+          <button
+            type="button"
+            onClick={() => handlePanelRail(null)}
+            title={panel.open ? 'Đóng popup' : 'Mở popup điều khiển'}
+            aria-label={panel.open ? 'Đóng popup điều khiển' : 'Mở popup điều khiển'}
+            aria-haspopup="dialog"
+            aria-expanded={panel.open}
+            aria-controls="physical-map-panel"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-[#8C8C8C] hover:text-[#262626] hover:bg-[#BFBFBD] cursor-pointer transition-colors"
+          >
+            {panel.open ? <PanelRightClose className="w-5 h-5" /> : <PanelRightOpen className="w-5 h-5" />}
+          </button>
+          <div className="w-7 h-px bg-[#BFBFBD] my-1" />
+          {PANEL_SECTIONS.map(({ key, label }) => {
+            const Icon = PANEL_ICONS[key];
+            const active = panel.open && panel.section === key;
+            const count = key === 'WAYPOINTS' ? endpoints.length : key === 'ZONES' ? zones.length : null;
+            const title = count == null ? label : `${label} (${count})`;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => handlePanelRail(key)}
+                title={title}
+                aria-label={title}
+                aria-haspopup="dialog"
+                aria-expanded={active}
+                aria-controls="physical-map-panel"
+                className={`w-9 h-9 rounded-lg flex items-center justify-center border cursor-pointer transition-colors ${
+                  active
+                    ? 'bg-[#262626] text-white border-[#262626]'
+                    : 'bg-transparent text-[#8C8C8C] border-[#BFBFBD] hover:bg-[#BFBFBD] hover:text-[#262626]'
+                }`}
+              >
+                <Icon className="w-[18px] h-[18px]" />
+              </button>
+            );
+          })}
+          <div className="w-7 h-px bg-[#BFBFBD] my-1" />
+          <button
+            type="button"
+            onClick={() => handlePanelRail('ADD')}
+            title="Thêm vùng hoặc điểm mốc"
+            aria-label="Thêm vùng hoặc điểm mốc"
+            aria-haspopup="dialog"
+            aria-expanded={panel.open && panel.section === 'ADD'}
+            aria-controls="physical-map-panel"
+            className={`w-9 h-9 rounded-lg flex items-center justify-center border transition-colors cursor-pointer ${
+              panel.open && panel.section === 'ADD' ? 'bg-[#262626] text-white border-[#262626]' : 'bg-transparent text-[#8C8C8C] border-[#BFBFBD] hover:text-[#262626] hover:bg-[#BFBFBD]'
+            }`}
+          >
+            <Plus className="w-[18px] h-[18px]" />
+          </button>
+          {mapActions.map(({ key, Icon, label, active }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => handlePanelRail(key)}
+              title={label}
+              aria-label={label}
+              aria-haspopup="dialog"
+              aria-expanded={panel.open && panel.section === key}
+              aria-controls="physical-map-panel"
+              className={`w-9 h-9 rounded-lg flex items-center justify-center border transition-colors cursor-pointer ${
+                active ? 'bg-[#262626] text-white border-[#262626]' : 'bg-transparent text-[#8C8C8C] border-[#BFBFBD] hover:text-[#262626] hover:bg-[#BFBFBD]'
+              }`}
+            >
+              <Icon className="w-[18px] h-[18px]" />
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => handlePanelRail('trail')}
+            title="Xóa vệt di chuyển"
+            aria-label="Xóa vệt di chuyển"
+            aria-haspopup="dialog"
+            aria-expanded={panel.open && panel.section === 'trail'}
+            aria-controls="physical-map-panel"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-[#8C8C8C] border border-[#BFBFBD] bg-transparent hover:text-[#262626] hover:bg-[#BFBFBD] cursor-pointer transition-colors"
+          >
+            <RotateCcw className="w-[18px] h-[18px]" />
+          </button>
+        </nav>
       </div>
     </div>
   );

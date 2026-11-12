@@ -92,6 +92,8 @@ class GeminiService:
         Xây dựng System Instruction tối ưu cho giao tiếp hội thoại tự nhiên của robot Concierge.
         """
         from app.services.ai.scenario_service import scenario_service
+        from app.services.rag.facilities_kb_service import get_kb_facts_prompt
+        kb_facts = get_kb_facts_prompt(lang_code)
         hotel_facts = scenario_service.get_hotel_facts_prompt(lang_code)
 
         if lang_code == "en-US":
@@ -111,6 +113,8 @@ class GeminiService:
                 "   - NEVER hallucinate or invent facilities not documented in the provided knowledge base.\n"
                 "   - If an amenity or inquiry is not found in the documentation, politely advise the guest to check with the Front Desk.\n"
             )
+            if kb_facts:
+                prompt += f"\n{kb_facts}\n"
             if hotel_facts:
                 prompt += f"\n{hotel_facts}\n"
         else:
@@ -134,6 +138,8 @@ class GeminiService:
                 "   - Tuyệt đối KHÔNG tự ý suy diễn hoặc bịa đặt các dịch vụ không có trong tài liệu.\n"
                 "   - Nếu thông tin khách hỏi không có trong tài liệu, hãy lịch sự trả lời rằng Rora sẽ liên hệ nhân viên hoặc quầy lễ tân để hỗ trợ quý khách.\n"
             )
+            if kb_facts:
+                prompt += f"\n{kb_facts}\n"
             if hotel_facts:
                 prompt += f"\n{hotel_facts}\n"
 
@@ -141,8 +147,8 @@ class GeminiService:
             prompt += f"\n[Thông tin phòng]: Quý khách ở phòng {stored_room_number}."
 
         emotion_str = (emotion or "").lower()
-        if emotion_str in ["annoyed", "angry", "upset"]:
-            prompt += "\n[Cảm xúc khách]: Khách đang chưa hài lòng, hãy phản hồi với thái độ xin lỗi và xoa dịu ân cần."
+        if emotion_str in ["annoyed", "angry", "upset", "unhappy", "frustrated", "khó chịu", "kho chiu"]:
+            prompt += "\n[Cảm xúc khách]: Khách đang có biểu cảm khó chịu hoặc chưa hài lòng, hãy phản hồi với thái độ xin lỗi chân thành, xoa dịu ân cần và cho biết nhân viên Concierge tại sảnh sẽ hỗ trợ ngay."
         elif emotion_str in ["happy", "pleased"]:
             prompt += "\n[Cảm xúc khách]: Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
 

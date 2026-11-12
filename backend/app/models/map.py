@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional, List
-from sqlalchemy import String, Integer, Float, DateTime, Text, ForeignKey
+from sqlalchemy import String, Integer, Float, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -18,6 +18,8 @@ class Zone(Base):
     y: Mapped[float] = mapped_column(Float, default=0.0)
     width: Mapped[float] = mapped_column(Float, default=2.0)
     height: Mapped[float] = mapped_column(Float, default=2.0)
+    yaw: Mapped[float] = mapped_column(Float, default=0.0, server_default="0", nullable=False)
+    vertices: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     speed_limit: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=0.3)
     floor: Mapped[str] = mapped_column(String(50), default="Sảnh Tầng 1")
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

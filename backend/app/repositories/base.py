@@ -32,7 +32,11 @@ class BaseRepository(Generic[ModelType]):
         result = await self.db.execute(stmt)
         return result.scalars().all()
 
-    async def create(self, obj: ModelType, autocommit: bool = False) -> ModelType:
+    def add(self, obj: Any) -> None:
+        """Add an instance to session without flushing."""
+        self.db.add(obj)
+
+    async def create(self, obj: Any, autocommit: bool = False) -> Any:
         """Add a new model instance to session."""
         self.db.add(obj)
         if autocommit:
@@ -42,7 +46,7 @@ class BaseRepository(Generic[ModelType]):
             await self.db.flush()
         return obj
 
-    async def update(self, obj: ModelType, autocommit: bool = False) -> ModelType:
+    async def update(self, obj: Any, autocommit: bool = False) -> Any:
         """Update an existing model instance in session."""
         self.db.add(obj)
         if autocommit:
@@ -52,7 +56,7 @@ class BaseRepository(Generic[ModelType]):
             await self.db.flush()
         return obj
 
-    async def delete(self, obj: ModelType, autocommit: bool = False) -> None:
+    async def delete(self, obj: Any, autocommit: bool = False) -> None:
         """Remove a model instance from session."""
         await self.db.delete(obj)
         if autocommit:
@@ -70,9 +74,9 @@ class BaseRepository(Generic[ModelType]):
 
     async def refresh(
         self,
-        obj: ModelType,
+        obj: Any,
         attribute_names: Optional[Sequence[str]] = None,
-    ) -> ModelType:
+    ) -> Any:
         """Refresh instance state from database."""
         if attribute_names is not None:
             await self.db.refresh(obj, attribute_names=attribute_names)

@@ -1,34 +1,165 @@
-// Hinh hoc vung chuc nang tren map (tab Physical Map). Vung = hinh chu nhat thang truc,
-// x/y la TAM (m, khung map), width/height (m) - cung quy uoc voi backend (mask Nav2).
+// x/y = centre (map metres), width/height = local dimensions, yaw = CCW degrees.
+// Missing yaw means zero for existing zones; backend and robot use the same convention.
 //   KEEP_OUT   : Nav2 KeepoutFilter -> planner tu di duong vong; khong nhan endpoint ben trong.
 //   SPEED_ZONE : Nav2 SpeedFilter -> /speed_limit (m/s) khi xe o trong vung.
 //   NO_STOP    : duoc di ngang qua, KHONG duoc dung => khong nhan endpoint ben trong.
 
 export const MIN_ZONE_SIZE_M = 0.2;
+export const MAX_ZONE_VERTICES = 64;
+export const isPolygonZone = (zone) => Array.isArray(zone?.vertices);
+
+const cross = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+const EPS = 1e-9;
+
+export function closestPointOnSegment(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const length2 = dx * dx + dy * dy;
+  const t = length2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2)) : 0;
+  return { x: a.x + t * dx, y: a.y + t * dy };
+}
+
+export function segmentDistance(p, a, b) {
+  const nearest = closestPointOnSegment(p, a, b);
+  return Math.hypot(p.x - nearest.x, p.y - nearest.y);
+}
+
+// Use canvas coordinates here so the clickable edge width stays constant when zooming.
+export function polygonEdgeAtPoint(points, point, tolerance = 8) {
+  let nearest = null;
+  points.forEach((a, edgeIndex) => {
+    const projected = closestPointOnSegment(point, a, points[(edgeIndex + 1) % points.length]);
+    const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
+    if (distance <= tolerance && (!nearest || distance < nearest.distance)) {
+      nearest = { edgeIndex, point: projected, distance };
+    }
+  });
+  return nearest;
+}
+
+function segmentsIntersect(a, b, c, d) {
+  const ac = cross(a, b, c), ad = cross(a, b, d), ca = cross(c, d, a), cb = cross(c, d, b);
+  if (((ac > EPS && ad < -EPS) || (ac < -EPS && ad > EPS))
+    && ((ca > EPS && cb < -EPS) || (ca < -EPS && cb > EPS))) return true;
+  return [[ac, c, a, b], [ad, d, a, b], [ca, a, c, d], [cb, b, c, d]]
+    .some(([turn, p, u, v]) => Math.abs(turn) <= EPS && segmentDistance(p, u, v) <= EPS);
+}
+
+export function polygonValidationError(points) {
+  if (!Array.isArray(points) || points.length < 3 || points.length > MAX_ZONE_VERTICES) return 'Đa giác cần từ 3 đến 64 đỉnh.';
+  if (!points.every((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y))) return 'Tọa độ đỉnh không hợp lệ.';
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const a = points[i], b = points[(i + 1) % n], c = points[(i + 2) % n];
+    if (Math.hypot(a.x - b.x, a.y - b.y) <= EPS) return 'Các đỉnh không được trùng nhau.';
+    if (Math.abs(cross(a, b, c)) <= EPS && (a.x - b.x) * (c.x - b.x) + (a.y - b.y) * (c.y - b.y) > EPS) {
+      return 'Các cạnh không được chồng lên nhau.';
+    }
+    for (let j = i + 1; j < n; j++) {
+      if (j === i + 1 || (i === 0 && j === n - 1)) continue;
+      if (segmentsIntersect(a, b, points[j], points[(j + 1) % n])) return 'Các cạnh không được cắt hoặc chạm nhau. Hãy chỉnh lại đỉnh.';
+    }
+  }
+  const area2 = points.slice(1, -1).reduce((sum, p, i) => sum + cross(points[0], p, points[i + 2]), 0);
+  return Math.abs(area2) < 0.02 ? 'Diện tích vùng phải từ 0.01 m².' : null;
+}
+
+// Bounding box metadata only; vertices are the authoritative polygon shape.
+export function zoneFromVertices(vertices) {
+  const b = zoneBounds({ vertices });
+  return { vertices, x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2,
+    width: b.maxX - b.minX, height: b.maxY - b.minY, yaw: 0 };
+}
+
+export function removeZoneVertex(zone, index) {
+  if (!isPolygonZone(zone) || !Number.isInteger(index) || index < 0 || index >= zone.vertices.length) {
+    return { error: 'Hãy chọn một đỉnh trên vùng đa giác.' };
+  }
+  if (zone.vertices.length <= 3) return { error: 'Đa giác phải giữ ít nhất 3 đỉnh. Không thể xóa thêm đỉnh của tam giác.' };
+  // Removing a vertex joins its two neighbours, including the first/last pair.
+  const vertices = zone.vertices.filter((_, i) => i !== index);
+  const error = polygonValidationError(vertices);
+  return error ? { error } : { zone: { ...zone, ...zoneFromVertices(vertices) } };
+}
+
+export function insertZoneVertex(zone, edgeIndex, point) {
+  if (!isPolygonZone(zone) || !Number.isInteger(edgeIndex) || edgeIndex < 0 || edgeIndex >= zone.vertices.length) {
+    return { error: 'Hãy chọn một cạnh trên vùng đa giác.' };
+  }
+  if (zone.vertices.length >= MAX_ZONE_VERTICES) return { error: 'Đa giác tối đa 64 đỉnh. Hãy xóa bớt đỉnh trước khi thêm.' };
+  if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) return { error: 'Tọa độ đỉnh không hợp lệ.' };
+  // Snap to the edge: inserting alone must not expand or shrink the zone.
+  const projected = closestPointOnSegment(point, zone.vertices[edgeIndex], zone.vertices[(edgeIndex + 1) % zone.vertices.length]);
+  const vertexIndex = edgeIndex + 1;
+  const vertices = [...zone.vertices.slice(0, vertexIndex), projected, ...zone.vertices.slice(vertexIndex)];
+  const error = polygonValidationError(vertices);
+  return error ? { error } : { zone: { ...zone, ...zoneFromVertices(vertices) }, vertexIndex };
+}
+
+export function translateZone(zone, dx, dy) {
+  return isPolygonZone(zone)
+    ? { ...zone, ...zoneFromVertices(zone.vertices.map((p) => ({ x: p.x + dx, y: p.y + dy }))) }
+    : { ...zone, x: zone.x + dx, y: zone.y + dy };
+}
+
+export function polygonEdgeDistance(point, vertices) {
+  return Math.min(...vertices.map((a, i) => segmentDistance(point, a, vertices[(i + 1) % vertices.length])));
+}
 
 const round2 = (v) => Math.round(v * 100) / 100;
+export const normalizeZoneYaw = (value) => ((Number(value) || 0) % 360 + 540) % 360 - 180;
+
+export function zoneLocalPoint(zone, point) {
+  const a = normalizeZoneYaw(zone.yaw) * Math.PI / 180;
+  const dx = point.x - Number(zone.x || 0), dy = point.y - Number(zone.y || 0);
+  return { x: dx * Math.cos(a) + dy * Math.sin(a), y: -dx * Math.sin(a) + dy * Math.cos(a) };
+}
+
+export function zoneWorldPoint(zone, point) {
+  const a = normalizeZoneYaw(zone.yaw) * Math.PI / 180;
+  return { x: Number(zone.x || 0) + point.x * Math.cos(a) - point.y * Math.sin(a),
+    y: Number(zone.y || 0) + point.x * Math.sin(a) + point.y * Math.cos(a) };
+}
 
 export function zoneBounds(zone) {
-  const halfW = (Number(zone.width) || 0) / 2;
-  const halfH = (Number(zone.height) || 0) / 2;
-  const x = Number(zone.x) || 0;
-  const y = Number(zone.y) || 0;
-  return { minX: x - halfW, maxX: x + halfW, minY: y - halfH, maxY: y + halfH };
+  const points = isPolygonZone(zone) ? zone.vertices : Object.values(zoneCorners(zone));
+  return { minX: Math.min(...points.map((p) => p.x)), maxX: Math.max(...points.map((p) => p.x)),
+    minY: Math.min(...points.map((p) => p.y)), maxY: Math.max(...points.map((p) => p.y)) };
 }
 
 export function zoneCorners(zone) {
-  const { minX, maxX, minY, maxY } = zoneBounds(zone);
+  const w = Number(zone.width || 0) / 2, h = Number(zone.height || 0) / 2;
   return {
-    nw: { x: minX, y: maxY },
-    ne: { x: maxX, y: maxY },
-    sw: { x: minX, y: minY },
-    se: { x: maxX, y: minY },
+    nw: zoneWorldPoint(zone, { x: -w, y: h }),
+    ne: zoneWorldPoint(zone, { x: w, y: h }),
+    sw: zoneWorldPoint(zone, { x: -w, y: -h }),
+    se: zoneWorldPoint(zone, { x: w, y: -h }),
   };
 }
 
+export function zoneRotationHandle(zone, offsetM) {
+  return zoneWorldPoint(zone, { x: 0, y: Number(zone.height) / 2 + offsetM });
+}
+
+export function rotateZoneFromPointer(zone, start, point, snap = false) {
+  const startAngle = Math.atan2(start.y - zone.y, start.x - zone.x);
+  const angle = Math.atan2(point.y - zone.y, point.x - zone.x);
+  const yaw = normalizeZoneYaw(Number(zone.yaw || 0) + (angle - startAngle) * 180 / Math.PI);
+  return { yaw: normalizeZoneYaw(snap ? Math.round(yaw / 15) * 15 : Math.round(yaw * 10) / 10) };
+}
+
 export function isPointInZone(x, y, zone) {
-  const { minX, maxX, minY, maxY } = zoneBounds(zone);
-  return x >= minX && x <= maxX && y >= minY && y <= maxY;
+  if (isPolygonZone(zone)) {
+    const points = zone.vertices;
+    let inside = false;
+    for (let i = 0; i < points.length; i++) {
+      const a = points[i], b = points[(i + 1) % points.length];
+      if (segmentDistance({ x, y }, a, b) <= EPS) return true;
+      if ((a.y > y) !== (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    return inside;
+  }
+  const p = zoneLocalPoint(zone, { x, y });
+  return Math.abs(p.x) <= Number(zone.width) / 2 + 1e-9 && Math.abs(p.y) <= Number(zone.height) / 2 + 1e-9;
 }
 
 function rectFromBounds(minX, maxX, minY, maxY) {
@@ -49,12 +180,13 @@ export function zoneFromCorners(a, b, minSize = MIN_ZONE_SIZE_M) {
 // Keo 1 goc ('nw' | 'ne' | 'sw' | 'se', n = phia y lon) toi point; goc doi dien dung yen.
 // Khong cho lat vung hay nho hon minSize.
 export function resizeZoneFromCorner(zone, corner, point, minSize = MIN_ZONE_SIZE_M) {
-  let { minX, maxX, minY, maxY } = zoneBounds(zone);
-  if (corner.includes('e')) maxX = Math.max(point.x, minX + minSize);
-  else minX = Math.min(point.x, maxX - minSize);
-  if (corner.includes('n')) maxY = Math.max(point.y, minY + minSize);
-  else minY = Math.min(point.y, maxY - minSize);
-  return rectFromBounds(minX, maxX, minY, maxY);
+  const p = zoneLocalPoint(zone, point);
+  const sx = corner.includes('e') ? 1 : -1, sy = corner.includes('n') ? 1 : -1;
+  const anchor = { x: -sx * Number(zone.width) / 2, y: -sy * Number(zone.height) / 2 };
+  const width = Math.max(minSize, sx * (p.x - anchor.x));
+  const height = Math.max(minSize, sy * (p.y - anchor.y));
+  const centre = zoneWorldPoint(zone, { x: anchor.x + sx * width / 2, y: anchor.y + sy * height / 2 });
+  return { x: centre.x, y: centre.y, width, height, yaw: normalizeZoneYaw(zone.yaw) };
 }
 
 // Trang thai vung giam toc cho dong ho toc do tren map. Su that la gioi han Nav2 dang ap
@@ -75,8 +207,9 @@ export function speedZoneStatus(pose, zones, health) {
   }
   let warning = '';
   if (zone) {
-    const { minX, maxX, minY, maxY } = zoneBounds(zone);
-    const depth = Math.min(pose.x - minX, maxX - pose.x, pose.y - minY, maxY - pose.y);
+    const p = zoneLocalPoint(zone, pose);
+    const depth = isPolygonZone(zone) ? polygonEdgeDistance(pose, zone.vertices)
+      : Math.min(Number(zone.width) / 2 - Math.abs(p.x), Number(zone.height) / 2 - Math.abs(p.y));
     if (depth >= SPEED_ZONE_EDGE_M) {
       warning = `Xe đang ở vùng${name} nhưng Nav2 chưa áp giới hạn tốc độ: bấm Lưu vùng, hoặc bật lại Nav2 với đúng map này.`;
     }

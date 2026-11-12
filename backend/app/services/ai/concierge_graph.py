@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 from app.services.bell_request_service import bell_status_reply, classify_bell_request, is_bell_inquiry
 from app.services.maintenance_request_service import is_fault_report
@@ -58,7 +58,7 @@ Quản lý luồng xử lý tinh gọn (Fast-Path -> Direct Conversational Gener
 
 
 
-import asyncio
+
 
 
 
@@ -130,19 +130,15 @@ from langgraph.checkpoint.memory import MemorySaver
 
 
 
-from app.services.ai.session_manager import session_manager, extract_room_number, is_valid_hotel_room
+from app.services.ai.session_manager import session_manager, extract_room_number
 from app.services.ai.constants import (
     SERVICE_KEYWORDS,
     MAINTENANCE_MENU_TRIGGER_KEYWORDS,
     BELLMAN_MENU_TRIGGER_KEYWORDS,
-    ROOM_SERVICE_MENU_TRIGGER_KEYWORDS,
-    FOOD_MENU_TRIGGER_KEYWORDS,
+    is_lost_found_text,
     MAINTENANCE_REGEX,
     HOUSEKEEPING_REGEX,
     ROOM_SERVICE_FOOD_REGEX,
-    STATUS_QUERY_REGEX,
-    TAXI_REGEX,
-    CANCEL_SERVICE_REGEX,
     contains_keyword,
 )
 
@@ -233,6 +229,7 @@ class ConciergeState(TypedDict, total=False):
 
 
     prompt: str
+    current_query: Optional[str]
 
 
 
@@ -700,14 +697,6 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    from app.services.ai.constants import SERVICE_KEYWORDS
-
-
-
-
-
-
-
     prompt_lower_fp = prompt.lower()
 
 
@@ -807,7 +796,7 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    )) or any(k in prompt_lower_fp for k in ['đặt dịch vụ', 'dat dich vu', 'dịch vụ lên phòng', 'dich vu len phong', 'thêm dịch vụ', 'them dich vu', 'dịch vụ phòng', 'dich vu phong'])
+    )) or any(k in prompt_lower_fp for k in ['đặt dịch vụ', 'dat dich vu', 'dịch vụ lên phòng', 'dich vu len phong', 'thêm dịch vụ', 'them dich vu', 'dịch vụ phòng', 'dich vu phong', 'hỗ trợ hành lý', 'ho tro hanh ly', 'mang hành lý', 'gửi hành lý', 'xách đồ', 'chuyển phòng', 'báo mất đồ', 'bao mat do', 'đồ thất lạc', 'do that lac', 'thất lạc', 'that lac', 'mất đồ', 'mat do', 'quên đồ', 'quen do', 'rơi đồ', 'roi do', 'lost item', 'lost and found', 'luggage assistance'])
 
 
 
@@ -963,7 +952,8 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    fast_hit = ollama_service.check_fast_path_full(prompt, language)
+    has_explicit_kb_ctx = bool((state.get("rag_context") or "").strip())
+    fast_hit = None if has_explicit_kb_ctx else ollama_service.check_fast_path_full(prompt, language)
 
 
 
@@ -1526,14 +1516,6 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
 
     # 2. Heuristic nhận diện dịch vụ khách sạn (< 0.1ms) từ centralized constants
-
-
-
-
-
-
-
-    from app.services.ai.constants import SERVICE_KEYWORDS
 
 
 
@@ -3332,7 +3314,7 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
 
-                        (RoomServiceOrder.room_id == room.id) if room.id else False,
+                        (RoomServiceOrder.room_id == room.id) if room.id else (RoomServiceOrder.room_id == -1),
 
 
 
@@ -3396,7 +3378,7 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
 
-                        (SupportRequest.room_id == room.id) if room.id else False,
+                        (SupportRequest.room_id == room.id) if room.id else (SupportRequest.room_id == -1),
 
 
 
@@ -3482,12 +3464,12 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
                         try:
                             if ord_item.status != req_st:
                                 ord_item.status = req_st
-                                ord_item.updated_at = datetime.utcnow()
+                                ord_item.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
                         except Exception:
                             pass
 
                 # Lọc đơn chờ quá hạn (> 12 giờ): đơn pending từ hôm qua xem như hết hạn/hủy
-                now_utc = datetime.utcnow()
+                now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
                 if ord_item.created_at and (now_utc - ord_item.created_at).total_seconds() > 12 * 3600:
                     if cur_status.lower() in ("pending", "waiting", "unassigned"):
                         cur_status = "Cancelled"
@@ -3497,7 +3479,7 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
                     "status": cur_status,
                     "created_at": ord_item.created_at,
                     "items_summary": items_summary,
-                    "is_service_request": bool(ord_item.is_service_request),
+                    "is_service_request": ord_item.is_service_request,
                     "progress": ord_item.progress or 0,
                     "note": ord_item.note or "",
                     "reject_reason": reject_reason,
@@ -3564,11 +3546,11 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
 
-                if req_item.items and isinstance(req_item.items, list):
+                if req_item.items and isinstance(cast(Any, req_item.items), list):
 
 
 
-                    it_names = [f"{it.get('qty', 1)}x {it.get('name', '')}" for it in req_item.items if isinstance(it, dict) and it.get('name')]
+                    it_names = [f"{it.get('qty', 1)}x {it.get('name', '')}" for it in req_item.items if isinstance(cast(Any, it), dict) and it.get('name')]
 
 
 
@@ -4644,7 +4626,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        latest_req = room_info.get("latest_request")
+
 
 
 
@@ -4661,6 +4643,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
         target_ord = None
+        is_service_mode = False
 
         # Ưu tiên khớp đúng món ăn khách hỏi đích danh trong câu thoại
         inquiry_lower = inquiry_text.lower()
@@ -4784,11 +4767,11 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-                t_f = latest_food.get("created_at") or datetime.min
+                t_f = (latest_food.get("created_at") if latest_food else None) or datetime.min
 
 
 
-                t_s = latest_service.get("created_at") or datetime.min
+                t_s = (latest_service.get("created_at") if latest_service else None) or datetime.min
 
 
 
@@ -5599,7 +5582,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
     # touch menu, where the guest picks the service and verifies the room with PIN/NFC. A specific
     # request for a known room ("mang hành lý lên phòng") falls through and becomes a ticket.
     bell_text = user_p_text or (items or "").lower()  # the stream endpoint passes only "items"
-    if action == "bellman" and (
+    if action == "bellman" and not is_lost_found_text(bell_text) and (
         not current_room
         or any(k in bell_text for k in BELLMAN_MENU_TRIGGER_KEYWORDS)
         or not classify_bell_request(bell_text)
@@ -5660,7 +5643,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        room_check = await query_room_order_status_db(current_room, is_en=is_en)
+        room_check = await query_room_order_status_db(current_room or "", is_en=is_en)
 
 
 
@@ -5941,7 +5924,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-            action_en = action_en_map.get(action, "this service")
+            action_en = "lost and found item report" if (action == "bellman" and any(k in (items or "").lower() for k in ["thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do", "rơi đồ", "roi do", "lost", "missing", "forgot"])) else action_en_map.get(action, "this service")
 
 
 
@@ -6061,7 +6044,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-            action_vn = action_vn_map.get(action, "dịch vụ")
+            action_vn = "báo cáo và tìm kiếm đồ thất lạc" if (action == "bellman" and any(k in (items or "").lower() for k in ["thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do", "rơi đồ", "roi do", "lost", "missing", "forgot"])) else action_vn_map.get(action, "dịch vụ")
 
 
 
@@ -6707,7 +6690,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    dept_name = (DEPT_MAP_EN if lang_code == "en-US" else DEPT_MAP_VI).get(action, "chuyên trách")
+    dept_name = ("Lost & Found / Bell Services Department" if lang_code == "en-US" else "báo cáo đồ thất lạc và hỗ trợ tiền sảnh") if (action == "bellman" and any(k in (items or "").lower() for k in ["thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do", "rơi đồ", "roi do", "lost", "missing", "forgot"])) else (DEPT_MAP_EN if lang_code == "en-US" else DEPT_MAP_VI).get(action, "chuyên trách")
 
 
 
@@ -6942,7 +6925,7 @@ async def generator_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    rag_context = state.get("rag_context") or ""
+    rag_context = state.get("rag_context")
 
 
 

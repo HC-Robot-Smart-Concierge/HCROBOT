@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { isPolygonZone, translateZone } from '../physicalMapZones';
 import {
   Play,
   Pause,
@@ -827,6 +828,7 @@ export const WorkflowSimulatorStudio = ({
     }
 
     const initZone = dragState.initialZone;
+    if (isPolygonZone(initZone) && dragState.type !== 'MOVE') return;
 
     if (dragState.type === 'MOVE') {
       const halfW = (Number(initZone.width) || 2.0) / 2;
@@ -837,15 +839,11 @@ export const WorkflowSimulatorStudio = ({
       const clampedX = Number(Math.max(halfW, Math.min(19.60 - halfW, rawX)).toFixed(2));
       const clampedY = Number(Math.max(halfH, Math.min(12.60 - halfH, rawY)).toFixed(2));
 
-      const updatedZones = zonesRef.current.map((z) =>
-        z.id === dragState.zoneId ? { ...z, x: clampedX, y: clampedY } : z
-      );
+      const updated = translateZone(initZone, clampedX - initZone.x, clampedY - initZone.y);
+      const updatedZones = zonesRef.current.map((z) => z.id === dragState.zoneId ? updated : z);
       zonesRef.current = updatedZones;
-
       setZones(updatedZones);
-      setSelectedZone((prev) =>
-        prev && prev.id === dragState.zoneId ? { ...prev, x: clampedX, y: clampedY } : prev
-      );
+      setSelectedZone(updated);
       setHasUnsavedZones(true);
     } else {
       // RESIZE HANDLES (NW, NE, SW, SE)
@@ -3015,6 +3013,10 @@ export const WorkflowSimulatorStudio = ({
           {showZones &&
             zones.map((zone) => {
               const rect = zoneToSvgRect(zone);
+              const ZoneShape = isPolygonZone(zone) ? 'polygon' : 'rect';
+              const shapeProps = isPolygonZone(zone)
+                ? { points: zone.vertices.map((p) => `${35 + p.x * 25},${35 + (12.60 - p.y) * 25}`).join(' ') }
+                : rect;
               const isKeepOut = zone.type === 'KEEP_OUT';
               const isSpeed = zone.type === 'SPEED_ZONE' || zone.type === 'SLOW_SPEED';
               const isSelected = selectedZone?.id === zone.id;
@@ -3059,27 +3061,18 @@ export const WorkflowSimulatorStudio = ({
                   }`}
                 >
                   {/* Nen mau tint nhe */}
-                  <rect
-                    x={rect.x}
-                    y={rect.y}
-                    width={rect.width}
-                    height={rect.height}
+                  <ZoneShape
+                    {...shapeProps}
                     fill={bgTint}
                   />
                   {/* Lop hoa van pattern */}
-                  <rect
-                    x={rect.x}
-                    y={rect.y}
-                    width={rect.width}
-                    height={rect.height}
+                  <ZoneShape
+                    {...shapeProps}
                     fill={fillPattern}
                   />
                   {/* Vien bao net dut ky thuat */}
-                  <rect
-                    x={rect.x}
-                    y={rect.y}
-                    width={rect.width}
-                    height={rect.height}
+                  <ZoneShape
+                    {...shapeProps}
                     fill="none"
                     stroke={strokeColor}
                     strokeWidth={isSelected ? '2' : '1.2'}
@@ -3142,7 +3135,7 @@ export const WorkflowSimulatorStudio = ({
                   </g>
 
                   {/* TAY NAM GOC VUONG MINI FIGMA/CAD (6x6px trang vien xam dam, thanh lich, khong hinh tron, khong hao quang) */}
-                  {isSelected && (
+                  {isSelected && !isPolygonZone(zone) && (
                     <g className="zone-resize-handles">
                       {[
                         { cx: rect.x, cy: rect.y, type: 'RESIZE_NW', cursor: 'cursor-nwse-resize' },
@@ -3603,6 +3596,7 @@ export const WorkflowSimulatorStudio = ({
                 step="0.1"
                 min="0.4"
                 max="8.0"
+                disabled={isPolygonZone(selectedZone)}
                 value={selectedZone.width || 2.0}
                 onChange={(e) => handleUpdateSelectedZone('width', Math.max(0.3, parseFloat(e.target.value) || 0.4))}
                 className="w-12 px-1 py-0.5 rounded text-center font-bold border focus:outline-none"
@@ -3615,6 +3609,7 @@ export const WorkflowSimulatorStudio = ({
                 step="0.1"
                 min="0.4"
                 max="8.0"
+                disabled={isPolygonZone(selectedZone)}
                 value={selectedZone.height || 2.0}
                 onChange={(e) => handleUpdateSelectedZone('height', Math.max(0.3, parseFloat(e.target.value) || 0.4))}
                 className="w-12 px-1 py-0.5 rounded text-center font-bold border focus:outline-none"

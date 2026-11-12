@@ -69,6 +69,8 @@ flowchart LR
 ---
 
 ### 5. Kịch Bản Tương Tác & Nghiệp Vụ Khách Sạn (Workflows & Operations)
+* **[[workflows/core_workflows_detailed|Đặc Tả 6 Core Workflows Hệ Thống (workflows/core_workflows_detailed.md)]]**:
+  * Tài liệu chi tiết 6 luồng vận hành cốt lõi theo chuẩn slide đồ án: Cấu hình Admin, Đón tiếp & Tư vấn AI, Điều phối dịch vụ khách sạn, Chuyển giao hỗ trợ sang nhân viên (Video Call & Live Translation), Điều hướng tự hành & Dẫn khách (Nav2), và Giám sát đội xe & Tự động sạc đa tầng.
 * **[[workflows/stepflow|Đặc Tả 8 Action Blocks & Kịch Bản Stepflows (workflows/stepflow.md)]]**:
   * Định nghĩa 8 Action Blocks chuẩn: `MOVE`, `GREET`, `SPEAK`, `SHOW`, `LISTEN`, `RECOMMEND`, `CREATE_REQUEST`, `FEEDBACK`.
   * Đặc tả chi tiết các kịch bản vận hành khách sạn: Đón tiếp sảnh, Dẫn đường tới vị trí, Dọn buồng phòng, Đặt xe taxi, Phục vụ món tại phòng (Room Service), Báo hỏng & Sửa chữa kỹ thuật (Maintenance), Tuần tra an ninh và Thu thập phản hồi.
@@ -84,6 +86,8 @@ flowchart LR
   * Danh mục các ROS 2 Nodes: `odom_encoder_node`, `safety_controller_node` (phanh khẩn cấp <= 0.5m), `motor_driver_node`, `person_detection_node` (YOLOv8n) và `person_fusion_tracker`.
 * **[[guides/static-map-navigation|Hướng Dẫn Điều Hướng Bản Đồ Tĩnh (guides/static-map-navigation.md)]]**:
   * Tích hợp bản đồ 2D sảnh khách sạn và quản lý danh sách Waypoints / POIs định danh (Lobby, Reception, Elevator, Restroom, Sofa,...).
+* **[[guides/robot_movement_commands|Bảng Tra Cứu Lệnh Di Chuyển, Quét Map & Tự Hành (guides/robot_movement_commands.md)]]**:
+  * Bảng đối chiếu các nút trên Frontend Web Admin (Menu COMMANDS) với lệnh Terminal WSL2 tương đương: Quét SLAM, Foxglove, Tự hành Frontier Exploration, Lưu bản đồ, Dẫn đường AMCL/Nav2, Lái xe WASD và Phanh khẩn cấp E-STOP.
 * **[[guides/distributed_ros2|Kiến Trúc Mạng ROS 2 Phân Tán (guides/distributed_ros2.md)]]**:
   * Cấu hình CycloneDDS, VPN Tailscale kết nối giữa Laptop NUC và Raspberry Pi 5.
 * **[[guides/tailscale_hybrid_deployment_pi5_guide|Hướng Dẫn Triển Khai Tailscale Hybrid Pi 5 (guides/tailscale_hybrid_deployment_pi5_guide.md)]]**:

@@ -1,12 +1,11 @@
 import random
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from typing import List, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models import Staff, SupportRequest
+from app.models import SupportRequest
 from app.schemas.operations import (
     BellRequestCreate,
     BellRequestStatusUpdate,
@@ -60,19 +59,22 @@ async def get_bell_services_dashboard(
     - **team_status**: Danh sách nhân viên Bellman đang làm việc và xe vận chuyển tự hành.
     - **announcement**: Bản tin thông báo giờ cao điểm check-in / check-out.
     """
-    requests = await sr_repo.get_recent_by_department(
+    raw_requests = await sr_repo.get_recent_by_department(
         department_ids=["DEP-BELL"],
-        service_type_ids=["ST-BELL"],
+        service_type_ids=["ST-BELL", "ST-LUGGAGE"],
         limit=100,
     )
+    requests = [r for r in raw_requests if r.request_type != "emotion_alert"]
 
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     on_job_count = sum(1 for r in requests if r.status == "In Progress")
     completed_count = sum(1 for r in requests if r.status == "Completed")
+    luggage_count = sum(1 for r in requests if r.request_type in ["luggage", "room_move"])
+    lost_found_count = sum(1 for r in requests if r.request_type == "lost_found")
 
     bell_staff = await staff_repo.list_staff(department="Bell Services")
 
-    team_status = [
+    team_status: List[Dict[str, Any]] = [
         {"id": s.id, "name": s.full_name, "role": s.role, "status": s.status, "avatar": s.avatar_url}
         for s in bell_staff
     ]
@@ -97,6 +99,8 @@ async def get_bell_services_dashboard(
         "onJob": on_job_count,
         "completed": completed_count,
         "activeFleet": available_fleet_count,
+        "luggageCount": luggage_count,
+        "lostFoundCount": lost_found_count,
     }
 
     announcement = {
@@ -118,9 +122,9 @@ async def get_bell_services_dashboard(
     response_model=BellRequestResponse,
     status_code=status.HTTP_201_CREATED,
     tags=TAG_BELL,
-    summary="Tạo mới yêu cầu hỗ trợ hành lý / Bellman",
+    summary="Tạo mới yêu cầu hỗ trợ hành lý / báo cáo đồ thất lạc (Bellman)",
     responses={
-        201: {"description": "Tạo ticket hành lý thành công và lưu vào bảng support_requests."}
+        201: {"description": "Tạo ticket Bellman thành công và lưu vào bảng support_requests."}
     },
 )
 async def create_bell_request(
@@ -130,7 +134,9 @@ async def create_bell_request(
 ):
     """
     ### Mô tả nghiệp vụ:
-    Tiếp nhận yêu cầu dịch vụ Bellman (chuyển hành lý, nhận đồ tại sảnh, hỗ trợ đổi phòng).
+    Tiếp nhận yêu cầu dịch vụ Bellman thuộc 2 luồng chính:
+    1. **Tiếp nhận yêu cầu hỗ trợ hành lý** (`request_type = 'luggage'` hoặc `'room_move'`)
+    2. **Tiếp nhận báo cáo đồ thất lạc** (`request_type = 'lost_found'`)
     Bản ghi được tự động lưu vào bảng `support_requests` với `department_id = 'DEP-BELL'` và `service_type_id = 'ST-BELL'`.
 
     Menu Bellman trên robot gửi kèm `service_key`: nếu phòng đã có yêu cầu cùng dịch vụ đang mở,
@@ -152,6 +158,16 @@ async def create_bell_request(
         await db.refresh(req)
         return BellRequestResponse.model_validate(req).model_copy(update={"duplicate": not created})
 
+    req_type = (req_in.request_type or "luggage").strip().lower()
+    text_blob = f"{req_in.title or ''} {req_in.description or ''}".lower()
+    if req_type in ["luggage", "general", "bellman", "bell_service"]:
+        if any(k in text_blob for k in ["thất lạc", "quên đồ", "mất đồ", "rơi đồ", "lost", "missing", "forgot"]):
+            req_type = "lost_found"
+        elif any(k in text_blob for k in ["đổi phòng", "chuyển phòng", "room move"]):
+            req_type = "room_move"
+        else:
+            req_type = "luggage"
+
     ticket_code = f"BS-{random.randint(504, 9999)}"
     new_req = SupportRequest(
         ticket_code=ticket_code,
@@ -163,13 +179,20 @@ async def create_bell_request(
         department_id="DEP-BELL",
         service_type_id="ST-BELL",
         status="Pending",
+        request_type=req_type,
     )
     await sr_repo.create(new_req)
+
+    if req_type == "lost_found":
+        notif_title = f"Báo cáo Đồ thất lạc mới #{ticket_code}"
+    else:
+        notif_title = f"Yêu cầu Hỗ trợ Hành lý mới #{ticket_code}"
+
     await create_department_notification(
         db=db,
         department="Bell Services",
-        title=f"Yêu cầu Bellman mới: {req_in.title}",
-        description=f"{req_in.location}: {req_in.description or req_in.guest_name or 'Yêu cầu hỗ trợ hành lý'}",
+        title=notif_title,
+        description=f"{req_in.location}: {req_in.title} - {req_in.description or req_in.guest_name or ''}".strip(" -"),
         request_id=new_req.id,
         request_type="bell_service",
         type="Request",
@@ -177,6 +200,30 @@ async def create_bell_request(
     await sr_repo.commit()
     await sr_repo.refresh(new_req)
     return new_req
+
+
+@router.patch(
+    "/bell-services/requests/{request_id}",
+    response_model=BellRequestResponse,
+    tags=TAG_BELL,
+    summary="Cập nhật trạng thái và nhân viên xử lý yêu cầu Bell Services",
+)
+async def update_bell_request(
+    request_id: str,
+    update_in: BellRequestStatusUpdate,
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+):
+    req = await sr_repo.get_by_id_or_code(request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Bell Services")
+    if update_in.status:
+        req.status = update_in.status
+    staff_val = update_in.assigned_to or update_in.assigned_staff
+    if staff_val is not None:
+        req.assigned_staff_name = staff_val
+    await sr_repo.commit()
+    await sr_repo.refresh(req)
+    return req
 
 
 @router.get(
@@ -198,7 +245,7 @@ async def get_bell_request(
 ):
     """
     ### Mô tả nghiệp vụ:
-    Tra cứu chi tiết một yêu cầu dịch vụ Bellman / hành lý theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `BS-504`).
+    Tra cứu chi tiết một yêu cầu dịch vụ Bellman / hành lý theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `BS-501`).
     """
     req = await sr_repo.get_by_id_or_code(request_id)
     if not req:

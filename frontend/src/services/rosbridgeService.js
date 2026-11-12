@@ -11,6 +11,8 @@ export const ROS_TOPICS = {
   GOAL_POSE: '/goal_pose',
   INITIAL_POSE: '/initialpose',
   CMD_VEL: '/cmd_vel',
+  MANUAL_CMD_VEL: '/robot/manual_cmd_vel',
+  MANUAL_OVERRIDE: '/robot/manual_override',
   GOAL_REACHED: '/goal_reached',
   HOTEL_ZONES: '/hotel_zones',
   ZONE_TELEMETRY: '/zone_telemetry',
@@ -359,6 +361,11 @@ export class RosbridgeClient {
   publishCmdVel(linearX = 0, angularZ = 0) {
     const msg = createCmdVelMsg(linearX, angularZ);
     return this.publish(ROS_TOPICS.CMD_VEL, ROS_MSG_TYPES.TWIST, msg);
+  }
+
+  publishManualCmdVel(linearX = 0, angularZ = 0) {
+    return this.publish(ROS_TOPICS.MANUAL_CMD_VEL, ROS_MSG_TYPES.TWIST,
+      createCmdVelMsg(linearX, angularZ));
   }
 
   resetMap() {

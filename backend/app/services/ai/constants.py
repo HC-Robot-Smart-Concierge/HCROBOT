@@ -45,7 +45,12 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
     "bellman": [
         "hành lý", "hanh ly", "hành lí", "hanh li", "vali", "túi xách", "xách túi", "chuyển đồ", "chuyen do",
         "xách đồ", "luggage", "bag", "bags", "baggage", "suitcase", "mang hành lý", "gửi hành lý", "giữ hành lý",
-        "gửi giữ", "lấy lại hành lý", "chuyển hành lý", "khuân", "bellman", "bellboy", "porter"
+        "gửi giữ", "lấy lại hành lý", "chuyển hành lý", "khuân", "hỗ trợ hành lý", "ho tro hanh ly",
+        "xách vali", "mang vali", "kéo vali", "bellman", "bellboy", "porter",
+        "đồ thất lạc", "do that lac", "thất lạc", "that lac", "báo mất đồ", "bao mat do",
+        "mất đồ", "mat do", "quên đồ", "quen do", "để quên đồ", "de quen do",
+        "rơi đồ", "roi do", "tìm đồ", "tim do", "bỏ quên đồ", "bo quen do",
+        "lost and found", "lost item", "missing item", "forgot item", "lost property"
     ],
     "maintenance": [
         "hư", "hu", "bị hư", "bi hu", "hư hỏng", "hu hong", "hư đồ", "hu do", "đồ bị hư", "do bi hu",
@@ -184,6 +189,18 @@ BELLMAN_MENU_TRIGGER_KEYWORDS: List[str] = [
     "luggage menu", "bellman menu", "luggage service", "luggage services", "luggage assistance",
     "luggage help", "bell service", "bell services",
 ]
+
+LOST_FOUND_KEYWORDS: List[str] = [
+    "thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do",
+    "rơi đồ", "roi do", "tìm đồ", "tim do", "bỏ quên", "bo quen",
+    "lost", "missing", "forgot",
+]
+
+
+def is_lost_found_text(text: str) -> bool:
+    """Return True when the text describes a Lost & Found report rather than luggage handling."""
+    lower = (text or "").lower()
+    return any(k in lower for k in LOST_FOUND_KEYWORDS)
 
 ROOM_SERVICE_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set(
     SERVICE_KEYWORDS["housekeeping"] + [

@@ -1044,3 +1044,85 @@ export const syncRoomsFromRAG = async () => {
 
   return await response.json();
 };
+
+// ---------------------------------------------------------
+// 11. Robot Profile, Job Execution History & Maintenance (RC-001)
+// ---------------------------------------------------------
+async function requestRobotJson(url, options = {}) {
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `HTTP error ${response.status}`);
+  }
+
+  return await response.json();
+}
+
+export const fetchRobotProfile = async (robotId = 'RC-001') => {
+  return await requestRobotJson(`${BASE_URL}/robot/profile?robot_id=${encodeURIComponent(robotId)}`);
+};
+
+export const updateRobotProfile = async (profileData, robotId = 'RC-001') => {
+  return await requestRobotJson(`${BASE_URL}/robot/profile?robot_id=${encodeURIComponent(robotId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(profileData),
+  });
+};
+
+export const fetchRobotJobs = async (params = {}) => {
+  const query = new URLSearchParams();
+  query.append('robot_id', params.robotId || 'RC-001');
+  if (params.status && params.status !== 'ALL') query.append('status', params.status);
+  if (params.triggerType && params.triggerType !== 'ALL') query.append('trigger_type', params.triggerType);
+  if (params.limit) query.append('limit', String(params.limit));
+  if (params.offset) query.append('offset', String(params.offset));
+  return await requestRobotJson(`${BASE_URL}/robot/jobs?${query.toString()}`);
+};
+
+export const fetchRobotJobDetail = async (jobId) => {
+  return await requestRobotJson(`${BASE_URL}/robot/jobs/${encodeURIComponent(jobId)}`);
+};
+
+export const createRobotJob = async (jobData) => {
+  return await requestRobotJson(`${BASE_URL}/robot/jobs`, {
+    method: 'POST',
+    body: JSON.stringify(jobData),
+  });
+};
+
+export const fetchRobotMaintenance = async (params = {}) => {
+  const query = new URLSearchParams();
+  query.append('robot_id', params.robotId || 'RC-001');
+  if (params.status && params.status !== 'all') query.append('status', params.status);
+  if (params.component && params.component !== 'all') query.append('component', params.component);
+  return await requestRobotJson(`${BASE_URL}/robot/maintenance?${query.toString()}`);
+};
+
+export const createRobotMaintenance = async (payload) => {
+  return await requestRobotJson(`${BASE_URL}/robot/maintenance`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const updateRobotMaintenance = async (scheduleId, payload) => {
+  return await requestRobotJson(`${BASE_URL}/robot/maintenance/${encodeURIComponent(scheduleId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const deleteRobotMaintenance = async (scheduleId) => {
+  return await requestRobotJson(`${BASE_URL}/robot/maintenance/${encodeURIComponent(scheduleId)}`, {
+    method: 'DELETE',
+  });
+};

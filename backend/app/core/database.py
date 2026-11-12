@@ -65,11 +65,14 @@ async def init_db() -> None:
         # Keep this additive patch independent of the legacy optional patches below.
         if conn.dialect.name == "postgresql":
             await conn.execute(text("ALTER TABLE zones ADD COLUMN IF NOT EXISTS yaw DOUBLE PRECISION NOT NULL DEFAULT 0"))
+            await conn.execute(text("ALTER TABLE zones ADD COLUMN IF NOT EXISTS vertices JSON"))
         else:
             from sqlalchemy import inspect
             columns = await conn.run_sync(lambda connection: inspect(connection).get_columns("zones"))
             if not any(column["name"] == "yaw" for column in columns):
                 await conn.execute(text("ALTER TABLE zones ADD COLUMN yaw FLOAT NOT NULL DEFAULT 0"))
+            if not any(column["name"] == "vertices" for column in columns):
+                await conn.execute(text("ALTER TABLE zones ADD COLUMN vertices JSON"))
         try:
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS chat_session_id VARCHAR(64);"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS account_id VARCHAR(50);"))

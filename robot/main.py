@@ -14,14 +14,15 @@ from ultrasonic_serial import UltrasonicSerialReader
 logger = logging.getLogger("RobotMain")
 
 
-def start_camera_stream(device=None, width=640, height=480, fps=15):
-    """Khởi động MJPEG Camera Stream Server trên background thread với Frame Broadcaster và auto-reconnect."""
+def start_camera_stream(device=None, width=640, height=480, fps=15, port=8554):
+    """Khởi động Camera Stream Server (WebRTC + MJPEG) trên background thread với Frame Broadcaster."""
     try:
         from scripts.camera_stream import (
-            create_camera_backend,
+            CameraBroadcaster,
+            create_aiohttp_app,
             ThreadedHTTPServer,
             MJPEGHandler,
-            CameraBroadcaster,
+            WEBRTC_AVAILABLE,
         )
         import scripts.camera_stream as cam_module
 
@@ -30,9 +31,17 @@ def start_camera_stream(device=None, width=640, height=480, fps=15):
         cam_module.camera_broadcaster = broadcaster
         cam_module.camera_backend = broadcaster.backend
 
-        server = ThreadedHTTPServer(("0.0.0.0", 8554), MJPEGHandler)
-        logger.info("📹 Camera stream started: http://0.0.0.0:8554/stream (Broadcaster Enabled)")
-        server.serve_forever()
+        if WEBRTC_AVAILABLE:
+            from aiohttp import web
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            app = create_aiohttp_app()
+            web.run_app(app, host="0.0.0.0", port=port, access_log=None, loop=loop)
+        else:
+            server = ThreadedHTTPServer(("0.0.0.0", port), MJPEGHandler)
+            logger.info(f"Camera stream started: http://0.0.0.0:{port}/stream")
+            server.serve_forever()
     except Exception as e:
         logger.error(f"Camera stream failed to start: {e}")
 
@@ -470,14 +479,25 @@ def main(argv=None):
         motor.cleanup()
         return 2
 
-    # Bật Camera Stream Server trên background thread (trừ khi --no-camera)
+    # Bật Camera Stream Server trên background thread (trừ khi --no-camera hoặc port 8554 đã có server)
     if not args.no_camera:
-        camera_thread = threading.Thread(
-            target=start_camera_stream,
-            args=(args.camera_device,),
-            daemon=True,
-        )
-        camera_thread.start()
+        import socket
+        camera_port_busy = False
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                camera_port_busy = (s.connect_ex(("127.0.0.1", 8554)) == 0)
+        except Exception:
+            pass
+
+        if camera_port_busy:
+            logger.info("Port 8554 da co camera server chay doc lap. Bo qua khoi dong noi bo.")
+        else:
+            camera_thread = threading.Thread(
+                target=start_camera_stream,
+                args=(args.camera_device,),
+                daemon=True,
+            )
+            camera_thread.start()
 
     # Bật LiDAR SLAM & WebSocket Server trên background thread (trừ khi --no-lidar)
     if not args.no_lidar:

@@ -56,6 +56,10 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
   const [customUrl, setCustomUrl] = useState(streamUrl);
   const [snapshotUrl, setSnapshotUrl] = useState(null);
   const [streamKey, setStreamKey] = useState(() => Date.now());
+  const [streamMode, setStreamMode] = useState('webrtc');
+  const [webrtcStatus, setWebrtcStatus] = useState('connecting');
+  const videoRef = useRef(null);
+  const pcRef = useRef(null);
 
   // AI Emotion Recognition States (Pi5 Camera)
   const [isAiEmotionActive, setIsAiEmotionActive] = useState(true);
@@ -71,6 +75,94 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
   const noFaceCountRef = useRef(0);
   const reconnectTimeoutRef = useRef(null);
 
+  // Teleop Motion state
+  const [activeMotion, setActiveMotion] = useState('stop');
+  const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.99.72.51');
+
+  const startWebRTC = useCallback(async () => {
+    if (pcRef.current) {
+      try {
+        pcRef.current.close();
+      } catch {}
+      pcRef.current = null;
+    }
+    setWebrtcStatus('connecting');
+
+    try {
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+        ],
+      });
+      pcRef.current = pc;
+
+      pc.ontrack = (event) => {
+        if (videoRef.current && event.streams && event.streams[0]) {
+          videoRef.current.srcObject = event.streams[0];
+          setWebrtcStatus('connected');
+          setIsConnected(true);
+          setStreamError(false);
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === 'connected') {
+          setWebrtcStatus('connected');
+          setIsConnected(true);
+          setStreamError(false);
+        } else if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) {
+          setWebrtcStatus('failed');
+          setStreamMode('mjpeg');
+        }
+      };
+
+      pc.addTransceiver('video', { direction: 'recvonly' });
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      if (pc.iceGatheringState !== 'complete') {
+        await new Promise((resolve) => {
+          const checkState = () => {
+            if (pc.iceGatheringState === 'complete') {
+              pc.removeEventListener('icegatheringstatechange', checkState);
+              resolve();
+            }
+          };
+          pc.addEventListener('icegatheringstatechange', checkState);
+          setTimeout(() => {
+            pc.removeEventListener('icegatheringstatechange', checkState);
+            resolve();
+          }, 1500);
+        });
+      }
+
+      const res = await fetch('/api/v1/operations/robot/camera/webrtc-offer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sdp: pc.localDescription.sdp,
+          type: pc.localDescription.type,
+          target_ip: controlIp,
+          port: 8554,
+        }),
+        signal: AbortSignal.timeout(12000),
+      });
+
+      if (!res.ok) {
+        throw new Error(`WebRTC offer response status ${res.status}`);
+      }
+
+      const answer = await res.json();
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    } catch (err) {
+      console.warn('[AdminCameraTab] WebRTC signaling error, switching to MJPEG fallback:', err);
+      setWebrtcStatus('failed');
+      setStreamMode('mjpeg');
+    }
+  }, [controlIp]);
+
   const reloadStream = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -79,11 +171,30 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
     setStreamKey(Date.now());
     setStreamError(false);
     setIsStreaming(true);
-  }, []);
+    if (streamMode === 'webrtc') {
+      startWebRTC();
+    }
+  }, [streamMode, startWebRTC]);
 
-  // Teleop Motion state
-  const [activeMotion, setActiveMotion] = useState('stop');
-  const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.99.72.51');
+  useEffect(() => {
+    if (active && isStreaming && streamMode === 'webrtc') {
+      startWebRTC();
+    } else if (streamMode !== 'webrtc' && pcRef.current) {
+      try {
+        pcRef.current.close();
+      } catch {}
+      pcRef.current = null;
+    }
+
+    return () => {
+      if (pcRef.current) {
+        try {
+          pcRef.current.close();
+        } catch {}
+        pcRef.current = null;
+      }
+    };
+  }, [active, isStreaming, streamMode, startWebRTC]);
   const [speed, setSpeed] = useState(75);
   const speedRef = useRef(75);
   // Giá trị tạm khi đang kéo thanh trượt; chỉ gửi lên Pi khi thả tay
@@ -173,12 +284,17 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
     }
 
     const intervalId = setInterval(() => {
-      if (!landmarkerRef.current || !imgRef.current) return;
-      const imgEl = imgRef.current;
-      if (!imgEl.complete || imgEl.naturalWidth === 0) return;
+      if (!landmarkerRef.current) return;
+      const mediaEl = streamMode === 'webrtc' ? videoRef.current : imgRef.current;
+      if (!mediaEl) return;
+      if (streamMode === 'webrtc') {
+        if (mediaEl.readyState < 2 || mediaEl.videoWidth === 0) return;
+      } else {
+        if (!mediaEl.complete || mediaEl.naturalWidth === 0) return;
+      }
 
       try {
-        const results = landmarkerRef.current.detect(imgEl);
+        const results = landmarkerRef.current.detect(mediaEl);
 
         if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
           setIsFaceDetected(true);
@@ -230,7 +346,7 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
     }, 600);
 
     return () => clearInterval(intervalId);
-  }, [isAiEmotionActive, isStreaming, streamError]);
+  }, [isAiEmotionActive, isStreaming, streamError, streamMode]);
 
   const handleOverrideEmotion = useCallback(
     async (emo) => {
@@ -560,14 +676,17 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
   };
 
   const takeSnapshot = () => {
-    if (!imgRef.current) return;
+    const mediaEl = streamMode === 'webrtc' ? videoRef.current : imgRef.current;
+    if (!mediaEl) return;
     try {
       const canvas = canvasRef.current;
       if (!canvas) return;
-      canvas.width = imgRef.current.naturalWidth || 1920;
-      canvas.height = imgRef.current.naturalHeight || 1080;
+      const w = streamMode === 'webrtc' ? (mediaEl.videoWidth || 640) : (mediaEl.naturalWidth || 640);
+      const h = streamMode === 'webrtc' ? (mediaEl.videoHeight || 480) : (mediaEl.naturalHeight || 480);
+      canvas.width = w;
+      canvas.height = h;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(imgRef.current, 0, 0);
+      ctx.drawImage(mediaEl, 0, 0, w, h);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
       setSnapshotUrl(dataUrl);
 
@@ -658,6 +777,25 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
           {/* Right: Action HUD Buttons */}
           <div className="flex items-center gap-1.5">
             <button
+              onClick={() => {
+                const nextMode = streamMode === 'webrtc' ? 'mjpeg' : 'webrtc';
+                setStreamMode(nextMode);
+                if (nextMode === 'webrtc') {
+                  setWebrtcStatus('connecting');
+                  startWebRTC();
+                }
+              }}
+              className={`px-2 py-1 rounded-lg text-[10.5px] font-mono tracking-wider flex items-center gap-1.5 transition-all cursor-pointer border backdrop-blur-md ${
+                streamMode === 'webrtc'
+                  ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700/70 hover:bg-emerald-900/90'
+                  : 'bg-amber-950/80 text-amber-300 border-amber-700/70 hover:bg-amber-900/90'
+              }`}
+              title={streamMode === 'webrtc' ? 'Che do: WebRTC P2P (click de chuyen sang MJPEG)' : 'Che do: MJPEG (click de chuyen sang WebRTC)'}
+            >
+              <Circle className={`w-2 h-2 fill-current ${webrtcStatus === 'connected' && streamMode === 'webrtc' ? 'animate-pulse text-emerald-400' : 'text-amber-400'}`} />
+              <span>{streamMode === 'webrtc' ? 'WebRTC Live' : 'MJPEG'}</span>
+            </button>
+            <button
               onClick={() => setShowSettings(!showSettings)}
               className={`p-1.5 rounded-lg backdrop-blur-md border transition-all cursor-pointer ${
                 showSettings
@@ -708,8 +846,21 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
           </div>
         </div>
 
-        {/* MJPEG Stream Image */}
-        {isStreaming ? (
+        {/* WebRTC Video Stream (Primary, Zero Latency) */}
+        {isStreaming && streamMode === 'webrtc' ? (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`robot-camera-image w-full h-full object-contain ${
+              streamError || webrtcStatus === 'failed' ? 'opacity-0' : 'opacity-100'
+            }`}
+          />
+        ) : null}
+
+        {/* MJPEG Stream Image (Fallback / HTTP) */}
+        {isStreaming && streamMode === 'mjpeg' ? (
           <img
             key={streamKey}
             ref={imgRef}
@@ -771,9 +922,9 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
             )}
           </div>
         )}
-        <div className="robot-camera-footer" title={streamUrl}>
+        <div className="robot-camera-footer" title={streamMode === 'webrtc' ? 'WebRTC P2P Stream' : streamUrl}>
           <span><span className={`robot-status-dot ${isConnected ? 'is-online' : ''}`} /> {isConnected ? rc('Pi5 Online') : rc('Pi5 Offline')}</span>
-          <span>1080p · MJPEG</span>
+          <span>{streamMode === 'webrtc' ? 'WebRTC · Ultra Low Latency' : '1080p · MJPEG'}</span>
         </div>
       </div>
 

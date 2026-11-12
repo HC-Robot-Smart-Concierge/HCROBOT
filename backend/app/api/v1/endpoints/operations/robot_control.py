@@ -1,7 +1,9 @@
 import socket
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.interceptors import RouteInterceptor, audit_action, measure_performance
@@ -409,3 +411,69 @@ async def control_robot_movement(cmd: RobotMoveCommand):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Không thể gửi lệnh di chuyển tới Pi 5: {e}")
+
+
+# =====================================================================
+# 5. CAMERA MJPEG PROXY STREAM (RASPBERRY PI 5)
+# =====================================================================
+
+@router.get(
+    "/robot/camera/stream",
+    tags=TAG_OPS,
+    summary="Reverse Proxy MJPEG Camera Stream từ Raspberry Pi 5 sang HTTPS",
+)
+async def proxy_camera_stream(
+    target_ip: Optional[str] = "100.99.72.51",
+    port: Optional[int] = 8554,
+):
+    """
+    Chuyển tiếp (Reverse Proxy) luồng video MJPEG từ Raspberry Pi 5
+    về client qua HTTPS (Tailscale Funnel / Cloudflare).
+    """
+    pi_camera_url = f"http://{target_ip}:{port}/stream"
+
+    async def stream_generator():
+        client = httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=None, write=5.0, pool=5.0))
+        try:
+            async with client.stream("GET", pi_camera_url) as response:
+                if response.status_code != 200:
+                    return
+                async for chunk in response.aiter_raw():
+                    yield chunk
+        except Exception:
+            return
+        finally:
+            await client.aclose()
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate, pre-check=0, post-check=0, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
+
+
+@router.get(
+    "/robot/camera/health",
+    tags=TAG_OPS,
+    summary="Kiểm tra trạng thái kết nối Camera Stream Pi 5",
+)
+async def check_camera_health(
+    target_ip: Optional[str] = "100.99.72.51",
+    port: Optional[int] = 8554,
+):
+    """Kiểm tra xem service camera_stream.py trên Pi 5 có đang online không."""
+    pi_health_url = f"http://{target_ip}:{port}/health"
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(pi_health_url)
+            if resp.status_code == 200:
+                return {"online": True, "details": resp.json()}
+    except Exception as e:
+        return {"online": False, "error": str(e)}
+    return {"online": False}
+

@@ -14,37 +14,55 @@ Tai lieu tong hop toan dien kien truc **Hybrid Cloud & Edge Computing** cua du a
 He thong phan chia trach nhiem ro rang giua 3 tang:
 
 ```
-[Dien thoai Admin / Khach hang quet QR] (Mang ngoai 4G / Internet)
-                  |
-                  | HTTPS / WSS
-                  v
-[Cloudflare Workers Edge Gateway] (https://hcrobot.dinhhoangkha107.workers.dev)
-  - Phuc vu Single Page Application (React Vite dist) < 15ms
-  - Reverse Proxy: /api/*, /static/*, va Upgrade: websocket
-                  |
-                  | Reverse Proxy Relay
-                  v
-[Tailscale Funnel Ingress] (https://yungwhore.taila9018b.ts.net)
-  - Tu dong quan ly chung chi SSL/TLS Let's Encrypt
-  - Forward cong 8000 ve may Laptop ca nhan
-                  |
-                  | Localhost Forward
-                  v
-[Laptop Server - Brain Node] (Windows / WSL2 - IP: 100.92.82.61)
-  - FastAPI Backend & WebSocket Notification Hub (Port 8000)
-  - ROS 2 SLAM Navigation & CycloneDDS Unicast Core
-  - AI Engine: LangGraph StateGraph, Fast-path, EdgeTTS, Faster Whisper
-                  |
-                  | Duong truyen WireGuard P2P Direct (UDP NAT Traversal < 5ms)
-                  +-----------------------------------+
-                  |                                   |
-                  v                                   v
-[Raspberry Pi 5 tren Robot]                 [Tablet Man hinh Robot]
-- IP Tailscale: 100.99.72.51                - URL: /robot-screen
-- Port 9999: UDP Motor Driver & Watchdog   - WebSocket lang nghe realtime
-- Port 8000: Hardware API, Sonar, Pin       - RobotAdPlayer phat quang cao
-- Port 8554: WebRTC FPV Camera Streamer     - AI Face Emotion & Kiosk Mode
-- RPLiDAR A1M8 (/scan, /tf)
++---------------------------------------------------------------------------------+
+|                       DIEN THOAI (MAN HINH GAN TREN XE ROBOT)                   |
+|                   Mo URL: https://hcrobot.dinhhoangkha107.workers.dev/robot-screen      |
+|  - Giao dien MobileRobotScreen toi uu man hinh cam ung di dong                  |
+|  - Robot Face bieu cam, Speech Recognition, AI Voice Dialog                     |
+|  - Trinh phat quang cao RobotAdPlayer toan man hinh (Fullscreen)                |
++---------------------------------------------------------------------------------+
+                                    |
+                                    | HTTPS / WSS
+                                    v
++---------------------------------------------------------------------------------+
+|                      CLOUDFLARE WORKERS (Edge Gateway)                          |
+|             URL: https://hcrobot.dinhhoangkha107.workers.dev                    |
+|  - Phuc vu Single Page Application (React Vite dist) < 15ms                     |
+|  - Reverse Proxy: /api/*, /static/*, va Upgrade: websocket                      |
++---------------------------------------------------------------------------------+
+                                    |
+                                    | Reverse Proxy Relay
+                                    v
++---------------------------------------------------------------------------------+
+|                       TAILSCALE FUNNEL (Ingress Tunnel)                         |
+|             URL: https://yungwhore.taila9018b.ts.net                            |
+|  - Tu dong quan ly chung chi SSL/TLS Let's Encrypt                              |
+|  - Forward cong 8000 ve may Laptop ca nhan                                      |
++---------------------------------------------------------------------------------+
+                                    |
+                                    | Localhost Forward
+                                    v
++---------------------------------------------------------------------------------+
+|                 LAPTOP (BRAIN SERVER & ADMIN / STAFF CONSOLE)                   |
+|  1. Brain Server (Chay ngam):                                                   |
+|     - FastAPI Backend & WebSocket Notification Hub (Port 8000)                  |
+|     - ROS 2 SLAM Navigation & CycloneDDS Unicast (WSL2 Ubuntu 24.04)            |
+|     - AI Engine: LangGraph StateGraph, EdgeTTS, Faster Whisper                  |
+|  2. Operator Console (Mo trinh duyet tren Laptop):                              |
+|     - Admin Portal (/admin): Ban do SLAM/LiDAR, Camera FPV, Day quang cao       |
+|     - Staff Dashboards (/dashboard/*): Concierge Video Call, Reception, Kitchen |
++---------------------------------------------------------------------------------+
+                                    |
+                                    | Duong truyen WireGuard P2P Direct (UDP < 5ms)
+                                    v
++---------------------------------------------------------------------------------+
+|                          RASPBERRY PI 5 (Robot Node tren xe)                    |
+|  - IP Tailscale: 100.99.72.51                                                   |
+|  - Port 9999: UDP Motor Driver (L298N) & Watchdog an toan                       |
+|  - Port 8000: Hardware API, Sonar HC-SR04, Quan ly Pin                          |
+|  - Port 8554: WebRTC FPV Camera Streamer                                        |
+|  - RPLiDAR A1M8 (/scan, /tf)                                                    |
++---------------------------------------------------------------------------------+
 ```
 
 ---
@@ -52,26 +70,25 @@ He thong phan chia trach nhiem ro rang giua 3 tang:
 ## 2. Co Che Hoat Dong Cac Tinh Nang Thoi Gian Thuc
 
 ### 2.1. Day quang cao thoi gian thuc (Real-time Ad Push)
-1. **Admin thao tac tren dien thoai:** Gui request `POST /api/v1/advertisements/{ad_id}/push`.
-2. **Cloudflare Worker chuyen tiep:** Request qua Funnel `yungwhore.taila9018b.ts.net` ve Laptop Backend `:8000`.
-3. **Backend Broadcast:** `notification_manager.broadcast_to_department("All", payload)` ban goi tin WebSocket JSON toi tat ca cac client dang ket noi.
-4. **Man hinh Robot nhan tin hieu:** Tablet tren nguc robot (`RobotScreenPage.jsx`) nhan event `ADVERTISEMENT_PUSH` qua WebSocket, tu dong chuyen sang trang thai Standby va bat component `RobotAdPlayer`.
-5. **Phat Fullscreen:** Video hoac Banner duoc tai truc tiep tu Cloudinary CDN toan cau voi bang thong toi da. Khi khach cham vao man hinh, quang cao tu dong tat de tro ve man hinh tiep don AI Concierge.
+1. **Admin thao tac tren Laptop:** Mo Admin Portal (`/admin`), vao tab Quang cao va nhan nut **"Phat ngay / Day xuong xe"**.
+2. **Backend xu ly & Broadcast:** Request gui toi `POST /api/v1/advertisements/{ad_id}/push`. Laptop Backend goi `notification_manager.broadcast_to_department("All", payload)` ban goi tin WebSocket JSON toi dien thoai robot.
+3. **Dien thoai (Man hinh Robot) nhan tin hieu:** Dien thoai gan tren xe dang mo `/robot-screen` nhan su kien `ADVERTISEMENT_PUSH` qua WebSocket, tu dong chuyen sang trang thai Standby va bat component `RobotAdPlayer`.
+4. **Phat Fullscreen:** Video hoac Banner duoc tai truc tiep tu Cloudinary CDN toan cau voi bang thong toi da. Khi khach cham tay vao man hinh dien thoai, quang cao tu dong tat de tro ve man hinh tiep don AI Concierge.
 
 ### 2.2. Dieu khien xe khong do tre (Teleop UDP)
-- Dien thoai bam nut di chuyen / can gat Joystick $\rightarrow$ Backend tren Laptop nhan request va ban goi UDP Datagram (`drive:speed:turn` hoac `stop`) toi `100.99.72.51:9999` tren Pi 5.
+- Admin tren **Laptop** bam nut di chuyen WASD tren giao dien Robot Operations (hoac dung can gat Joystick) $\rightarrow$ Backend tren Laptop nhan request va ban goi UDP Datagram (`drive:speed:turn` hoac `stop`) toi `100.99.72.51:9999` tren Pi 5.
 - Do tre phan hoi chi tu **30ms den 60ms**.
 
 ### 2.3. Camera FPV WebRTC P2P (Zero Latency)
-- Frontend gui SDP Offer qua Backend toi Pi 5 (`http://100.99.72.51:8554/offer`).
+- Admin tren **Laptop** xem truc tiep hinh anh dau xe qua giao thuc WebRTC P2P voi Pi 5 (`http://100.99.72.51:8554/offer`).
 - Streamer tren Pi 5 (`camera_stream.py`) thu thap day du ung vien mang (Vanilla ICE candidates) qua may chu STUN Google va tra ve SDP Answer.
-- Trinh duyet va Pi 5 bat tay truc tiep qua UDP P2P, giup luong video dat 15-30 fps cuc muot ma khong bi chan boi Cloudflare hay lam nghen server trung gian.
+- Trinh duyet tren Laptop va Pi 5 bat tay truc tiep qua UDP P2P, giup luong video dat 15-30 fps cuc muot ma khong lam nghen may chu.
 
 ---
 
 ## 3. Cac Lenh Khoi Dong He Thong (Startup Commands)
 
-### 3.1. Khoi dong tren Laptop (Brain Node)
+### 3.1. Khoi dong tren Laptop (Brain Server & Admin Console)
 
 Moi lan bat may Laptop de demo, mo PowerShell va thuc hien:
 
@@ -107,14 +124,16 @@ nohup /home/phuc/HCROBOT/robot/.venv/bin/python ~/HCROBOT/robot/scripts/camera_s
 pgrep -fa "main.py|camera_stream.py"
 ```
 
-### 3.3. Mo giao dien nguoi dung (Clients)
+### 3.3. Mo giao dien nguoi dung (Clients Mapping)
 
-- **Tren Tablet gan tren nguc Robot:**
-  Mo trinh duyet Chrome o che do Toan man hinh (F11):
+- **Tren Dien thoai (Man hinh gan tren than Robot):**
+  Mo trinh duyet Chrome tren dien thoai truy cap:
   `https://hcrobot.dinhhoangkha107.workers.dev/robot-screen`
-- **Tren Dien thoai Admin / Ban giam khao:**
-  Mo trinh duyet bat ky:
-  `https://hcrobot.dinhhoangkha107.workers.dev/admin`
+  *(Giao dien tu dong nhan dien Mobile Viewport, hien thi khuon mat robot bieu cam, nut mic cham de noi, va san sang nhan lenh quang cao toan man hinh).*
+- **Tren Laptop (Admin & Operator Console):**
+  Mo trinh duyet tren Laptop truy cap:
+  `https://hcrobot.dinhhoangkha107.workers.dev/admin` (hoac `http://localhost:3000/admin` khi dev)
+  *(Day la noi Admin xem ban do LiDAR 2D, lai xe tu xa, quan ly don hang, va day quang cao xuong dien thoai tren robot).*
 
 ---
 
@@ -123,7 +142,7 @@ pgrep -fa "main.py|camera_stream.py"
 Neu phong thi hoac hoi truong bi pha song 4G va khong co ket noi Internet:
 
 1. **Ket noi Wifi noi bo:**
-   - Laptop, Pi 5 va Tablet Robot ket noi chung vao mot Router Wifi di dong (khong can Internet).
+   - Laptop, Pi 5 va Dien thoai gan tren Robot ket noi chung vao mot Router Wifi di dong (khong can Internet).
    - Lay IP LAN cua Laptop (vi du: `192.168.1.100` bang lenh `ipconfig`).
 2. **Chay Frontend truc tiep tren Laptop:**
    ```powershell
@@ -131,8 +150,8 @@ Neu phong thi hoac hoi truong bi pha song 4G va khong co ket noi Internet:
    npm run dev -- --host
    ```
 3. **Mo ung dung qua IP LAN noi bo:**
-   - **Tablet Robot:** Truy cap `http://192.168.1.100:3000/robot-screen`
-   - **Dien thoai Admin:** Truy cap `http://192.168.1.100:3000/admin`
+   - **Dien thoai tren Robot:** Mo `http://192.168.1.100:3000/robot-screen`.
+   - **Laptop Admin:** Mo `http://localhost:3000/admin`.
    - He thong van hoat dong day du 100% tinh nang (dieu khien, camera, day quang cao, video call).
 
 ---

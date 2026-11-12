@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Luggage,
   SearchCheck,
-  AlertTriangle,
   Plus,
   RefreshCw,
   CheckCircle2,
@@ -11,7 +10,6 @@ import {
   User,
   X,
   ArrowRightLeft,
-  ShieldAlert,
   Sparkles,
 } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
@@ -35,7 +33,7 @@ const BELL_SERVICE_LABELS = {
 
 const inferFlowType = (request) => {
   const rawType = (request.request_type || request.type || '').toLowerCase();
-  if (['lost_found', 'emotion_alert', 'room_move'].includes(rawType)) {
+  if (['lost_found', 'room_move'].includes(rawType)) {
     return rawType;
   }
   const text = `${request.title || ''} ${request.description || ''}`.toLowerCase();
@@ -45,13 +43,6 @@ const inferFlowType = (request) => {
     )
   ) {
     return 'lost_found';
-  }
-  if (
-    ['khó chịu', 'biểu cảm', 'bực', 'tức giận', 'unhappy', 'frustrated', 'emotion'].some((k) =>
-      text.includes(k)
-    )
-  ) {
-    return 'emotion_alert';
   }
   if (['đổi phòng', 'chuyển phòng', 'room move'].some((k) => text.includes(k))) {
     return 'room_move';
@@ -105,12 +96,6 @@ const FLOW_TABS = [
     label: 'Báo cáo đồ thất lạc',
     icon: SearchCheck,
   },
-  {
-    id: 'emotion_alert',
-    label: 'Xử lý khách khó chịu',
-    icon: AlertTriangle,
-    isUrgent: true,
-  },
 ];
 
 export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
@@ -130,15 +115,14 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
   const [isLoading, setIsLoading] = useState(false);
   const pageSize = 10;
 
-  // Modal state for creating/receiving a request in any of the 3 flows
-  const [modalFlow, setModalFlow] = useState(null); // 'luggage' | 'lost_found' | 'emotion_alert' | null
+  // Modal state for creating/receiving a request in either Bellman flow
+  const [modalFlow, setModalFlow] = useState(null); // 'luggage' | 'lost_found' | null
   const [formState, setFormState] = useState({
     location: '',
     guestName: '',
     subCategory: 'Mang hành lý lên phòng',
     luggageCount: '2',
     itemName: '',
-    emotionType: 'Khó chịu (Unhappy)',
     description: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -157,7 +141,9 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
           setData((previous) => ({
             ...previous,
             kpis: response.kpis || previous.kpis,
-            requests: response.requests.map(normalizeRequest),
+            requests: response.requests
+              .map(normalizeRequest)
+              .filter((r) => ['luggage', 'lost_found', 'room_move'].includes(r.type)),
             teamStatus:
               response.team_status?.length > 0
                 ? response.team_status
@@ -190,17 +176,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
       all: list.length,
       luggage: list.filter((r) => r.type === 'luggage' || r.type === 'room_move').length,
       lost_found: list.filter((r) => r.type === 'lost_found').length,
-      emotion_alert: list.filter((r) => r.type === 'emotion_alert').length,
-      activeEmotionAlerts: list.filter(
-        (r) => r.type === 'emotion_alert' && getStatusLabel(r.status) !== 'Completed'
-      ).length,
     };
-  }, [data.requests]);
-
-  const activeEmotionAlertsList = useMemo(() => {
-    return (data.requests || []).filter(
-      (r) => r.type === 'emotion_alert' && getStatusLabel(r.status) !== 'Completed'
-    );
   }, [data.requests]);
 
   const filteredRequests = useMemo(() => {
@@ -211,9 +187,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
         return false;
       }
       if (activeFlow === 'lost_found' && r.type !== 'lost_found') {
-        return false;
-      }
-      if (activeFlow === 'emotion_alert' && r.type !== 'emotion_alert') {
         return false;
       }
 
@@ -249,21 +222,16 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
 
   const handleAccept = async (requestId) => {
     const targetReq = (data.requests || []).find((r) => r.id === requestId);
-    const isUrgentEmotion = targetReq?.type === 'emotion_alert';
-
-    if (!isUrgentEmotion) {
-      const activeTask = (data.requests || []).find(
-        (r) =>
-          (r.status === 'In Progress' || (r.status || '').toLowerCase() === 'in progress') &&
-          (r.assignedTo === staffName || r.assigned_to === staffName) &&
-          r.type !== 'emotion_alert'
+    const activeTask = (data.requests || []).find(
+      (r) =>
+        (r.status === 'In Progress' || (r.status || '').toLowerCase() === 'in progress') &&
+        (r.assignedTo === staffName || r.assigned_to === staffName)
+    );
+    if (activeTask) {
+      onNotify(
+        st('Complete your current task ({0}) before claiming another request.', activeTask.title || activeTask.id)
       );
-      if (activeTask) {
-        onNotify(
-          st('Complete your current task ({0}) before claiming another request.', activeTask.title || activeTask.id)
-        );
-        return;
-      }
+      return;
     }
 
     updateRequestLocally(requestId, 'In Progress', staffName);
@@ -274,8 +242,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
 
     if (targetReq?.type === 'lost_found') {
       onNotify(`Đã tiếp nhận báo cáo đồ thất lạc ${requestId} và bắt đầu xác minh/tìm kiếm`);
-    } else if (targetReq?.type === 'emotion_alert') {
-      onNotify(`Đã tiếp nhận xử lý khẩn trường hợp khách khó chịu (${requestId})`);
     } else {
       onNotify(st('Request {0} claimed.', requestId));
     }
@@ -292,8 +258,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
 
     if (targetReq?.type === 'lost_found') {
       onNotify(`Đã hoàn tất tìm kiếm & trao trả đồ thất lạc (${requestId})`);
-    } else if (targetReq?.type === 'emotion_alert') {
-      onNotify(`Đã xoa dịu và hỗ trợ thành công khách hàng (${requestId})`);
     } else {
       onNotify(st('Request {0} completed.', requestId));
     }
@@ -303,7 +267,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
   const openCreateModal = (flowType) => {
     setModalFlow(flowType);
     setFormState({
-      location: flowType === 'emotion_alert' ? 'Main Lobby Kiosk' : 'Room 302',
+      location: 'Room 302',
       guestName: '',
       subCategory:
         flowType === 'room_move'
@@ -311,7 +275,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
           : 'Mang hành lý lên phòng',
       luggageCount: '2',
       itemName: '',
-      emotionType: 'Khó chịu (Unhappy)',
       description: '',
     });
   };
@@ -337,17 +300,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
             formState.description.trim() ||
             `Khách báo thất lạc "${itemLabel}" tại khu vực ${loc}. Cần kiểm tra camera/kho Lost & Found và liên hệ xác minh.`,
           request_type: 'lost_found',
-        };
-      } else if (modalFlow === 'emotion_alert') {
-        payload = {
-          title: `Cảnh báo khách có biểu cảm khó chịu (${formState.emotionType})`,
-          location: loc,
-          guest_name: guest,
-          reporter: 'HCRobot Emotion AI / Bellman',
-          description:
-            formState.description.trim() ||
-            `Phát hiện khách hàng có biểu cảm ${formState.emotionType} tại ${loc}. Cần nhân viên Bellman tiếp cận hỏi thăm, xoa dịu và hỗ trợ trực tiếp ngay.`,
-          request_type: 'emotion_alert',
         };
       } else {
         const isRoomMove = formState.subCategory.toLowerCase().includes('chuyển phòng');
@@ -394,13 +346,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
         icon: SearchCheck,
       };
     }
-    if (type === 'emotion_alert') {
-      return {
-        label: 'Khách có biểu cảm khó chịu',
-        className: 'bg-rose-50 text-rose-800 border border-rose-200 animate-pulse',
-        icon: AlertTriangle,
-      };
-    }
     if (type === 'room_move') {
       return {
         label: 'Hỗ trợ chuyển phòng & hành lý',
@@ -417,13 +362,11 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
 
   const getAcceptButtonLabel = (type) => {
     if (type === 'lost_found') return 'Tiếp nhận & Tìm kiếm đồ';
-    if (type === 'emotion_alert') return 'Tiếp nhận & Ra hỗ trợ ngay';
     return t('acceptTask') || 'Tiếp nhận hỗ trợ hành lý';
   };
 
   const getCompleteButtonLabel = (type) => {
     if (type === 'lost_found') return 'Đã tìm thấy & Trao trả khách';
-    if (type === 'emotion_alert') return 'Đã xoa dịu & Xử lý xong';
     return t('completeTask') || 'Hoàn tất bàn giao';
   };
 
@@ -439,13 +382,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
       subLabel: 'Lost & Found',
       value: flowCounts.lost_found,
       flowId: 'lost_found',
-    },
-    {
-      label: 'Khách biểu cảm khó chịu',
-      subLabel: flowCounts.activeEmotionAlerts > 0 ? `${flowCounts.activeEmotionAlerts} cần xử lý ngay` : 'Đã ổn định',
-      value: flowCounts.emotion_alert,
-      flowId: 'emotion_alert',
-      isUrgent: flowCounts.activeEmotionAlerts > 0,
     },
     {
       label: t('kpiActiveFleet'),
@@ -485,10 +421,10 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
           </p>
         )}
 
-        {/* Quick Action Buttons for the 3 Bellman Workflows */}
+        {/* Quick Action Buttons for the 2 Bellman Workflows */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-[12px] text-[#666]">
-            Điều phối 3 luồng nghiệp vụ Bellman: Hỗ trợ hành lý, Báo cáo đồ thất lạc (Lost &amp; Found) và Xử lý khi khách có biểu cảm khó chịu từ Robot Kiosk.
+            Điều phối 2 luồng nghiệp vụ Bellman: Hỗ trợ hành lý và Báo cáo đồ thất lạc (Lost &amp; Found).
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -508,90 +444,29 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
               <SearchCheck className="w-3.5 h-3.5" />
               <span>Tiếp nhận báo cáo đồ thất lạc</span>
             </button>
-
-            <button
-              type="button"
-              onClick={() => openCreateModal('emotion_alert')}
-              className="rounded-lg bg-rose-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-rose-700 flex items-center gap-1.5 cursor-pointer"
-            >
-              <AlertTriangle className="w-3.5 h-3.5" />
-              <span>Xử lý khách khó chịu</span>
-            </button>
           </div>
         </div>
 
-        {/* Urgent Banner when a guest has an unpleasant expression (Flow 3) */}
-        {activeEmotionAlertsList.length > 0 && (
-          <section className="rounded-xl bg-rose-50 border border-rose-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-start gap-3">
-              <div className="p-2 rounded-lg bg-rose-100 text-rose-700 shrink-0">
-                <ShieldAlert className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-[13px] font-bold text-rose-900">
-                  Cảnh báo AI: Phát hiện {activeEmotionAlertsList.length} khách hàng đang có biểu cảm khó chịu cần hỗ trợ trực tiếp!
-                </h3>
-                <p className="text-[12px] text-rose-800 mt-0.5">
-                  {activeEmotionAlertsList[0].location} • {activeEmotionAlertsList[0].guestName}: &ldquo;{activeEmotionAlertsList[0].description}&rdquo;
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {getStatusLabel(activeEmotionAlertsList[0].status) === 'Pending' ? (
-                <button
-                  type="button"
-                  onClick={() => handleAccept(activeEmotionAlertsList[0].id)}
-                  className="rounded-lg bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-2 text-[11px] font-bold cursor-pointer"
-                >
-                  Tiếp nhận &amp; Ra hỗ trợ ngay
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleComplete(activeEmotionAlertsList[0].id)}
-                  className="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 text-[11px] font-bold cursor-pointer"
-                >
-                  Đã xoa dịu &amp; Xử lý xong
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setActiveFlow('emotion_alert')}
-                className="rounded-lg bg-white border border-rose-300 text-rose-800 hover:bg-rose-100 px-3 py-2 text-[11px] font-semibold cursor-pointer"
-              >
-                Xem chi tiết
-              </button>
-            </div>
-          </section>
-        )}
-
         {/* KPI Cards */}
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {metrics.map(({ label, subLabel, value, flowId, isUrgent }) => {
+        <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {metrics.map(({ label, subLabel, value, flowId }) => {
             const isSelected = activeFlow === flowId;
             return (
               <article
                 key={label}
                 onClick={() => setActiveFlow(flowId)}
                 className={`rounded-xl px-5 py-4 border transition-all cursor-pointer ${
-                  isUrgent
-                    ? 'bg-rose-50/70 border-rose-300'
-                    : isSelected
+                  isSelected
                     ? 'bg-white border-[#1A1917] ring-1 ring-[#1A1917]/20'
                     : 'bg-white border-[#E8E5E0] hover:border-[#BDB7AE]'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className={`text-[11px] font-semibold ${isUrgent ? 'text-rose-800' : 'text-[#666]'}`}>
+                  <span className="text-[11px] font-semibold text-[#666]">
                     {label}
                   </span>
-                  {isUrgent && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-600 text-white">
-                      Khẩn
-                    </span>
-                  )}
                 </div>
-                <p className={`mt-2 text-[22px] font-bold ${isUrgent ? 'text-rose-700' : 'text-[#262626]'}`}>
+                <p className="mt-2 text-[22px] font-bold text-[#262626]">
                   {value}
                 </p>
                 {subLabel && (
@@ -602,7 +477,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
           })}
         </section>
 
-        {/* 3 Specialized Bellman Flow Tabs */}
+        {/* 2 Specialized Bellman Flow Tabs */}
         <section className="flex items-center gap-2 overflow-x-auto custom-scrollbar border-b border-[#E8E5E0] pb-3">
           {FLOW_TABS.map((tab) => {
             const Icon = tab.icon;
@@ -615,9 +490,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                 onClick={() => setActiveFlow(tab.id)}
                 className={`px-3.5 py-2 rounded-xl text-[12px] font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer border ${
                   isSelected
-                    ? tab.isUrgent
-                      ? 'bg-rose-600 text-white border-rose-600'
-                      : 'bg-[#1A1917] text-white border-[#1A1917]'
+                    ? 'bg-[#1A1917] text-white border-[#1A1917]'
                     : 'bg-white text-[#494540] border-[#E8E5E0] hover:bg-[#F4F2EE]'
                 }`}
               >
@@ -627,8 +500,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                   className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                     isSelected
                       ? 'bg-white/20 text-white'
-                      : tab.isUrgent && count > 0
-                      ? 'bg-rose-100 text-rose-800'
                       : 'bg-[#F0EEEB] text-[#494540]'
                   }`}
                 >
@@ -648,8 +519,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                     ? 'Danh sách Yêu cầu Hỗ trợ Hành lý & Chuyển phòng'
                     : activeFlow === 'lost_found'
                     ? 'Danh sách Báo cáo Đồ thất lạc (Lost & Found)'
-                    : activeFlow === 'emotion_alert'
-                    ? 'Danh sách Cảnh báo & Xử lý Khách có biểu cảm khó chịu'
                     : t('activeRequests')}
                 </h3>
                 <p className="text-[11px] text-[#77736E]">
@@ -696,11 +565,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                   return (
                     <article
                       key={request.id}
-                      className={`rounded-xl bg-white px-5 py-4 border transition-all ${
-                        request.type === 'emotion_alert' && status !== 'Completed'
-                          ? 'border-rose-300 bg-rose-50/20'
-                          : 'border-[#BFBFBD]'
-                      }`}
+                      className="rounded-xl bg-white px-5 py-4 border border-[#BFBFBD] transition-all"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
@@ -771,12 +636,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                                 : isInProgress
                                 ? 'Bước 2/2: Đang tìm kiếm & đối chiếu kho Lost & Found'
                                 : 'Đã bàn giao lại đồ thất lạc cho khách'
-                              : request.type === 'emotion_alert'
-                              ? isPending
-                                ? 'Ưu tiên cao: Cần nhân viên tiếp cận hỗ trợ khách ngay'
-                                : isInProgress
-                                ? 'Đang trực tiếp hỗ trợ & xoa dịu khách hàng tại sảnh/kiosk'
-                                : 'Khách đã hài lòng và được hỗ trợ hoàn tất'
                               : isPending
                               ? 'Chờ phân công xe đẩy / nhân viên Bellman'
                               : isInProgress
@@ -791,9 +650,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                               type="button"
                               onClick={() => handleAccept(request.id)}
                               className={`rounded-lg px-4 py-1.5 text-[11px] font-bold text-white cursor-pointer ${
-                                request.type === 'emotion_alert'
-                                  ? 'bg-rose-600 hover:bg-rose-700'
-                                  : request.type === 'lost_found'
+                                request.type === 'lost_found'
                                   ? 'bg-amber-600 hover:bg-amber-700'
                                   : 'bg-[#262626] hover:bg-[#404040]'
                               }`}
@@ -893,19 +750,13 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                     Ghi nhận mô tả đồ thất lạc &amp; vị trí → Kiểm tra khu vực sảnh/phòng &amp; tủ Lost &amp; Found → Xác minh &amp; trao trả khách.
                   </p>
                 </div>
-                <div className="p-2.5 rounded-lg bg-rose-50/60 border border-rose-100">
-                  <p className="font-bold text-rose-900">3. Xử lý khi khách có biểu cảm khó chịu</p>
-                  <p className="mt-0.5 text-rose-800/90">
-                    Camera AI Robot phát hiện khách khó chịu → Ưu tiên tiếp cận ngay tại Kiosk/Sảnh → Lắng nghe, xoa dịu &amp; hỗ trợ trực tiếp.
-                  </p>
-                </div>
               </div>
             </section>
           </aside>
         </section>
       </div>
 
-      {/* Modal Tiếp Nhận Yêu Cầu Cho 3 Luồng Nghiệp Vụ */}
+      {/* Modal Tiếp Nhận Yêu Cầu Cho 2 Luồng Nghiệp Vụ */}
       {modalFlow && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-lg w-full border border-[#E5E1D8] shadow-2xl overflow-hidden">
@@ -913,16 +764,12 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
               <div className="flex items-center gap-2">
                 {modalFlow === 'lost_found' ? (
                   <SearchCheck className="w-5 h-5 text-amber-600" />
-                ) : modalFlow === 'emotion_alert' ? (
-                  <AlertTriangle className="w-5 h-5 text-rose-600" />
                 ) : (
                   <Luggage className="w-5 h-5 text-[#1A1917]" />
                 )}
                 <h3 className="text-[14px] font-bold text-[#1A1917]">
                   {modalFlow === 'lost_found'
                     ? 'Tiếp nhận Báo cáo Đồ thất lạc (Lost & Found)'
-                    : modalFlow === 'emotion_alert'
-                    ? 'Tiếp nhận & Xử lý Khách có biểu cảm khó chịu'
                     : 'Tiếp nhận Yêu cầu Hỗ trợ Hành lý'}
                 </h3>
               </div>
@@ -1013,23 +860,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                 </div>
               )}
 
-              {modalFlow === 'emotion_alert' && (
-                <div>
-                  <label className="block font-semibold text-[#403D39] mb-1">
-                    Biểu cảm / Mức độ ghi nhận từ AI Kiosk
-                  </label>
-                  <select
-                    value={formState.emotionType}
-                    onChange={(e) => setFormState((s) => ({ ...s, emotionType: e.target.value }))}
-                    className="w-full rounded-xl border border-[#DEDAD2] px-3 py-2 text-[#1A1917] outline-none focus:border-[#1A1917]"
-                  >
-                    <option value="Khó chịu (Unhappy)">Khó chịu (Unhappy) - Phát hiện từ Camera AI</option>
-                    <option value="Bực bội / Thất vọng (Frustrated)">Bực bội / Thất vọng (Frustrated) - Cần hỗ trợ gấp</option>
-                    <option value="Đang lúng túng tại Kiosk">Khách đang lúng túng / Không hài lòng tại Kiosk</option>
-                  </select>
-                </div>
-              )}
-
               <div>
                 <label className="block font-semibold text-[#403D39] mb-1">
                   Ghi chú chi tiết
@@ -1041,8 +871,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                   placeholder={
                     modalFlow === 'lost_found'
                       ? 'Mô tả vị trí khách nghi ngờ để quên, thời gian, số điện thoại liên hệ...'
-                      : modalFlow === 'emotion_alert'
-                      ? 'Mô tả tình huống khách đang gặp phải tại Kiosk/Sảnh để nhân viên Bellman tiếp cận xử lý...'
                       : 'Ghi chú thêm về hành lý dễ vỡ, thời gian khách cần lấy...'
                   }
                   className="w-full rounded-xl border border-[#DEDAD2] px-3 py-2 text-[#1A1917] outline-none focus:border-[#1A1917]"
@@ -1061,9 +889,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                   type="submit"
                   disabled={isSubmitting}
                   className={`px-4 py-2 rounded-xl text-white font-bold cursor-pointer ${
-                    modalFlow === 'emotion_alert'
-                      ? 'bg-rose-600 hover:bg-rose-700'
-                      : modalFlow === 'lost_found'
+                    modalFlow === 'lost_found'
                       ? 'bg-amber-600 hover:bg-amber-700'
                       : 'bg-[#1A1917] hover:bg-[#333]'
                   }`}

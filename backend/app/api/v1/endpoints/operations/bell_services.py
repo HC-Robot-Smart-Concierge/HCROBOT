@@ -1,5 +1,4 @@
 import random
-from datetime import datetime, timezone
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_, select
@@ -60,21 +59,18 @@ async def get_bell_services_dashboard(
     - **team_status**: Danh sách nhân viên Bellman đang làm việc và xe vận chuyển tự hành.
     - **announcement**: Bản tin thông báo giờ cao điểm check-in / check-out.
     """
-    requests = await sr_repo.get_recent_by_department(
+    raw_requests = await sr_repo.get_recent_by_department(
         department_ids=["DEP-BELL"],
         service_type_ids=["ST-BELL", "ST-LUGGAGE"],
         limit=100,
     )
+    requests = [r for r in raw_requests if r.request_type != "emotion_alert"]
 
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     on_job_count = sum(1 for r in requests if r.status == "In Progress")
     completed_count = sum(1 for r in requests if r.status == "Completed")
     luggage_count = sum(1 for r in requests if r.request_type in ["luggage", "room_move"])
     lost_found_count = sum(1 for r in requests if r.request_type == "lost_found")
-    emotion_alert_count = sum(1 for r in requests if r.request_type == "emotion_alert")
-    pending_emotion_alerts = sum(
-        1 for r in requests if r.request_type == "emotion_alert" and r.status in ["Pending", "Unassigned", "In Progress"]
-    )
 
     bell_staff = await staff_repo.list_staff(department="Bell Services")
 
@@ -105,8 +101,6 @@ async def get_bell_services_dashboard(
         "activeFleet": available_fleet_count,
         "luggageCount": luggage_count,
         "lostFoundCount": lost_found_count,
-        "emotionAlertCount": emotion_alert_count,
-        "pendingEmotionAlerts": pending_emotion_alerts,
     }
 
     announcement = {
@@ -128,7 +122,7 @@ async def get_bell_services_dashboard(
     response_model=BellRequestResponse,
     status_code=status.HTTP_201_CREATED,
     tags=TAG_BELL,
-    summary="Tạo mới yêu cầu hỗ trợ hành lý / báo cáo đồ thất lạc / xử lý khách khó chịu (Bellman)",
+    summary="Tạo mới yêu cầu hỗ trợ hành lý / báo cáo đồ thất lạc (Bellman)",
     responses={
         201: {"description": "Tạo ticket Bellman thành công và lưu vào bảng support_requests."}
     },
@@ -140,10 +134,9 @@ async def create_bell_request(
 ):
     """
     ### Mô tả nghiệp vụ:
-    Tiếp nhận yêu cầu dịch vụ Bellman thuộc 3 luồng chính:
+    Tiếp nhận yêu cầu dịch vụ Bellman thuộc 2 luồng chính:
     1. **Tiếp nhận yêu cầu hỗ trợ hành lý** (`request_type = 'luggage'` hoặc `'room_move'`)
     2. **Tiếp nhận báo cáo đồ thất lạc** (`request_type = 'lost_found'`)
-    3. **Xử lý khi khách có biểu cảm khó chịu** (`request_type = 'emotion_alert'`)
     Bản ghi được tự động lưu vào bảng `support_requests` với `department_id = 'DEP-BELL'` và `service_type_id = 'ST-BELL'`.
 
     Menu Bellman trên robot gửi kèm `service_key`: nếu phòng đã có yêu cầu cùng dịch vụ đang mở,
@@ -170,30 +163,10 @@ async def create_bell_request(
     if req_type in ["luggage", "general", "bellman", "bell_service"]:
         if any(k in text_blob for k in ["thất lạc", "quên đồ", "mất đồ", "rơi đồ", "lost", "missing", "forgot"]):
             req_type = "lost_found"
-        elif any(k in text_blob for k in ["khó chịu", "biểu cảm", "bực", "tức giận", "unhappy", "frustrated", "emotion"]):
-            req_type = "emotion_alert"
         elif any(k in text_blob for k in ["đổi phòng", "chuyển phòng", "room move"]):
             req_type = "room_move"
         else:
             req_type = "luggage"
-
-    # Chống tạo trùng lặp liên tục cho cảnh báo biểu cảm khó chịu tại cùng vị trí trong 90 giây
-    if req_type == "emotion_alert":
-        recent_reqs = await sr_repo.get_recent_by_department(
-            department_ids=["DEP-BELL"],
-            service_type_ids=["ST-BELL", "ST-LUGGAGE"],
-            limit=20,
-        )
-        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
-        for existing in recent_reqs:
-            if (
-                existing.request_type == "emotion_alert"
-                and existing.status in ["Pending", "Unassigned", "In Progress"]
-                and (existing.room_number or "").strip().lower() == (req_in.location or "").strip().lower()
-            ):
-                created_dt = existing.created_at.replace(tzinfo=None) if existing.created_at else None
-                if not created_dt or (now_utc - created_dt).total_seconds() < 90:
-                    return existing
 
     ticket_code = f"BS-{random.randint(504, 9999)}"
     new_req = SupportRequest(
@@ -212,8 +185,6 @@ async def create_bell_request(
 
     if req_type == "lost_found":
         notif_title = f"Báo cáo Đồ thất lạc mới #{ticket_code}"
-    elif req_type == "emotion_alert":
-        notif_title = f"Cảnh báo Khách có biểu cảm khó chịu #{ticket_code}"
     else:
         notif_title = f"Yêu cầu Hỗ trợ Hành lý mới #{ticket_code}"
 
@@ -224,7 +195,7 @@ async def create_bell_request(
         description=f"{req_in.location}: {req_in.title} - {req_in.description or req_in.guest_name or ''}".strip(" -"),
         request_id=new_req.id,
         request_type="bell_service",
-        type="Alert" if req_type == "emotion_alert" else "Request",
+        type="Request",
     )
     await sr_repo.commit()
     await sr_repo.refresh(new_req)
@@ -274,7 +245,7 @@ async def get_bell_request(
 ):
     """
     ### Mô tả nghiệp vụ:
-    Tra cứu chi tiết một yêu cầu dịch vụ Bellman / hành lý theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `BS-504`).
+    Tra cứu chi tiết một yêu cầu dịch vụ Bellman / hành lý theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `BS-501`).
     """
     req = await sr_repo.get_by_id_or_code(request_id)
     if not req:

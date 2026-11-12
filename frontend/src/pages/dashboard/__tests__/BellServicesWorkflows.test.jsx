@@ -8,7 +8,7 @@ import { INITIAL_BELL_SERVICES_DATA } from '../../../data/mockHotelData';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe('Bellman 3 Core Workflows (Luggage, Lost & Found, Unpleasant Emotion) Tests', () => {
+describe('Bellman 2 Core Workflows (Luggage, Lost & Found) Tests', () => {
   const bellDashPath = path.resolve(__dirname, '../BellServicesDashboard.jsx');
   const bellDashContent = fs.readFileSync(bellDashPath, 'utf8');
 
@@ -43,25 +43,21 @@ describe('Bellman 3 Core Workflows (Luggage, Lost & Found, Unpleasant Emotion) T
     expect(bellDashContent).toContain("request_type: 'lost_found'");
   });
 
-  it('supports Flow 3: Xử lý khi khách có biểu cảm khó chịu (Unpleasant Guest Expression)', () => {
-    expect(bellDashContent).toContain("id: 'emotion_alert'");
-    expect(bellDashContent).toContain('Xử lý khách khó chịu');
-    expect(bellDashContent).toContain('Khách có biểu cảm khó chịu');
-    expect(bellDashContent).toContain('Tiếp nhận & Ra hỗ trợ ngay');
-    expect(bellDashContent).toContain('Đã xoa dịu & Xử lý xong');
-    expect(bellDashContent).toContain("request_type: 'emotion_alert'");
+  it('no longer handles emotion_alert in BellServicesDashboard (moved to Concierge)', () => {
+    expect(bellDashContent).not.toContain('emotion_alert');
+    expect(bellDashContent).not.toContain('Xử lý khách khó chịu');
   });
 
-  it('wires RobotScreenPage to dispatch emotion_alert and bellman requests to Bell Services', () => {
+  it('wires RobotScreenPage to dispatch bellman luggage/lost_found to Bell Services and emotion alerts to Concierge', () => {
     expect(robotScreenContent).toContain('handleGuestEmotionDetected');
-    expect(robotScreenContent).toContain("request_type: 'emotion_alert'");
+    expect(robotScreenContent).toContain('createConciergeEmotionAlert');
     expect(robotScreenContent).toContain("actionToExecute === 'bellman' || actionToExecute === 'lost_found'");
   });
 
-  it('includes all 3 flow types in INITIAL_BELL_SERVICES_DATA fallback', () => {
+  it('includes luggage and lost_found in INITIAL_BELL_SERVICES_DATA fallback (without emotion_alert)', () => {
     const types = INITIAL_BELL_SERVICES_DATA.requests.map((r) => r.type);
     expect(types).toContain('luggage');
     expect(types).toContain('lost_found');
-    expect(types).toContain('emotion_alert');
+    expect(types).not.toContain('emotion_alert');
   });
 });

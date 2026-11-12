@@ -1,34 +1,28 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ChefHat,
-  Flame,
   UtensilsCrossed,
-  Clock,
+  Flame,
   CheckCircle2,
   AlertTriangle,
   Search,
   RefreshCw,
   Sparkles,
-  MapPin,
-  Coffee,
-  Check,
   Timer,
-  Bell,
-  Eye,
   SlidersHorizontal,
   Phone,
   PhoneCall,
   User,
-  Truck,
 } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
 import { RejectReasonModal } from '../../components/dashboard/RejectReasonModal';
+import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import { INITIAL_ROOM_SERVICE_DATA } from '../../data/mockHotelData';
 import {
   fetchRoomServiceDashboard,
   updateRoomServiceOrderStatus,
 } from '../../services/operationsApi';
 import { useLanguage } from '../../context/LanguageContext';
+import { useStaffText } from '../../context/StaffLanguage';
 import { formatTimeAgo } from '../../utils/timeAgo';
 
 const initialOrdersByNumber = new Map(
@@ -73,27 +67,28 @@ const normalizeStock = (item) => ({
 
 const matchesOrder = (order, orderId) => order.id === orderId || order.rawId === orderId;
 
-const KpiCard = ({ label, value, detail, icon: Icon, badgeColor = 'bg-stone-100 text-stone-700' }) => {
+const KpiCard = ({ label, value, detail, active = false, onClick }) => {
   return (
-    <article className="rounded-2xl bg-white p-4 md:p-5 border border-[#E8E5E0] shadow-xs hover:shadow-md transition-shadow">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-bold uppercase tracking-wider text-[#77726D]">{label}</span>
-        {Icon && (
-          <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${badgeColor}`}>
-            <Icon className="w-4 h-4" />
-          </div>
-        )}
-      </div>
-      <div className="mt-3 flex items-baseline gap-2">
-        <span className="text-[22px] font-black text-[#1A1917] tracking-tight">{value}</span>
-        {detail && <span className="text-[11px] font-semibold text-[#888]">{detail}</span>}
-      </div>
+    <article
+      onClick={onClick}
+      className={`rounded-xl bg-white px-5 py-4 border transition-all ${
+        onClick ? 'cursor-pointer' : ''
+      } ${
+        active
+          ? 'border-[#1A1917] ring-1 ring-[#1A1917]/20'
+          : 'border-[#E8E5E0] hover:border-[#BDB7AE]'
+      }`}
+    >
+      <span className="text-[11px] font-semibold uppercase text-[#8C8C8C]">{label}</span>
+      <p className="mt-2 text-[22px] font-bold text-[#262626]">{value}</p>
+      {detail && <p className="mt-1 text-[11px] text-[#777]">{detail}</p>}
     </article>
   );
 };
 
 export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
   const { t, language } = useLanguage();
+  const st = useStaffText();
   const staffName = currentUser?.full_name || currentUser?.name || 'Đầu Bếp Trực Ca';
 
   const isExecutive =
@@ -460,133 +455,122 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
   }).length;
 
   return (
-    <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] font-sans">
-      <div className="w-full max-w-[1240px] mx-auto px-4 md:px-8 pt-4 pb-12">
-        {/* Header Bộ Phận Bếp */}
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#EBE7DF]">
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
-                <ChefHat className="w-5 h-5" />
-              </div>
-              <h1 className="text-[17px] md:text-[19px] font-black text-[#2C2926] tracking-tight">
-                {language === 'EN' ? 'Kitchen Operations & Culinary Hub' : 'Bộ Phận Bếp & Chế Biến Ẩm Thực'}
-              </h1>
-            </div>
-            <p className="mt-1 text-[12px] text-[#77726D]">
+    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar font-sans">
+      <div className="staff-page-container space-y-5">
+        <StaffPageHeader className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <h1>{language === 'EN' ? 'Kitchen Operations' : 'Bộ Phận Bếp & Chế Biến Ẩm Thực'}</h1>
+            <p>
               {language === 'EN'
-                ? 'Receive real-time order tickets from Room Service & Restaurant, manage cooking queue, and signal runners for delivery.'
-                : 'Tiếp nhận vé gọi món thời gian thực từ Room Service & Nhà hàng, quản lý quy trình chế biến và bàn giao món cho nhân viên.'}
+                ? 'Receive real-time order tickets, manage prep queue and track kitchen stock.'
+                : 'Tiếp nhận vé gọi món từ Room Service & Kiosk, quản lý quy trình chế biến và tồn kho bếp.'}
             </p>
           </div>
 
-          <div className="flex items-center gap-2 self-start sm:self-auto">
-            <span className="text-[11px] text-stone-500 font-mono hidden md:inline">
-              Cập nhật: {lastUpdated}
+          <div className="flex items-center gap-2">
+            <span className="staff-header-details rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[10px] font-semibold text-[#77736E]">
+              {language === 'EN' ? 'Updated:' : 'Cập nhật:'} {lastUpdated}
             </span>
             <button
               type="button"
               onClick={loadData}
               disabled={isLoading}
               title="Làm mới dữ liệu đơn bếp"
-              className="px-3 py-1.5 rounded-xl bg-white hover:bg-[#F2EFE9] border border-[#DDD8CE] text-xs font-bold text-stone-700 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-all"
+              className="inline-flex items-center gap-1.5 rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#403D39] hover:bg-[#F0EFEC] cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-amber-600' : ''}`} />
-              <span>{isLoading ? 'Đang tải...' : 'Làm Mới'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>{isLoading ? (language === 'EN' ? 'Loading...' : 'Đang tải...') : (language === 'EN' ? 'Refresh' : 'Làm Mới')}</span>
             </button>
           </div>
-        </header>
+        </StaffPageHeader>
 
-        {/* 4 Thẻ KPI Chuẩn Phòng Bếp (3 Trạng Thái Chuẩn Hoá) */}
-        <section className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {/* KPI Cards */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
             label={language === 'EN' ? 'Pending Orders' : 'Chờ Tiếp Nhận'}
             value={pendingCount}
             detail={language === 'EN' ? 'needs chef confirmation' : 'chờ bếp tiếp nhận'}
-            icon={Clock}
-            badgeColor="bg-amber-100 text-amber-800"
+            active={filter === 'Pending'}
+            onClick={() => setFilter('Pending')}
           />
           <KpiCard
             label={language === 'EN' ? 'Cooking Now' : 'Đang Chế Biến'}
             value={inProgressCount}
             detail={language === 'EN' ? 'avg 12m prep' : 'bếp đang nấu'}
-            icon={Flame}
-            badgeColor="bg-orange-100 text-orange-800"
+            active={filter === 'InProgress'}
+            onClick={() => setFilter('InProgress')}
           />
           <KpiCard
             label={language === 'EN' ? 'Completed Today' : 'Hoàn Tất Hôm Nay'}
             value={completedCount}
             detail={language === 'EN' ? 'served to guests' : 'đã phục vụ xong'}
-            icon={CheckCircle2}
-            badgeColor="bg-emerald-100 text-emerald-800"
+            active={filter === 'Completed'}
+            onClick={() => setFilter('Completed')}
           />
           <KpiCard
             label={language === 'EN' ? 'Total Food Orders' : 'Tổng Món Hôm Nay'}
             value={kitchenScopedOrders.length}
             detail={language === 'EN' ? 'all kitchen orders' : 'toàn bộ đơn ẩm thực'}
-            icon={UtensilsCrossed}
-            badgeColor="bg-stone-100 text-stone-800"
-          />        </section>
+            active={filter === 'All'}
+            onClick={() => setFilter('All')}
+          />
+        </section>
 
-        {/* Bố Cục 2 Cột (Trái: Danh Sách Vé Bếp KOT, Phải: Robot & Kho Nguyên Liệu) */}
-        <section className="mt-8 grid grid-cols-1 xl:grid-cols-[minmax(0,2.15fr)_minmax(280px,0.9fr)] gap-6">
-          {/* CỘT TRÁI: DANH SÁCH VÉ BẾP (KITCHEN ORDER TICKETS) */}
-          <div className="min-w-0 space-y-4">
-            {/* Thanh Tìm Kiếm & Bộ Lọc Trạng Thái */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-[#E8E5E0]">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder={language === 'EN' ? 'Search room, ticket, dish...' : 'Tìm theo phòng, mã đơn, món...'}
-                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#E0DDD8] text-xs text-[#222] placeholder:text-stone-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                />
+        {/* 2-Column Layout matching Admin / Bellman / Maintenance */}
+        <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-4">
+          {/* Left Column: Kitchen Order Tickets */}
+          <div className="min-w-0">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-[13px] font-semibold text-[#403D39]">
+                  {language === 'EN' ? 'Active Kitchen Orders' : 'Danh sách Đơn Đặt Món (KOT)'}
+                </h3>
+                <p className="text-[11px] text-[#77736E]">
+                  {st('Open requests first, oldest first. Updates every 15 seconds.')}
+                </p>
               </div>
 
-              {/* Tabs Trạng Thái (3 Trạng Thái Chuẩn Hoá) */}
-              <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
-                {[
-                  { id: 'All', label: language === 'EN' ? 'All' : 'Tất Cả', count: kitchenScopedOrders.length },
-                  { id: 'Pending', label: language === 'EN' ? 'Pending' : 'Chờ Tiếp Nhận', count: pendingCount },
-                  { id: 'InProgress', label: language === 'EN' ? 'Cooking' : 'Đang Chế Biến', count: inProgressCount },
-                  { id: 'Completed', label: language === 'EN' ? 'Done' : 'Đã Hoàn Tất', count: completedCount },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setFilter(tab.id)}
-                    className={`rounded-xl px-3 py-1.5 text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                      filter === tab.id
-                        ? 'bg-[#18181B] text-white shadow-xs'
-                        : 'text-[#666] hover:bg-[#F0EEEA]'
-                    }`}
-                  >
-                    <span>{tab.label}</span>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                        filter === tab.id ? 'bg-stone-700 text-stone-200' : 'bg-stone-100 text-stone-600'
-                      }`}
-                    >
-                      {tab.count}
-                    </span>
-                  </button>
-                ))}
-              </div>            </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-full sm:w-52">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#777]" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder={language === 'EN' ? 'Search room, ticket, dish...' : 'Tìm phòng, mã đơn, món...'}
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-white border border-[#BFBFBD] text-[11px] text-[#262626] placeholder:text-[#8C8C8C] focus:outline-none focus:border-[#262626]"
+                  />
+                </div>
 
-            {/* Danh Sách Vé Bếp */}
-            <div className="space-y-3.5">
+                <div className="staff-request-filters" role="group" aria-label={t('activeRequests')}>
+                  {[
+                    { id: 'All', label: language === 'EN' ? 'All' : 'Tất Cả', count: kitchenScopedOrders.length },
+                    { id: 'Pending', label: language === 'EN' ? 'Pending' : 'Chờ Tiếp Nhận', count: pendingCount },
+                    { id: 'InProgress', label: language === 'EN' ? 'Cooking' : 'Đang Chế Biến', count: inProgressCount },
+                    { id: 'Completed', label: language === 'EN' ? 'Done' : 'Đã Hoàn Tất', count: completedCount },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setFilter(tab.id)}
+                      aria-pressed={filter === tab.id}
+                    >
+                      {tab.label} ({tab.count})
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
               {filteredOrders.length === 0 ? (
-                <div className="rounded-2xl bg-white px-6 py-12 text-center border border-[#E8E5E0]">
-                  <div className="w-12 h-12 rounded-2xl bg-stone-100 text-stone-400 flex items-center justify-center mx-auto mb-3">
-                    <UtensilsCrossed className="w-6 h-6" />
-                  </div>
-                  <h4 className="text-sm font-bold text-stone-700">Không có đơn đặt món nào</h4>
-                  <p className="mt-1 text-xs text-stone-500">
+                <div className="rounded-xl bg-white px-6 py-10 text-center text-[12px] text-[#777] border border-[#BFBFBD]">
+                  <UtensilsCrossed className="w-6 h-6 text-[#A8A29E] mx-auto mb-2" />
+                  <p className="font-semibold text-[#403D39]">Không có đơn đặt món nào</p>
+                  <p className="mt-1 text-[11px] text-[#777]">
                     {searchQuery
                       ? 'Không tìm thấy đơn hàng nào khớp với từ khóa tìm kiếm.'
-                      : 'Hàng đợi chế biến hiện đang trống. Bếp sẵn sàng nhận order mới!'}
+                      : 'Hàng đợi chế biến hiện đang trống. Bếp sẵn sàng nhận order mới.'}
                   </p>
                 </div>
               ) : (
@@ -608,45 +592,38 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                   return (
                     <article
                       key={order.id}
-                      className={`rounded-2xl bg-white p-4 md:p-5 border transition-all shadow-2xs hover:shadow-sm ${
-                        isInProgress
-                          ? 'border-orange-300 ring-1 ring-orange-100'
-                          : isPending
-                          ? 'border-amber-300 ring-1 ring-amber-50'
-                          : 'border-[#E8E5E0]'
-                      }`}
+                      className="rounded-xl bg-white px-5 py-4 border border-[#BFBFBD] transition-all"
                     >
-                      {/* Top Header Vé Bếp */}
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-[#1A1917]">
+                      {/* Top Header */}
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-[11px] font-bold text-[#1A1917] bg-[#F4F3F0] px-2 py-0.5 rounded border border-[#E2DFD9]">
                             #{order.id}
                           </span>
-                          <span className="rounded-lg bg-stone-900 text-white px-2.5 py-0.5 text-xs font-black shadow-2xs">
+                          <span className="rounded bg-[#262626] text-white px-2 py-0.5 text-[11px] font-bold">
                             Phòng {order.room || 'Khách'}
                           </span>
-                          <span className="text-[11px] text-stone-500 font-medium">
+                          <span className="text-[11px] text-[#777] font-medium">
                             • {formatTimeAgo(order.created_at || order.orderedAt, 'Vừa đặt', 'vi')}
                           </span>
                           {((order.note || '').includes('Gộp thêm') || order.is_merged) && (
-                            <span className="rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold">
+                            <span className="rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-0.5 text-[10px] font-bold">
                               Đơn gộp món (Giao 1 chuyến)
                             </span>
                           )}
                         </div>
 
-                        {/* Badge Trạng Thái */}
                         <span
-                          className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold inline-flex items-center gap-1 ${
                             isPending
-                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              ? 'bg-amber-100 text-amber-800'
                               : isInProgress
-                              ? 'bg-orange-50 text-orange-800 border-orange-200'
-                              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              ? 'bg-sky-100 text-sky-800'
+                              : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >
-                          {isInProgress && <Flame className="w-3 h-3 text-orange-600 animate-pulse" />}
-                          {isCompleted && <CheckCircle2 className="w-3 h-3 text-emerald-600" />}
+                          {isInProgress && <Flame className="w-3 h-3 text-sky-700" />}
+                          {isCompleted && <CheckCircle2 className="w-3 h-3 text-emerald-700" />}
                           {isPending
                             ? 'Chờ Tiếp Nhận'
                             : isInProgress
@@ -655,11 +632,11 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                         </span>
                       </div>
 
-                      {/* Thong tin Khach & So may lien he truc tiep de nhan vien chu dong lien lac */}
-                      <div className="flex flex-wrap items-center justify-between gap-2 mt-2 pt-2 border-t border-stone-100 text-[11px]">
+                      {/* Guest Info & Direct Contact */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 mt-2.5 pt-2 border-t border-[#EFECE6] text-[11px]">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-stone-900 flex items-center gap-1">
-                            <User className="w-3.5 h-3.5 text-stone-600" />
+                          <span className="font-semibold text-[#3F3B38] inline-flex items-center gap-1">
+                            <User className="w-3.5 h-3.5 text-[#777]" />
                             <span>{order.guestName || order.guest_name || 'Khách lưu trú'}</span>
                           </span>
 
@@ -667,30 +644,30 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                             <a
                               href={`tel:${order.guestPhone || order.guest_phone}`}
                               onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
+                              className="inline-flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono font-semibold transition-colors cursor-pointer"
                               title="Bấm để gọi điện thoại trực tiếp cho khách"
                             >
-                              <Phone className="w-3 h-3 text-emerald-600" />
+                              <Phone className="w-3 h-3 text-emerald-700" />
                               <span>SĐT: {order.guestPhone || order.guest_phone}</span>
                             </a>
                           )}
 
                           <span
-                            className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-medium shadow-2xs"
+                            className="inline-flex items-center gap-1 bg-[#FAF9F6] text-[#403D39] border border-[#E2DFD9] px-2 py-0.5 rounded text-[11px] font-mono font-medium"
                             title="Số máy nhánh điện thoại bàn trong phòng khách"
                           >
-                            <PhoneCall className="w-3 h-3 text-amber-700" />
+                            <PhoneCall className="w-3 h-3 text-[#777]" />
                             <span>{order.roomPhone || order.room_phone || (order.room ? `Ext ${order.room}` : 'Máy nhánh')}</span>
                           </span>
                         </div>
 
-                        <span className="text-[10px] text-stone-400 font-medium">
+                        <span className="text-[10px] text-[#8C8C8C] font-medium">
                           Nhân viên liên lạc trực tiếp
                         </span>
                       </div>
 
-                      {/* Chi Tiết Món Ăn Trong Đơn */}
-                      <div className="mt-3.5 space-y-2">
+                      {/* Dish List */}
+                      <div className="mt-3 space-y-2">
                         {(() => {
                           const rawItems = Array.isArray(order.items) && order.items.length > 0 ? order.items : [];
                           const groupedItems = [];
@@ -716,19 +693,19 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                             return groupedItems.map((it, idx) => (
                               <div
                                 key={idx}
-                                className="flex items-start justify-between gap-3 p-2.5 rounded-xl border border-[#F0ECE6] bg-[#FAF8F5]"
+                                className="flex items-start justify-between gap-3 p-2.5 rounded-lg border border-[#EFECE6] bg-[#FAF9F6]"
                               >
                                 <div className="flex items-start gap-2.5 flex-1 min-w-0">
-                                  <span className="w-6 h-6 rounded-lg font-mono text-xs font-black flex items-center justify-center shrink-0 bg-amber-100 text-amber-900">
+                                  <span className="w-6 h-6 rounded font-mono text-[11px] font-bold flex items-center justify-center shrink-0 bg-[#EFECE6] text-[#262626]">
                                     {it.qty}x
                                   </span>
 
                                   <div className="flex-1 min-w-0">
-                                    <h4 className="text-xs font-bold text-[#2C2926]">
+                                    <h4 className="text-[12px] font-bold text-[#2B2927]">
                                       {it.name}
                                     </h4>
                                     {it.note && (
-                                      <p className="mt-0.5 text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 inline-block">
+                                      <p className="mt-0.5 text-[11px] font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 inline-block">
                                         Ghi chú: {it.note}
                                       </p>
                                     )}
@@ -739,21 +716,20 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                           }
 
                           return (
-                            <div className="p-2.5 rounded-xl bg-[#FAF8F5] border border-[#F0ECE6] flex items-center justify-between">
-                              <span className="text-xs font-bold text-[#2C2926]">
+                            <div className="p-2.5 rounded-lg bg-[#FAF9F6] border border-[#EFECE6] flex items-center justify-between">
+                              <span className="text-[12px] font-semibold text-[#2B2927]">
                                 {order.name || 'Set Ăn Room Service & Đồ Uống'}
                               </span>
-                              <span className="text-xs font-bold text-stone-600">
+                              <span className="text-[12px] font-bold text-[#555]">
                                 x{order.qty || 1}
                               </span>
                             </div>
                           );
                         })()}
 
-                        {/* Ghi Chú Tổng Cho Đầu Bếp */}
                         {(order.note || order.notes) && (
-                          <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900 flex items-start gap-2">
-                            <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                          <div className="p-2.5 rounded-lg bg-amber-50/70 border border-amber-200 text-[12px] text-amber-900 flex items-start gap-2">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
                             <div>
                               <span className="font-bold">Yêu cầu từ khách: </span>
                               <span>{order.note || order.notes}</span>
@@ -762,10 +738,10 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                         )}
                       </div>
 
-                      {/* Tiến Độ & Thao Tác Đầu Bếp */}
-                      <div className="mt-4 pt-3 border-t border-[#F0ECE6] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 text-[11px] text-stone-500 font-medium">
-                          <Timer className="w-3.5 h-3.5 text-stone-400" />
+                      {/* Footer Actions */}
+                      <div className="mt-4 pt-3 border-t border-[#E9E5DC] flex flex-wrap items-center justify-between gap-3">
+                        <span className="text-[11px] text-[#777] flex items-center gap-1">
+                          <Timer className="w-3.5 h-3.5 shrink-0" />
                           <span>
                             {isPending
                               ? 'Chờ đầu bếp bấm nhận đơn để chuẩn bị nguyên liệu'
@@ -773,24 +749,22 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                               ? 'Bếp đang chế biến món ăn'
                               : 'Đã hoàn tất chu đáo'}
                           </span>
-                        </div>
+                        </span>
 
-                        {/* Các Nút Hành Động: 3 trạng thái chuẩn hoá (Chờ nhận -> Đang chế biến -> Hoàn tất) */}
-                        <div className="flex items-center gap-2 self-end sm:self-auto">
-                          {/* 1. Chờ nhận -> Tiếp Nhận & Chế Biến */}
+                        <div className="flex items-center gap-2">
                           {isPending && (
                             <>
                               <button
                                 type="button"
                                 onClick={() => handleOpenRejectModal(order)}
-                                className="px-3 py-1.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-100 text-xs font-semibold text-stone-700 cursor-pointer transition-colors"
+                                className="rounded-lg border border-[#DDD] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#555] hover:bg-[#F7F5F2] cursor-pointer"
                               >
                                 {t('reject') || 'Từ Chối'}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleStartCooking(order)}
-                                className="px-4 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                                className="rounded-lg bg-[#262626] px-4 py-1.5 text-[11px] font-bold text-white hover:bg-[#404040] cursor-pointer inline-flex items-center gap-1.5"
                               >
                                 <Flame className="w-3.5 h-3.5" />
                                 <span>Tiếp Nhận & Chế Biến</span>
@@ -798,33 +772,31 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                             </>
                           )}
 
-                          {/* 2. Đang chế biến -> Hoàn Thành */}
                           {isInProgress && (
                             <button
                               type="button"
                               onClick={() => handleCompleteOrder(order)}
-                              className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                              className="rounded-lg bg-emerald-600 px-4 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 cursor-pointer inline-flex items-center gap-1.5"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>Hoàn Thành</span>
                             </button>
                           )}
 
-                          {/* 3. Đã hoàn tất */}
                           {isCompleted && (
-                            <span className="px-3.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200 flex items-center gap-1.5 select-none">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded border border-emerald-200 inline-flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>Đã Hoàn Tất</span>
                             </span>
                           )}
-                        </div>                      </div>
+                        </div>
+                      </div>
                     </article>
                   );
                 })
               )}
             </div>
 
-            {/* Pagination Footer */}
             {!isLoading && filteredOrders.length > 0 && (
               <Pagination
                 currentPage={currentPage}
@@ -832,30 +804,29 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                 pageSize={pageSize}
                 onPageChange={setCurrentPage}
                 itemName="đơn"
-                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+                className="mt-3 rounded-xl border border-[#BFBFBD] bg-white"
               />
             )}
           </div>
 
-          {/* CỘT PHẢI: TỒN KHO NGUYÊN LIỆU & MENU BẾP */}
-          <aside className="space-y-4">
-            {/* 1. Cảnh Báo Nguyên Liệu Sắp Hết Trong Bếp (Low Stock Pantry Alerts) */}
-            <article className="rounded-2xl bg-white p-4 md:p-5 border border-[#E8E5E0]">
+          {/* Right Sidebar: Pantry Alerts & Main Dishes (300px matching Maintenance & Bellman) */}
+          <aside className="min-w-0 space-y-4">
+            <section className="rounded-xl bg-white p-4 border border-[#BFBFBD]">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#2C2926] flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#403D39] flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                   <span>Cảnh Báo Tồn Kho Bếp</span>
                 </h3>
-                <span className="text-[10px] text-stone-500 font-bold">5 mục cần lưu ý</span>
+                <span className="text-[10px] text-[#777] font-semibold">5 mục cần lưu ý</span>
               </div>
 
-              <div className="mt-3.5 space-y-2">
+              <div className="mt-3 space-y-2">
                 {data.lowStockAlerts.map((item) => (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between text-xs py-1.5 border-b border-[#F0ECE6] last:border-0"
+                    className="flex items-center justify-between text-[11px] py-1.5 border-b border-[#EFECE6] last:border-0"
                   >
-                    <span className="font-medium text-stone-700">{item.name}</span>
+                    <span className="font-medium text-[#333]">{item.name}</span>
                     <span
                       className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${
                         item.level === 'danger'
@@ -868,35 +839,34 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                   </div>
                 ))}
               </div>
-            </article>
+            </section>
 
-            {/* 3. Tình Trạng Mở Bán Nhanh Các Món Bếp (Menu Availability Toggle) */}
-            <article className="rounded-2xl bg-white p-4 md:p-5 border border-[#E8E5E0]">
+            <section className="rounded-xl bg-white p-4 border border-[#BFBFBD]">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#2C2926] flex items-center gap-1.5">
-                  <SlidersHorizontal className="w-4 h-4 text-stone-600" />
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#403D39] flex items-center gap-1.5">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-[#555]" />
                   <span>Trạng Thái Món Chính</span>
                 </h3>
-                <span className="text-[10px] text-stone-400">Bếp trưởng</span>
+                <span className="text-[10px] text-[#777] font-semibold">Bếp trưởng</span>
               </div>
 
               <div className="space-y-2">
                 {quickDishes.map((dish) => (
                   <div
                     key={dish.id}
-                    className="flex items-center justify-between p-2 rounded-xl bg-[#FAF8F5] border border-[#F0ECE6] text-xs"
+                    className="flex items-center justify-between p-2.5 rounded-lg bg-[#FAF9F6] border border-[#EFECE6] text-[11px]"
                   >
-                    <div>
-                      <p className="font-bold text-stone-800 leading-tight">{dish.name}</p>
-                      <p className="text-[10px] text-stone-400">{dish.category}</p>
+                    <div className="min-w-0 pr-2">
+                      <p className="font-bold text-[#2B2927] leading-tight truncate">{dish.name}</p>
+                      <p className="text-[10px] text-[#777] mt-0.5">{dish.category}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => toggleDishAvailability(dish.id)}
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                      className={`shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
                         dish.available
                           ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                          : 'bg-stone-200 text-stone-600 hover:bg-stone-300'
+                          : 'bg-[#E3E0DC] text-[#555] hover:bg-[#D5D1CC]'
                       }`}
                     >
                       {dish.available ? 'Còn Món' : 'Tạm Hết'}
@@ -904,10 +874,11 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                   </div>
                 ))}
               </div>
-            </article>
+            </section>
           </aside>
         </section>
       </div>
+
       <RejectReasonModal
         isOpen={Boolean(rejectingOrder)}
         onClose={() => setRejectingOrder(null)}
@@ -915,6 +886,6 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
         order={rejectingOrder}
         department="kitchen"
       />
-    </main>
+    </div>
   );
 };

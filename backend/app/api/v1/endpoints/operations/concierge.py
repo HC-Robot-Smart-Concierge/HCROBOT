@@ -30,6 +30,9 @@ from app.schemas.operations import (
     ConciergeLiveRequestUpdate,
     ConciergeLiveRequestResponse,
     ConciergeDashboardResponse,
+    ConciergeEmotionAlertCreate,
+    ConciergeEmotionAlertUpdate,
+    ConciergeEmotionAlertResponse,
 )
 from app.repositories import (
     SupportRequestRepository,
@@ -130,10 +133,12 @@ async def get_concierge_dashboard(
         department_ids=["DEP-CONCIERGE"],
         service_type_ids=["ST-CONCIERGE"],
     )
+    active_emotion_alerts_count = await sr_repo.count_active_emotion_alerts()
 
     return {
         "current_request": current_req,
         "active_sessions_count": active_count,
+        "active_emotion_alerts_count": active_emotion_alerts_count,
     }
 
 
@@ -237,6 +242,7 @@ async def list_concierge_requests(
         department_ids=["DEP-CONCIERGE"],
         service_type_ids=["ST-CONCIERGE"],
         status=status,
+        exclude_emotion_alerts=True,
     )
 
 
@@ -311,6 +317,102 @@ async def update_concierge_request(
                 hs.call_ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
         elif update_in.status in ["Connected", "In Progress"]:
             hs.status = "Active"
+
+    await sr_repo.commit()
+    await sr_repo.refresh(req)
+    return req
+
+
+# =====================================================================
+# UNHAPPY GUEST / EMOTION ALERTS (XỬ LÝ KHÁCH CÓ BIỂU CẢM KHÓ CHỊU)
+# =====================================================================
+
+@router.get(
+    "/concierge/emotion-alerts",
+    response_model=List[ConciergeEmotionAlertResponse],
+    tags=TAG_CONCIERGE,
+    summary="Danh sách cảnh báo khách hàng có biểu cảm khó chịu cho bộ phận Concierge",
+)
+async def list_concierge_emotion_alerts(
+    status_q: Optional[str] = Query(None, alias="status", description="Lọc theo trạng thái: Pending, In Progress, Completed"),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+):
+    """Truy vấn danh sách cảnh báo khi khách hàng có biểu cảm khó chịu từ Camera AI Kiosk hoặc nhân viên Concierge."""
+    return await sr_repo.list_concierge_emotion_alerts(status=status_q)
+
+
+@router.post(
+    "/concierge/emotion-alerts",
+    response_model=ConciergeEmotionAlertResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=TAG_CONCIERGE,
+    summary="Tạo cảnh báo xử lý khi khách có biểu cảm khó chịu (Concierge)",
+)
+async def create_concierge_emotion_alert(
+    req_in: ConciergeEmotionAlertCreate,
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+    db: AsyncSession = Depends(get_db),
+):
+    """Tiếp nhận cảnh báo từ Camera AI Robot Kiosk hoặc ghi nhận trực tiếp để bộ phận Concierge tiếp cận hỗ trợ khách."""
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=90)
+    existing = await sr_repo.find_recent_emotion_alert(req_in.location, since=cutoff)
+    if existing:
+        return ConciergeEmotionAlertResponse.model_validate(existing).model_copy(update={"duplicate": True})
+
+    ticket_code = f"EA-{random.randint(1000, 99999)}"
+    new_req = SupportRequest(
+        ticket_code=ticket_code,
+        title=req_in.title,
+        room_number=req_in.location,
+        guest_name=req_in.guest_name or "Khách tại Sảnh Kiosk",
+        source=req_in.reporter or "HCRobot Emotion AI",
+        description=req_in.description
+        or "Camera AI phát hiện khách có biểu cảm khó chịu. Cần nhân viên Concierge tiếp cận hỗ trợ trực tiếp ngay.",
+        department_id="DEP-CONCIERGE",
+        service_type_id="ST-CONCIERGE",
+        status="Pending",
+        priority="High",
+        request_type="emotion_alert",
+    )
+    await sr_repo.create(new_req)
+
+    await create_department_notification(
+        db=db,
+        department="Concierge",
+        title=f"Cảnh báo Khách có biểu cảm khó chịu #{ticket_code}",
+        description=f"{req_in.location}: {req_in.title} - {req_in.description or req_in.guest_name or ''}".strip(" -"),
+        request_id=new_req.id,
+        request_type="concierge",
+        type="Alert",
+    )
+
+    await sr_repo.commit()
+    await sr_repo.refresh(new_req)
+    return new_req
+
+
+@router.patch(
+    "/concierge/emotion-alerts/{request_id}",
+    response_model=ConciergeEmotionAlertResponse,
+    tags=TAG_CONCIERGE,
+    summary="Cập nhật trạng thái xử lý cảnh báo khách hàng khó chịu (Concierge)",
+)
+async def update_concierge_emotion_alert(
+    request_id: str,
+    update_in: ConciergeEmotionAlertUpdate,
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+):
+    """Nhân viên Concierge tiếp nhận hỗ trợ (In Progress) hoặc hoàn tất xoa dịu khách hàng (Completed)."""
+    req = await sr_repo.get_by_id_or_code(request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Không tìm thấy cảnh báo Concierge")
+
+    if update_in.status is not None:
+        req.status = update_in.status
+    staff_val = update_in.assigned_to or update_in.assigned_staff
+    if staff_val is not None:
+        req.assigned_staff_name = staff_val
+    req.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     await sr_repo.commit()
     await sr_repo.refresh(req)

@@ -24,7 +24,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-const DEFAULT_STREAM_URL = 'http://100.99.72.51:8554/stream';
+const DEFAULT_STREAM_URL = '/api/v1/operations/robot/camera/stream';
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 // Pi dừng động cơ nếu quá HCROBOT_UDP_CMD_TIMEOUT (mặc định 1.0 s) không có lệnh chạy mới
 // (robot/udp_command_watchdog.py) -> phải gửi lại lệnh nhanh hơn ngưỡng đó khi đang giữ phím.
@@ -596,7 +596,7 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
             type="text"
             value={customUrl}
             onChange={(e) => setCustomUrl(e.target.value)}
-            placeholder="http://localhost:8554/stream"
+            placeholder="/api/v1/operations/robot/camera/stream"
             className="flex-1 px-3 py-1.5 bg-[#F2EFE9] border border-[#BFBFBD] rounded-lg text-xs font-mono text-[#262626] placeholder-[#8C8C8C] focus:outline-none focus:border-[#262626]"
           />
           <button

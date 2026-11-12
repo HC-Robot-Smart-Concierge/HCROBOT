@@ -31,7 +31,7 @@ import { playEarcon } from '../../utils/audioFeedback';
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
 import { RobotFacilitiesModal } from '../../components/robot/RobotFacilitiesModal';
-import { createConciergeRequest } from '../../services/conciergeApi';
+import { createConciergeRequest, createConciergeEmotionAlert } from '../../services/conciergeApi';
 import { createBellRequest, createMaintenanceRequest } from '../../services/operationsApi';
 import { useRobotBattery } from '../../hooks/useRobotBattery';
 import { useLowBatteryGuard } from '../../hooks/useLowBatteryGuard';
@@ -436,14 +436,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         if (now - lastUnhappyAlertTimeRef.current > 90000) {
           lastUnhappyAlertTimeRef.current = now;
           const roomLoc = activeRoomNumber ? `Room ${activeRoomNumber}` : 'Main Lobby Kiosk';
-          createBellRequest({
+          createConciergeEmotionAlert({
             title: `Cảnh báo AI: Khách có biểu cảm khó chịu tại ${roomLoc}`,
             location: roomLoc,
             guest_name: activeRoomNumber ? `Guest (Room ${activeRoomNumber})` : 'Khách tại Sảnh Kiosk',
             reporter: 'HCRobot Emotion AI',
             description:
-              'Camera AI phát hiện khách hàng có biểu cảm khó chịu (Unhappy) khi tương tác tại Kiosk. Cần nhân viên Bellman tiếp cận hỗ trợ trực tiếp ngay.',
-            request_type: 'emotion_alert',
+              'Camera AI phát hiện khách hàng có biểu cảm khó chịu (Unhappy) khi tương tác tại Kiosk. Cần nhân viên Concierge tiếp cận hỗ trợ trực tiếp ngay.',
+            emotion_type: 'Unhappy',
           }).catch(() => {});
         }
       }
@@ -2699,7 +2699,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onGuestLeft={handleGuestLeft}
         onEmotionChange={handleGuestEmotionDetected}
         source={import.meta.env.VITE_CAMERA_SOURCE || 'local'}
-        streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || 'http://localhost:8554/stream'}
+        streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || '/api/v1/operations/robot/camera/stream'}
         defaultMinimized={true}
         visible={false}
       />

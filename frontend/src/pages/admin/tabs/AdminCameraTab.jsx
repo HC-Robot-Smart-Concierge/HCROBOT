@@ -117,6 +117,17 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
         }
       };
 
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          setWebrtcStatus('connected');
+          setIsConnected(true);
+          setStreamError(false);
+        } else if (pc.iceConnectionState === 'failed') {
+          setWebrtcStatus('failed');
+          setStreamMode('mjpeg');
+        }
+      };
+
       pc.addTransceiver('video', { direction: 'recvonly' });
 
       const offer = await pc.createOffer();
@@ -134,7 +145,7 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
           setTimeout(() => {
             pc.removeEventListener('icegatheringstatechange', checkState);
             resolve();
-          }, 1500);
+          }, 2500);
         });
       }
 
@@ -599,10 +610,12 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
   const checkHealth = useCallback(async () => {
     try {
       const healthUrl = streamUrl.replace('/stream', '/health');
-      const res = await fetch(healthUrl, { signal: AbortSignal.timeout(3000) });
+      const res = await fetch(healthUrl, { signal: AbortSignal.timeout(8000) });
       if (res.ok) {
-        setIsConnected(true);
-        setLastHealthCheck(new Date());
+        const data = await res.json().catch(() => ({}));
+        const ok = data.online !== false;
+        setIsConnected(ok);
+        if (ok) setLastHealthCheck(new Date());
       } else {
         setIsConnected(false);
       }

@@ -632,8 +632,11 @@ async def handle_offer(request):
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
             logger.info("WebRTC Peer connection state: %s", pc.connectionState)
-            if pc.connectionState in ["failed", "closed"]:
-                await pc.close()
+            if pc.connectionState in ["failed", "closed", "disconnected"]:
+                try:
+                    await pc.close()
+                except Exception:
+                    pass
                 pcs.discard(pc)
 
         if relay is None:
@@ -647,6 +650,12 @@ async def handle_offer(request):
         await pc.setRemoteDescription(offer)
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
+
+        # Cho ICE gathering hoan tat (Vanilla ICE pattern cho WebRTC HTTP signaling)
+        gather_timeout = 2.0
+        start_t = time.time()
+        while pc.iceGatheringState != "complete" and (time.time() - start_t) < gather_timeout:
+            await asyncio.sleep(0.05)
 
         return web.json_response(
             {
@@ -713,6 +722,9 @@ async def handle_stream(request):
 
 async def handle_health(request):
     global pcs
+    dead = [p for p in pcs if p.connectionState in ["failed", "closed", "disconnected"]]
+    for p in dead:
+        pcs.discard(p)
     return web.json_response(
         {
             "status": "ok",

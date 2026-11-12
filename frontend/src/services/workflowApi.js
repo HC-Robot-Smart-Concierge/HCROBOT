@@ -60,7 +60,7 @@ export async function deleteWaypoint(waypointId) {
  */
 export async function fetchWorkflows() {
   const res = await fetch(`${API_BASE}/workflows`);
-  if (!res.ok) throw new Error('Không thể tải danh sách Workflows');
+  if (!res.ok) throw await errorFromResponse(res, `Máy chủ trả lỗi ${res.status} khi tải workflow. Thử tải lại sau vài giây.`);
   return res.json();
 }
 
@@ -82,7 +82,26 @@ export async function saveWorkflow(workflow) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(workflow),
   });
-  if (!res.ok) throw new Error('Lỗi khi lưu Workflow');
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const detail = body?.detail;
+    throw new Error(Array.isArray(detail) ? detail.map((item) => item.msg).join('; ') : detail || 'Lỗi khi lưu Workflow');
+  }
+  return res.json();
+}
+
+export async function previewWorkflowSchedule(executionConfig, signal) {
+  const res = await fetch(`${API_BASE}/workflows/schedule-preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ execution_config: { ...executionConfig, route: null } }),
+    signal,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const detail = body?.detail;
+    throw new Error(Array.isArray(detail) ? detail.map((item) => item.msg).join('; ') : detail || 'Không xem được lịch dự kiến');
+  }
   return res.json();
 }
 
@@ -106,7 +125,7 @@ export async function executeWorkflow(workflowId, payload = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error('Lỗi khi chạy Workflow');
+  if (!res.ok) throw await errorFromResponse(res, 'Lỗi khi chạy Workflow');
   return res.json();
 }
 

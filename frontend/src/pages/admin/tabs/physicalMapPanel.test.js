@@ -10,8 +10,8 @@ import {
 
 describe('thanh icon ben phai (Physical Map)', () => {
   it('lists every section of the old side panel, tabs marked', () => {
-    expect(PANEL_SECTIONS.map((s) => s.key)).toEqual(['telemetry', 'nav2', 'pose', 'WAYPOINTS', 'ZONES', 'TELEOP']);
-    expect(PANEL_SECTIONS.filter((s) => s.tab).map((s) => s.key)).toEqual(['WAYPOINTS', 'ZONES', 'TELEOP']);
+    expect(PANEL_SECTIONS.map((s) => s.key)).toEqual(['telemetry', 'nav2', 'pose', 'WAYPOINTS', 'ROUTES', 'ZONES', 'TELEOP']);
+    expect(PANEL_SECTIONS.filter((s) => s.tab).map((s) => s.key)).toEqual(['WAYPOINTS', 'ROUTES', 'ZONES', 'TELEOP']);
   });
 
   it('opens the panel on the clicked section and closes it when the same icon is clicked again', () => {

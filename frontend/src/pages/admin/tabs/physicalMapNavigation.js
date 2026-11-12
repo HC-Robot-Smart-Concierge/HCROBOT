@@ -4,9 +4,9 @@ export function amclPoseIsReliable(msg) {
   const pose = msg?.pose?.pose;
   const covariance = msg?.pose?.covariance;
   if (!pose || !Array.isArray(covariance) || covariance.length !== 36
-      || ![pose.position?.x, pose.position?.y, pose.orientation?.z, pose.orientation?.w,
-        covariance[0], covariance[1], covariance[6], covariance[7], covariance[35]].every(Number.isFinite)
-      || covariance[0] < 0 || covariance[7] < 0 || covariance[35] < 0) return false;
+    || ![pose.position?.x, pose.position?.y, pose.orientation?.z, pose.orientation?.w,
+    covariance[0], covariance[1], covariance[6], covariance[7], covariance[35]].every(Number.isFinite)
+    || covariance[0] < 0 || covariance[7] < 0 || covariance[35] < 0) return false;
   const xy = (covariance[1] + covariance[6]) / 2;
   // Bound uncertainty along the worst horizontal axis, including x/y correlation.
   const maxVariance = (covariance[0] + covariance[7]
@@ -115,7 +115,7 @@ export function sendNav2Endpoint(client, state, target, config, costmap) {
   if (reason) throw new Error(reason);
   if (![target.x, target.y, target.yaw].every(Number.isFinite)) throw new Error('Tọa độ endpoint không hợp lệ.');
   if (target.x < config.originX || target.y < config.originY
-      || target.x >= config.originX + config.widthMeters || target.y >= config.originY + config.heightMeters) {
+    || target.x >= config.originX + config.widthMeters || target.y >= config.originY + config.heightMeters) {
     throw new Error('Endpoint nằm ngoài bản đồ đang chọn.');
   }
   if (!costmap || String(costmap.header?.frame_id).replace(/^\//, '') !== 'map') {

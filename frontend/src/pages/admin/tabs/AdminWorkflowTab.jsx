@@ -21,12 +21,16 @@ import { WorkflowSimulatorModal } from './workflow/WorkflowSimulatorModal';
 import { WorkflowSimulatorStudio } from './workflow/WorkflowSimulatorStudio';
 
 import { useRobotControlText } from '../../../context/RobotControlLanguage';
+import { executionConfig, executionError, executionSummary } from '../../../utils/workflowExecution';
+import { expandWorkflowRoutes } from '../../../utils/physicalMapRoute';
+import { stepSetup } from '../../../utils/workflowStepSetup';
 
 export { OTTO_STEP_TYPES };
 
 export const AdminWorkflowTab = () => {
   const rc = useRobotControlText();
   const [workflows, setWorkflows] = useState([]);
+  const [routes, setRoutes] = useState([]);
   const [waypoints, setWaypoints] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -69,11 +73,18 @@ export const AdminWorkflowTab = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [wfList, wpList] = await Promise.all([fetchWorkflows(), fetchWaypoints()]);
-      setWorkflows(wfList || []);
-      setWaypoints(wpList || []);
-    } catch {
-      showNotification('Lỗi khi tải danh sách kịch bản hoặc waypoints.');
+      const [workflowResult, waypointResult] = await Promise.allSettled([fetchWorkflows(), fetchWaypoints()]);
+      const errors = [];
+      if (workflowResult.status === 'fulfilled') {
+        const wfList = workflowResult.value || [];
+        setWorkflows(wfList.filter((wf) => !wf.execution_config?.route));
+        setRoutes(wfList.filter((wf) => wf.is_active && wf.execution_config?.route));
+      } else errors.push(`Không tải được workflow: ${workflowResult.reason.message}`);
+      if (waypointResult.status === 'fulfilled') setWaypoints(waypointResult.value || []);
+      else errors.push(`Không tải được điểm mốc: ${waypointResult.reason.message}`);
+      if (errors.length) showNotification(errors.join(' · '));
+    } catch (err) {
+      showNotification(`Lỗi tải dữ liệu: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -88,7 +99,8 @@ export const AdminWorkflowTab = () => {
       id: `wf-${Date.now().toString(36)}`,
       name: 'Kịch bản phục vụ khách mới',
       description: 'Mô tả chu trình hoạt động của robot...',
-      trigger_type: 'AUTO_DETECT',
+      trigger_type: 'MANUAL',
+      execution_config: executionConfig(),
       is_active: true,
       steps: [
         {
@@ -120,6 +132,16 @@ export const AdminWorkflowTab = () => {
   };
 
   const handleSaveWorkflow = async () => {
+    for (const step of editingWorkflow.steps || []) {
+      if (step.type !== 'FOLLOW_ROUTE') continue;
+      if (!routes.some((r) => r.id === step.params?.route_id)) { showNotification('Chọn tuyến hợp lệ cho mỗi bước Đi theo tuyến.'); return; }
+      if (!Number.isInteger(step.params.repeat_count) || step.params.repeat_count < 1 || step.params.repeat_count > 100) { showNotification('Số vòng của bước Đi theo tuyến phải từ 1 đến 100.'); return; }
+    }
+    const configError = executionError(editingWorkflow);
+    if (configError) {
+      showNotification(configError);
+      return;
+    }
     if (!editingWorkflow.name.trim()) {
       showNotification('Vui lòng nhập tên kịch bản workflow');
       return;
@@ -161,25 +183,29 @@ export const AdminWorkflowTab = () => {
     }
   };
 
+  const hasRunConfiguration = (wf) => {
+    if (!wf.steps?.length) { showNotification('Thêm ít nhất một bước trước khi chạy workflow.'); return false; }
+    const index = wf.steps.findIndex((step) => !stepSetup(step, routes).ready);
+    if (index >= 0) {
+      showNotification(`Bước ${index + 1} cần cấu hình: ${stepSetup(wf.steps[index], routes).issues.join(' ')}`);
+      return false;
+    }
+    return true;
+  };
+
   const handleTestRun = (wf) => {
-    setSimulatingWorkflow(wf);
-    setActiveView('simulator');
+    if (!hasRunConfiguration(wf)) return;
+    try { setSimulatingWorkflow(expandWorkflowRoutes(wf, routes)); setActiveView('simulator'); }
+    catch (err) { showNotification(err.message); }
   };
 
   const handleDispatchToRobot = async (wf) => {
-    try {
-      const bc = new BroadcastChannel('hcrobot_workflow_channel');
-      bc.postMessage({ type: 'EXECUTE_WORKFLOW', workflow: wf });
-      bc.close();
-    } catch {
-      // BroadcastChannel fallback
-    }
-
+    if (!hasRunConfiguration(wf)) return;
     try {
       await executeWorkflow(wf.id, { robot_id: 'RC-001' });
       showNotification(`Đã phát lệnh kịch bản "${wf.name}" tới màn hình Robot!`);
-    } catch {
-      showNotification(`Đã gửi lệnh nội bộ tới màn hình Robot: "${wf.name}"`);
+    } catch (err) {
+      showNotification(`Không gửi được workflow: ${err.message}`);
     }
   };
 
@@ -233,7 +259,7 @@ export const AdminWorkflowTab = () => {
   };
 
   const handleWorkflowMetaChange = (key, val) => {
-    setEditingWorkflow({ ...editingWorkflow, [key]: val });
+    setEditingWorkflow((prev) => ({ ...prev, [key]: val }));
   };
 
   return (
@@ -374,6 +400,7 @@ export const AdminWorkflowTab = () => {
                     <p className="text-[11px] line-clamp-2 min-h-[32px] mt-1.5 leading-relaxed" style={{ color: '#8C8C8C' }}>
                       {wf.description || 'Chưa có mô tả chi tiết'}
                     </p>
+                    <p className="mt-2 text-[11px] font-semibold text-stone-600">{executionSummary(wf)}</p>
 
                     {/* Steps Pipeline Preview */}
                     <div className="mt-3 pt-2.5 border-t flex items-center justify-between text-xs" style={{ borderColor: '#BFBFBD' }}>
@@ -468,7 +495,14 @@ export const AdminWorkflowTab = () => {
       <WorkflowBuilderModal
         isOpen={isEditorOpen}
         workflow={editingWorkflow}
+        workflows={workflows}
+        onSelectWorkflow={(id) => {
+          const selected = workflows.find((item) => item.id === id);
+          if (selected) handleOpenEdit(selected);
+        }}
         waypoints={waypoints}
+        routes={routes}
+        onRouteSaved={(route) => setRoutes((previous) => [...previous.filter((r) => r.id !== route.id), route])}
         isLoading={isLoading}
         onClose={() => {
           setIsEditorOpen(false);

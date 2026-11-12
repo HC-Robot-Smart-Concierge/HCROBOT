@@ -12,6 +12,8 @@ from app.schemas.workflow import (
     WorkflowUpdate,
     WorkflowExecuteRequest,
     WorkflowExecuteResponse,
+    WorkflowSchedulePreviewRequest,
+    WorkflowExecutionConfig,
 )
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,20 @@ router = APIRouter()
 from app.api.v1.endpoints.default_workflows import CORE_WORKFLOWS, upgrade_legacy_move_step, upgrade_guest_service_steps
 
 _workflows_seeded = False
+
+
+async def validated_route_steps(steps, repo):
+    from app.services.workflow_routes import resolve_route_steps
+    try:
+        return await resolve_route_steps(steps, repo)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/schedule-preview", summary="Xem lịch dự kiến, không phát lệnh robot")
+async def preview_workflow_schedule(payload: WorkflowSchedulePreviewRequest):
+    from app.services.workflow_schedule import preview_schedule
+    return {"occurrences": preview_schedule(payload.execution_config), "dispatch_enabled": False}
 
 
 async def ensure_default_workflow(repo: WorkflowRepository):
@@ -62,6 +78,7 @@ async def create_or_save_workflow(
 
     # Convert steps models to plain dicts for JSON column
     steps_data = [s.model_dump() if hasattr(s, "model_dump") else s for s in payload.steps]
+    await validated_route_steps(steps_data, repo)
 
     if existing:
         existing.name = payload.name
@@ -69,6 +86,7 @@ async def create_or_save_workflow(
         existing.trigger_type = payload.trigger_type
         existing.is_active = payload.is_active
         existing.steps = steps_data
+        existing.execution_config = payload.execution_config.model_dump()
         existing.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await repo.commit()
         await repo.refresh(existing)
@@ -81,6 +99,7 @@ async def create_or_save_workflow(
             trigger_type=payload.trigger_type,
             is_active=payload.is_active,
             steps=steps_data,
+            execution_config=payload.execution_config.model_dump(),
         )
         await repo.create(new_wf, autocommit=True)
         return new_wf
@@ -96,6 +115,14 @@ async def update_workflow(
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Workflow")
 
+    effective_trigger = payload.trigger_type if payload.trigger_type is not None else existing.trigger_type
+    effective_config = payload.execution_config or WorkflowExecutionConfig.model_validate(existing.execution_config or {})
+    if effective_trigger == "SCHEDULE" and not any(s.enabled for s in effective_config.schedules):
+        raise HTTPException(status_code=422, detail="Workflow theo lịch cần ít nhất một lịch đang bật")
+    await validated_route_steps(
+        [step.model_dump() for step in payload.steps] if payload.steps is not None else existing.steps or [], repo
+    )
+
     if payload.name is not None:
         existing.name = payload.name
     if payload.description is not None:
@@ -104,6 +131,8 @@ async def update_workflow(
         existing.trigger_type = payload.trigger_type
     if payload.is_active is not None:
         existing.is_active = payload.is_active
+    if payload.execution_config is not None:
+        existing.execution_config = payload.execution_config.model_dump()
     if payload.steps is not None:
         existing.steps = [s.model_dump() if hasattr(s, "model_dump") else s for s in payload.steps]
 
@@ -121,6 +150,12 @@ async def delete_workflow(
     existing = await repo.get_by_id(workflow_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Workflow")
+
+    for workflow in await repo.list_workflows():
+        if workflow.id == workflow_id:
+            continue
+        if any(step.get("type") == "FOLLOW_ROUTE" and (step.get("params") or {}).get("route_id") == workflow_id for step in workflow.steps or []):
+            raise HTTPException(status_code=409, detail=f"Tuyến đang được workflow '{workflow.name}' sử dụng. Đổi tuyến trong workflow trước khi xóa.")
 
     await repo.delete(existing, autocommit=True)
     return {"status": "SUCCESS", "message": f"Đã xóa thành công Workflow {workflow_id}"}
@@ -141,6 +176,7 @@ async def execute_workflow(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Workflow")
 
     logs = []
+    steps = await validated_route_steps(wf.steps or [], repo)
     robot_code = payload.robot_id or "RC-001"
     logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Kích hoạt kịch bản '{wf.name}' trên {robot_code}")
 
@@ -153,7 +189,7 @@ async def execute_workflow(
                 "workflow": {
                     "id": wf.id,
                     "name": wf.name,
-                    "steps": wf.steps,
+                    "steps": steps,
                 },
                 "robot_id": robot_code,
             }
@@ -161,7 +197,6 @@ async def execute_workflow(
     except Exception as e:
         logger.warning(f"Could not broadcast workflow dispatch: {e}")
 
-    steps = wf.steps or []
     for idx, step in enumerate(steps, start=1):
         step_type = step.get("type", "UNKNOWN")
         step_title = step.get("title", f"Step {idx}")

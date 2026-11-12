@@ -89,6 +89,8 @@ import {
 } from 'lucide-react';
 import { PANEL_SECTIONS, fitCanvasSize, loadPanelState, nextPanelState, savePanelState } from './physicalMapPanel';
 import PhysicalMapPopup from './PhysicalMapPopup';
+import { PhysicalMapRoutePlanner } from './PhysicalMapRoutePlanner';
+import { routePoint } from '../../../utils/physicalMapRoute';
 import {
   DEFAULT_VIEW, MAX_ZOOM, clampView, fitWidthView, isDefaultView, mapFrame, panView, wheelZoomFactor, zoomViewAt,
 } from './physicalMapView';
@@ -99,6 +101,7 @@ const PANEL_ICONS = {
   nav2: Compass,
   pose: LocateFixed,
   WAYPOINTS: MapPin,
+  ROUTES: Navigation,
   ZONES: ShieldBan,
   TELEOP: Gamepad2,
 };
@@ -253,7 +256,7 @@ export const transformCanvasToWorld = (canvasX, canvasY, canvasWidth, canvasHeig
   return { worldX, worldY, scale };
 };
 
-export const AdminPhysicalMapTab = ({ currentUser }) => {
+export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, initialRoute = null, onRouteSaved }) => {
   const { t } = useLanguage();
   const canvasRef = useRef(null);
   const rosClientRef = useRef(null);
@@ -329,6 +332,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Danh sach Endpoints (Waypoints) va Zones quan ly thoi gian thuc
   const [endpoints, setEndpoints] = useState(DEFAULT_LAB_WAYPOINTS);
   const [zones, setZones] = useState(DEFAULT_LAB_ZONES);
+  const [routeDraft, setRouteDraft] = useState(() => initialRoute ? JSON.parse(JSON.stringify(initialRoute)) : null);
+  const [isPickingRoute, setIsPickingRoute] = useState(false);
 
   // Che do Ghim nhieu Endpoint truc tiep tren ban do (Click de them)
   const [isAddEndpointMode, setIsAddEndpointMode] = useState(false);
@@ -346,10 +351,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const [isSavingZones, setIsSavingZones] = useState(false);
 
   // Thanh icon la noi duy nhat chuyen phan; luu ca phan dang mo khi tai lai.
-  const [panel, setPanel] = useState(() => ({ ...loadPanelState(), open: false }));
+  const [panel, setPanel] = useState(() => routeLibraryMode ? { section: 'ROUTES', open: true } : { ...loadPanelState(), open: false });
   const closePopup = useCallback(() => setPanel((current) => ({ ...current, open: false })), []);
   const openPanelSection = (section) => setPanel({ open: true, section });
-  const handlePanelRail = (key) => setPanel((current) => nextPanelState(current, key));
+  const handlePanelRail = (key) => {
+    setIsPickingRoute(false);
+    setPanel((current) => nextPanelState(current, key));
+  };
   useEffect(() => {
     savePanelState(panel);
   }, [panel]);
@@ -415,7 +423,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       .then((layouts) => {
         if (!isMounted) return;
         setMapLayouts(layouts);
-        const storedId = localStorage.getItem(SELECTED_MAP_STORAGE_KEY);
+        const storedId = initialRoute?.execution_config?.route?.map_id || localStorage.getItem(SELECTED_MAP_STORAGE_KEY);
         const stored = layouts.find((m) => m.map_id === storedId);
         if (stored) setMapConfig(layoutToMapConfig(stored));
       })
@@ -428,7 +436,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const handleSelectMap = (mapId) => {
     if (mapId === mapConfig.mapId) return;
     if (
-      (hasUnsavedEndpoints || hasUnsavedZones) &&
+      (hasUnsavedEndpoints || hasUnsavedZones || routeDraft) &&
       !window.confirm('Điểm mốc / vùng của map hiện tại chưa lưu. Vẫn chuyển map và bỏ thay đổi?')
     ) {
       return;
@@ -436,10 +444,12 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const layout = mapLayouts.find((m) => m.map_id === mapId);
     if (!layout) return;
     localStorage.setItem(SELECTED_MAP_STORAGE_KEY, mapId);
-    handleStop();
+    if (!routeLibraryMode) handleStop();
     localizationRef.current = { mapId: null, requestedAt: 0, confirmed: false };
     setLocalizationReady(false);
     setMapConfig(layoutToMapConfig(layout));
+    setRouteDraft(null);
+    setIsPickingRoute(false);
     setSelectedEndpoint(null);
     setSelectedZone(null);
     setSelectedGoal(null);
@@ -859,6 +869,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
   // Bat map_server + AMCL + Nav2 voi map dang chon (backend sinh lai mask vung cam truoc).
   const handleStartNav2 = async () => {
+    if (routeLibraryMode) return;
     if (isStartingNav2) return;
     if (
       ['MAPPING', 'EXPLORING'].includes(nav2Runtime.mode) &&
@@ -945,6 +956,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   };
 
   const handleNavigateToEndpoint = (ep) => {
+    if (routeLibraryMode) return;
     if (!ep) return;
     setSelectedEndpoint(ep);
     setSelectedZone(null);
@@ -1658,6 +1670,31 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     ctx.fillStyle = '#10B981';
     ctx.font = 'bold 9px monospace';
     ctx.fillText('Gốc map (0,0)', opx + 6, opy + 12);
+
+    // Planned route is an ordered overlay, separate from Nav2's live path.
+    const route = routeDraft?.execution_config?.route;
+    if (route?.map_id === mapConfig.mapId && route.points.length) {
+      const points = route.points.map((p) => worldToCanvas(p.x, p.y, width, height));
+      ctx.save();
+      ctx.strokeStyle = '#22D3EE'; ctx.lineWidth = 3; ctx.setLineDash([8, 5]);
+      ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
+      points.slice(1).forEach((p) => ctx.lineTo(p.x, p.y)); ctx.stroke(); ctx.setLineDash([]);
+      points.forEach((point, index) => {
+        if (index) {
+          const previous = points[index - 1];
+          const angle = Math.atan2(point.y - previous.y, point.x - previous.x);
+          const x = (point.x + previous.x) / 2, y = (point.y + previous.y) / 2;
+          ctx.beginPath(); ctx.moveTo(x, y);
+          ctx.lineTo(x - 10 * Math.cos(angle - 0.5), y - 10 * Math.sin(angle - 0.5));
+          ctx.moveTo(x, y); ctx.lineTo(x - 10 * Math.cos(angle + 0.5), y - 10 * Math.sin(angle + 0.5)); ctx.stroke();
+        }
+        ctx.beginPath(); ctx.arc(point.x, point.y, 12, 0, Math.PI * 2);
+        ctx.fillStyle = '#0E7490'; ctx.fill(); ctx.strokeStyle = '#67E8F9'; ctx.stroke();
+        ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(String(index + 1), point.x, point.y);
+      });
+      ctx.restore();
+    }
   }, [
     mapImage,
     mapConfig,
@@ -1684,6 +1721,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     navigatingEndpointId,
     hoveredEndpointId,
     zoneDraft,
+    routeDraft,
     canvasSize,
     viewConfig,
   ]);
@@ -1709,6 +1747,12 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // ==========================================
   // TUONG TAC CHUOT (SELECT, DRAG & DROP)
   // ==========================================
+  const validateRoutePoint = (point) => {
+    if (![Number(point.x), Number(point.y)].every(Number.isFinite)) return 'Tọa độ không hợp lệ.';
+    if (point.x < mapConfig.originX || point.x > mapConfig.originX + mapConfig.widthMeters || point.y < mapConfig.originY || point.y > mapConfig.originY + mapConfig.heightMeters) return 'Chọn điểm bên trong bản đồ.';
+    return endpointPlacementViolation(point, zones);
+  };
+
   const handleCanvasMouseDown = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -1725,6 +1769,23 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       panLastRef.current = { x: canvasX, y: canvasY };
       setDragState({ type: 'PAN' });
       isDraggingRef.current = true;
+      return;
+    }
+
+    if (isPickingRoute && routeDraft?.execution_config?.route?.map_id === mapConfig.mapId) {
+      const ep = endpoints.find((item) => {
+        const point = worldToCanvas(item.x, item.y, canvas.width, canvas.height);
+        return Math.hypot(canvasX - point.x, canvasY - point.y) <= 18;
+      });
+      const point = routePoint(ep ? ep.x : worldX, ep ? ep.y : worldY, ep);
+      const invalid = validateRoutePoint(point);
+      if (invalid) { setNavStatus(invalid); return; }
+      setRouteDraft((previous) => {
+        const config = previous.execution_config, route = config.route;
+        if (route.points.length >= 200) return previous;
+        return { ...previous, execution_config: { ...config, route: { ...route, points: [...route.points, point] } } };
+      });
+      setNavStatus(`Đã thêm ${point.name} vào tuyến. Bấm “Xong” để lưu tuyến.`);
       return;
     }
 
@@ -2046,6 +2107,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // DAT VI TRI BAN DAU (INITIAL POSE) TREN BAN DO DA QUET
   // ==========================================
   const handleApplyInitialPose = async (px, py, pyawRad) => {
+    if (routeLibraryMode) return;
     setIsSettingPose(true);
     setPoseDraft({ x: px, y: py, yaw: pyawRad });
     setNavStatus(`Đang đặt vị trí ban đầu (${px.toFixed(2)}, ${py.toFixed(2)})...`);
@@ -2184,6 +2246,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   };
   physicalTeleopRef.current.deliver = deliverTeleopCommand;
   const sendTeleopCommand = (commandDirection, linearVel, angularVel) => {
+    if (routeLibraryMode) return;
     const control = physicalTeleopRef.current;
     if (control.timer) clearInterval(control.timer);
     control.timer = null;
@@ -2232,6 +2295,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       if (e.defaultPrevented) return;
       const key = e.key.toLowerCase();
       if (key === 'escape') {
+        setIsPickingRoute(false);
         // Huy ve vung dang do dang
         setZoneDrawType(null);
         setZoneDraft(null);
@@ -2301,6 +2365,11 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           {/* Khung chua canvas: kich thuoc do bang ResizeObserver -> canvas dung bang khung (map to ra
               khi thu gon panel ben phai). Canvas absolute de kich thuoc canvas khong day khung ra. */}
           <div ref={canvasHostRef} className="relative w-full flex-1 min-h-0">
+          <div className="absolute top-3 left-3 z-30 flex items-center gap-2 rounded-lg border border-cyan-800 bg-slate-950/95 p-2 shadow-lg text-xs">
+            {routeLibraryMode && <select aria-label="Bản đồ của tuyến" value={mapConfig.mapId} onChange={(e) => handleSelectMap(e.target.value)} className="max-w-40 p-1 rounded bg-slate-800">{mapLayouts.length ? mapLayouts.map((map) => <option key={map.map_id} value={map.map_id}>{map.name}</option>) : <option value={mapConfig.mapId}>{mapConfig.mapId}</option>}</select>}
+            <button type="button" onClick={() => { setIsPickingRoute(false); openPanelSection('ROUTES'); }} className="flex items-center gap-2 font-bold text-cyan-300"><Navigation className="w-4 h-4" />Thư viện tuyến</button>
+            {isPickingRoute && <><span className="text-slate-300">{routeDraft?.execution_config?.route?.points.length || 0} điểm</span><button type="button" onClick={() => { setIsPickingRoute(false); openPanelSection('ROUTES'); }} className="px-3 py-1 rounded bg-cyan-700 font-bold">Xong</button></>}
+          </div>
           <canvas
             ref={canvasRef}
             width={canvasSize.width}
@@ -2318,7 +2387,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             className={`absolute inset-0 w-full h-full rounded-xl border border-slate-800 shadow-2xl bg-slate-900 ${
               dragState?.type === 'PAN'
                 ? 'cursor-grabbing'
-                : zoneDrawType
+                : isPickingRoute || zoneDrawType
                 ? 'cursor-crosshair'
                 : dragState
                 ? 'cursor-grabbing'
@@ -2746,6 +2815,18 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         {/* Chi hien phan duoc chon tu thanh icon ben phai. */}
         {panel.open && (
         <PhysicalMapPopup key={panel.section} title={popupTitle} onClose={closePopup}>
+          {panel.section === 'ROUTES' && <PhysicalMapRoutePlanner
+            key={mapConfig.mapId}
+            mapId={mapConfig.mapId} endpoints={endpoints} draft={routeDraft}
+            onDraftChange={setRouteDraft} validatePoint={validateRoutePoint}
+            onRouteSaved={onRouteSaved}
+            onPickPoints={() => {
+              setIsPickingRoute(true); setShowEndpoints(true); setIsAddEndpointMode(false);
+              setIsPoseSetMode(false); setPoseDraft(null); setZoneDrawType(null); setZoneDraft(null);
+              setSelectedEndpoint(null); setSelectedZone(null); closePopup();
+              setNavStatus('Đang vẽ tuyến: bấm các điểm trên map theo thứ tự, rồi bấm Xong để lưu tuyến.');
+            }}
+          />}
           {panel.section === 'ADD' && (
             <div className="space-y-4">
               <p className="text-xs leading-relaxed text-slate-400">Chọn loại cần thêm, sau đó đặt trực tiếp trên bản đồ.</p>
@@ -3441,7 +3522,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             {panel.open ? <PanelRightClose className="w-5 h-5" /> : <PanelRightOpen className="w-5 h-5" />}
           </button>
           <div className="w-7 h-px bg-[#BFBFBD] my-1" />
-          {PANEL_SECTIONS.map(({ key, label }) => {
+          {PANEL_SECTIONS.filter((section) => !routeLibraryMode || section.key === 'ROUTES').map(({ key, label }) => {
             const Icon = PANEL_ICONS[key];
             const active = panel.open && panel.section === key;
             const count = key === 'WAYPOINTS' ? endpoints.length : key === 'ZONES' ? zones.length : null;

@@ -48,6 +48,10 @@ def upgrade_legacy_move_step(step: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not isinstance(step, dict) or step.get("type") != "MOVE":
         return None
     params = step.get("params") or {}
+    # Physical-map routes store deliberate coordinates in their own map frame.
+    # Never migrate these to the stock lobby layout, even when an endpoint ID matches.
+    if params.get("map_id"):
+        return None
     raw_key = params.get("target_waypoint_id") or params.get("target_value")
     key = _LEGACY_TARGET_ALIASES.get(raw_key, raw_key)
     if key not in LOBBY_WAYPOINTS:

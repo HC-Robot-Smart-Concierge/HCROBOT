@@ -122,6 +122,12 @@ export const OTTO_STEP_TYPES = [
       cancel_next_step_id: 'END',
     },
   },
+  {
+    type: 'FOLLOW_ROUTE',
+    label: 'Đi theo tuyến (FOLLOW_ROUTE)',
+    desc: 'Chọn tuyến đường đã lưu trên Physical Map; có thể lặp riêng tuyến này',
+    defaultParams: { route_id: '', repeat_count: 1 },
+  },
 ];
 
 /**
@@ -129,6 +135,7 @@ export const OTTO_STEP_TYPES = [
  */
 export const STEP_SCRATCH_THEMES = {
   MOVE: { label: 'Motion', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Move },
+  FOLLOW_ROUTE: { label: 'Route', bg: '#ffffff', border: '#67e8f9', accent: '#0e7490', icon: Move },
   GREET: { label: 'Looks', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Smile },
   COMMUNICATE: { label: 'Converse', bg: '#ffffff', border: '#38bdf8', accent: '#0284c7', icon: MessagesSquare },
   SHOW: { label: 'Display', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Monitor },

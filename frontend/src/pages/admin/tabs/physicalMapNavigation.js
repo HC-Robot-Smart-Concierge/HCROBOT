@@ -51,19 +51,21 @@ export function composeMapPose(mapToOdom, odom) {
   };
 }
 
-// parseLaserScan supplies degrees + distance; LiDAR is at the 33 x 17 cm body's centre.
+// parseLaserScan supplies degrees + distance; LiDAR is centred on base_link.
 export function laserPointToMap(point, pose) {
   if (!Number.isFinite(point.distance) || !Number.isFinite(point.angle)) return null;
   const angle = pose.yaw + point.angle * Math.PI / 180;
   return {
+    // LiDAR is centred on the 33 x 17 cm body (base_link); no extra XY offset.
     x: pose.x + point.distance * Math.cos(angle),
     y: pose.y + point.distance * Math.sin(angle),
   };
 }
 
-// Body 33 x 17 cm + 6 cm padding: swept radius ~26.8 cm, rounded up to 27 cm.
-// Keep in sync with robot_geometry.TURN_CLEARANCE_RADIUS_M and frontier goal clearance.
-export const TURN_CLEARANCE_M = 0.27;
+// Xe 33 x 17 cm xoay tai cho quet vong ban kinh ~18.6 cm; Pi chi cho xoay khi sieu am ben quay
+// > 11 cm (mo khoa lai tu 13 cm) => tam xe can cach tuong ~21.5 cm. Lay 25 cm (= robot_geometry
+// TURN_CLEARANCE_RADIUS_M, frontier_explorer goal_clearance_m) cho ca sai so o costmap.
+export const TURN_CLEARANCE_M = 0.25;
 
 // Khoang cach (m) tu (x, y) toi TAM o vat can that (100 = tuong / vung cam han) gan nhat trong
 // ban kinh radiusM; khong co o nao (hoac khong co costmap) => Infinity. O 1..99 (dem inflation)

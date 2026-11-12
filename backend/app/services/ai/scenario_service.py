@@ -2961,7 +2961,7 @@ class ScenarioService:
 
             result = await db.execute(stmt)
 
-            records = result.scalars().all()
+            records = list(result.scalars().all())
 
 
 
@@ -3013,7 +3013,7 @@ class ScenarioService:
 
                 result = await db.execute(select(DialogueScenario))
 
-                records = result.scalars().all()
+                records = list(result.scalars().all())
 
 
 
@@ -3255,12 +3255,17 @@ class ScenarioService:
 
             is_physical_item_delivery = bool(re.search(
 
-                r'(cho\s+(tôi|toi|mình|minh|em)|xin|lấy|lay|mang|đem|dem|gửi|gui|thêm|them|mượn|muon|đặt|dat)\s+(thêm\s+|them\s+)?(khăn|khan|gối|goi|chăn|chan|nệm|nem|nước|nuoc|bàn ủi|ban ui|máy sấy|may say|bàn chải|ban chai|kem đánh răng|kem danh rang|dao cạo|dao cao|dép|dep|ly|tách|tach|dọn phòng|don phong|cơm|com|phở|pho|món|mon|đồ ăn|do an|nước uống|nuoc uong|thức uống|thuc uong|pizza)',
+                r'(cho\s+(tôi|toi|mình|minh|em)|xin|lấy|lay|mang|đem|dem|gửi|gui|thêm|them|mượn|muon|đặt|dat)\s+(thêm\s+|them\s+)?(khăn|khan|gối|goi|chăn|chan|nệm|nem|nước|nuoc|bàn ủi|ban ui|máy sấy|may say|bàn chải|ban chai|kem đánh răng|kem danh rang|dao cạo|dao cao|dép|dep|ly|tách|tach|dọn phòng|don phong|cơm|com|phở|pho|món|mon|đồ ăn|do an|nước uống|nuoc uong|thức uống|thuc uong|pizza|hành lý|hanh ly|vali)',
 
                 normalized,
 
                 re.IGNORECASE
 
+            )) or bool(re.search(
+                r'(hỗ trợ|ho tro|giúp|giup|cần|can|nhờ|nho|mang|xách|xach|lấy|lay|chuyển|chuyen|báo|bao|tìm|tim|phòng\s*\d+|room\s*\d+).*(hành lý|hanh ly|vali|thất lạc|that lac|mất đồ|mat do|quên đồ|quen do|rơi đồ|roi do|lost|luggage|bag)|'
+                r'(hành lý|hanh ly|vali|thất lạc|that lac|mất đồ|mat do|quên đồ|quen do|rơi đồ|roi do|lost|luggage|bag).*(phòng\s*\d+|room\s*\d+|lên phòng|len phong|xuống sảnh|xuong sanh|giúp|giup|hỗ trợ|ho tro)',
+                normalized,
+                re.IGNORECASE
             ))
 
             is_faq_inquiry = bool(re.search(

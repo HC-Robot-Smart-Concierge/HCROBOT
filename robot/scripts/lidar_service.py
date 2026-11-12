@@ -49,6 +49,8 @@ if ROBOT_DIR not in sys.path:
 
 from scripts.pi_battery_estimator import PiBatteryEstimator  # noqa: E402
 from scripts.pi_power_monitor import PiPowerMonitor  # noqa: E402
+from scripts.nav_planner import PlanGrid, plan_path, point_in_zone, zones_of_type  # noqa: E402
+from scripts.ros_map_io import load_ros_map_yaml, read_ros_map_info  # noqa: E402
 
 
 def find_rplidar_port() -> str:
@@ -132,6 +134,16 @@ class RPLidarSLAMCore:
         self.static_grid_data: Optional[List[int]] = None
         self.active_map_name: Optional[str] = None
 
+        # SLAM noi bo tren Pi (scan matching + raytracing) rat nang voi CPython:
+        # chay trong thread doc serial se lam LiDAR bi don goi khi quay. Khi
+        # SLAM Toolbox (laptop) dang nhan scan qua WS ?consumer=ros2 thi map noi
+        # bo khong duoc dung, nen tat di. HCROBOT_PI_INTERNAL_SLAM=auto|on|off.
+        self.internal_slam_policy = os.getenv("HCROBOT_PI_INTERNAL_SLAM", "auto").strip().lower()
+        # Định vị liên tục khi tự hành: khớp mỗi vòng scan vào map tĩnh đã khóa.
+        # Đặt HCROBOT_NAV_SCAN_LOCALIZE=0 nếu Pi quá tải (LiDAR bị dồn gói).
+        self.nav_scan_localize = os.getenv("HCROBOT_NAV_SCAN_LOCALIZE", "1").strip() != "0"
+        self.external_slam_consumers = 0
+
         # Trạng thái Robot
         self.robot_x = 0.0
         self.robot_y = 0.0
@@ -144,6 +156,11 @@ class RPLidarSLAMCore:
         self.active_goal: Optional[Dict[str, float]] = None
         self.nav_thread: Optional[threading.Thread] = None
         self.is_navigating = False
+        # Vung chuc nang tu Web Admin (KEEP_OUT / SPEED_ZONE / NO_STOP) va duong di A* hien tai
+        self.nav_zones: List[Dict[str, Any]] = []
+        self.nav_path: List[tuple] = []
+        self.nav_path_index = 0
+        self._nav_replan = False
 
         # Frontier Exploration
         self.is_exploring = False
@@ -189,14 +206,16 @@ class RPLidarSLAMCore:
         if self.pi_motor is not None:
             return self.pi_motor
         try:
-            from motor_controller import MotorController
+            from motor_controller import MotorController, load_config
+            # Dung chung robot/settings.yaml voi main.py de chieu motor khong bi lech nhau.
+            gpio_cfg = load_config().get("robot", {}).get("gpio", {})
             self.pi_motor = MotorController(
-                left_forward_pin=17,
-                left_backward_pin=27,
-                right_forward_pin=22,
-                right_backward_pin=23,
-                invert_left_direction=True,
-                invert_right_direction=False,
+                left_forward_pin=gpio_cfg.get("left_forward", 17),
+                left_backward_pin=gpio_cfg.get("left_backward", 27),
+                right_forward_pin=gpio_cfg.get("right_forward", 22),
+                right_backward_pin=gpio_cfg.get("right_backward", 23),
+                invert_left_direction=gpio_cfg.get("invert_left_direction", False),
+                invert_right_direction=gpio_cfg.get("invert_right_direction", False),
                 default_speed=50,
             )
             logger.info("🚗 [LiDAR-SLAM] Đã khởi tạo MotorController trực tiếp trên Raspberry Pi 5 (GPIO 17, 27, 22, 23)!")
@@ -304,8 +323,10 @@ resolution: {res}
 origin: [{ox}, {oy}, 0.0]
 negate: 0
 occupied_thresh: 0.65
-free_thresh: 0.25
+free_thresh: 0.196
 """
+        # free_thresh phải < (255-205)/255 = 0.19608: ô chưa biết ghi màu 205,
+        # với 0.25 map_server/Nav2 sẽ coi vùng chưa quét là đường trống.
         with open(yaml_path, "w", encoding="utf-8") as f:
             f.write(yaml_content)
 
@@ -328,25 +349,57 @@ free_thresh: 0.25
             "free_cells": free_count,
         }
 
-    def load_map(self, name: str) -> bool:
-        """Nạp bản đồ đã lưu từ file JSON vào bộ nhớ runtime."""
-        safe_name = "".join(c for c in name if c.isalnum() or c in ("_", "-")).strip()
+    def _read_map_file(self, safe_name: str) -> Optional[Dict[str, Any]]:
+        """Đọc map theo thứ tự: .json (lidar_service / web) rồi .yaml+.pgm (SLAM Toolbox).
+
+        Trả về dict có width/height/resolution/origin_x/origin_y/grid_data hợp lệ,
+        hoặc None nếu không có file đọc được.
+        """
         json_path = os.path.join(MAPS_DIR, f"{safe_name}.json")
-        if not os.path.exists(json_path):
-            logger.warning(f"Không tìm thấy file bản đồ {json_path}")
+        yaml_path = os.path.join(MAPS_DIR, f"{safe_name}.yaml")
+
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                # Một số file cũ (vd. phong_3x5m) lưu lưới dưới khóa "data".
+                grid = data.get("grid_data") or data.get("data") or []
+                w, h = int(data.get("width", 0)), int(data.get("height", 0))
+                if w > 0 and h > 0 and len(grid) == w * h:
+                    data["grid_data"] = grid
+                    return data
+                logger.warning(
+                    f"File {json_path} không có lưới hợp lệ ({len(grid)} ô, cần {w}x{h}); thử .yaml/.pgm"
+                )
+            except Exception as e:
+                logger.warning(f"Lỗi đọc {json_path}: {e}; thử .yaml/.pgm")
+
+        if os.path.exists(yaml_path):
+            try:
+                data = load_ros_map_yaml(yaml_path)
+                logger.info(f"📂 Nạp map ROS 2 '{safe_name}' từ .yaml/.pgm ({data['width']}x{data['height']})")
+                return data
+            except Exception as e:
+                logger.error(f"Lỗi đọc map ROS 2 {yaml_path}: {e}")
+
+        logger.warning(f"Không tìm thấy file bản đồ '{safe_name}' (.json hoặc .yaml/.pgm) trong {MAPS_DIR}")
+        return None
+
+    def load_map(self, name: str) -> bool:
+        """Nạp bản đồ đã lưu (.json hoặc .yaml/.pgm của SLAM Toolbox) vào bộ nhớ runtime."""
+        safe_name = "".join(c for c in name if c.isalnum() or c in ("_", "-")).strip()
+        data = self._read_map_file(safe_name)
+        if data is None:
             return False
 
         try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
             with self._lock:
                 self.grid_width = data.get("width", 800)
                 self.grid_height = data.get("height", 800)
                 self.resolution = data.get("resolution", 0.025)
                 self.origin_x = data.get("origin_x", -10.0)
                 self.origin_y = data.get("origin_y", -10.0)
-                self.grid_data = data.get("grid_data", [-1] * (self.grid_width * self.grid_height))
+                self.grid_data = list(data["grid_data"])
                 self.grid_hits = [
                     self.wall_clear_hits if v == 100 else 0 for v in self.grid_data
                 ]
@@ -363,7 +416,7 @@ free_thresh: 0.25
             logger.info(f"📂 Đã nạp bản đồ '{safe_name}' vào SLAM core thành công!")
             return True
         except Exception as e:
-            logger.error(f"Lỗi khi đọc file bản đồ {json_path}: {e}")
+            logger.error(f"Lỗi khi nạp bản đồ '{safe_name}': {e}")
             return False
 
     def list_saved_maps(self) -> List[Dict[str, Any]]:
@@ -389,6 +442,29 @@ free_thresh: 0.25
                     })
                 except Exception:
                     pass
+
+        # Map chỉ có .yaml/.pgm (lưu từ SLAM Toolbox) vẫn nạp được qua load_map().
+        json_stems = {f[:-5] for f in os.listdir(MAPS_DIR) if f.endswith(".json")}
+        for fname in sorted(os.listdir(MAPS_DIR)):
+            stem = fname[:-5]
+            if not fname.endswith(".yaml") or stem in json_stems:
+                continue
+            if not os.path.exists(os.path.join(MAPS_DIR, f"{stem}.pgm")):
+                continue
+            try:
+                info = read_ros_map_info(os.path.join(MAPS_DIR, fname))
+            except Exception:
+                continue
+            maps.append({
+                "name": stem,
+                "created_at": "",
+                "width": info["width"],
+                "height": info["height"],
+                "resolution": info["resolution"],
+                "statistics": {},
+                "has_ros2_yaml": True,
+                "source": "ros2_yaml",
+            })
         return maps
 
     def delete_map(self, name: str) -> bool:
@@ -495,6 +571,15 @@ free_thresh: 0.25
                                 break
 
         return hit / max(total * 2, 1)
+
+    def internal_slam_enabled(self) -> bool:
+        """SLAM noi bo chi chay khi khong co SLAM Toolbox nhan scan (hoac bi ep bat/tat)."""
+        if self.internal_slam_policy == "off":
+            return False
+        if self.internal_slam_policy == "on" or self.is_exploring:
+            # Frontier exploration doc grid noi bo nen luon can SLAM noi bo.
+            return True
+        return self.external_slam_consumers <= 0
 
     def _is_turn_command(self) -> bool:
         cmd = (self.current_motion_cmd or "stop").split(":")[0]
@@ -978,24 +1063,30 @@ free_thresh: 0.25
 
                 # ── Encoder + IMU odometry ────────────────────────────────────
                 # Encoder cập nhật x/y. Yaw chỉ đổi khi đang quay; đi thẳng thì khóa góc.
-                if self.map_mode == "MAPPING":
-                    esp_reader = getattr(self, "esp32_reader", None)
+                # Chạy cả ở NAVIGATION: tự hành trên Pi cần vị trí đo thật, không ước đoán.
+                esp_reader = getattr(self, "esp32_reader", None)
+                if esp_reader is not None:
                     snap = None
-                    if esp_reader and hasattr(esp_reader, "latest"):
+                    if hasattr(esp_reader, "latest"):
                         snap = esp_reader.latest()
                     dt = now - last_imu_update_time
-                    if snap is not None and 0.0 < dt < 0.5:
+                    if snap is not None and dt > 0.0:
                         with self._lock:
                             has_imu = bool(
                                 snap.mpu_available and snap.yaw_rate_dps is not None
                             )
+                            turning = self._is_turn_command()
                             if getattr(snap, "encoders", None):
+                                # Encoder tick la luy ke nen van ap dung duoc khi loop bi
+                                # tre; yaw lay tu gyro neu co, tranh cong 2 lan khi quay.
                                 self._apply_encoder_odometry(
-                                    snap.encoders, dt, update_yaw=self._is_turn_command()
+                                    snap.encoders, min(dt, 1.0),
+                                    update_yaw=turning and not has_imu,
                                 )
                             if (
-                                self._is_turn_command()
+                                turning
                                 and has_imu
+                                and dt < 0.5
                                 and abs(snap.yaw_rate_dps) > 2.0
                             ):
                                 self.robot_yaw = (self.robot_yaw + snap.yaw_rate_dps * dt) % 360.0
@@ -1110,7 +1201,16 @@ free_thresh: 0.25
                             {"angle": p["angle"], "distance": p["distance"]}
                             for p in current_scan_batch
                         ]
-                        if self.map_mode == "MAPPING":
+                        internal_slam = self.internal_slam_enabled()
+                        # NAVIGATION: map đã khóa nên khớp scan vào map tĩnh để định vị
+                        # liên tục; không có bước này pose chỉ là encoder+gyro, trôi dần
+                        # và xe "đi xuyên tường" trên map dù đường A* đúng.
+                        nav_localize = (
+                            self.nav_scan_localize
+                            and self.map_mode == "NAVIGATION"
+                            and self.is_map_locked
+                        )
+                        if (self.map_mode == "MAPPING" and internal_slam) or nav_localize:
                             corrected_x, corrected_y, corrected_yaw = self._match_scan_to_map(
                                 raw_batch,
                                 self.robot_x,
@@ -1138,7 +1238,7 @@ free_thresh: 0.25
                         # ────────────────────────────────────────────────────────────
 
                         with self._lock:
-                            if self.map_mode == "MAPPING":
+                            if self.map_mode == "MAPPING" or nav_localize:
                                 self.robot_x = corrected_x
                                 self.robot_y = corrected_y
                                 self.robot_yaw = corrected_yaw
@@ -1146,7 +1246,8 @@ free_thresh: 0.25
                             self.last_scan_time = time.time()
                             self.last_scan_points = len(self._latest_scans)
                             self.last_error = ""
-                            self._update_grid_from_scan(corrected_x, corrected_y, corrected_batch)
+                            if internal_slam:
+                                self._update_grid_from_scan(corrected_x, corrected_y, corrected_batch)
                         current_scan_batch.clear()
 
 
@@ -1356,53 +1457,244 @@ free_thresh: 0.25
         except Exception:
             pass
 
-    def navigate_to(self, target_x: float, target_y: float, speed: Optional[int] = None, linear_speed: Optional[float] = None):
-        """Bắt đầu tác vụ tự hành tới tọa độ mục tiêu (target_x, target_y) ở tốc độ quét an toàn."""
+    def set_nav_zones(self, zones: List[Dict[str, Any]]) -> int:
+        """Nhan danh sach vung chuc nang tu Web Admin (thay the toan bo)."""
+        clean = []
+        for z in zones or []:
+            try:
+                clean.append({
+                    "id": str(z.get("id", "")),
+                    "name": str(z.get("name", "")),
+                    "type": str(z.get("type", "KEEP_OUT")).upper(),
+                    "x": float(z.get("x", 0.0)),
+                    "y": float(z.get("y", 0.0)),
+                    "width": float(z.get("width", 0.0)),
+                    "height": float(z.get("height", 0.0)),
+                    "yaw": float(z.get("yaw") or 0.0),
+                    "speed_limit": z.get("speed_limit"),
+                })
+            except (TypeError, ValueError):
+                continue
+        with self._lock:
+            self.nav_zones = clean
+        logger.info(f"🧭 Đã nhận {len(clean)} vùng chức năng từ Web Admin")
+        return len(clean)
+
+    def _has_live_odometry(self) -> bool:
+        """Co encoder ESP32 moi (<1s) thi vi tri do scan_loop cap nhat, khong uoc doan."""
+        reader = getattr(self, "esp32_reader", None)
+        snap = reader.latest() if reader is not None and hasattr(reader, "latest") else None
+        if snap is None or not getattr(snap, "encoders", None):
+            return False
+        received_at = getattr(snap, "received_at", None)
+        return received_at is None or (time.monotonic() - received_at) < 1.0
+
+    def plan_route(self, target_x: float, target_y: float):
+        """Lap duong A* tu vi tri hien tai toi dich tren ban do tinh + vung cam. Tra (path, message)."""
+        with self._lock:
+            grid = self.static_grid_data if self.is_map_locked and self.static_grid_data else self.grid_data
+            grid = list(grid)
+            w, h, res = self.grid_width, self.grid_height, self.resolution
+            ox, oy = self.origin_x, self.origin_y
+            start = (self.robot_x, self.robot_y)
+            keepout = zones_of_type(self.nav_zones, "KEEP_OUT")
+        if not any(v == 100 for v in grid):
+            # Chua co ban do: chi di thang + ne phan xa nhu truoc.
+            return [(target_x, target_y)], "Pi chưa nạp bản đồ: đi thẳng tới đích, chỉ né vật cản bằng LiDAR."
+        pg = PlanGrid(grid, w, h, res, ox, oy, keepout_zones=keepout)
+        return plan_path(pg, start, (target_x, target_y))
+
+    def navigate_to(self, target_x: float, target_y: float, speed: Optional[int] = None, linear_speed: Optional[float] = None) -> Dict[str, Any]:
+        """Lap duong di tranh tuong/vung cam roi bat dau tu hanh. Tra ket qua cho Web."""
         self.stop_navigation()
+        for zone in self.nav_zones:
+            ztype = zone["type"]
+            if ztype == "KEEP_OUT" and point_in_zone(target_x, target_y, zone):
+                return {"ok": False, "message": f"Điểm đích nằm trong vùng cấm vào '{zone['name']}'."}
+            if ztype == "NO_STOP" and point_in_zone(target_x, target_y, zone):
+                return {"ok": False, "message": f"Điểm đích nằm trong vùng cấm dừng '{zone['name']}'."}
+
+        t0 = time.time()
+        path, message = self.plan_route(target_x, target_y)
+        if path is None:
+            logger.warning(f"🚫 Không lập được đường tới ({target_x:.2f}, {target_y:.2f}): {message}")
+            return {"ok": False, "message": message}
+
         self.nav_speed_pwm = speed if speed is not None else 28
         self.nav_linear_mps = linear_speed if linear_speed is not None else 0.12
+        self.nav_path = path
+        self.nav_path_index = 0
+        self._nav_replan = False
         self.active_goal = {"x": target_x, "y": target_y}
         self.is_navigating = True
         self.status = "NAVIGATING"
         self.nav_thread = threading.Thread(target=self._navigation_loop, daemon=True)
         self.nav_thread.start()
-        logger.info(f"🎯 BẮT ĐẦU TỰ HÀNH: Đích đến X={target_x:.2f}m, Y={target_y:.2f}m")
+        logger.info(
+            f"🎯 BẮT ĐẦU TỰ HÀNH: Đích X={target_x:.2f}m, Y={target_y:.2f}m "
+            f"({len(path)} chặng, lập đường {time.time() - t0:.2f}s)"
+        )
+        return {"ok": True, "message": message, "path": [[round(px, 3), round(py, 3)] for px, py in path]}
 
     def stop_navigation(self):
         """Dừng tác vụ tự hành ngay lập tức."""
         self.is_navigating = False
         self.active_goal = None
+        self.nav_path = []
+        self.nav_path_index = 0
         self.status = "IDLE"
         self.linear_velocity = 0.0
         self.angular_velocity = 0.0
         self.send_udp_motor_command("stop")
 
+    def set_pose(self, x: float, y: float, yaw_deg: float, refine: bool = True) -> Dict[str, Any]:
+        """
+        Dat vi tri ban dau (initial pose) cho robot tren ban do da quet.
+        - Dung robot truoc, ghi de pose odometry bang pose nguoi dung chon.
+        - refine=True: quet LiDAR hien tai duoc khop voi ban do tinh quanh pose
+          vua chon (±0.4m, ±20°) de sua sai so dat tay.
+        """
+        self.stop_navigation()
+        with self._lock:
+            self.robot_x = float(x)
+            self.robot_y = float(y)
+            self.robot_yaw = float(yaw_deg) % 360.0
+
+        result: Dict[str, Any] = {
+            "x": round(self.robot_x, 3),
+            "y": round(self.robot_y, 3),
+            "yaw": round(self.robot_yaw, 1),
+            "refined": False,
+            "score_before": None,
+            "score_after": None,
+        }
+        if refine:
+            result.update(self.localize_pose())
+        logger.info(
+            f"📍 Đặt vị trí ban đầu: X={result['x']:.2f}m Y={result['y']:.2f}m "
+            f"Yaw={result['yaw']:.1f}° (refined={result['refined']})"
+        )
+        return result
+
+    def localize_pose(self, xy_radius: float = 0.4, yaw_radius: float = 20.0) -> Dict[str, Any]:
+        """
+        Dinh vi lai pose hien tai bang cach khop vong quet LiDAR moi nhat voi
+        ban do tinh (grid search 2 buoc, rong hon _match_scan_to_map vi pose dat
+        tay co the lech vai chuc cm / vai chuc do).
+        """
+        with self._lock:
+            grid_snap = (
+                self.static_grid_data
+                if self.is_map_locked and self.static_grid_data
+                else self.grid_data
+            )
+            raw_batch = [
+                {"angle": p["angle"], "distance": p["distance"]}
+                for p in self._latest_scans
+            ]
+            init_x, init_y, init_yaw = self.robot_x, self.robot_y, self.robot_yaw
+
+        base: Dict[str, Any] = {
+            "x": round(init_x, 3),
+            "y": round(init_y, 3),
+            "yaw": round(init_yaw, 1),
+            "refined": False,
+            "score_before": None,
+            "score_after": None,
+        }
+        if len(raw_batch) < 60 or not any(v == 100 for v in grid_snap):
+            base["message"] = "Chưa có vòng quét LiDAR hoặc bản đồ rỗng, giữ nguyên pose đặt tay."
+            return base
+
+        # Grid search ~5000 ung vien: lay mau toi da 180 tia de chay < 2s tren Pi 5.
+        stride = max(1, len(raw_batch) // 180)
+        raw_batch = raw_batch[::stride]
+
+        score = lambda px, py, pyaw: self._compute_scan_match_score(raw_batch, px, py, pyaw % 360.0, grid_snap)
+        init_score = score(init_x, init_y, init_yaw)
+
+        def search(cx, cy, cyaw, xy_step, xy_r, yaw_step, yaw_r, best):
+            n_xy = int(round(xy_r / xy_step))
+            n_yaw = int(round(yaw_r / yaw_step))
+            best_pose, best_score = best
+            for i in range(-n_xy, n_xy + 1):
+                for j in range(-n_xy, n_xy + 1):
+                    for k in range(-n_yaw, n_yaw + 1):
+                        px, py, pyaw = cx + i * xy_step, cy + j * xy_step, cyaw + k * yaw_step
+                        s = score(px, py, pyaw)
+                        if s > best_score:
+                            best_pose, best_score = (px, py, pyaw), s
+            return best_pose, best_score
+
+        best = ((init_x, init_y, init_yaw), init_score)
+        best = search(init_x, init_y, init_yaw, 0.05, xy_radius, 2.5, yaw_radius, best)
+        bx, by, byaw = best[0]
+        best = search(bx, by, byaw, 0.01, 0.04, 0.5, 2.0, best)
+        (fx, fy, fyaw), final_score = best
+
+        base["score_before"] = round(init_score, 3)
+        base["score_after"] = round(final_score, 3)
+        # Chi chap nhan khi diem khop tang ro ret, tranh nhay sang vi tri sai.
+        if final_score > init_score * 1.05 and final_score > 0.0:
+            with self._lock:
+                self.robot_x = fx
+                self.robot_y = fy
+                self.robot_yaw = fyaw % 360.0
+            base.update({
+                "x": round(fx, 3),
+                "y": round(fy, 3),
+                "yaw": round(fyaw % 360.0, 1),
+                "refined": True,
+                "message": "Đã khớp LiDAR với bản đồ và tinh chỉnh vị trí.",
+            })
+        else:
+            base["message"] = "Pose đặt tay đã khớp tốt nhất với bản đồ, không cần chỉnh."
+        return base
+
     def _navigation_loop(self):
         """
         Vòng lặp điều khiển Tự hành (Autonomous Navigation Loop):
-        1. Tính vector hướng đến mục tiêu (dx, dy).
-        2. Dùng LiDAR quét góc trước mặt (-30° đến +30°): nếu gặp vật cản < 0.45m => phanh / rẽ tránh.
-        3. Tự động quay mũi về mục tiêu và tiến tới đích.
-        4. Dừng khi cự ly < 0.15m (Goal Reached).
+        1. Đi lần lượt qua các chặng của đường A* (tránh tường trên map + vùng cấm).
+        2. LiDAR phía trước (±45°) thấy vật cản mới < 0.40m => dừng, lùi/xoay tránh rồi lập lại đường.
+        3. Quay mũi về chặng hiện tại và tiến tới; tới chặng cuối thì dừng (Goal Reached).
+        Vị trí lấy từ encoder/IMU (scan_loop); chỉ tự ước đoán khi không có ESP32.
         """
         rate_hz = 10
         dt = 1.0 / rate_hz
 
         while self.is_navigating and self.active_goal:
-            gx = self.active_goal["x"]
-            gy = self.active_goal["y"]
+            fake_odom = not self._has_live_odometry()
+
+            # 0. Lập lại đường sau khi phải né vật cản mới
+            if self._nav_replan:
+                self._nav_replan = False
+                path, message = self.plan_route(self.active_goal["x"], self.active_goal["y"])
+                if path is not None:
+                    self.nav_path, self.nav_path_index = path, 0
+                    logger.info(f"🔁 Lập lại đường đi: {len(path)} chặng")
+                else:
+                    logger.warning(f"🔁 Không lập lại được đường ({message}), tiếp tục theo đường cũ")
+
+            path = self.nav_path or [(self.active_goal["x"], self.active_goal["y"])]
+            idx = min(self.nav_path_index, len(path) - 1)
+            gx, gy = path[idx]
+            is_final = idx == len(path) - 1
 
             dx = gx - self.robot_x
             dy = gy - self.robot_y
             dist_to_goal = math.hypot(dx, dy)
 
-            # 1. Đã đến đích (Goal Reached)
-            if dist_to_goal < 0.22:
+            # 1. Tới chặng trung gian: chuyển chặng; tới chặng cuối: Goal Reached
+            if not is_final and dist_to_goal < 0.15:
+                self.nav_path_index = idx + 1
+                continue
+            if is_final and dist_to_goal < 0.22:
                 logger.info(f"🏁 ĐÃ ĐẾN ĐÍCH X={gx:.2f}m, Y={gy:.2f}m!")
                 self.send_udp_motor_command("stop")
                 self.status = "GOAL_REACHED"
                 self.is_navigating = False
                 self.active_goal = None
+                self.nav_path = []
                 self.avoidance_locked_dir = None
                 break
 
@@ -1428,27 +1720,36 @@ free_thresh: 0.25
                     self.avoidance_locked_dir = "left" if left_dist >= right_dist else "right"
 
                 turn_cmd = self.avoidance_locked_dir
-                # Xoay dứt khoát 0.35s ở công suất 38% để robot thực sự xoay được góc ~30-35 độ
+                # Xoay dứt khoát 0.35s để robot thực sự xoay được góc ~30-35 độ
                 yaw_step = 30.0 if turn_cmd == "left" else -30.0
                 self.send_udp_motor_command("speed:32")
                 self.send_udp_motor_command(turn_cmd, force=True)
                 time.sleep(0.35)
                 self.send_udp_motor_command("stop", force=True)
-                self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
+                if fake_odom:
+                    self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
                 time.sleep(0.10)
+                self._nav_replan = True
                 continue
             else:
                 if front_obstacle_dist > 0.50:
                     self.avoidance_locked_dir = None
 
-            # 3. Approach Lock (Khóa góc khi cự ly gần < 40cm để triệt tiêu Waypoint Hunting / xoay lắc tại đích)
-            if dist_to_goal < 0.40:
+            # Vùng giới hạn tốc độ: giảm PWM khi robot đang ở trong vùng
+            in_speed_zone = any(
+                z["type"] in ("SPEED_ZONE", "SLOW_SPEED") and point_in_zone(self.robot_x, self.robot_y, z)
+                for z in self.nav_zones
+            )
+
+            # 3. Approach Lock (chỉ ở chặng cuối, < 40cm) để triệt tiêu xoay lắc tại đích
+            if is_final and dist_to_goal < 0.40:
                 self.send_udp_motor_command("speed:22")
                 self.send_udp_motor_command("forward")
                 speed_mps = 0.09
-                rad = math.radians(self.robot_yaw)
-                self.robot_x += speed_mps * dt * math.cos(rad)
-                self.robot_y += speed_mps * dt * math.sin(rad)
+                if fake_odom:
+                    rad = math.radians(self.robot_yaw)
+                    self.robot_x += speed_mps * dt * math.cos(rad)
+                    self.robot_y += speed_mps * dt * math.sin(rad)
                 self.linear_velocity = speed_mps
                 self.angular_velocity = 0.0
                 time.sleep(dt)
@@ -1458,7 +1759,7 @@ free_thresh: 0.25
             desired_yaw = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
             yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
 
-            # 5. Điều khiển bám mục tiêu kèm Deadband 15°
+            # 5. Điều khiển bám chặng hiện tại kèm Deadband 15°
             if abs(yaw_error) > 15.0:
                 turn_cmd = "left" if yaw_error > 0 else "right"
                 yaw_step = 15.0 if yaw_error > 0 else -15.0
@@ -1467,19 +1768,23 @@ free_thresh: 0.25
                 time.sleep(0.18)
                 self.send_udp_motor_command("stop")
 
-                self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
+                if fake_odom:
+                    self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
                 self.angular_velocity = yaw_step
                 self.linear_velocity = 0.0
                 time.sleep(0.06)
             else:
                 # Góc hướng đã chuẩn trong deadband: Tiến thẳng ổn định
                 nav_pwm = getattr(self, "nav_speed_pwm", 28)
+                if in_speed_zone:
+                    nav_pwm = min(nav_pwm, 22)
                 self.send_udp_motor_command(f"speed:{nav_pwm}")
                 self.send_udp_motor_command("forward")
                 speed_mps = getattr(self, "nav_linear_mps", 0.12)
-                rad = math.radians(self.robot_yaw)
-                self.robot_x += speed_mps * dt * math.cos(rad)
-                self.robot_y += speed_mps * dt * math.sin(rad)
+                if fake_odom:
+                    rad = math.radians(self.robot_yaw)
+                    self.robot_x += speed_mps * dt * math.cos(rad)
+                    self.robot_y += speed_mps * dt * math.sin(rad)
                 self.linear_velocity = speed_mps
                 self.angular_velocity = 0.0
                 time.sleep(dt)
@@ -1593,6 +1898,46 @@ free_thresh: 0.25
                     best_frontier = (world_x, world_y)
 
         return best_frontier
+
+    def _plan_frontier_route(self, fx: float, fy: float) -> Optional[List[tuple]]:
+        """Lap duong A* tu robot toi frontier tren map dang quet (chi di qua o da biet la trong).
+
+        Tuong duoc noi rong theo ban kinh robot, o chua biet bi chan, vung KEEP_OUT bi chan.
+        Tra ve danh sach diem trung gian, hoac None neu khong lap duoc duong.
+        """
+        with self._lock:
+            grid = list(self.grid_data)
+            w, h, res = self.grid_width, self.grid_height, self.resolution
+            ox, oy = self.origin_x, self.origin_y
+            start = (self.robot_x, self.robot_y)
+            keepout = zones_of_type(self.nav_zones, "KEEP_OUT")
+        try:
+            pg = PlanGrid(grid, w, h, res, ox, oy, keepout_zones=keepout)
+            path, message = plan_path(pg, start, (fx, fy))
+        except Exception as exc:  # planner loi khong duoc lam dung kham pha
+            logger.warning(f"⚠️ Lập đường tới frontier lỗi: {exc}")
+            return None
+        if path is None:
+            logger.info(f"🧭 Không lập được đường A* tới frontier ({fx:.2f}, {fy:.2f}): {message}")
+        return path
+
+    def _drive_to_frontier(self, fx: float, fy: float) -> bool:
+        """Di toi frontier theo duong A* (vong qua tuong); khong co duong thi chay thang + ne phan xa."""
+        route = self._plan_frontier_route(fx, fy)
+        if not route:
+            return self._navigate_to_sync(fx, fy, timeout=25.0, goal_radius=0.30)
+
+        logger.info(f"🧭 Đường A* tới frontier: {len(route)} chặng")
+        for i, (wx, wy) in enumerate(route):
+            is_last = i == len(route) - 1
+            ok = self._navigate_to_sync(
+                wx, wy,
+                timeout=25.0,
+                goal_radius=0.30 if is_last else 0.15,
+            )
+            if not ok:
+                return False
+        return True
 
     def _navigate_to_sync(self, target_x: float, target_y: float,
                           timeout: float = 30.0, goal_radius: float = 0.25) -> bool:
@@ -1770,7 +2115,7 @@ free_thresh: 0.25
             frontier_count += 1
             logger.info(f"🧭 [{frontier_count}] Di chuyển tới frontier ({fx:.2f}, {fy:.2f})...")
 
-            success = self._navigate_to_sync(fx, fy, timeout=25.0, goal_radius=0.30)
+            success = self._drive_to_frontier(fx, fy)
             frontier_key = (round(fx, 1), round(fy, 1))
             self.explored_frontiers.append(frontier_key)
 
@@ -2061,6 +2406,13 @@ class NavigateGoalRequest(BaseModel):
     linear_speed: Optional[float] = 0.12
 
 
+class SetPoseRequest(BaseModel):
+    x: float
+    y: float
+    yaw: float = 0.0  # độ (degree), cùng đơn vị với robot_pose trong telemetry
+    refine: bool = True  # khớp LiDAR với bản đồ để tinh chỉnh pose đặt tay
+
+
 class ExploreStartRequest(BaseModel):
     auto_save: bool = True
     save_name: str = "auto_explored_map"
@@ -2331,13 +2683,50 @@ async def teleop_control(req: TeleopCommandRequest):
 
 @app.post("/api/v1/map/navigate")
 async def navigate_to_point(req: NavigateGoalRequest):
-    slam_core.navigate_to(req.target_x, req.target_y, speed=req.speed, linear_speed=req.linear_speed)
+    # Lap duong A* co the mat ~1s tren Pi => chay ngoai event loop
+    result = await asyncio.to_thread(
+        slam_core.navigate_to, req.target_x, req.target_y, req.speed, req.linear_speed
+    )
+    if not result.get("ok"):
+        return {
+            "status": "REJECTED",
+            "message": result.get("message", "Không lập được đường đi"),
+            "target_x": req.target_x,
+            "target_y": req.target_y,
+        }
     return {
         "status": "SUCCESS",
         "message": f"Robot đang tự hành tới (X={req.target_x:.2f}m, Y={req.target_y:.2f}m)",
+        "detail": result.get("message"),
+        "path": result.get("path", []),
         "target_x": req.target_x,
         "target_y": req.target_y,
     }
+
+
+class NavZonesRequest(BaseModel):
+    zones: List[Dict[str, Any]] = []
+
+
+@app.post("/api/v1/map/zones")
+async def set_nav_zones(req: NavZonesRequest):
+    """Web Admin gui vung KEEP_OUT / SPEED_ZONE / NO_STOP cua map dang dung."""
+    count = slam_core.set_nav_zones(req.zones)
+    return {"status": "SUCCESS", "count": count}
+
+
+@app.post("/api/v1/map/set_pose")
+async def set_initial_pose(req: SetPoseRequest):
+    """Đặt vị trí ban đầu của robot trên bản đồ đã quét (giống 2D Pose Estimate của RViz)."""
+    result = await asyncio.to_thread(slam_core.set_pose, req.x, req.y, req.yaw, req.refine)
+    return {"status": "SUCCESS", **result}
+
+
+@app.post("/api/v1/map/localize")
+async def localize_current_pose():
+    """Khớp vòng quét LiDAR hiện tại với bản đồ quanh pose hiện tại để sửa trôi odometry."""
+    result = await asyncio.to_thread(slam_core.localize_pose)
+    return {"status": "SUCCESS", **result}
 
 
 # ─── FRONTIER EXPLORATION ────────────────────────────────────────────────────
@@ -2517,6 +2906,15 @@ async def map_ws_endpoint(websocket: WebSocket):
         if slam_core.connect():
             slam_core.start_scanning()
 
+    if ros2_consumer:
+        # SLAM Toolbox dang nhan scan: tat SLAM noi bo (che do auto) de Pi chi doc LiDAR.
+        with slam_core._lock:
+            slam_core.external_slam_consumers += 1
+        logger.info(
+            f"🤖 Bridge ROS 2 đã kết nối ({slam_core.external_slam_consumers}); "
+            f"SLAM nội bộ Pi: {'BẬT' if slam_core.internal_slam_enabled() else 'TẮT'}"
+        )
+
     try:
         while True:
             scans = slam_core.get_latest_scans()
@@ -2566,8 +2964,6 @@ async def map_ws_endpoint(websocket: WebSocket):
                 await asyncio.sleep(0.04)
                 continue
 
-            map_data = slam_core.get_grid_map()
-
             front_cm = round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None
             rear_cm = round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None
             left_cm = round(slam_core.get_left_distance() * 100, 1) if slam_core.get_left_distance() < 90 else None
@@ -2613,6 +3009,11 @@ async def map_ws_endpoint(websocket: WebSocket):
                 "map_mode": slam_core.map_mode,
                 "is_map_locked": slam_core.is_map_locked,
                 "active_map_name": slam_core.active_map_name,
+                "nav_path": (
+                    [[round(px, 3), round(py, 3)] for px, py in slam_core.nav_path[slam_core.nav_path_index:]]
+                    if slam_core.is_navigating else []
+                ),
+                "nav_zone_count": len(slam_core.nav_zones),
                 "safety": {
                     "front_cm": front_cm,
                     "rear_cm": rear_cm,
@@ -2620,13 +3021,15 @@ async def map_ws_endpoint(websocket: WebSocket):
                     "right_cm": right_cm,
                     "alert": getattr(slam_core, "last_safety_alert", ""),
                 },
+                # Chi can metadata; khong copy ca grid 640k o moi 40ms (giu lock, ton CPU Pi).
                 "grid_metadata": {
-                    "width": map_data["width"],
-                    "height": map_data["height"],
-                    "resolution": map_data["resolution"],
-                    "origin_x": map_data["origin_x"],
-                    "origin_y": map_data["origin_y"],
+                    "width": slam_core.grid_width,
+                    "height": slam_core.grid_height,
+                    "resolution": slam_core.resolution,
+                    "origin_x": slam_core.origin_x,
+                    "origin_y": slam_core.origin_y,
                 },
+                "internal_slam": slam_core.internal_slam_enabled(),
             }
 
             # Không gửi 800x800 JSON 25Hz — payload đó làm nghẽn TF/RobotModel trên RViz.
@@ -2640,6 +3043,14 @@ async def map_ws_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         logger.info("🔌 Web Admin LiDAR Canvas ngắt kết nối WebSocket")
+    finally:
+        if ros2_consumer:
+            with slam_core._lock:
+                slam_core.external_slam_consumers = max(0, slam_core.external_slam_consumers - 1)
+            logger.info(
+                f"🤖 Bridge ROS 2 ngắt kết nối; SLAM nội bộ Pi: "
+                f"{'BẬT' if slam_core.internal_slam_enabled() else 'TẮT'}"
+            )
 
 
 def run_lidar_server(host="0.0.0.0", port=8000):

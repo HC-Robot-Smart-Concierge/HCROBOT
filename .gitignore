@@ -44,6 +44,8 @@ ENV/
 env/
 .pytest_cache/
 **/.pytest_cache/
+# Temporary pytest runtime directories
+/output/runtime/pytest-*/
 .mypy_cache/
 .ruff_cache/
 .coverage
@@ -193,3 +195,16 @@ mobile/ios/Runner/GeneratedPluginRegistrant.*
 key.properties
 **/key.properties
 
+
+# Vi tri cuoi cua robot (localization_manager.py) - trang thai luc chay, khong commit
+robot/maps/last_pose/
+
+# HTML build artifacts from doc generation scripts
+docs/*.html
+
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example

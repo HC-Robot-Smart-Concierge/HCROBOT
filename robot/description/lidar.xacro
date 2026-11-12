@@ -1,13 +1,13 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" >
 
-    <!-- base_link là tâm xoay của xe (tâm 4 bánh skid-steer); odometry quay
-         quanh điểm này. Đo thực tế: tâm LiDAR nằm trước tâm 4 bánh ~8 cm.
-         Gắn thẳng vào base_link để offset này không phụ thuộc hình chassis. -->
+    <!-- base_link ở tâm thân xe 33 x 17 cm. LiDAR nằm giữa hình chữ nhật:
+         cách đầu/đuôi 16.5 cm và mỗi hông 8.5 cm, nên offset X/Y bằng 0.
+         Gắn vào base_link để vị trí này không phụ thuộc mô hình chassis. -->
     <joint name="laser_joint" type="fixed">
         <parent link="base_link"/>
         <child link="laser_frame"/>
-        <origin xyz="0.08 0 0.202" rpy="0 0 0"/>
+        <origin xyz="0 0 0.202" rpy="0 0 0"/>
     </joint>
 
     <link name="laser_frame">
@@ -39,7 +39,7 @@
     <gazebo reference="laser_frame">
         <sensor name="laser" type="gpu_lidar">
             <pose> 0 0 0 0 0 0 </pose>
-            <visualize>false</visualize>
+            <visualize>true</visualize>
             <update_rate>10</update_rate>
             <topic>scan</topic>
             <gz_frame_id>laser_frame</gz_frame_id>

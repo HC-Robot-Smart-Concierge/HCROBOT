@@ -63,6 +63,7 @@ controller_server:
   ros__parameters:
     use_sim_time: false
     controller_frequency: 10.0
+    speed_limit_topic: /speed_limit   # tu speed_filter (global_costmap) - vung SPEED_ZONE
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
@@ -75,14 +76,26 @@ controller_server:
     progress_checker:
       plugin: nav2_controller::SimpleProgressChecker
       required_movement_radius: 0.2
-      movement_time_allowance: 10.0
+      # Xoay tai cho (cat xung 0.2 s quay / 0.5 s dung khi quet map) khong tinh la tien;
+      # quay 180 do mat ~7-8 s nen 10 s qua sat.
+      movement_time_allowance: 20.0
     goal_checker:
       plugin: nav2_controller::SimpleGoalChecker
       xy_goal_tolerance: 0.25
       yaw_goal_tolerance: 0.25
       stateful: true
     FollowPath:
-      plugin: dwb_core::DWBLocalPlanner
+      # Xoay tai cho ve huong duong di truoc (lech > ~30 do), roi moi giao cho DWB bam
+      # duong. Xe that (skid-steer) chi chay duoc xoay tai cho hoac di thang, khong
+      # lan duoc cung PWM thap DWB hay phat luc xuat phat lech huong.
+      plugin: nav2_rotation_shim_controller::RotationShimController
+      primary_controller: dwb_core::DWBLocalPlanner
+      angular_dist_threshold: 0.5
+      forward_sampling_distance: 0.4
+      rotate_to_heading_angular_vel: 0.8
+      max_angular_accel: 3.2
+      simulate_ahead_time: 1.0
+      rotate_to_goal_heading: false
       debug_trajectory_details: false
       min_vel_x: 0.0
       min_vel_y: 0.0
@@ -104,7 +117,15 @@ controller_server:
       sim_time: 1.7
       linear_granularity: 0.05
       angular_granularity: 0.025
-      transform_tolerance: 0.2
+      # Xe that: SLAM chi cap nhat TF map->odom khi co scan, ma bridge BO scan khi xe quay
+      # > 15 do/s (chong meo map) -> quay ~2 s khong co scan, TF cu ~2-2.5 s. Nho hon thi
+      # controller bao "Transform data too old" va huy dich ngay sau lan quay dau.
+      # An toan: vi tri xe van lay tu odom (encoder+gyro 30 Hz); chi phan hieu chinh
+      # map->odom (thay doi rat cham) duoc phep cu toi 3 s.
+      # Tu quet xe that: xoay tai cho cat xung (0.2 s quay / 0.5 s dung), quay 90 do ~4 s va
+      # scan bi bo het trong luc do => TF map->odom cu toi ~4-5 s. 3.0 thi controller huy
+      # duong ("Transform data too old") giua luc xoay. Vi tri xe van lay tu odom 30 Hz.
+      transform_tolerance: 6.0
       xy_goal_tolerance: 0.25
       trans_stopped_velocity: 0.05
       short_circuit_trajectory_evaluation: true
@@ -141,10 +162,23 @@ local_costmap:
       width: 4
       height: 4
       resolution: 0.025
-      robot_radius: 0.16
+      # Xe that dai 0.33 m x rong 0.17 m (ke ca banh); base_link o tam xoay.
+      footprint: "[[0.165, 0.085], [0.165, -0.085], [-0.165, -0.085], [-0.165, 0.085]]"
+      # Bien an toan: Pi (sonar) chan xoay/re khi hong xe < 12 cm. Khong padding thi
+      # Nav2 lap duong sat tuong, xe ket vi moi lenh xoay bi chan (xem settings.yaml).
+      # Da thu 0.06 de qua khe hep: xe ket o khe (Pi chan xoay) -> giu 0.13.
+      footprint_padding: 0.13
+      transform_tolerance: 6.0   # mac dinh 0.3; TF map->odom cu toi ~4-5 s khi xe xoay (xem controller_server)
       plugins:
       - obstacle_layer
       - inflation_layer
+      # Vung KEEP_OUT tu Web Admin (mask do filter_mask_server phat, xem zone_filter_params.yaml)
+      filters:
+      - keepout_filter
+      keepout_filter:
+        plugin: nav2_costmap_2d::KeepoutFilter
+        enabled: true
+        filter_info_topic: /costmap_filter_info
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
         cost_scaling_factor: 3.0
@@ -173,13 +207,34 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: false
-      robot_radius: 0.16
+      # Xe that dai 0.33 m x rong 0.17 m (ke ca banh); base_link o tam xoay.
+      footprint: "[[0.165, 0.085], [0.165, -0.085], [-0.165, -0.085], [-0.165, 0.085]]"
+      # Bien an toan: Pi (sonar) chan xoay/re khi hong xe < 12 cm. Khong padding thi
+      # Nav2 lap duong sat tuong, xe ket vi moi lenh xoay bi chan (xem settings.yaml).
+      # Da thu 0.06 de qua khe hep: xe ket o khe (Pi chan xoay) -> giu 0.13.
+      footprint_padding: 0.13
+      transform_tolerance: 6.0   # mac dinh 0.3; TF map->odom cu toi ~4-5 s khi xe xoay (xem controller_server)
       resolution: 0.025
       track_unknown_space: true
       plugins:
       - static_layer
       - obstacle_layer
       - inflation_layer
+      # Vung KEEP_OUT tu Web Admin => planner khong lap duong di vao.
+      # Vung SPEED_ZONE => SpeedFilter phat /speed_limit (m/s) khi tam xe nam trong vung, controller
+      # ha toc do toi da. Mask + info server: nav2/zone_filters_launch.py (zone_filter_params.yaml).
+      filters:
+      - keepout_filter
+      - speed_filter
+      keepout_filter:
+        plugin: nav2_costmap_2d::KeepoutFilter
+        enabled: true
+        filter_info_topic: /costmap_filter_info
+      speed_filter:
+        plugin: nav2_costmap_2d::SpeedFilter
+        enabled: true
+        filter_info_topic: /speed_filter_info
+        speed_limit_topic: /speed_limit   # tuyet doi: node costmap nam trong namespace /global_costmap
       obstacle_layer:
         plugin: nav2_costmap_2d::ObstacleLayer
         enabled: true
@@ -201,7 +256,10 @@ global_costmap:
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
         cost_scaling_factor: 3.0
-        inflation_radius: 0.35
+        # Global planner (NavFn) ne vung co chi phi => duong di nam giua loi di, cach tuong
+        # ~0.5 m khi du rong, de xe xoay duoc o cac goc (sat tuong thi Pi chan xoay).
+        # Khong lam hep loi di: van qua duoc khe > 0.42 m (chi la dat hon).
+        inflation_radius: 0.55
       always_send_full_costmap: true
 map_server:
   ros__parameters:
@@ -227,6 +285,7 @@ planner_server:
       allow_unknown: true
 behavior_server:
   ros__parameters:
+    transform_tolerance: 6.0     # mac dinh 0.1; TF map->odom cu toi ~4-5 s khi xe xoay
     local_costmap_topic: local_costmap/costmap_raw
     global_costmap_topic: global_costmap/costmap_raw
     local_footprint_topic: local_costmap/published_footprint

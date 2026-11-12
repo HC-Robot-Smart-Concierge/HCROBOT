@@ -1,8 +1,9 @@
 import os
 import json
+import logging
 import random
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
+from datetime import datetime, timedelta, timezone
+from typing import Optional, List
 
 from fastapi import (
     APIRouter,
@@ -19,7 +20,7 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, or_, func, update
+from sqlalchemy import select
 
 from app.core.database import get_db
 from app.models import SupportRequest
@@ -40,6 +41,7 @@ from app.services.cloudinary_service import cloudinary_service
 from app.services.video_call_manager import video_call_manager
 from .shared import TAG_CONCIERGE, create_department_notification
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -97,7 +99,7 @@ async def get_concierge_dashboard(
     - Tự động đóng các phiên gọi nhỡ / quá hạn (> 5 phút không ai nhấc máy)
     - Chỉ trả về cuộc gọi đang thực sự kết nối hoặc đang reo chuông
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     five_minutes_ago = now - timedelta(minutes=5)
     twenty_minutes_ago = now - timedelta(minutes=20)
 
@@ -190,7 +192,7 @@ async def create_concierge_live_request(
         sentiment="Neutral",
         status="Active",
         linked_request_id=new_request.id,
-        call_started_at=datetime.utcnow(),
+        call_started_at=datetime.now(timezone.utc).replace(tzinfo=None),
         messages=request_in.transcript or [],
     )
     await session_repo.create(human_session)
@@ -298,7 +300,7 @@ async def update_concierge_request(
     if update_in.assigned_to is not None:
         req.assigned_staff_name = update_in.assigned_to
 
-    req.updated_at = datetime.utcnow()
+    req.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     # Đồng bộ trạng thái sang HumanSupportSession tương ứng
     hs = await session_repo.get_by_linked_request(req.id)
@@ -306,7 +308,7 @@ async def update_concierge_request(
         if update_in.status in ["Completed", "Closed"]:
             hs.status = "Resolved"
             if not hs.call_ended_at:
-                hs.call_ended_at = datetime.utcnow()
+                hs.call_ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
         elif update_in.status in ["Connected", "In Progress"]:
             hs.status = "Active"
 
@@ -409,7 +411,7 @@ async def upload_call_recording(
     h_session.recording_duration = cloud_result["duration"] or duration
     h_session.thumbnail_url = cloud_result.get("thumbnail_url")
     h_session.status = "Resolved"
-    h_session.call_ended_at = datetime.utcnow()
+    h_session.call_ended_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     if messages:
         try:
@@ -430,21 +432,10 @@ async def upload_call_recording(
         req = await sr_repo.get_by_id_or_code(h_session.linked_request_id)
         if req:
             req.status = "Completed"
-            req.updated_at = datetime.utcnow()
+            req.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     await session_repo.commit()
     await session_repo.refresh(h_session)
-
-    return {
-        "session_id": h_session.id,
-        "recording_url": h_session.recording_url,
-        "public_id": h_session.recording_public_id,
-        "duration": h_session.recording_duration or 0,
-        "thumbnail_url": h_session.thumbnail_url,
-        "storage_provider": cloud_result.get("storage_provider", "cloudinary"),
-        "status": "Resolved",
-        "message": "Ghi hình cuộc gọi đã được lưu trữ thành công vào Cloudinary và CSDL!",
-    }
 
     return {
         "session_id": h_session.id,
@@ -503,9 +494,6 @@ async def video_call_signaling_endpoint(
     if clean_session not in video_call_manager.aliases and not clean_session.startswith("CCG-"):
         try:
             from app.core.database import AsyncSessionLocal
-            from app.models.support_request import SupportRequest
-            from app.models.support import HumanSupportSession
-            from sqlalchemy import select
 
             async with AsyncSessionLocal() as db_lookup:
                 if clean_session.startswith("REQ-"):
@@ -549,5 +537,5 @@ async def video_call_signaling_endpoint(
 
     except WebSocketDisconnect:
         video_call_manager.disconnect(websocket, clean_session)
-    except Exception as e:
+    except Exception:
         video_call_manager.disconnect(websocket, clean_session)

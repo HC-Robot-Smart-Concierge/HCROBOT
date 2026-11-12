@@ -23,6 +23,7 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
     room_service: { brand: 'ROOM SERVICE PORTAL', staff: 'Room Service staff', navigation: 'Room Service navigation', department: 'Room Service' },
     reception: { brand: 'RECEPTION PORTAL', staff: 'Reception staff', navigation: 'Reception navigation', department: 'Reception' },
     maintenance: { brand: 'MAINTENANCE PORTAL', staff: 'Maintenance staff', navigation: 'Maintenance navigation', department: 'Maintenance' },
+    bell_services: { brand: 'BELL SERVICES PORTAL', staff: 'Bell Services staff', navigation: 'Bell Services navigation', department: 'Bell Services' },
   }[portal] || { brand: 'ROOM SERVICE PORTAL', staff: 'Room Service staff', navigation: 'Room Service navigation', department: 'Room Service' };
   const name = currentUser?.full_name || currentUser?.name || st(portalLabels.staff);
   const operationsActive = ['Requests', 'MyTasks'].includes(activeMenu);

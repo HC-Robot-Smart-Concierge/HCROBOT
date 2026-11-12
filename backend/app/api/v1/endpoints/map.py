@@ -2,12 +2,14 @@ import asyncio
 import io
 import json
 import logging
+import math
 import os
 import re
 import zipfile
 from datetime import datetime
+from ipaddress import IPv4Address
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Sequence
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status, Depends, Response
 from fastapi.responses import FileResponse, StreamingResponse
@@ -169,6 +171,12 @@ current_robot_pose = Pose2D(x=0.0, y=0.0, yaw=0.0)
 
 class Ros2MapRequest(BaseModel):
     name: str
+    pi_ip: Optional[IPv4Address] = None
+
+
+class Ros2ExploreRequest(BaseModel):
+    name: str = "auto_explored_map"
+    auto_save: bool = True
 
 
 def is_point_in_zone(px: float, py: float, z) -> bool:
@@ -177,7 +185,40 @@ def is_point_in_zone(px: float, py: float, z) -> bool:
     half_h = (getattr(z, "height", 2.0) or 2.0) / 2.0
     zx = getattr(z, "x", 0.0)
     zy = getattr(z, "y", 0.0)
-    return (zx - half_w) <= px <= (zx + half_w) and (zy - half_h) <= py <= (zy + half_h)
+    angle = math.radians(getattr(z, "yaw", 0.0) or 0.0)
+    dx, dy = px - zx, py - zy
+    local_x = dx * math.cos(angle) + dy * math.sin(angle)
+    local_y = -dx * math.sin(angle) + dy * math.cos(angle)
+    return abs(local_x) <= half_w + 1e-9 and abs(local_y) <= half_h + 1e-9
+
+
+# Vung khong duoc co endpoint ben trong (cung luat voi Web: physicalMapZones.js).
+# NO_STOP: robot chi duoc di ngang qua, moi endpoint deu la cho dung => cam moi loai endpoint.
+NO_ENDPOINT_ZONE_TYPES = ("KEEP_OUT", "NO_STOP")
+
+
+def _waypoint_zone_violation(x: float, y: float, zones) -> Optional[str]:
+    for z in zones:
+        if z.type == "KEEP_OUT" and is_point_in_zone(x, y, z):
+            return f"Tọa độ ({x:.2f}, {y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!"
+        if z.type == "NO_STOP" and is_point_in_zone(x, y, z):
+            return (f"Tọa độ ({x:.2f}, {y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}': "
+                    "robot chỉ được đi ngang qua, không thể đặt endpoint/điểm dừng tại đây!")
+    return None
+
+
+async def _zone_endpoint_conflict(zone: "ZoneSchema", repo: MapRepository) -> Optional[str]:
+    """Vung cam dung/cam vao de len endpoint co san cua CUNG map => ly do tu choi (bat xoa truoc)."""
+    if (zone.type or "KEEP_OUT") not in NO_ENDPOINT_ZONE_TYPES or not zone.map_id:
+        return None  # khong ro map (du lieu cu) thi khong doan endpoint cua map nao
+    waypoints = await repo.list_waypoints(zone.map_id)
+    covered = [w for w in waypoints if is_point_in_zone(w.x, w.y, zone)]
+    if not covered:
+        return None
+    kind = "cấm dừng" if zone.type == "NO_STOP" else "cấm vào"
+    names = ", ".join(f"'{w.name or w.id}'" for w in covered)
+    return (f"Không thể đặt vùng {kind} '{zone.name}' đè lên endpoint {names}. "
+            "Hãy xóa endpoint đó trước, rồi vẽ lại vùng.")
 
 
 async def ensure_default_waypoints(repo: MapRepository):
@@ -248,6 +289,7 @@ async def get_current_map(repo: MapRepository = Depends(get_map_repository)):
             y=z.y,
             width=z.width,
             height=z.height,
+            yaw=getattr(z, "yaw", 0.0) or 0.0,
             speed_limit=z.speed_limit,
             floor=z.floor,
             description=z.description
@@ -273,23 +315,42 @@ async def get_current_map(repo: MapRepository = Depends(get_map_repository)):
     )
 
 
+def _waypoint_out(w) -> Waypoint:
+    return Waypoint(
+        id=w.id,
+        name=w.name,
+        x=w.x,
+        y=w.y,
+        yaw=w.yaw,
+        floor=w.floor,
+        type=w.type or "WAYPOINT",
+        description=w.description,
+        map_id=w.map_id,
+    )
+
+
+def _zone_out(z) -> ZoneSchema:
+    return ZoneSchema(
+        id=z.id,
+        name=z.name,
+        type=z.type or "KEEP_OUT",
+        x=z.x,
+        y=z.y,
+        width=z.width,
+        height=z.height,
+        yaw=getattr(z, "yaw", 0.0) or 0.0,
+        speed_limit=z.speed_limit,
+        floor=z.floor,
+        description=z.description,
+        map_id=z.map_id,
+    )
+
+
 @router.get("/waypoints", response_model=List[Waypoint], summary="Lấy danh sách các điểm Waypoints / Endpoints")
-async def get_waypoints(repo: MapRepository = Depends(get_map_repository)):
-    wps = await repo.list_waypoints()
-    sync_all_waypoints_from_db_to_world_and_sim(wps)
-    return [
-        Waypoint(
-            id=w.id,
-            name=w.name,
-            x=w.x,
-            y=w.y,
-            yaw=w.yaw,
-            floor=w.floor,
-            type=w.type or "WAYPOINT",
-            description=w.description
-        )
-        for w in wps
-    ]
+async def get_waypoints(map_id: Optional[str] = None, repo: MapRepository = Depends(get_map_repository)):
+    """map_id: chỉ lấy điểm của map đó; bỏ trống để lấy tất cả (tương thích ngược)."""
+    wps = await repo.list_waypoints(map_id)
+    return [_waypoint_out(w) for w in wps]
 
 
 
@@ -343,7 +404,7 @@ def _get_material_for_type(wp_type: str):
         return (0.58, 0.64, 0.72, 0.9), (0.45, 0.50, 0.58, 1.0)
 
 
-def sync_all_waypoints_from_db_to_world_and_sim(waypoints: List[Any]):
+def sync_all_waypoints_from_db_to_world_and_sim(waypoints: Sequence[Any]):
     """
     Đồng bộ 100% danh sách Waypoints từ Web/DB sang Gazebo Sim và file hotel_room.world.
     - Duyệt qua từng model trong pool (9 điểm).
@@ -397,18 +458,9 @@ def sync_all_waypoints_from_db_to_world_and_sim(waypoints: List[Any]):
 
 @router.post("/waypoints", response_model=Waypoint, summary="Tạo mới hoặc cập nhật tọa độ Waypoint / Endpoint")
 async def save_waypoint(wp: Waypoint, repo: MapRepository = Depends(get_map_repository)):
-    active_zones = await repo.list_zones()
-    for z in active_zones:
-        if z.type == "KEEP_OUT" and is_point_in_zone(wp.x, wp.y, z):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!",
-            )
-        if z.type == "NO_STOP" and (wp.type or "").upper() in ("PARK", "PARKING_SPOT", "CHARGER", "DOCKING_TARGET") and is_point_in_zone(wp.x, wp.y, z):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}'. Không thể tạo điểm đỗ/chờ tại đây!",
-            )
+    violation = _waypoint_zone_violation(wp.x, wp.y, await repo.list_zones(wp.map_id))
+    if violation:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=violation)
 
     saved = await repo.save_or_update_waypoint(
         id=wp.id,
@@ -419,19 +471,11 @@ async def save_waypoint(wp: Waypoint, repo: MapRepository = Depends(get_map_repo
         floor=wp.floor,
         type=wp.type or "WAYPOINT",
         description=wp.description,
+        map_id=wp.map_id,
     )
     all_wps = await repo.list_waypoints()
-    sync_all_waypoints_from_db_to_world_and_sim(all_wps)
-    return Waypoint(
-        id=saved.id,
-        name=saved.name,
-        x=saved.x,
-        y=saved.y,
-        yaw=saved.yaw,
-        floor=saved.floor,
-        type=saved.type,
-        description=saved.description
-    )
+    await asyncio.to_thread(sync_all_waypoints_from_db_to_world_and_sim, all_wps)
+    return _waypoint_out(saved)
 
 
 @router.put("/waypoints/{waypoint_id}", response_model=Waypoint, summary="Chỉnh sửa Endpoint đã có")
@@ -440,18 +484,9 @@ async def update_waypoint(waypoint_id: str, wp: Waypoint, repo: MapRepository = 
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Waypoint")
 
-    active_zones = await repo.list_zones()
-    for z in active_zones:
-        if z.type == "KEEP_OUT" and is_point_in_zone(wp.x, wp.y, z):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!",
-            )
-        if z.type == "NO_STOP" and (wp.type or "").upper() in ("PARK", "PARKING_SPOT", "CHARGER", "DOCKING_TARGET") and is_point_in_zone(wp.x, wp.y, z):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}'. Không thể tạo điểm đỗ/chờ tại đây!",
-            )
+    violation = _waypoint_zone_violation(wp.x, wp.y, await repo.list_zones(wp.map_id or existing.map_id))
+    if violation:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=violation)
 
     saved = await repo.save_or_update_waypoint(
         id=waypoint_id,
@@ -462,19 +497,11 @@ async def update_waypoint(waypoint_id: str, wp: Waypoint, repo: MapRepository = 
         floor=wp.floor,
         type=wp.type or "WAYPOINT",
         description=wp.description,
+        map_id=wp.map_id,
     )
     all_wps = await repo.list_waypoints()
-    sync_all_waypoints_from_db_to_world_and_sim(all_wps)
-    return Waypoint(
-        id=saved.id,
-        name=saved.name,
-        x=saved.x,
-        y=saved.y,
-        yaw=saved.yaw,
-        floor=saved.floor,
-        type=saved.type,
-        description=saved.description
-    )
+    await asyncio.to_thread(sync_all_waypoints_from_db_to_world_and_sim, all_wps)
+    return _waypoint_out(saved)
 
 
 @router.delete("/waypoints/{waypoint_id}", summary="Xóa điểm Waypoint / Endpoint")
@@ -484,34 +511,24 @@ async def delete_waypoint(waypoint_id: str, repo: MapRepository = Depends(get_ma
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Waypoint")
 
     all_wps = await repo.list_waypoints()
-    sync_all_waypoints_from_db_to_world_and_sim(all_wps)
+    await asyncio.to_thread(sync_all_waypoints_from_db_to_world_and_sim, all_wps)
 
     return {"status": "SUCCESS", "message": f"Đã xóa waypoint {waypoint_id}"}
 
 
 @router.get("/zones", response_model=List[ZoneSchema], summary="Lấy danh sách các Vùng Chức Năng (Zones)")
-async def get_zones(repo: MapRepository = Depends(get_map_repository)):
+async def get_zones(map_id: Optional[str] = None, repo: MapRepository = Depends(get_map_repository)):
+    """map_id: chỉ lấy vùng của map đó; bỏ trống để lấy tất cả (tương thích ngược)."""
     await ensure_default_zones(repo)
-    zones = await repo.list_zones()
-    return [
-        ZoneSchema(
-            id=z.id,
-            name=z.name,
-            type=z.type or "KEEP_OUT",
-            x=z.x,
-            y=z.y,
-            width=z.width,
-            height=z.height,
-            speed_limit=z.speed_limit,
-            floor=z.floor,
-            description=z.description
-        )
-        for z in zones
-    ]
+    zones = await repo.list_zones(map_id)
+    return [_zone_out(z) for z in zones]
 
 
 @router.post("/zones", response_model=ZoneSchema, summary="Tạo mới hoặc cập nhật Vùng Chức Năng (Zone)")
 async def save_zone(zone: ZoneSchema, repo: MapRepository = Depends(get_map_repository)):
+    conflict = await _zone_endpoint_conflict(zone, repo)
+    if conflict:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=conflict)
     saved = await repo.save_or_update_zone(
         id=zone.id,
         name=zone.name,
@@ -520,22 +537,13 @@ async def save_zone(zone: ZoneSchema, repo: MapRepository = Depends(get_map_repo
         y=zone.y,
         width=zone.width,
         height=zone.height,
+        yaw=zone.yaw,
         speed_limit=zone.speed_limit,
         floor=zone.floor,
         description=zone.description,
+        map_id=zone.map_id,
     )
-    return ZoneSchema(
-        id=saved.id,
-        name=saved.name,
-        type=saved.type,
-        x=saved.x,
-        y=saved.y,
-        width=saved.width,
-        height=saved.height,
-        speed_limit=saved.speed_limit,
-        floor=saved.floor,
-        description=saved.description
-    )
+    return _zone_out(saved)
 
 
 @router.put("/zones/{zone_id}", response_model=ZoneSchema, summary="Cập nhật Vùng Chức Năng theo ID")
@@ -543,6 +551,9 @@ async def update_zone(zone_id: str, zone: ZoneSchema, repo: MapRepository = Depe
     existing = await repo.get_zone_by_id(zone_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Vùng Chức Năng")
+    conflict = await _zone_endpoint_conflict(zone, repo)
+    if conflict:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=conflict)
 
     saved = await repo.save_or_update_zone(
         id=zone_id,
@@ -552,22 +563,13 @@ async def update_zone(zone_id: str, zone: ZoneSchema, repo: MapRepository = Depe
         y=zone.y,
         width=zone.width,
         height=zone.height,
+        yaw=zone.yaw,
         speed_limit=zone.speed_limit,
         floor=zone.floor,
         description=zone.description,
+        map_id=zone.map_id,
     )
-    return ZoneSchema(
-        id=saved.id,
-        name=saved.name,
-        type=saved.type,
-        x=saved.x,
-        y=saved.y,
-        width=saved.width,
-        height=saved.height,
-        speed_limit=saved.speed_limit,
-        floor=saved.floor,
-        description=saved.description
-    )
+    return _zone_out(saved)
 
 
 @router.delete("/zones/{zone_id}", summary="Xóa Vùng Chức Năng")
@@ -596,6 +598,21 @@ async def start_ros2_mapping():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
+@router.post("/ros2/start_explore", summary="Xe thật TỰ ĐI quét map (SLAM + Nav2 + frontier explorer)")
+async def start_ros2_explore(request: Ros2ExploreRequest):
+    try:
+        return await asyncio.to_thread(
+            ros2_runtime_service.start_exploration, request.name, auto_save=request.auto_save
+        )
+    except Ros2RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/ros2/stop_explore", summary="Dừng xe tự quét (giữ SLAM để còn lưu map)")
+async def stop_ros2_explore():
+    return await asyncio.to_thread(ros2_runtime_service.stop_exploration)
+
+
 @router.post("/ros2/save", summary="Lưu Occupancy Grid ROS 2 hiện tại thành YAML/PGM")
 async def save_ros2_map(request: Ros2MapRequest):
     try:
@@ -604,12 +621,36 @@ async def save_ros2_map(request: Ros2MapRequest):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
+async def _nav2_zones_for(repo: MapRepository, map_name: str) -> List[dict]:
+    zones = await repo.list_zones(ros2_runtime_service.normalize_map_name(map_name))
+    return [_zone_out(z).model_dump() for z in zones]
+
+
 @router.post("/ros2/start_navigation", summary="Bật Map Server, AMCL, Nav2 và Foxglove")
-async def start_ros2_navigation(request: Ros2MapRequest):
+async def start_ros2_navigation(request: Ros2MapRequest, repo: MapRepository = Depends(get_map_repository)):
     try:
-        return await asyncio.to_thread(ros2_runtime_service.start_navigation, request.name)
+        zones = await _nav2_zones_for(repo, request.name)
+        kwargs = {"pi_ip": str(request.pi_ip)} if request.pi_ip is not None else {}
+        return await asyncio.to_thread(ros2_runtime_service.start_navigation, request.name, zones, **kwargs)
     except Ros2RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post(
+    "/ros2/keepout_mask/{map_name}",
+    summary="Tạo lại mask vùng cấm (Keepout Filter) và giới hạn tốc độ (Speed Filter) cho Nav2 từ CSDL",
+)
+async def update_ros2_keepout_mask(map_name: str, repo: MapRepository = Depends(get_map_repository)):
+    """Gọi sau khi lưu/xóa vùng: ghi các mask mới và nạp lại ngay nếu Nav2 đang chạy."""
+    try:
+        zones = await _nav2_zones_for(repo, map_name)
+        result = await asyncio.to_thread(ros2_runtime_service.write_zone_masks, map_name, zones)
+    except Ros2RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    reloaded = await asyncio.to_thread(ros2_runtime_service.reload_zone_masks, map_name)
+    result["reloaded_masks"] = reloaded
+    result["reloaded"] = all(reloaded.values())
+    return {"status": "SUCCESS", **result}
 
 
 @router.post("/save_map", summary="Lưu bản đồ Occupancy Grid hiện tại vào file lưu trữ cố định")
@@ -843,6 +884,69 @@ async def list_saved_maps():
         "active_map_id": rplidar_service.saved_map_id,
         "is_map_locked": rplidar_service.is_map_locked,
     }
+
+
+def _read_map_layout(yaml_path: str) -> Optional[dict]:
+    """Đọc thông số map Nav2 (.yaml + .pgm) để Web vẽ đúng tỉ lệ và gốc tọa độ."""
+    import yaml
+
+    try:
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            meta = yaml.safe_load(f) or {}
+        pgm_path = os.path.join(os.path.dirname(yaml_path), str(meta.get("image", "")))
+        if not os.path.isfile(pgm_path):
+            return None
+        from pathlib import Path
+        from app.services.hardware.ros2_runtime_service import Ros2RuntimeService
+
+        stats = Ros2RuntimeService._read_pgm_stats(Path(pgm_path))
+        resolution = float(meta.get("resolution", 0.05))
+        origin = meta.get("origin") or [0.0, 0.0, 0.0]
+    except Exception as exc:
+        logger.warning("Bỏ qua map lỗi %s: %s", yaml_path, exc)
+        return None
+
+    name = os.path.splitext(os.path.basename(yaml_path))[0]
+    return {
+        "map_id": name,
+        "name": name,
+        "width": stats["width"],
+        "height": stats["height"],
+        "resolution": resolution,
+        "origin_x": float(origin[0]),
+        "origin_y": float(origin[1]),
+        "width_m": round(stats["width"] * resolution, 3),
+        "height_m": round(stats["height"] * resolution, 3),
+        "image_file": os.path.basename(pgm_path),
+        "updated_at": datetime.fromtimestamp(os.path.getmtime(yaml_path)).strftime("%Y-%m-%d %H:%M"),
+    }
+
+
+@router.get("/layouts", summary="Danh sách map SLAM (.yaml + .pgm) để chọn trên Bản Đồ Vật Lý")
+async def list_map_layouts():
+    maps_dir = get_robot_maps_dir()
+    layouts = []
+    if os.path.isdir(maps_dir):
+        for f in sorted(os.listdir(maps_dir)):
+            # Bỏ file tạm của lần lưu đang dở (pending_<ten>_<timestamp>).
+            if f.endswith(".yaml") and not f.startswith("pending_"):
+                info = await asyncio.to_thread(_read_map_layout, os.path.join(maps_dir, f))
+                if info:
+                    layouts.append(info)
+    return {"status": "SUCCESS", "maps": layouts}
+
+
+@router.get("/layouts/{map_name}/image", summary="Ảnh PGM của map SLAM (hàng 0 là đỉnh ảnh)")
+async def get_map_layout_image(map_name: str):
+    safe_name = "".join(c for c in map_name if c.isalnum() or c in ("_", "-")).strip()
+    yaml_path = os.path.join(get_robot_maps_dir(), f"{safe_name}.yaml")
+    info = await asyncio.to_thread(_read_map_layout, yaml_path) if safe_name and os.path.isfile(yaml_path) else None
+    if not info:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Không tìm thấy map '{map_name}'")
+    return FileResponse(
+        path=os.path.join(get_robot_maps_dir(), info["image_file"]),
+        media_type="image/x-portable-graymap",
+    )
 
 
 @router.delete("/saved/{map_name}", summary="Xóa file bản đồ trên máy tính")

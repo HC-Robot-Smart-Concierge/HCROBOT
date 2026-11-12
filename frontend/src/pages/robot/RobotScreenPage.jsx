@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl, detectDestinationPoi } from '../../components/robot/FloorMap';
-import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck, Wrench } from 'lucide-react';
+import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck, Wrench, Luggage } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
 import { RobotRoomServiceScreen } from '../../components/robot/RobotRoomServiceScreen';
 import { RobotMaintenanceMenuScreen } from '../../components/robot/RobotMaintenanceMenuScreen';
+import { RobotBellmanMenuScreen, bellRequestMessage } from '../../components/robot/RobotBellmanMenuScreen';
 import {
   RobotTaxiModal,
   isSelfBookingVoiceIntent,
@@ -31,7 +32,7 @@ import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCa
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
 import { RobotFacilitiesModal } from '../../components/robot/RobotFacilitiesModal';
 import { createConciergeRequest } from '../../services/conciergeApi';
-import { createMaintenanceRequest } from '../../services/operationsApi';
+import { createBellRequest, createMaintenanceRequest } from '../../services/operationsApi';
 import { useRobotBattery } from '../../hooks/useRobotBattery';
 import { useLowBatteryGuard } from '../../hooks/useLowBatteryGuard';
 import {
@@ -187,6 +188,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   });
   const [isRoomServiceMenuOpen, setIsRoomServiceMenuOpen] = useState(false);
   const [isMaintenanceMenuOpen, setIsMaintenanceMenuOpen] = useState(false);
+  const [isBellmanMenuOpen, setIsBellmanMenuOpen] = useState(false);
   const [isTaxiModalOpen, setIsTaxiModalOpen] = useState(false);
   const isTaxiModalOpenRef = useRef(false);
   useEffect(() => {
@@ -424,6 +426,30 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [language]);
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
+  const lastUnhappyAlertTimeRef = useRef(0);
+
+  const handleGuestEmotionDetected = useCallback(
+    (emotion) => {
+      setGuestEmotion(emotion);
+      if (emotion === 'unhappy') {
+        const now = Date.now();
+        if (now - lastUnhappyAlertTimeRef.current > 90000) {
+          lastUnhappyAlertTimeRef.current = now;
+          const roomLoc = activeRoomNumber ? `Room ${activeRoomNumber}` : 'Main Lobby Kiosk';
+          createBellRequest({
+            title: `Cảnh báo AI: Khách có biểu cảm khó chịu tại ${roomLoc}`,
+            location: roomLoc,
+            guest_name: activeRoomNumber ? `Guest (Room ${activeRoomNumber})` : 'Khách tại Sảnh Kiosk',
+            reporter: 'HCRobot Emotion AI',
+            description:
+              'Camera AI phát hiện khách hàng có biểu cảm khó chịu (Unhappy) khi tương tác tại Kiosk. Cần nhân viên Bellman tiếp cận hỗ trợ trực tiếp ngay.',
+            request_type: 'emotion_alert',
+          }).catch(() => {});
+        }
+      }
+    },
+    [activeRoomNumber]
+  );
 
   // Load available workflows for AUTO_DETECT trigger & manual launcher
   useEffect(() => {
@@ -524,7 +550,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   useEffect(() => {
     if (guestPresent || currentState !== 'RT-01' || isWorkflowRunning || !batteryGuard.canStartGuestSession ||
         isProcessing || isSpeaking || isVideoCallOpen || isPinModalOpen || isTaxiModalOpen ||
-        isFoodMenuOpen || isRoomServiceMenuOpen || isMaintenanceMenuOpen || isFeedbackModalOpen || activeRoomNumber) return;
+        isFoodMenuOpen || isRoomServiceMenuOpen || isMaintenanceMenuOpen || isBellmanMenuOpen || isFeedbackModalOpen || activeRoomNumber) return;
     const checkpoint = pausedPromo.current;
     if (!checkpoint) return;
     pausedPromo.current = null;
@@ -532,7 +558,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     startWorkflow(checkpoint.workflow, checkpoint.index ?? 0);
   }, [guestPresent, currentState, isStandby, isWorkflowRunning, batteryGuard.canStartGuestSession,
       isProcessing, isSpeaking, isVideoCallOpen, isPinModalOpen, isTaxiModalOpen, isFoodMenuOpen,
-      isRoomServiceMenuOpen, isMaintenanceMenuOpen, isFeedbackModalOpen, activeRoomNumber]);
+      isRoomServiceMenuOpen, isMaintenanceMenuOpen, isBellmanMenuOpen, isFeedbackModalOpen, activeRoomNumber]);
 
   const lowBatteryNoticeAtRef = useRef(0);
   const announceLowBattery = () => {
@@ -1136,6 +1162,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         setIsFoodMenuOpen(false);
         setIsRoomServiceMenuOpen(false);
         setIsMaintenanceMenuOpen(false);
+        setIsBellmanMenuOpen(false);
         setIsTaxiModalOpen(false);
         isTaxiModalOpenRef.current = false;
         hasSpokenTaxiPromptRef.current = false;
@@ -1503,6 +1530,73 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         return;
       }
 
+      // The client may already have a verified room before the AI session does.
+      // Wait for the actual ticket result before speaking a success message.
+      const pendingMaintenance = (chatRes.pending_service_action || chatRes.action) === 'maintenance';
+      const maintenanceRoom = chatRes.target_room_number || chatRes.current_room_number || spokenRoomDetected || authenticatedRoom;
+      if (chatRes.require_room_pin && pendingMaintenance && authenticatedRoom && String(maintenanceRoom).trim() === String(authenticatedRoom).trim()) {
+        const english = chatRes.detected_language === 'English';
+        try {
+          const items = chatRes.pending_service_items || query;
+          const result = await createMaintenanceRequest({
+            title: items, category: 'general', location: String(authenticatedRoom).trim(),
+            description: items, source: 'HCRobot Voice AI (Session Authenticated)',
+          });
+          chatRes.ticket_code = result.ticket_code;
+          chatRes.response = result.merged
+            ? (english ? `The additional issue was added to repair request #${result.ticket_code}. No new ticket was created.` : `Đã bổ sung sự cố vào phiếu sửa chữa #${result.ticket_code}. Không tạo thêm phiếu mới.`)
+            : result.duplicate
+              ? (english ? `This issue already has an open request #${result.ticket_code}. No new ticket was created.` : `Sự cố này đã có phiếu #${result.ticket_code} đang xử lý. Không tạo thêm phiếu mới.`)
+              : (english ? `Your repair request #${result.ticket_code} has been sent to Maintenance.` : `Phiếu sửa chữa #${result.ticket_code} đã được gửi tới bộ phận kỹ thuật.`);
+        } catch {
+          chatRes.response = english ? 'Could not submit the repair request. Please try again.' : 'Chưa gửi được yêu cầu sửa chữa. Vui lòng thử lại.';
+        }
+        chatRes.require_room_pin = false;
+        chatRes.audio_base64 = null;
+        if (currentChatId !== activeChatRequestIdRef.current) return;
+      }
+
+      // Same for Bellman: the kiosk already verified this room, so send the request directly
+      // (service_key "auto" lets the backend classify the guest's words) instead of asking for a PIN.
+      const pendingBellman = (chatRes.pending_service_action || chatRes.action) === 'bellman';
+      const bellmanRoom = chatRes.target_room_number || chatRes.current_room_number || spokenRoomDetected || authenticatedRoom;
+      if (chatRes.require_room_pin && pendingBellman && authenticatedRoom && String(bellmanRoom).trim() === String(authenticatedRoom).trim()) {
+        const english = chatRes.detected_language === 'English';
+        try {
+          const items = chatRes.pending_service_items || query;
+          const lowerBellItems = String(items || '').toLowerCase();
+          const isLostFound = ['thất lạc', 'that lac', 'mất đồ', 'mat do', 'quên đồ', 'quen do', 'rơi đồ', 'roi do', 'tìm đồ', 'tim do', 'bỏ quên', 'bo quen', 'lost', 'missing', 'forgot'].some((k) =>
+            lowerBellItems.includes(k)
+          );
+          if (isLostFound) {
+            const result = await createBellRequest({
+              title: `Báo cáo đồ thất lạc Phòng ${String(authenticatedRoom).trim()}: ${items}`,
+              location: String(authenticatedRoom).trim(),
+              guest_name: `Guest (Room ${String(authenticatedRoom).trim()})`,
+              reporter: 'HCRobot Voice AI (Session Authenticated)',
+              description: `Khách yêu cầu qua giọng nói: ${items}`,
+              request_type: 'lost_found',
+            });
+            chatRes.ticket_code = result.ticket_code;
+            chatRes.response = english
+              ? `Your lost & found report for Room ${authenticatedRoom} has been sent to Bell Services (ticket #${result.ticket_code}).`
+              : `Dạ Rora đã tiếp nhận báo cáo đồ thất lạc của Phòng ${authenticatedRoom} và chuyển tới bộ phận Bellman / Lost & Found, mã phiếu #${result.ticket_code}.`;
+          } else {
+            const result = await createBellRequest({
+              title: items, location: String(authenticatedRoom).trim(), description: items,
+              service_key: 'auto', source: 'HCRobot Voice AI (Session Authenticated)',
+            });
+            chatRes.ticket_code = result.ticket_code;
+            chatRes.response = bellRequestMessage(result, english);
+          }
+        } catch {
+          chatRes.response = english ? 'Could not send your luggage request. Please try again.' : 'Chưa gửi được yêu cầu hành lý. Quý khách vui lòng thử lại.';
+        }
+        chatRes.require_room_pin = false;
+        chatRes.audio_base64 = null;
+        if (currentChatId !== activeChatRequestIdRef.current) return;
+      }
+
       hasReceivedResponse = true;
       if (fillerTimerRef.current) {
         clearTimeout(fillerTimerRef.current);
@@ -1538,9 +1632,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           const isHousekeepingQuery = /dọn|don|buồng|buong|khăn|khan|gối|goi|chăn|chan|massage|mát xa|mat xa|spa|giặt|giat|dịch vụ|dich vu|room service|buồng phòng/i.test(lowerQuery);
           const isFoodQuery = /món|mon|món ăn|mon an|bếp|bep|nấu|nau|uống|uong|đồ ăn|do an|cơm|com|phở|pho|pizza/i.test(lowerQuery);
           const isTaxiQuery = /taxi|xe|đưa đón|dua don|chuyến xe|cuốc xe/i.test(lowerQuery);
+          const isBellQuery = /hành lý|hành lí|hanh ly|hanh li|vali|luggage|suitcase|\bbags?\b|bellman/i.test(lowerQuery);
           let detectedQueryType = chatRes.status_query_type;
           if (!detectedQueryType) {
-            if (isTaxiQuery) detectedQueryType = 'taxi';
+            if (isBellQuery) detectedQueryType = 'bellman';
+            else if (isTaxiQuery) detectedQueryType = 'taxi';
             else if (isHousekeepingQuery && !isFoodQuery) detectedQueryType = 'service';
             else if (isFoodQuery && !isHousekeepingQuery) detectedQueryType = 'food';
             else detectedQueryType = 'general';
@@ -1595,6 +1691,23 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 source: 'HCRobot Voice AI (Session Authenticated)',
                 priority: 'NORMAL',
               }).catch(() => {});
+            } else if (actionToExecute === 'bellman' || actionToExecute === 'lost_found') {
+              const lowerItems = String(itemsToExecute || '').toLowerCase();
+              const isLostFound =
+                actionToExecute === 'lost_found' ||
+                ['thất lạc', 'mất đồ', 'quên đồ', 'rơi đồ', 'lost', 'missing', 'forgot'].some((k) =>
+                  lowerItems.includes(k)
+                );
+              createBellRequest({
+                title: isLostFound
+                  ? `Báo cáo đồ thất lạc Phòng ${String(authenticatedRoom).trim()}: ${itemsToExecute}`
+                  : `Yêu cầu hỗ trợ hành lý Phòng ${String(authenticatedRoom).trim()}: ${itemsToExecute}`,
+                location: `Room ${String(authenticatedRoom).trim()}`,
+                guest_name: `Guest (Room ${String(authenticatedRoom).trim()})`,
+                reporter: 'HCRobot Voice AI (Session Authenticated)',
+                description: `Khách yêu cầu qua giọng nói: ${itemsToExecute}`,
+                request_type: isLostFound ? 'lost_found' : 'luggage',
+              }).catch(() => {});
             } else if (actionToExecute !== 'query_order_status' && actionToExecute !== 'query_service_status' && actionToExecute !== 'query_taxi_status' && actionToExecute !== 'query_maintenance_status') {
               createConciergeRequest({
                 title: `Yêu cầu ${actionToExecute} từ giọng nói Robot`,
@@ -1624,6 +1737,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             setIsFoodMenuOpen(true);
             setIsRoomServiceMenuOpen(false);
             setIsMaintenanceMenuOpen(false);
+            setIsBellmanMenuOpen(false);
             setIsTaxiModalOpen(false);
             setIsFacilitiesModalOpen(false);
           } else if (
@@ -1639,6 +1753,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             }
             setIsRoomServiceMenuOpen(true);
             setIsMaintenanceMenuOpen(false);
+            setIsBellmanMenuOpen(false);
             setIsFoodMenuOpen(false);
             setIsTaxiModalOpen(false);
             setIsFacilitiesModalOpen(false);
@@ -1651,6 +1766,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               setActiveRoomNumber(updatedRoom);
             }
             setIsMaintenanceMenuOpen(true);
+            setIsBellmanMenuOpen(false);
+            setIsRoomServiceMenuOpen(false);
+            setIsFoodMenuOpen(false);
+            setIsTaxiModalOpen(false);
+            setIsFacilitiesModalOpen(false);
+          } else if (chatRes.trigger_menu === 'bellman' || chatRes.action === 'open_bellman_menu') {
+            // Khách cần hỗ trợ hành lý chung chung hoặc chưa có phòng -> mở menu Hành lý & Bellman
+            if (updatedRoom) {
+              setActiveRoomNumber(updatedRoom);
+            }
+            setIsBellmanMenuOpen(true);
+            setIsMaintenanceMenuOpen(false);
             setIsRoomServiceMenuOpen(false);
             setIsFoodMenuOpen(false);
             setIsTaxiModalOpen(false);
@@ -1667,6 +1794,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               setIsFoodMenuOpen(true);
               setIsRoomServiceMenuOpen(false);
               setIsMaintenanceMenuOpen(false);
+              setIsBellmanMenuOpen(false);
               setIsTaxiModalOpen(false);
               setIsFacilitiesModalOpen(false);
             }
@@ -1675,6 +1803,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             setIsFoodMenuOpen(false);
             setIsRoomServiceMenuOpen(false);
             setIsMaintenanceMenuOpen(false);
+            setIsBellmanMenuOpen(false);
             setIsTaxiModalOpen(false);
           }
         }
@@ -1682,11 +1811,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         // ĐỒNG BỘ BẢN ĐỒ KHI RAG BACKEND PHÁT HIỆN YÊU CẦU CHỈ ĐƯỜNG (destination_key)
         const isStatusInquiry = isStatusAction || isStatusQueryPrompt || isWaitingRoomForStatusQueryRef.current;
         const isServiceAction = [
-          'room_service', 'housekeeping', 'laundry', 'maintenance',
-          'open_maintenance_menu', 'open_food_menu', 'open_room_service_menu',
+          'room_service', 'housekeeping', 'laundry', 'maintenance', 'bellman',
+          'open_maintenance_menu', 'open_bellman_menu', 'open_food_menu', 'open_room_service_menu',
           'book_taxi', 'taxi', 'taxi_booking', 'query_order_status'
         ].includes(chatRes.action) ||
-        ['maintenance', 'food_menu', 'room_service'].includes(chatRes.trigger_menu) ||
+        ['maintenance', 'bellman', 'food_menu', 'room_service'].includes(chatRes.trigger_menu) ||
         Boolean(chatRes.require_room_pin) ||
         Boolean(chatRes.pending_service_action);
 
@@ -1709,6 +1838,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         if (
           chatRes.action === 'open_maintenance_menu' ||
           chatRes.trigger_menu === 'maintenance' ||
+          chatRes.action === 'open_bellman_menu' ||
+          chatRes.trigger_menu === 'bellman' ||
           chatRes.action === 'open_food_menu' ||
           chatRes.trigger_menu === 'food_menu' ||
           chatRes.action === 'open_room_service_menu' ||
@@ -2119,6 +2250,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       promptText = `Kiểm tra tiến độ sửa chữa kỹ thuật phòng ${roomNum}`;
     } else if (currentQType === 'taxi') {
       promptText = `Kiểm tra trạng thái đặt taxi phòng ${roomNum}`;
+    } else if (currentQType === 'bellman') {
+      promptText = `Kiểm tra tiến độ yêu cầu hành lý phòng ${roomNum}`;
     } else if (currentQType === 'food') {
       promptText = `Kiểm tra tình trạng món ăn phòng ${roomNum}`;
     } else {
@@ -2170,7 +2303,23 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
 
     const isEn = language === 'English';
-    const baseMsg = result?.message || (isEn ? 'Room verified successfully!' : 'Xác thực phòng thành công!');
+    // Bellman: the backend message already names the service (Vietnamese); give English guests the gist.
+    const bellMsg = pinModalAction === 'bellman' && result?.ticket_code
+      ? (isEn
+        ? (result.duplicate
+          ? `Your room already has an open Bellman request #${result.ticket_code}. No new ticket was created.`
+          : `Your luggage request #${result.ticket_code} has been sent to the Bell team.`)
+        : result.message)
+      : null;
+    const baseMsg = bellMsg || (result?.merged
+      ? (isEn
+        ? `The additional issue was added to your open repair request #${result.ticket_code} for the same equipment. No new ticket was created.`
+        : `Đã bổ sung sự cố vào phiếu sửa chữa #${result.ticket_code} đang mở cho cùng thiết bị. Không tạo thêm phiếu mới.`)
+      : result?.duplicate
+      ? (isEn
+        ? `This issue already has an open request #${result.ticket_code} for your room. Please track that request; no new ticket was created.`
+        : `Sự cố này của phòng đã có phiếu #${result.ticket_code} đang chờ hoặc đang xử lý. Quý khách vui lòng theo dõi phiếu hiện có; hệ thống không tạo phiếu mới.`)
+      : result?.message || (isEn ? 'Room verified successfully!' : 'Xác thực phòng thành công!'));
     const finalMsg = isEn
       ? `${baseMsg} Do you need any further assistance?`
       : `${baseMsg} Quý khách có cần Rora hỗ trợ thêm gì nữa không ạ?`;
@@ -2397,6 +2546,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   if (isMaintenanceMenuOpen) {
     return (
       <RobotMaintenanceMenuScreen
+        language={language}
         activeRoomNumber={activeRoomNumber || ''}
         authenticatedRoom={authenticatedRoom}
         onPinVerifiedSuccess={(room) => {
@@ -2412,6 +2562,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onClose={() => setIsMaintenanceMenuOpen(false)}
         onRequestSuccess={(req) => {
           setIsMaintenanceMenuOpen(false);
+          setIsBellmanMenuOpen(false);
           isWaitingRoomForStatusQueryRef.current = false;
           isRoomPickerOpenRef.current = false;
           setIsRoomPickerOpen(false);
@@ -2425,6 +2576,42 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             ? `Your maintenance request for Room ${roomToMention ? roomToMention : 'your room'} has been sent to our Technical Team. Do you need any further assistance?`
             : `Dạ yêu cầu bảo trì cho Phòng ${roomToMention ? roomToMention : 'của quý khách'} đã được chuyển đến bộ phận Kỹ thuật rồi ạ. Quý khách có cần Rora hỗ trợ thêm gì nữa không ạ?`;
           triggerFollowUpPrompt(msg, isEn);
+        }}
+        onNotCheckedIn={handlePinNotCheckedIn}
+      />
+    );
+  }
+
+  if (isBellmanMenuOpen) {
+    return (
+      <RobotBellmanMenuScreen
+        language={language}
+        activeRoomNumber={activeRoomNumber || ''}
+        authenticatedRoom={authenticatedRoom}
+        onPinVerifiedSuccess={(room) => {
+          setAuthenticatedRoom(room);
+          setActiveRoomNumber(room);
+        }}
+        onRoomChange={(room) => {
+          setActiveRoomNumber(room);
+          if (authenticatedRoom && String(authenticatedRoom).trim() !== String(room).trim()) {
+            setAuthenticatedRoom(null);
+          }
+        }}
+        onClose={() => setIsBellmanMenuOpen(false)}
+        onRequestSuccess={(req) => {
+          setIsBellmanMenuOpen(false);
+          isWaitingRoomForStatusQueryRef.current = false;
+          isRoomPickerOpenRef.current = false;
+          setIsRoomPickerOpen(false);
+          const roomToMention = req?.room_number || req?.location || activeRoomNumber;
+          if (roomToMention) {
+            setActiveRoomNumber(roomToMention);
+            setAuthenticatedRoom(roomToMention);
+          }
+          const isEn = language === 'English';
+          const followUp = isEn ? ' Do you need any further assistance?' : ' Quý khách có cần Rora hỗ trợ thêm gì nữa không ạ?';
+          triggerFollowUpPrompt(`${bellRequestMessage(req, isEn)}${followUp}`, isEn);
         }}
         onNotCheckedIn={handlePinNotCheckedIn}
       />
@@ -2510,7 +2697,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         controlsClassName="robot-camera-control"
         onGuestApproached={handleGuestApproached}
         onGuestLeft={handleGuestLeft}
-        onEmotionChange={(emotion) => setGuestEmotion(emotion)}
+        onEmotionChange={handleGuestEmotionDetected}
         source={import.meta.env.VITE_CAMERA_SOURCE || 'local'}
         streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || 'http://localhost:8554/stream'}
         defaultMinimized={true}
@@ -2607,6 +2794,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setIsFoodMenuOpen(true);
           setIsRoomServiceMenuOpen(false);
           setIsMaintenanceMenuOpen(false);
+          setIsBellmanMenuOpen(false);
           setIsTaxiModalOpen(false);
           setIsFacilitiesModalOpen(false);
         }}
@@ -2621,6 +2809,22 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setIsRoomServiceMenuOpen(true);
           setIsFoodMenuOpen(false);
           setIsMaintenanceMenuOpen(false);
+          setIsBellmanMenuOpen(false);
+          setIsTaxiModalOpen(false);
+          setIsFacilitiesModalOpen(false);
+        }}
+        onOpenBellman={() => {
+          activeChatRequestIdRef.current += 1;
+          if (chatAbortControllerRef.current) {
+            try { chatAbortControllerRef.current.abort(); } catch (e) { }
+            chatAbortControllerRef.current = null;
+          }
+          clearRouteGuidanceTimers();
+          stopSpeaking();
+          setIsBellmanMenuOpen(true);
+          setIsMaintenanceMenuOpen(false);
+          setIsFoodMenuOpen(false);
+          setIsRoomServiceMenuOpen(false);
           setIsTaxiModalOpen(false);
           setIsFacilitiesModalOpen(false);
         }}
@@ -2851,6 +3055,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setIsFoodMenuOpen(true);
                     setIsRoomServiceMenuOpen(false);
                     setIsMaintenanceMenuOpen(false);
+                    setIsBellmanMenuOpen(false);
                     setIsTaxiModalOpen(false);
                     setIsFacilitiesModalOpen(false);
                   }}
@@ -2874,6 +3079,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setIsRoomServiceMenuOpen(true);
                     setIsFoodMenuOpen(false);
                     setIsMaintenanceMenuOpen(false);
+                    setIsBellmanMenuOpen(false);
                     setIsTaxiModalOpen(false);
                     setIsFacilitiesModalOpen(false);
                   }}
@@ -2885,6 +3091,29 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Dịch vụ phòng</p>
                     <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Khăn tắm, gối chăn, massage tại phòng & giặt ủi</p>
+                  </div>
+                </button>
+
+                {/* 3b1. Hành lý & Bellman */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    setIsBellmanMenuOpen(true);
+                    setIsMaintenanceMenuOpen(false);
+                    setIsFoodMenuOpen(false);
+                    setIsRoomServiceMenuOpen(false);
+                    setIsTaxiModalOpen(false);
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
+                    <Luggage className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Hành lý & Bellman</p>
+                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Mang, gửi giữ hành lý & chuyển đồ sang phòng mới</p>
                   </div>
                 </button>
 
@@ -3576,6 +3805,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setIsFacilitiesModalOpen(false);
           setIsFoodMenuOpen(true);
           setIsMaintenanceMenuOpen(false);
+          setIsBellmanMenuOpen(false);
           setIsRoomServiceMenuOpen(false);
         }}
         onSpeak={(text) => speak(text)}
@@ -3622,6 +3852,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         pendingAction={pinModalAction}
         sessionId={sessionId}
         pendingItems={pinModalItems}
+        // A spoken Bellman request has no menu to submit it after verification, so the
+        // PIN/NFC endpoint creates the ticket (it de-duplicates open requests per room).
+        skipTicketCreation={pinModalAction !== 'bellman'}
         onVerifiedSuccess={handlePinVerifiedSuccess}
         onNotCheckedIn={handlePinNotCheckedIn}
         onForgotPin={handleForgotPinFallback}

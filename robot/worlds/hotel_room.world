@@ -137,6 +137,15 @@
           <property type="string" key="state">docked</property>
         </gz-gui>
       </plugin>
+
+      <!-- Lai xe ao ngay trong Gazebo: publish gz.msgs.Twist len /cmd_vel (DiffDrive cua hc_robot) -->
+      <plugin filename="Teleop" name="Teleop">
+        <gz-gui>
+          <title>Teleop</title>
+          <property type="string" key="state">docked</property>
+        </gz-gui>
+        <topic>/cmd_vel</topic>
+      </plugin>
     </gui>
 
     <!-- Lighting -->

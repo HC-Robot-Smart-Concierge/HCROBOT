@@ -1,7 +1,6 @@
-from typing import Optional, List, Sequence
-from datetime import datetime
+from typing import Optional, List, Sequence, Any, cast
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, desc, func
+from sqlalchemy import select, update, desc, func, CursorResult
 
 from app.models.notification import Notification
 from app.repositories.base import BaseRepository
@@ -49,7 +48,7 @@ class NotificationRepository(BaseRepository[Notification]):
             # Admin chỉ nhận thông báo trực tiếp cho Admin, không nhận các yêu cầu nghiệp vụ của phòng ban
             stmt = stmt.where(func.lower(Notification.department) == "admin")
         elif dep_clean and dep_clean not in ["all", "toàn bộ"]:
-            aliases = self._get_department_aliases(department)
+            aliases = self._get_department_aliases(dep_clean)
             stmt = stmt.where(
                 (func.lower(Notification.department).in_(aliases))
                 | (Notification.department == "All")
@@ -87,4 +86,4 @@ class NotificationRepository(BaseRepository[Notification]):
 
         res = await self.db.execute(stmt)
         await self.db.commit()
-        return res.rowcount or 0
+        return cast(CursorResult[Any], res).rowcount or 0

@@ -58,7 +58,7 @@ async def list_departments(
             is_active=d.is_active,
             created_at=d.created_at,
             updated_at=d.updated_at,
-            service_types=d.service_types or [],
+            service_types=[ServiceTypeResponse.model_validate(s) for s in (d.service_types or [])],
             staff_count=sum(1 for acc in d.accounts if acc.is_active),
         )
         for d in depts
@@ -170,7 +170,7 @@ async def get_department_detail(
         is_active=dept.is_active,
         created_at=dept.created_at,
         updated_at=dept.updated_at,
-        service_types=dept.service_types,
+        service_types=[ServiceTypeResponse.model_validate(s) for s in (dept.service_types or [])],
         staff_count=staff_count,
     )
 
@@ -186,8 +186,8 @@ async def get_department_detail(
     },
 )
 async def update_department(
+    dept_in: DepartmentUpdate,
     department_id: str = Path(..., description="ID hoặc mã code phòng ban"),
-    dept_in: DepartmentUpdate = ...,
     repo: StaffRepository = Depends(get_staff_repository),
 ):
     dept = await repo.get_department_by_id_or_code(department_id)
@@ -224,7 +224,7 @@ async def update_department(
         is_active=dept.is_active,
         created_at=dept.created_at,
         updated_at=dept.updated_at,
-        service_types=dept.service_types or [],
+        service_types=[ServiceTypeResponse.model_validate(s) for s in (dept.service_types or [])],
         staff_count=sum(1 for acc in dept.accounts if acc.is_active),
     )
 
@@ -451,7 +451,7 @@ async def create_staff(
         "DEP-MAINTENANCE": "maintenance",
         "DEP-EXECUTIVE": "admin_portal",
     }
-    default_dashboard = dashboard_map.get(resolved_dept_id, "room_service")
+    default_dashboard = dashboard_map.get(resolved_dept_id or "", "room_service")
     if "admin" in (staff_in.role or "").lower():
         default_dashboard = "admin_portal"
 
@@ -545,12 +545,12 @@ async def get_staff_detail(
     include_in_schema=False,
 )
 async def update_staff(
+    update_in: StaffUpdate,
     account_id: str = Path(
         ...,
         description="Mã định danh duy nhất của tài khoản cần cập nhật",
         examples=["ACC-f9ab1b15", "STF-f9ab1b15"],
     ),
-    update_in: StaffUpdate = ...,
     repo: StaffRepository = Depends(get_staff_repository),
 ):
     """

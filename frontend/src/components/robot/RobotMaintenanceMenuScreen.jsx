@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Wrench,
   ThermometerSnowflake,
@@ -24,7 +24,6 @@ import {
   createMaintenanceRequest,
   fetchRoomMaintenanceStatus,
 } from '../../services/operationsApi';
-import { useLanguage } from '../../context/LanguageContext';
 
 export const MAINTENANCE_CATEGORIES = [
   { id: 'all', nameVi: 'Tất Cả', nameEn: 'All', icon: Layers },
@@ -179,14 +178,8 @@ export const FALLBACK_MAINTENANCE_CATALOG = [
   },
 ];
 
-const PRIORITY_BADGES = {
-  LOW: { labelVi: 'Thấp', labelEn: 'Low', cls: 'bg-stone-100 text-stone-700 border-stone-200' },
-  NORMAL: { labelVi: 'Tiêu chuẩn', labelEn: 'Standard', cls: 'bg-stone-100 text-stone-800 border-stone-200' },
-  HIGH: { labelVi: 'Ưu tiên', labelEn: 'High', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
-  URGENT: { labelVi: 'Khẩn cấp', labelEn: 'Urgent', cls: 'bg-rose-50 text-rose-800 border-rose-200' },
-};
-
 export const RobotMaintenanceMenuScreen = ({
+  language = 'English',
   activeRoomNumber = '',
   authenticatedRoom = null,
   onPinVerifiedSuccess = () => {},
@@ -195,8 +188,8 @@ export const RobotMaintenanceMenuScreen = ({
   onRequestSuccess = () => {},
   onNotCheckedIn = () => {},
 }) => {
-  const { language } = useLanguage();
-  const isEn = language === 'English';
+  // Follow the guest conversation, independently of the staff portal language.
+  const isEn = language === 'English' || language === 'EN';
 
   const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -208,6 +201,7 @@ export const RobotMaintenanceMenuScreen = ({
   const [targetRoom, setTargetRoom] = useState(activeRoomNumber || '');
   const [timePreference, setTimePreference] = useState('ASAP'); // 'ASAP' | 'WHEN_AWAY'
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [successTicket, setSuccessTicket] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -344,6 +338,8 @@ export const RobotMaintenanceMenuScreen = ({
   };
 
   const doSubmitRequest = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setIsSubmitting(true);
     setErrorMsg('');
     try {
@@ -364,6 +360,7 @@ export const RobotMaintenanceMenuScreen = ({
         .join(' - ');
 
       const payload = {
+        catalog_item_id: selectedIssue.id,
         title: isEn ? selectedIssue.name_en : selectedIssue.name_vi,
         category: selectedIssue.category || 'general',
         location: targetRoom.trim(),
@@ -375,7 +372,7 @@ export const RobotMaintenanceMenuScreen = ({
       const res = await createMaintenanceRequest(payload);
       setSuccessTicket(res);
       setSelectedIssue(null);
-      if (onRequestSuccess) {
+      if (!res.duplicate && !res.merged && onRequestSuccess) {
         onRequestSuccess({
           ...(res || {}),
           location: targetRoom.trim(),
@@ -391,6 +388,7 @@ export const RobotMaintenanceMenuScreen = ({
           : 'Không thể gửi yêu cầu bảo trì. Vui lòng thử lại.'
       );
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -419,7 +417,7 @@ export const RobotMaintenanceMenuScreen = ({
         <div className="p-3 border-b border-[#E3DFD5]">
           <div className="flex items-center gap-1.5 text-stone-500 text-[10px] uppercase font-bold tracking-wider">
             <Wrench className="w-3.5 h-3.5 text-stone-600" />
-            <span>Kỹ Thuật</span>
+            <span>{isEn ? 'Maintenance' : 'Kỹ Thuật'}</span>
           </div>
           <h2 className="text-xs sm:text-sm font-black text-stone-900 mt-0.5">
             {isEn ? 'Repairs' : 'Báo Hỏng'}
@@ -457,7 +455,7 @@ export const RobotMaintenanceMenuScreen = ({
             className="w-full py-2 px-3 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
-            <span>Về Robot</span>
+            <span>{isEn ? 'Back to Robot' : 'Về Robot'}</span>
           </button>
         </div>
       </aside>
@@ -504,10 +502,10 @@ export const RobotMaintenanceMenuScreen = ({
               type="button"
               onClick={() => setIsRoomPickerOpen(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-stone-50 border border-[#E3DFD5] hover:border-stone-400 text-[11px] font-bold text-stone-800 shadow-2xs transition-all cursor-pointer active:scale-95 group"
-              title="Chạm để chọn hoặc đổi số phòng"
+              title={isEn ? 'Tap to select or change your room' : 'Chạm để chọn hoặc đổi số phòng'}
             >
               <span className={`w-2 h-2 rounded-full ${targetRoom ? 'bg-emerald-500' : 'bg-stone-400'}`} />
-              <span>{targetRoom ? `Phòng ${targetRoom}` : (isEn ? 'Select Room' : 'Chọn số phòng')}</span>
+              <span>{targetRoom ? `${isEn ? 'Room' : 'Phòng'} ${targetRoom}` : (isEn ? 'Select Room' : 'Chọn số phòng')}</span>
               <Edit3 className="w-3 h-3 text-stone-400 group-hover:text-stone-700 transition-colors ml-0.5" />
             </button>
 
@@ -516,7 +514,7 @@ export const RobotMaintenanceMenuScreen = ({
               type="button"
               onClick={onClose}
               className="w-8 h-8 rounded-full hover:bg-stone-200 text-stone-600 flex items-center justify-center transition-colors cursor-pointer"
-              title="Đóng"
+              title={isEn ? 'Close' : 'Đóng'}
             >
               <X className="w-4 h-4" />
             </button>
@@ -539,7 +537,6 @@ export const RobotMaintenanceMenuScreen = ({
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3 pb-8">
               {filteredIssues.map((issue) => {
-                const priorityCfg = PRIORITY_BADGES[issue.priority] || PRIORITY_BADGES.NORMAL;
                 const catCfg =
                   MAINTENANCE_CATEGORIES.find((c) => c.id === issue.category) ||
                   MAINTENANCE_CATEGORIES[MAINTENANCE_CATEGORIES.length - 1];
@@ -552,16 +549,9 @@ export const RobotMaintenanceMenuScreen = ({
                     className="bg-white rounded-2xl border border-[#E3DFD5] hover:border-stone-400 shadow-2xs hover:shadow-md p-3 sm:p-3.5 flex flex-col justify-between transition-all group cursor-pointer active:scale-[0.99] min-h-[140px]"
                   >
                     <div>
-                      {/* Header card: Icon danh mục & Priority badge */}
-                      <div className="flex items-center justify-between gap-1.5">
-                        <div className="w-8 h-8 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white transition-colors">
-                          <CatIcon className="w-4 h-4" />
-                        </div>
-                        <span
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border shrink-0 ${priorityCfg.cls}`}
-                        >
-                          {isEn ? priorityCfg.labelEn : priorityCfg.labelVi}
-                        </span>
+                      {/* Category icon */}
+                      <div className="w-8 h-8 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white transition-colors">
+                        <CatIcon className="w-4 h-4" />
                       </div>
 
                       {/* Title */}
@@ -579,7 +569,7 @@ export const RobotMaintenanceMenuScreen = ({
                     <div className="mt-3 pt-2 border-t border-stone-100 flex items-center justify-between">
                       <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        <span>~{issue.estimated_fix_time || 15}p</span>
+                        <span>~{issue.estimated_fix_time || 15}{isEn ? ' min' : 'p'}</span>
                       </span>
 
                       <button
@@ -637,7 +627,7 @@ export const RobotMaintenanceMenuScreen = ({
                   {isEn ? selectedIssue.name_en : selectedIssue.name_vi}
                 </p>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white text-stone-800 border border-[#E3DFD5]">
-                  ~{selectedIssue.estimated_fix_time || 15}p
+                  ~{selectedIssue.estimated_fix_time || 15}{isEn ? ' min' : 'p'}
                 </span>
               </div>
               <p className="text-[11px] text-stone-600 mt-1">
@@ -653,7 +643,7 @@ export const RobotMaintenanceMenuScreen = ({
                   {isEn ? 'Target Room:' : 'Số phòng tiếp nhận:'}
                 </span>
                 <span className="text-xs font-mono font-black text-stone-900">
-                  {targetRoom ? `Phòng ${targetRoom}` : (isEn ? 'Not selected' : 'Chưa chọn phòng')}
+                  {targetRoom ? `${isEn ? 'Room' : 'Phòng'} ${targetRoom}` : (isEn ? 'Not selected' : 'Chưa chọn phòng')}
                 </span>
               </div>
 
@@ -760,7 +750,7 @@ export const RobotMaintenanceMenuScreen = ({
                   disabled={isLoadingStatus}
                   onClick={() => loadRoomStatus(targetRoom)}
                   className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-stone-200 transition-colors"
-                  title="Làm mới tiến độ"
+                  title={isEn ? 'Refresh repair status' : 'Làm mới tiến độ'}
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isLoadingStatus ? 'animate-spin text-stone-200' : ''}`} />
                 </button>
@@ -787,7 +777,7 @@ export const RobotMaintenanceMenuScreen = ({
                 }}
                 className="font-bold text-stone-100 hover:text-white flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-stone-700/70 hover:bg-stone-700 border border-stone-600/80 cursor-pointer transition-colors active:scale-95"
               >
-                <span>{targetRoom ? `Phòng ${targetRoom}` : (isEn ? 'Select Room' : 'Chọn số phòng')}</span>
+                <span>{targetRoom ? `${isEn ? 'Room' : 'Phòng'} ${targetRoom}` : (isEn ? 'Select Room' : 'Chọn số phòng')}</span>
                 <Edit3 className="w-3.5 h-3.5 text-stone-300" />
               </button>
             </div>
@@ -883,7 +873,7 @@ export const RobotMaintenanceMenuScreen = ({
                       </div>
 
                       {req.description && (
-                        <p className="text-[10px] sm:text-[11px] text-stone-300 bg-stone-900/70 p-2 rounded-xl border border-stone-800">
+                        <p className="text-[10px] sm:text-[11px] text-stone-300 bg-stone-900/70 p-2 rounded-xl border border-stone-800 whitespace-pre-line">
                           {req.description}
                         </p>
                       )}
@@ -897,7 +887,7 @@ export const RobotMaintenanceMenuScreen = ({
                         </span>
                         <span>
                           {isEn ? 'ETA:' : 'Dự kiến:'}{' '}
-                          <strong className="text-stone-200">{req.est_completion || '~15-20 phút'}</strong>
+                          <strong className="text-stone-200">{req.est_completion || (isEn ? '~15-20 min' : '~15-20 phút')}</strong>
                         </span>
                       </div>
                     </article>
@@ -944,10 +934,22 @@ export const RobotMaintenanceMenuScreen = ({
 
             <div>
               <h3 className="text-sm font-bold text-stone-900">
-                {isEn ? 'Request Dispatched' : 'Đã tiếp nhận yêu cầu'}
+                {successTicket.merged
+                  ? (isEn ? 'Existing request updated' : 'Đã bổ sung vào phiếu hiện có')
+                  : successTicket.duplicate
+                  ? (isEn ? 'Request already exists' : 'Yêu cầu đã tồn tại')
+                  : (isEn ? 'Request Dispatched' : 'Đã tiếp nhận yêu cầu')}
               </h3>
               <p className="text-[11px] text-stone-500 mt-0.5">
-                {isEn
+                {successTicket.merged
+                  ? (isEn
+                    ? `The additional issue was added to repair request #${successTicket.ticket_code} for the same equipment. No new ticket was created.`
+                    : `Đã bổ sung sự cố vào phiếu sửa chữa #${successTicket.ticket_code} cho cùng thiết bị. Không tạo thêm phiếu mới.`)
+                  : successTicket.duplicate
+                  ? (isEn
+                    ? `Room ${targetRoom} already has an open request #${successTicket.ticket_code} for this issue. No new ticket was created.`
+                    : `Phòng ${targetRoom} đã có phiếu #${successTicket.ticket_code} cho sự cố này đang chờ hoặc đang xử lý. Không tạo thêm phiếu mới.`)
+                  : isEn
                   ? `Ticket #${successTicket.ticket_code} for Room ${targetRoom} dispatched to technicians`
                   : `Mã phiếu #${successTicket.ticket_code} của Phòng ${targetRoom} đã được gửi tới kỹ thuật`}
               </p>
@@ -980,7 +982,7 @@ export const RobotMaintenanceMenuScreen = ({
           pendingItems={
             pinActionTarget === 'status'
               ? (isEn ? 'Check repair progress' : 'Tra cứu tiến độ sửa chữa')
-              : (selectedIssue ? (isEn ? selectedIssue.name_en : selectedIssue.name_vi) : 'Bảo trì phòng')
+              : (selectedIssue ? (isEn ? selectedIssue.name_en : selectedIssue.name_vi) : (isEn ? 'Room maintenance' : 'Bảo trì phòng'))
           }
           onVerifiedSuccess={handlePinSuccess}
           onSuccess={handlePinSuccess}

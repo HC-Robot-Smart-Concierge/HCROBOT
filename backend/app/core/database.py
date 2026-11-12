@@ -61,6 +61,15 @@ async def init_db() -> None:
     from sqlalchemy import text
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Existing installations must retain the orientation when editing zones.
+        # Keep this additive patch independent of the legacy optional patches below.
+        if conn.dialect.name == "postgresql":
+            await conn.execute(text("ALTER TABLE zones ADD COLUMN IF NOT EXISTS yaw DOUBLE PRECISION NOT NULL DEFAULT 0"))
+        else:
+            from sqlalchemy import inspect
+            columns = await conn.run_sync(lambda connection: inspect(connection).get_columns("zones"))
+            if not any(column["name"] == "yaw" for column in columns):
+                await conn.execute(text("ALTER TABLE zones ADD COLUMN yaw FLOAT NOT NULL DEFAULT 0"))
         try:
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS chat_session_id VARCHAR(64);"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS account_id VARCHAR(50);"))
@@ -71,6 +80,9 @@ async def init_db() -> None:
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_started_at TIMESTAMP;"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_ended_at TIMESTAMP;"))
             await conn.execute(text("ALTER TABLE support_requests ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'NORMAL';"))
+            await conn.execute(text("ALTER TABLE robots ADD COLUMN IF NOT EXISTS serial_number VARCHAR(80);"))
+            await conn.execute(text("ALTER TABLE robots ADD COLUMN IF NOT EXISTS firmware_version VARCHAR(50);"))
+            await conn.execute(text("ALTER TABLE robots ADD COLUMN IF NOT EXISTS notes TEXT;"))
             # Xóa bảng maps theo yêu cầu không lưu bản đồ vào CSDL
             await conn.execute(text("DROP TABLE IF EXISTS maps CASCADE;"))
         except Exception:

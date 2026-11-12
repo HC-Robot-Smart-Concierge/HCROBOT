@@ -18,6 +18,7 @@ class Zone(Base):
     y: Mapped[float] = mapped_column(Float, default=0.0)
     width: Mapped[float] = mapped_column(Float, default=2.0)
     height: Mapped[float] = mapped_column(Float, default=2.0)
+    yaw: Mapped[float] = mapped_column(Float, default=0.0, server_default="0", nullable=False)
     speed_limit: Mapped[Optional[float]] = mapped_column(Float, nullable=True, default=0.3)
     floor: Mapped[str] = mapped_column(String(50), default="Sảnh Tầng 1")
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

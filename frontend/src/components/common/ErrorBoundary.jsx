@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertTriangle } from 'lucide-react';
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -12,6 +13,17 @@ export class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     console.error('Unhandled React Error caught by ErrorBoundary:', error, errorInfo);
+    const msg = error?.message || '';
+    if (
+      msg.includes('Failed to fetch dynamically imported module') ||
+      msg.includes('Importing a module script failed') ||
+      msg.includes('dynamically imported module')
+    ) {
+      if (!sessionStorage.getItem('chunk_load_retry')) {
+        sessionStorage.setItem('chunk_load_retry', '1');
+        window.location.reload();
+      }
+    }
   }
 
   handleReset = async () => {
@@ -52,8 +64,8 @@ export class ErrorBoundary extends React.Component {
       return (
         <div className="w-full h-screen bg-[#FAF8F5] text-[#1A1917] flex flex-col items-center justify-center p-6 font-sans select-none text-center">
           <div className="max-w-md w-full bg-white p-8 rounded-3xl border border-[#E5E1D8] shadow-xl space-y-6">
-            <div className="w-16 h-16 bg-amber-100 text-amber-800 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
-              ⚠️
+            <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-8 h-8 text-amber-800" />
             </div>
             <div>
               <h2 className="text-lg font-bold text-stone-900">Đã xảy ra sự cố hiển thị</h2>

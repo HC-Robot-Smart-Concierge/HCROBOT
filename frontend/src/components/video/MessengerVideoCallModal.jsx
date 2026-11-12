@@ -122,6 +122,7 @@ export const MessengerVideoCallModal = ({
   const subtitleTimeoutRef = useRef(null);
   const callTranscriptsRef = useRef([]);
   const isMicMutedRef = useRef(false);
+  const isSpeakerMutedRef = useRef(false);
   const checkPeerIntervalRef = useRef(null);
   const serverLanIpRef = useRef(null);
   const interpreterAudioRef = useRef(null);
@@ -176,6 +177,10 @@ export const MessengerVideoCallModal = ({
   useEffect(() => {
     inputLangModeRef.current = inputLangMode;
   }, [inputLangMode]);
+
+  useEffect(() => {
+    isSpeakerMutedRef.current = isSpeakerMuted;
+  }, [isSpeakerMuted]);
 
   // 1. Tạo Canvas Stream giả lập trong trường hợp máy tính KHÔNG CÓ WEBCAM (Tương thích iOS Safari)
   const createFakeVideoStream = (label = 'Khách hàng') => {
@@ -395,10 +400,10 @@ export const MessengerVideoCallModal = ({
       } catch (e) {}
     }
     if (remoteVideoRef.current) {
-      remoteVideoRef.current.muted = isSpeakerMuted;
+      remoteVideoRef.current.muted = isSpeakerMutedRef.current;
       remoteVideoRef.current.play().catch(() => {});
     }
-  }, [getOrCreateAudioContext, isSpeakerMuted]);
+  }, [getOrCreateAudioContext]);
 
   // Hàng đợi phát âm thanh thông dịch AI tuần tự cho cả hai bên (Robot Kiosk & Staff)
   // Bảo vệ chống treo cờ isPlayingAudioRef / isAiSpeakingRef khi AudioContext.resume() bị treo hoặc lỗi
@@ -599,7 +604,7 @@ export const MessengerVideoCallModal = ({
   }, [getOrCreateAudioContext, role]);
 
   const enqueueInterpreterAudio = useCallback((item) => {
-    if (!item?.audioBase64 || isSpeakerMuted) return;
+    if (!item?.audioBase64 || isSpeakerMutedRef.current) return;
 
     if (item.utteranceId && playedUtteranceIdsRef.current.has(item.utteranceId)) {
       console.log(`[VideoCall Queue] Skip already played utteranceId=${item.utteranceId}`);
@@ -630,7 +635,7 @@ export const MessengerVideoCallModal = ({
       `[VideoCall Flow] [${role}] utteranceId=${item.utteranceId || 'unknown'} seq=${item.seq || 0} step=AUDIO_RECEIVED queueLen=${audioQueueRef.current.length}`
     );
     processAudioQueue();
-  }, [isSpeakerMuted, processAudioQueue, role]);
+  }, [processAudioQueue, role]);
 
   const playInterpreterAudio = useCallback((audioBase64, spokenText = '', meta = {}) => {
     enqueueInterpreterAudio({
@@ -1001,11 +1006,19 @@ export const MessengerVideoCallModal = ({
     }
   }, [sessionId, role, callerName, calleeName, primeAudioContext, processAudioQueue]);
 
-  // Khởi động khi modal mở
+  const setupWebRTCRef = useRef(null);
+  useEffect(() => {
+    setupWebRTCRef.current = setupWebRTC;
+  }, [setupWebRTC]);
+
+  // Khởi động khi modal mở (chỉ phụ thuộc isOpen, sessionId, role — tuyệt đối không phụ thuộc state UI như tắt loa/mic)
   useEffect(() => {
     if (isOpen) {
       isEndingRef.current = false;
       isMicMutedRef.current = false;
+      isSpeakerMutedRef.current = false;
+      setIsMicMuted(false);
+      setIsSpeakerMuted(false);
       setCallStatus('calling');
       setRecordingDuration(0);
       setUploadStatus(null);
@@ -1014,13 +1027,15 @@ export const MessengerVideoCallModal = ({
       setInterimText('');
       setCallTranscripts([]);
       callTranscriptsRef.current = [];
-      setupWebRTC();
+      if (setupWebRTCRef.current) {
+        setupWebRTCRef.current();
+      }
     }
 
     return () => {
       cleanUpResources();
     };
-  }, [isOpen, setupWebRTC]);
+  }, [isOpen, sessionId, role]);
 
   // Độc lập tính thời lượng cuộc gọi khi kết nối thành công
   useEffect(() => {
@@ -1980,15 +1995,35 @@ export const MessengerVideoCallModal = ({
     onClose();
   };
 
-  // Bật/tắt Loa
-  const toggleSpeaker = () => {
-    setIsSpeakerMuted((prev) => {
-      const next = !prev;
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.muted = next;
+  // Bật/tắt Loa (Chỉ tắt tiếng video đầu xa & âm thanh AI TTS, tuyệt đối không làm ngắt kết nối WebRTC/WS)
+  const toggleSpeaker = (e) => {
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
+    const next = !isSpeakerMutedRef.current;
+    isSpeakerMutedRef.current = next;
+    setIsSpeakerMuted(next);
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.muted = next;
+    }
+    if (next) {
+      audioQueueRef.current = [];
+      if (activeAudioSourceRef.current) {
+        try {
+          activeAudioSourceRef.current.stop();
+        } catch (err) {}
+        activeAudioSourceRef.current = null;
       }
-      return next;
-    });
+      if (persistentAudioRef.current) {
+        try {
+          persistentAudioRef.current.pause();
+        } catch (err) {}
+      }
+      setIsAiSpeaking(false);
+      isAiSpeakingRef.current = false;
+      isPlayingAudioRef.current = false;
+      ttsActiveUntilRef.current = 0;
+    }
   };
 
   // Bật/tắt Mic

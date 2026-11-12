@@ -373,4 +373,20 @@ describe('Video Call Auto-Translate & TTS Pipeline (Staff ⇄ Robot)', () => {
       expect(res.reason).toBeNull();
     });
   });
+
+  describe('6. Speaker Mute Isolation (Never Disconnects Active WebRTC Call)', () => {
+    it('ensures isSpeakerMuted is not in primeAudioContext or call lifecycle useEffect dependencies', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const { fileURLToPath } = await import('url');
+      const __filename = fileURLToPath(import.meta.url);
+      const __dirname = path.dirname(__filename);
+      const modalCode = fs.readFileSync(path.resolve(__dirname, './MessengerVideoCallModal.jsx'), 'utf8');
+
+      expect(modalCode).toContain('isSpeakerMutedRef.current');
+      expect(modalCode).not.toContain('}, [getOrCreateAudioContext, isSpeakerMuted]);');
+      expect(modalCode).not.toContain('}, [isOpen, setupWebRTC]);');
+      expect(modalCode).toContain('}, [isOpen, sessionId, role]);');
+    });
+  });
 });

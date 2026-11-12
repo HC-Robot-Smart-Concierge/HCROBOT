@@ -1022,14 +1022,6 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
                         {isMultiStep && stage.nextStatus && (
                           canUserActOnStage(stage.step, req, isDirectSvc) ? (
                             <div className="flex items-center gap-1.5">
-                              {isDirectSvc && stage.step > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateTaskStatus(req.id, 'Completed')}
-                                  className="px-3 py-1.5 rounded-full text-xs font-semibold text-stone-600 bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-stone-200 transition-all cursor-pointer shadow-2xs"
-                                  title={st("Mark as completed and delivered to the guest")}
-                                >{st("Quick complete")} </button>
-                              )}
                               <button
                                 onClick={() => handleUpdateTaskStatus(req.id, stage.nextStatus)}
                                 className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 flex items-center gap-1.5 ${stage.actionBtnClass}`}

@@ -147,7 +147,7 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
           target_ip: controlIp,
           port: 8554,
         }),
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(12000),
       });
 
       if (!res.ok) {

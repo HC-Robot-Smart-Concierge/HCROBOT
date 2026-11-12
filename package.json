@@ -3,9 +3,6 @@
   "private": true,
   "scripts": {
     "build": "npm --prefix frontend run build"
-  },
-  "devDependencies": {
-    "wrangler": "^4.160.1"
   }
 }
 

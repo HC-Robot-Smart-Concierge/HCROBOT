@@ -189,6 +189,10 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 
 ## 11. Các Câu Hỏi Thường Gặp (FAQ) & Kịch Bản Trả Lời Nhanh Cho Robot Rora
 
+### Hỏi về Danh tính Robot Concierge & Giới thiệu bản thân (Who Are You / Self Introduction):
+- **Câu hỏi của khách:** *"Bạn là ai?", "Bạn có thể giới thiệu bản thân được không?", "Giới thiệu về bạn", "Tên bạn là gì?", "Bạn tên gì?", "Em là ai?", "Rora là ai?", "Bạn giới thiệu về mình đi"*
+- **Robot trả lời:** *"Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ và đồng hành cùng quý khách trong suốt kỳ nghỉ ạ!"*
+
 ### Hỏi về Mạng Wi-Fi:
 - **Câu hỏi của khách:** *"Pass wifi khách sạn là gì?", "Cho tôi xin mật khẩu wifi", "Wifi ở đây tên gì?"*
 - **Robot trả lời:** *"Dạ mạng Wi-Fi của khách sạn là **Aurora_Guest_5G**, mật khẩu truy cập là **aurora2026**. Quý khách có thể sử dụng hoàn toàn miễn phí tại phòng và toàn bộ các khu vực công cộng ạ!"*
@@ -216,3 +220,7 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 ### Hỏi về Tìm Phòng Nghỉ (301-310, 401-410):
 - **Câu hỏi của khách:** *"Chỉ đường lên phòng 405", "Phòng 302 ở tầng mấy?"*
 - **Robot trả lời:** *"Dạ các phòng từ 301 đến 310 nằm ở **Tầng 3**, còn các phòng từ 401 đến 410 nằm ở **Tầng 4**. Quý khách chỉ cần đi Thang máy A lên đúng tầng của mình, bước ra cửa thang máy sẽ có biển chỉ dẫn hành lang 2 bên dẫn thẳng tới cửa phòng ạ!"*
+
+### Hỏi về Kỹ thuật, Bảo trì & Sửa chữa thiết bị phòng (Maintenance & Room Repair):
+- **Câu hỏi của khách:** *"Phòng bị hỏng điều hòa thì báo ai?", "Điều hòa không mát", "Đèn trong phòng không sáng", "Vòi nước bị rỉ", "Tắc cống", "Tivi không lên nguồn", "Khóa phòng bị kẹt", "Khách sạn có thợ sửa chữa không?", "Sửa đồ trong phòng có mất phí không?", "Bao lâu thì kỹ thuật viên lên sửa?", "Kiểm tra tiến độ sửa chữa", "Bảo trì tới đâu rồi?"*
+- **Robot trả lời:** *"Dạ khách sạn Aurora Grand có Đội ngũ Kỹ thuật & Bảo trì trực 24/7. Mọi sự cố kỹ thuật phòng (điều hòa, bóng đèn, điện nước, khóa phòng, tivi, wifi) đều được hỗ trợ khắc phục hoàn toàn miễn phí trong vòng 15 đến 30 phút. Quý khách có thể chạm vào mục 'Báo hỏng & Sửa chữa' ngay trên màn hình robot để chọn sự cố hoặc tra cứu tiến độ, nói trực tiếp với em, hoặc bấm phím số 0 trên điện thoại bàn phòng để kỹ thuật viên lên hỗ trợ ngay ạ!"*

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   PhoneCall,
   Video,
@@ -10,7 +10,6 @@ import {
   Car,
   MapPin,
   Navigation,
-  UserCheck,
   Check,
   Users,
   Disc,
@@ -30,6 +29,10 @@ import {
 } from '../../services/conciergeApi';
 import { fetchFeedbacks, fetchSessionMessages } from '../../services/aiApi';
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
+import { ConciergeTaxiBookingModal } from '../../components/dashboard/concierge/ConciergeTaxiBookingModal';
+import { ConciergeTestCallModal } from '../../components/dashboard/concierge/ConciergeTestCallModal';
+import { handleNumericKeyDown, handleNumberInputBlockExponent, sanitizeDigitsOnly } from '../../utils/numberInputHelper';
+import { Pagination } from '../../components/common/Pagination';
 import {
   fetchTaxiDashboard,
   fetchTaxiRequests,
@@ -75,7 +78,6 @@ export const ConciergeDashboard = ({
   });
   const [taxiRequests, setTaxiRequests] = useState([]);
   const [isTaxiModalOpen, setIsTaxiModalOpen] = useState(false);
-  const [assignModal, setAssignModal] = useState({ open: false, reqId: null, driver: '' });
   const [taxiForm, setTaxiForm] = useState({
     guest_name: '',
     room_number: '',
@@ -86,6 +88,65 @@ export const ConciergeDashboard = ({
     vehicle_type: '4-Seater Sedan',
     notes: '',
   });
+
+  // Pagination states (10 items/page standard across dashboards)
+  const pageSize = 10;
+  const [recordingsPage, setRecordingsPage] = useState(1);
+  const [taxiPage, setTaxiPage] = useState(1);
+  const [feedbackPage, setFeedbackPage] = useState(1);
+
+  // Guest Feedback filter states
+  const [feedbackRatingFilter, setFeedbackRatingFilter] = useState('all');
+
+  const totalRecordingsPages = Math.max(1, Math.ceil(recordedSessions.length / pageSize));
+  const totalTaxiPages = Math.max(1, Math.ceil(taxiRequests.length / pageSize));
+
+  // Filter feedbacks by 3 rating tabs (Tất cả, Cần can thiệp <= 3 sao, Hài lòng >= 4 sao)
+  const filteredFeedbacks = useMemo(() => {
+    let list = feedbacks;
+
+    // 1. Rating filter
+    if (feedbackRatingFilter === 'recovery') {
+      list = list.filter((f) => (f.rating || 5) <= 3);
+    } else if (feedbackRatingFilter === 'satisfied') {
+      list = list.filter((f) => (f.rating || 5) >= 4);
+    }
+
+    return [...list].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  }, [feedbacks, feedbackRatingFilter]);
+
+  const totalFeedbackPages = Math.max(1, Math.ceil(filteredFeedbacks.length / pageSize));
+
+  useEffect(() => {
+    setFeedbackPage(1);
+  }, [feedbackRatingFilter]);
+
+  useEffect(() => {
+    if (recordingsPage > totalRecordingsPages) setRecordingsPage(totalRecordingsPages);
+  }, [recordingsPage, totalRecordingsPages]);
+
+  useEffect(() => {
+    if (taxiPage > totalTaxiPages) setTaxiPage(totalTaxiPages);
+  }, [taxiPage, totalTaxiPages]);
+
+  useEffect(() => {
+    if (feedbackPage > totalFeedbackPages) setFeedbackPage(totalFeedbackPages);
+  }, [feedbackPage, totalFeedbackPages]);
+
+  const paginatedRecordings = useMemo(() => {
+    const start = (recordingsPage - 1) * pageSize;
+    return recordedSessions.slice(start, start + pageSize);
+  }, [recordedSessions, recordingsPage, pageSize]);
+
+  const paginatedTaxiRequests = useMemo(() => {
+    const start = (taxiPage - 1) * pageSize;
+    return taxiRequests.slice(start, start + pageSize);
+  }, [taxiRequests, taxiPage, pageSize]);
+
+  const paginatedFeedbacks = useMemo(() => {
+    const start = (feedbackPage - 1) * pageSize;
+    return filteredFeedbacks.slice(start, start + pageSize);
+  }, [filteredFeedbacks, feedbackPage, pageSize]);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -207,18 +268,19 @@ export const ConciergeDashboard = ({
     }
   };
 
-  const handleUpdateTaxiStatus = async (reqId, newStatus, driver = null) => {
-    const res = await updateTaxiRequestStatus(reqId, newStatus, driver);
+  const handleUpdateTaxiStatus = async (reqId, newStatus, note = null) => {
+    const res = await updateTaxiRequestStatus(reqId, newStatus, note);
     if (res) {
-      onNotify(`Cập nhật trạng thái chuyến xe: ${newStatus}`);
+      const statusMsg =
+        newStatus === 'Calling'
+          ? 'Concierge đã nhận yêu cầu và đang gọi xe taxi cho khách'
+          : newStatus === 'Completed'
+          ? 'Đã hoàn tất cuộc gọi xe taxi thành công'
+          : `Cập nhật trạng thái yêu cầu taxi: ${newStatus}`;
+      onNotify(statusMsg);
       setTaxiRequests((prev) =>
-        prev.map((r) =>
-          r.id === reqId ? { ...r, status: newStatus, assigned_driver: driver || r.assigned_driver } : r
-        )
+        prev.map((r) => (r.id === reqId ? { ...r, status: newStatus } : r))
       );
-      if (assignModal.open) {
-        setAssignModal({ open: false, reqId: null, driver: '' });
-      }
     }
   };
 
@@ -237,7 +299,7 @@ export const ConciergeDashboard = ({
               ) : activeSubTab === 'taxi' ? (
                 <>
                   <Car className="w-5 h-5 text-emerald-600" />
-                  Điều Phối Dịch Vụ Đặt Xe & Vận Chuyển
+                  Tiếp Nhận & Gọi Xe Taxi Cho Khách
                 </>
               ) : activeSubTab === 'feedback' ? (
                 <>
@@ -338,7 +400,7 @@ export const ConciergeDashboard = ({
               }`}
             >
               <Car className="w-3.5 h-3.5" />
-              <span>Điều phối Đặt xe & Vận chuyển</span>
+              <span>Yêu cầu gọi Taxi</span>
               {taxiKpis.pendingRequests > 0 && (
                 <span className="bg-palette-stone text-palette-charcoal border border-palette-silver text-[10px] px-1.5 py-0.2 rounded-full font-bold">
                   {taxiKpis.pendingRequests}
@@ -532,7 +594,7 @@ export const ConciergeDashboard = ({
                 </div>
               ) : (
                 <div className="divide-y divide-palette-silver/30">
-                  {recordedSessions.map((session) => (
+                  {paginatedRecordings.map((session) => (
                     <div
                       key={session.id}
                       className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 hover:bg-palette-cream/40 transition-all"
@@ -601,6 +663,18 @@ export const ConciergeDashboard = ({
                   ))}
                 </div>
               )}
+
+              {/* Pagination Footer */}
+              {recordedSessions.length > 0 && (
+                <Pagination
+                  currentPage={recordingsPage}
+                  totalItems={recordedSessions.length}
+                  pageSize={pageSize}
+                  onPageChange={setRecordingsPage}
+                  itemName="bản ghi"
+                  className="border-t border-palette-silver/50 bg-white"
+                />
+              )}
             </div>
           </div>
         )}
@@ -611,30 +685,42 @@ export const ConciergeDashboard = ({
             {/* Metric KPI Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-palette-stone/40 border border-palette-silver rounded-xl p-3">
-                <div className="text-[11px] font-semibold text-palette-slate">Tổng cuốc xe</div>
+                <div className="text-[11px] font-semibold text-palette-slate">Tổng yêu cầu</div>
                 <div className="text-xl font-bold text-palette-charcoal mt-1">
                   {taxiRequests.length || taxiKpis.totalRequests}
                 </div>
               </div>
               <div className="bg-palette-stone/40 border border-palette-silver rounded-xl p-3">
-                <div className="text-[11px] font-semibold text-palette-slate">Chờ điều phối</div>
+                <div className="text-[11px] font-semibold text-palette-slate">Chờ tiếp nhận</div>
                 <div className="text-xl font-bold text-palette-charcoal mt-1">
-                  {taxiRequests.filter((r) => r.status === 'Pending' || r.status === 'Unassigned').length ||
-                    taxiKpis.pendingRequests}
+                  {taxiRequests.filter((r) => {
+                    const st = (r.status || '').toLowerCase();
+                    return st === 'pending' || st === 'unassigned' || st === 'chờ tiếp nhận' || st === 'missed';
+                  }).length || taxiKpis.pendingRequests}
                 </div>
               </div>
               <div className="bg-palette-stone/40 border border-palette-silver rounded-xl p-3">
-                <div className="text-[11px] font-semibold text-palette-slate">Đang di chuyển</div>
+                <div className="text-[11px] font-semibold text-palette-slate">Đang gọi xe</div>
                 <div className="text-xl font-bold text-sky-600 mt-1">
-                  {taxiRequests.filter(
-                    (r) => r.status === 'In Progress' || r.status === 'On The Way' || r.status === 'Driver Assigned'
-                  ).length || taxiKpis.activeTrips}
+                  {taxiRequests.filter((r) => {
+                    const st = (r.status || '').toLowerCase();
+                    return (
+                      st === 'calling' ||
+                      st === 'in progress' ||
+                      st === 'đang gọi' ||
+                      st === 'driver assigned' ||
+                      st === 'on the way'
+                    );
+                  }).length || taxiKpis.callingRequests || taxiKpis.activeTrips}
                 </div>
               </div>
               <div className="bg-palette-stone/40 border border-palette-silver rounded-xl p-3">
-                <div className="text-[11px] font-semibold text-palette-slate">Đã hoàn thành</div>
+                <div className="text-[11px] font-semibold text-palette-slate">Gọi thành công</div>
                 <div className="text-xl font-bold text-emerald-600 mt-1">
-                  {taxiRequests.filter((r) => r.status === 'Completed').length || taxiKpis.completedTrips}
+                  {taxiRequests.filter((r) => {
+                    const st = (r.status || '').toLowerCase();
+                    return st === 'completed' || st === 'thành công' || st === 'success' || st === 'done' || st === 'closed';
+                  }).length || taxiKpis.completedTrips}
                 </div>
               </div>
             </div>
@@ -642,101 +728,153 @@ export const ConciergeDashboard = ({
             {/* Taxi Request List */}
             <div className="bg-white rounded-xl border border-palette-silver shadow-sm overflow-hidden">
               <div className="p-4 border-b border-palette-silver/50 flex items-center justify-between">
-                <span className="text-xs font-bold text-palette-charcoal">Danh Sách Yêu Cầu Đặt Xe & Điều Phối</span>
-                <span className="text-[11px] text-palette-slate">Hiển thị {taxiRequests.length} chuyến xe</span>
+                <span className="text-xs font-bold text-palette-charcoal">Danh Sách Yêu Cầu Gọi Xe Taxi</span>
+                <span className="text-[11px] text-palette-slate">Hiển thị {taxiRequests.length} yêu cầu</span>
               </div>
 
               {taxiRequests.length === 0 ? (
                 <div className="p-8 text-center text-xs text-palette-slate">
-                  Hiện chưa có yêu cầu đặt xe nào trong hệ thống.
+                  Hiện chưa có yêu cầu gọi taxi nào trong hệ thống.
                 </div>
               ) : (
                 <div className="divide-y divide-palette-silver/30">
-                  {taxiRequests.map((trip) => (
-                    <div
-                      key={trip.id}
-                      className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 hover:bg-palette-cream/40 transition-all"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono font-bold text-palette-charcoal bg-palette-stone border border-palette-silver px-2 py-0.5 rounded">
-                            {trip.ticket_code || trip.id}
-                          </span>
-                          <span className="text-xs font-bold text-palette-charcoal">{trip.guest_name}</span>
-                          {trip.room_number && (
-                            <span className="text-[11px] text-palette-slate">(Phòng {trip.room_number})</span>
+                  {paginatedTaxiRequests.map((trip) => {
+                    const stLower = (trip.status || '').toLowerCase();
+                    const isPending =
+                      stLower === 'pending' ||
+                      stLower === 'unassigned' ||
+                      stLower === 'chờ tiếp nhận' ||
+                      stLower === 'missed';
+                    const isCalling =
+                      stLower === 'calling' ||
+                      stLower === 'in progress' ||
+                      stLower === 'đang gọi' ||
+                      stLower === 'driver assigned' ||
+                      stLower === 'on the way';
+                    const isCompleted =
+                      stLower === 'completed' ||
+                      stLower === 'thành công' ||
+                      stLower === 'success' ||
+                      stLower === 'done' ||
+                      stLower === 'closed';
+                    const isCancelled =
+                      stLower === 'cancelled' || stLower === 'đã hủy' || stLower === 'rejected';
+
+                    return (
+                      <div
+                        key={trip.id}
+                        className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 hover:bg-palette-cream/40 transition-all"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono font-bold text-palette-charcoal bg-palette-stone border border-palette-silver px-2 py-0.5 rounded">
+                              {trip.ticket_code || trip.id}
+                            </span>
+                            <span className="text-xs font-bold text-palette-charcoal">{trip.guest_name}</span>
+                            {trip.room_number && (
+                              <span className="text-[11px] text-palette-slate">(Phòng {trip.room_number})</span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-4 text-xs text-palette-slate mt-2">
+                            <span className="flex items-center gap-1 text-palette-charcoal">
+                              <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                              Đón: <strong className="font-semibold">{trip.pickup_location}</strong>
+                            </span>
+                            <span className="flex items-center gap-1 text-palette-charcoal">
+                              <Navigation className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                              Đến: <strong className="font-semibold">{trip.destination}</strong>
+                            </span>
+                            <span className="flex items-center gap-1 text-palette-slate">
+                              <Clock className="w-3.5 h-3.5 shrink-0" />
+                              {trip.pickup_time || 'Ngay bây giờ'}
+                            </span>
+                            <span className="flex items-center gap-1 text-palette-slate">
+                              <Car className="w-3.5 h-3.5 shrink-0" />
+                              {trip.vehicle_type || '4 chỗ'} ({trip.party_size || 2} khách)
+                            </span>
+                          </div>
+
+                          {trip.notes && (
+                            <div className="mt-2 text-[11px] text-palette-slate italic">
+                              Ghi chú: {trip.notes}
+                            </div>
                           )}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-4 text-xs text-palette-slate mt-2">
-                          <span className="flex items-center gap-1 text-palette-charcoal">
-                            <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                            Đón: <strong className="font-semibold">{trip.pickup_location}</strong>
+                        <div className="flex items-center gap-2 self-start md:self-center">
+                          {/* Status Badge */}
+                          <span
+                            className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                              isCompleted
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : isCalling
+                                ? 'bg-sky-100 text-sky-800 border border-sky-200 animate-pulse'
+                                : isCancelled
+                                ? 'bg-neutral-100 text-neutral-700'
+                                : stLower === 'missed'
+                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}
+                          >
+                            {isCompleted
+                              ? (stLower === 'closed' ? 'Đã đóng' : 'Thành công')
+                              : isCalling
+                              ? 'Đang gọi'
+                              : isCancelled
+                              ? 'Đã hủy'
+                              : stLower === 'missed'
+                              ? 'Chờ tiếp nhận'
+                              : 'Chờ tiếp nhận'}
                           </span>
-                          <span className="flex items-center gap-1 text-palette-charcoal">
-                            <Navigation className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                            Đến: <strong className="font-semibold">{trip.destination}</strong>
-                          </span>
-                          <span className="flex items-center gap-1 text-palette-slate">
-                            <Clock className="w-3.5 h-3.5 shrink-0" />
-                            {trip.pickup_time || 'Ngay bây giờ'}
-                          </span>
-                          <span className="flex items-center gap-1 text-palette-slate">
-                            <Car className="w-3.5 h-3.5 shrink-0" />
-                            {trip.vehicle_type || '4 chỗ'} ({trip.party_size || 2} khách)
-                          </span>
+
+                          {/* Action Button 1: Khi còn Pending hoặc Missed -> Concierge nhận yêu cầu và chuyển sang Đang gọi */}
+                          {isPending && (
+                            <button
+                              onClick={() => handleUpdateTaxiStatus(trip.id, 'Calling')}
+                              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-sky-600 hover:bg-sky-700 text-white transition-all flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+                              title="Concierge tiếp nhận và gọi xe cho khách"
+                            >
+                              <PhoneCall className="w-3.5 h-3.5" />
+                              Nhận yêu cầu
+                            </button>
+                          )}
+
+                          {/* Action Button 2: Khi đang Gọi -> Concierge gọi xong bấm Thành công */}
+                          {isCalling && (
+                            <button
+                              onClick={() => handleUpdateTaxiStatus(trip.id, 'Completed')}
+                              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+                              title="Xác nhận đã gọi taxi thành công cho khách"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              Thành công
+                            </button>
+                          )}
+
+                          {isCompleted && (
+                            <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
+                              <Check className="w-3.5 h-3.5" />
+                              Đã gọi xong
+                            </span>
+                          )}
                         </div>
-
-                        {trip.assigned_driver && (
-                          <div className="mt-2 flex items-center gap-2 text-[11px] text-palette-charcoal">
-                            <span className="font-semibold">Tài xế:</span> {trip.assigned_driver}
-                            {trip.license_plate && (
-                              <span className="font-mono bg-palette-stone text-palette-charcoal px-1.5 py-0.5 rounded border border-palette-silver">
-                                {trip.license_plate}
-                              </span>
-                            )}
-                          </div>
-                        )}
                       </div>
-
-                      <div className="flex items-center gap-2 self-start md:self-center">
-                        <span
-                          className={`text-[11px] font-bold px-2 py-0.5 rounded ${
-                            trip.status === 'Completed'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : trip.status === 'On The Way' || trip.status === 'Driver Assigned'
-                              ? 'bg-sky-100 text-sky-800'
-                              : 'bg-palette-stone text-palette-charcoal border border-palette-silver'
-                          }`}
-                        >
-                          {trip.status}
-                        </span>
-
-                        {trip.status === 'Pending' && (
-                          <button
-                            onClick={() =>
-                              setAssignModal({ open: true, reqId: trip.id, driver: 'Mai Linh Taxi - Tài xế Tuấn' })
-                            }
-                            className="px-2.5 py-1 text-[11px] font-bold rounded bg-palette-charcoal hover:bg-neutral-800 text-palette-cream transition-all flex items-center gap-1 shadow-sm"
-                          >
-                            <UserCheck className="w-3 h-3" />
-                            Gán tài xế
-                          </button>
-                        )}
-
-                        {(trip.status === 'Driver Assigned' || trip.status === 'On The Way') && (
-                          <button
-                            onClick={() => handleUpdateTaxiStatus(trip.id, 'Completed')}
-                            className="px-2.5 py-1 text-[11px] font-bold rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-1"
-                          >
-                            <Check className="w-3 h-3" />
-                            Đã đón xong
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
+              )}
+
+              {/* Pagination Footer */}
+              {taxiRequests.length > 0 && (
+                <Pagination
+                  currentPage={taxiPage}
+                  totalItems={taxiRequests.length}
+                  pageSize={pageSize}
+                  onPageChange={setTaxiPage}
+                  itemName="yêu cầu"
+                  className="border-t border-palette-silver/50 bg-white"
+                />
               )}
             </div>
           </div>
@@ -745,10 +883,23 @@ export const ConciergeDashboard = ({
         {/* SUBTAB 4: FEEDBACK & SERVICE RECOVERY */}
         {activeSubTab === 'feedback' && (
           <div className="space-y-6">
-            {/* KPI Cards */}
+            {/* KPI Cards (Clickable Quick Filters) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white rounded-xl border border-palette-silver p-4 shadow-xs">
-                <span className="text-xs text-palette-slate font-medium">Tổng Đánh Giá Nhận Được</span>
+              <div
+                onClick={() => setFeedbackRatingFilter('all')}
+                className={`bg-white rounded-xl border p-4 shadow-xs cursor-pointer transition-all ${
+                  feedbackRatingFilter === 'all'
+                    ? 'border-palette-charcoal ring-2 ring-palette-charcoal/20'
+                    : 'border-palette-silver hover:border-palette-charcoal/50'
+                }`}
+                title="Nhấn để xem tất cả đánh giá"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-palette-slate font-medium">Tổng Đánh Giá Nhận Được</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                    feedbackRatingFilter === 'all' ? 'bg-palette-charcoal text-white' : 'bg-palette-stone text-palette-slate'
+                  }`}>Tất cả</span>
+                </div>
                 <div className="text-2xl font-bold text-palette-charcoal mt-1">
                   {feedbacks.length}
                 </div>
@@ -769,22 +920,45 @@ export const ConciergeDashboard = ({
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-palette-silver p-4 shadow-xs">
-                <span className="text-xs text-palette-slate font-medium">Hài Lòng (4 - 5 Sao)</span>
+              <div
+                onClick={() => setFeedbackRatingFilter('satisfied')}
+                className={`bg-white rounded-xl border p-4 shadow-xs cursor-pointer transition-all ${
+                  feedbackRatingFilter === 'satisfied'
+                    ? 'border-emerald-600 ring-2 ring-emerald-500/20 bg-emerald-50/20'
+                    : 'border-palette-silver hover:border-emerald-500/50'
+                }`}
+                title="Nhấn để lọc các đánh giá hài lòng (4 - 5 sao)"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-palette-slate font-medium">Hài Lòng (4 - 5 Sao)</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                    feedbackRatingFilter === 'satisfied' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800'
+                  }`}>4-5 sao</span>
+                </div>
                 <div className="text-2xl font-bold text-emerald-600 mt-1">
                   {feedbacks.filter((f) => f.rating >= 4).length}
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl border border-rose-200 bg-rose-50/30 p-4 shadow-xs">
-                <span className="text-xs text-rose-700 font-bold uppercase tracking-wider">Cần Can Thiệp (≤ 3 Sao)</span>
-                <div className="text-2xl font-bold text-rose-600 mt-1 flex items-center gap-2">
-                  <span>{feedbacks.filter((f) => f.rating <= 3).length}</span>
+              <div
+                onClick={() => setFeedbackRatingFilter('recovery')}
+                className={`rounded-xl border p-4 shadow-xs cursor-pointer transition-all ${
+                  feedbackRatingFilter === 'recovery'
+                    ? 'border-rose-600 ring-2 ring-rose-500/20 bg-rose-50/50'
+                    : 'border-rose-200 bg-rose-50/30 hover:border-rose-400'
+                }`}
+                title="Nhấn để lọc các đánh giá cần can thiệp (≤ 3 sao)"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-rose-700 font-bold uppercase tracking-wider">Cần Can Thiệp (≤ 3 Sao)</span>
                   {feedbacks.filter((f) => f.rating <= 3).length > 0 && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-semibold animate-pulse">
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-800 font-semibold animate-pulse">
                       Cần xử lý
                     </span>
                   )}
+                </div>
+                <div className="text-2xl font-bold text-rose-600 mt-1 flex items-center gap-2">
+                  <span>{feedbacks.filter((f) => f.rating <= 3).length}</span>
                 </div>
               </div>
             </div>
@@ -801,25 +975,83 @@ export const ConciergeDashboard = ({
               </div>
             )}
 
-            {/* Feedback List */}
+            {/* Feedback List Card */}
             <div className="bg-white rounded-xl border border-palette-silver p-5 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-palette-silver/50 pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-palette-silver/50 pb-3">
                 <h3 className="text-sm font-bold text-palette-charcoal flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-palette-charcoal" />
                   Danh Sách Đánh Giá & Ý Kiến Khách Hàng Từ Robot Kiosk
                 </h3>
-                <span className="text-xs font-mono text-palette-slate font-semibold">
-                  {feedbacks.length} phản hồi
-                </span>
+                <div className="flex items-center gap-2 text-xs font-mono text-palette-slate">
+                  <span>Hiển thị <strong>{filteredFeedbacks.length}</strong> / {feedbacks.length} phản hồi</span>
+                  {feedbackRatingFilter !== 'all' && (
+                    <button
+                      onClick={() => setFeedbackRatingFilter('all')}
+                      className="text-[11px] text-sky-700 hover:underline font-semibold cursor-pointer"
+                    >
+                      (Xóa bộ lọc)
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {feedbacks.length === 0 ? (
-                <div className="py-12 text-center text-xs text-palette-slate">
-                  Chưa có đánh giá nào từ khách hàng tại Kiosk.
+              {/* Rating Filter Pills */}
+              <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
+                {[
+                  { id: 'all', label: 'Tất cả', count: feedbacks.length },
+                  { id: 'recovery', label: 'Cần can thiệp', count: feedbacks.filter((f) => (f.rating || 5) <= 3).length, isWarning: true },
+                  { id: 'satisfied', label: 'Hài lòng (4-5 sao)', count: feedbacks.filter((f) => (f.rating || 5) >= 4).length },
+                ].map((tab) => {
+                  const isSelected = feedbackRatingFilter === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setFeedbackRatingFilter(tab.id)}
+                      className={`px-3.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-2 border ${
+                        isSelected
+                          ? tab.isWarning
+                            ? 'bg-rose-700 text-white border-transparent shadow-xs'
+                            : 'bg-palette-charcoal text-white border-transparent shadow-xs'
+                          : 'bg-white text-palette-charcoal border-palette-silver hover:bg-palette-stone/40'
+                      }`}
+                    >
+                      <span>{tab.label}</span>
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                          isSelected
+                            ? tab.isWarning
+                              ? 'bg-black/20 text-white'
+                              : 'bg-white/20 text-white'
+                            : 'bg-palette-stone text-palette-charcoal'
+                        }`}
+                      >
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {filteredFeedbacks.length === 0 ? (
+                <div className="py-12 text-center text-xs text-palette-slate space-y-2">
+                  <p>
+                    {feedbacks.length === 0
+                      ? 'Chưa có đánh giá nào từ khách hàng tại Kiosk.'
+                      : 'Không tìm thấy đánh giá nào phù hợp với bộ lọc hiện tại.'}
+                  </p>
+                  {feedbacks.length > 0 && (
+                    <button
+                      onClick={() => setFeedbackRatingFilter('all')}
+                      className="px-3 py-1 rounded-lg bg-palette-charcoal text-white text-xs font-semibold hover:bg-neutral-800 transition-all cursor-pointer"
+                    >
+                      Đặt lại bộ lọc
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {feedbacks.map((fb) => {
+                  {paginatedFeedbacks.map((fb) => {
                     const isBad = (fb.rating || 5) <= 3;
                     return (
                       <div
@@ -832,29 +1064,85 @@ export const ConciergeDashboard = ({
                         }`}
                         title={fb.chat_session_id ? 'Nhấn để xem chi tiết lịch sử hội thoại' : undefined}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                           {/* Star Badge */}
-                          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200">
+                          <div className={`flex items-center gap-1 px-2.5 py-1 rounded-lg border shrink-0 ${
+                            isBad
+                              ? 'bg-rose-50 border-rose-200'
+                              : 'bg-stone-100 border-stone-200'
+                          }`}>
                             <Star className={`w-3.5 h-3.5 ${isBad ? 'text-rose-500 fill-rose-500' : 'text-amber-500 fill-amber-500'}`} />
-                            <span className="text-xs font-bold text-palette-charcoal">
+                            <span className={`text-xs font-bold ${isBad ? 'text-rose-800' : 'text-palette-charcoal'}`}>
                               {fb.rating} / 5 Sao
                             </span>
                           </div>
 
-                          {/* Mã phiên */}
-                          <div className="text-xs font-mono text-stone-700">
-                            <span className="text-stone-400">Mã phiên:</span> {fb.chat_session_id || fb.id || 'N/A'}
+                          {/* Info bar: Session ID, Room, Guest Name, Category */}
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className="font-mono font-bold bg-palette-stone text-palette-charcoal px-2 py-0.5 rounded border border-palette-silver">
+                                {fb.chat_session_id || fb.id || 'N/A'}
+                              </span>
+                              {fb.room_number && (
+                                <span className="font-semibold text-palette-charcoal bg-amber-50 text-amber-900 border border-amber-200 px-1.5 py-0.2 rounded text-[11px]">
+                                  Phòng {fb.room_number}
+                                </span>
+                              )}
+                              {fb.guest_name && (
+                                <span className="font-semibold text-palette-charcoal">
+                                  {fb.guest_name}
+                                </span>
+                              )}
+                              {fb.category && (
+                                <span className="text-[11px] px-2 py-0.5 rounded bg-palette-stone text-palette-slate border border-palette-silver">
+                                  {fb.category}
+                                </span>
+                              )}
+                              {isBad && (
+                                <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold animate-pulse">
+                                  Cần can thiệp
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Comment */}
+                            {fb.comment && (
+                              <p className="text-xs text-palette-charcoal/90 italic bg-palette-cream/60 border border-palette-silver/50 rounded-lg px-2.5 py-1 mt-1">
+                                &quot;{fb.comment}&quot;
+                              </p>
+                            )}
                           </div>
                         </div>
 
-                        {/* Thời gian */}
-                        <div className="text-xs font-mono text-stone-500">
-                          <span className="text-stone-400">Thời gian:</span> {fb.created_at ? new Date(fb.created_at).toLocaleString('vi-VN') : 'Vừa xong'}
+                        {/* Right: Time & Action */}
+                        <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
+                          <div className="text-[11px] font-mono text-stone-500 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-stone-400" />
+                            <span>{fb.created_at ? new Date(fb.created_at).toLocaleString('vi-VN') : 'Vừa xong'}</span>
+                          </div>
+                          {fb.chat_session_id && (
+                            <span className="text-xs font-semibold text-sky-700 hover:text-sky-900 flex items-center gap-1">
+                              <MessageSquare className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Hội thoại</span>
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
                   })}
                 </div>
+              )}
+
+              {/* Pagination Footer */}
+              {filteredFeedbacks.length > 0 && (
+                <Pagination
+                  currentPage={feedbackPage}
+                  totalItems={filteredFeedbacks.length}
+                  pageSize={pageSize}
+                  onPageChange={setFeedbackPage}
+                  itemName="đánh giá"
+                  className="mt-3 rounded-xl border border-palette-silver bg-white"
+                />
               )}
             </div>
           </div>
@@ -862,208 +1150,23 @@ export const ConciergeDashboard = ({
       </div>
 
       {/* MODAL: MÔ PHỎNG LIVE CALL */}
-      {isTestModalOpen && (
-        <div className="fixed inset-0 z-50 bg-palette-charcoal/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-palette-silver">
-            <h2 className="text-base font-bold text-palette-charcoal mb-4">Mô Phỏng Cuộc Gọi Từ Robot Kiosk</h2>
-            <form onSubmit={handleCreateLiveCall} className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-palette-charcoal">Vị trí Kiosk</label>
-                <input
-                  type="text"
-                  required
-                  value={testForm.room_number}
-                  onChange={(e) => setTestForm({ ...testForm, room_number: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-palette-charcoal">Tên khách hàng</label>
-                <input
-                  type="text"
-                  required
-                  value={testForm.guest_name}
-                  onChange={(e) => setTestForm({ ...testForm, guest_name: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-palette-charcoal">Nội dung hội thoại Robot chuyển tiếp</label>
-                <textarea
-                  rows="3"
-                  value={testForm.transcript}
-                  onChange={(e) => setTestForm({ ...testForm, transcript: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-palette-silver/50">
-                <button
-                  type="button"
-                  onClick={() => setIsTestModalOpen(false)}
-                  className="px-3 py-1.5 text-xs text-palette-slate hover:text-palette-charcoal hover:bg-palette-stone rounded-lg font-semibold transition-all"
-                >
-                  Huỷ
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 text-xs bg-palette-charcoal hover:bg-neutral-800 text-palette-cream rounded-lg font-semibold transition-all shadow-sm"
-                >
-                  Phát tín hiệu gọi
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <ConciergeTestCallModal
+        isOpen={isTestModalOpen}
+        onClose={() => setIsTestModalOpen(false)}
+        onSubmit={handleCreateLiveCall}
+        testForm={testForm}
+        setTestForm={setTestForm}
+      />
 
       {/* MODAL: ĐẶT XE MỚI */}
-      {isTaxiModalOpen && (
-        <div className="fixed inset-0 z-50 bg-palette-charcoal/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-xl border border-palette-silver">
-            <h2 className="text-base font-bold text-palette-charcoal mb-4">Tạo Yêu Cầu Đặt Xe Mới</h2>
-            <form onSubmit={handleCreateTaxi} className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-palette-charcoal">Tên khách hàng *</label>
-                <input
-                  type="text"
-                  required
-                  value={taxiForm.guest_name}
-                  onChange={(e) => setTaxiForm({ ...taxiForm, guest_name: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                  placeholder="Vd: Mr. David Miller"
-                />
-              </div>
+      <ConciergeTaxiBookingModal
+        isOpen={isTaxiModalOpen}
+        onClose={() => setIsTaxiModalOpen(false)}
+        onSubmit={handleCreateTaxi}
+        taxiForm={taxiForm}
+        setTaxiForm={setTaxiForm}
+      />
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-semibold text-palette-charcoal">Số phòng</label>
-                  <input
-                    type="text"
-                    value={taxiForm.room_number}
-                    onChange={(e) => setTaxiForm({ ...taxiForm, room_number: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                    placeholder="Vd: 501"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-palette-charcoal">Số khách</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="16"
-                    value={taxiForm.party_size}
-                    onChange={(e) => setTaxiForm({ ...taxiForm, party_size: parseInt(e.target.value) || 1 })}
-                    className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-palette-charcoal">Điểm đón</label>
-                <input
-                  type="text"
-                  value={taxiForm.pickup_location}
-                  onChange={(e) => setTaxiForm({ ...taxiForm, pickup_location: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-palette-charcoal">Điểm đến</label>
-                <input
-                  type="text"
-                  value={taxiForm.destination}
-                  onChange={(e) => setTaxiForm({ ...taxiForm, destination: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                  placeholder="Vd: Sân bay Đà Nẵng, Phố Cổ Hội An..."
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-semibold text-palette-charcoal">Loại xe</label>
-                  <select
-                    value={taxiForm.vehicle_type}
-                    onChange={(e) => setTaxiForm({ ...taxiForm, vehicle_type: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal bg-white"
-                  >
-                    <option value="4-Seater Sedan">Sedan 4 chỗ</option>
-                    <option value="7-Seater SUV">SUV 7 chỗ</option>
-                    <option value="Luxury Limousine">Limousine VIP</option>
-                    <option value="16-Seater Van">Xe 16 chỗ</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-palette-charcoal">Thời gian đón</label>
-                  <input
-                    type="text"
-                    value={taxiForm.pickup_time}
-                    onChange={(e) => setTaxiForm({ ...taxiForm, pickup_time: e.target.value })}
-                    className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                    placeholder="Vd: 14:00 Chiều nay"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-palette-silver/50">
-                <button
-                  type="button"
-                  onClick={() => setIsTaxiModalOpen(false)}
-                  className="px-3 py-1.5 text-xs text-palette-slate hover:text-palette-charcoal hover:bg-palette-stone rounded-lg font-semibold transition-all"
-                >
-                  Huỷ
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 text-xs bg-palette-charcoal hover:bg-neutral-800 text-palette-cream rounded-lg font-semibold transition-all shadow-sm"
-                >
-                  Xác nhận gọi xe
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL: GÁN TÀI XẾ */}
-      {assignModal.open && (
-        <div className="fixed inset-0 z-50 bg-palette-charcoal/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-sm w-full p-5 shadow-xl border border-palette-silver">
-            <h2 className="text-sm font-bold text-palette-charcoal mb-3">Điều Phối Tài Xế Cho Chuyến Đi</h2>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-palette-charcoal">Tên tài xế & Hãng xe</label>
-                <input
-                  type="text"
-                  value={assignModal.driver}
-                  onChange={(e) => setAssignModal({ ...assignModal, driver: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                  placeholder="Vd: Anh Nam (Mai Linh - 43A-123.45)"
-                />
-              </div>
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  onClick={() => setAssignModal({ open: false, reqId: null, driver: '' })}
-                  className="px-3 py-1.5 text-xs text-palette-slate hover:text-palette-charcoal hover:bg-palette-stone rounded-lg font-semibold transition-all"
-                >
-                  Huỷ
-                </button>
-                <button
-                  onClick={() =>
-                    handleUpdateTaxiStatus(assignModal.reqId, 'Driver Assigned', assignModal.driver)
-                  }
-                  className="px-4 py-1.5 text-xs bg-palette-charcoal hover:bg-neutral-800 text-palette-cream rounded-lg font-semibold transition-all shadow-sm"
-                >
-                  Lưu & Báo khách
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       {/* MODAL XEM LẠI VIDEO GHI HÌNH TỪ CLOUDINARY */}
       {playingVideo && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">

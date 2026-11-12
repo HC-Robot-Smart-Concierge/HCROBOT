@@ -1,17 +1,25 @@
 import random
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from datetime import datetime, timezone
+from typing import List, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models import Staff, SupportRequest
+from app.models import SupportRequest
 from app.schemas.operations import (
     BellRequestCreate,
     BellRequestStatusUpdate,
     BellRequestResponse,
+    BellRoomStatusResponse,
     BellServicesDashboardResponse,
 )
+from app.services.bell_request_service import (
+    BELL_DEPARTMENT_ID,
+    BELL_SERVICE_TYPE_ID,
+    get_or_create_bell_request,
+)
+from app.services.maintenance_request_service import maintenance_room_filter, normalize_room
 from app.repositories import (
     SupportRequestRepository,
     get_support_request_repository,
@@ -54,17 +62,23 @@ async def get_bell_services_dashboard(
     """
     requests = await sr_repo.get_recent_by_department(
         department_ids=["DEP-BELL"],
-        service_type_ids=["ST-BELL"],
+        service_type_ids=["ST-BELL", "ST-LUGGAGE"],
         limit=100,
     )
 
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     on_job_count = sum(1 for r in requests if r.status == "In Progress")
     completed_count = sum(1 for r in requests if r.status == "Completed")
+    luggage_count = sum(1 for r in requests if r.request_type in ["luggage", "room_move"])
+    lost_found_count = sum(1 for r in requests if r.request_type == "lost_found")
+    emotion_alert_count = sum(1 for r in requests if r.request_type == "emotion_alert")
+    pending_emotion_alerts = sum(
+        1 for r in requests if r.request_type == "emotion_alert" and r.status in ["Pending", "Unassigned", "In Progress"]
+    )
 
     bell_staff = await staff_repo.list_staff(department="Bell Services")
 
-    team_status = [
+    team_status: List[Dict[str, Any]] = [
         {"id": s.id, "name": s.full_name, "role": s.role, "status": s.status, "avatar": s.avatar_url}
         for s in bell_staff
     ]
@@ -89,6 +103,10 @@ async def get_bell_services_dashboard(
         "onJob": on_job_count,
         "completed": completed_count,
         "activeFleet": available_fleet_count,
+        "luggageCount": luggage_count,
+        "lostFoundCount": lost_found_count,
+        "emotionAlertCount": emotion_alert_count,
+        "pendingEmotionAlerts": pending_emotion_alerts,
     }
 
     announcement = {
@@ -110,9 +128,9 @@ async def get_bell_services_dashboard(
     response_model=BellRequestResponse,
     status_code=status.HTTP_201_CREATED,
     tags=TAG_BELL,
-    summary="Tạo mới yêu cầu hỗ trợ hành lý / Bellman",
+    summary="Tạo mới yêu cầu hỗ trợ hành lý / báo cáo đồ thất lạc / xử lý khách khó chịu (Bellman)",
     responses={
-        201: {"description": "Tạo ticket hành lý thành công và lưu vào bảng support_requests."}
+        201: {"description": "Tạo ticket Bellman thành công và lưu vào bảng support_requests."}
     },
 )
 async def create_bell_request(
@@ -122,9 +140,61 @@ async def create_bell_request(
 ):
     """
     ### Mô tả nghiệp vụ:
-    Tiếp nhận yêu cầu dịch vụ Bellman (chuyển hành lý, nhận đồ tại sảnh, hỗ trợ đổi phòng).
+    Tiếp nhận yêu cầu dịch vụ Bellman thuộc 3 luồng chính:
+    1. **Tiếp nhận yêu cầu hỗ trợ hành lý** (`request_type = 'luggage'` hoặc `'room_move'`)
+    2. **Tiếp nhận báo cáo đồ thất lạc** (`request_type = 'lost_found'`)
+    3. **Xử lý khi khách có biểu cảm khó chịu** (`request_type = 'emotion_alert'`)
     Bản ghi được tự động lưu vào bảng `support_requests` với `department_id = 'DEP-BELL'` và `service_type_id = 'ST-BELL'`.
+
+    Menu Bellman trên robot gửi kèm `service_key`: nếu phòng đã có yêu cầu cùng dịch vụ đang mở,
+    API trả lại phiếu đó với `duplicate = true` và không tạo phiếu mới.
     """
+    if req_in.service_key:
+        try:
+            req, created = await get_or_create_bell_request(
+                db,
+                room_number=req_in.location,
+                description=req_in.description or req_in.title,
+                source=req_in.source or req_in.reporter or "HCRobot Kiosk Screen",
+                service_key=req_in.service_key,
+                guest_name=req_in.guest_name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        await db.commit()
+        await db.refresh(req)
+        return BellRequestResponse.model_validate(req).model_copy(update={"duplicate": not created})
+
+    req_type = (req_in.request_type or "luggage").strip().lower()
+    text_blob = f"{req_in.title or ''} {req_in.description or ''}".lower()
+    if req_type in ["luggage", "general", "bellman", "bell_service"]:
+        if any(k in text_blob for k in ["thất lạc", "quên đồ", "mất đồ", "rơi đồ", "lost", "missing", "forgot"]):
+            req_type = "lost_found"
+        elif any(k in text_blob for k in ["khó chịu", "biểu cảm", "bực", "tức giận", "unhappy", "frustrated", "emotion"]):
+            req_type = "emotion_alert"
+        elif any(k in text_blob for k in ["đổi phòng", "chuyển phòng", "room move"]):
+            req_type = "room_move"
+        else:
+            req_type = "luggage"
+
+    # Chống tạo trùng lặp liên tục cho cảnh báo biểu cảm khó chịu tại cùng vị trí trong 90 giây
+    if req_type == "emotion_alert":
+        recent_reqs = await sr_repo.get_recent_by_department(
+            department_ids=["DEP-BELL"],
+            service_type_ids=["ST-BELL", "ST-LUGGAGE"],
+            limit=20,
+        )
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        for existing in recent_reqs:
+            if (
+                existing.request_type == "emotion_alert"
+                and existing.status in ["Pending", "Unassigned", "In Progress"]
+                and (existing.room_number or "").strip().lower() == (req_in.location or "").strip().lower()
+            ):
+                created_dt = existing.created_at.replace(tzinfo=None) if existing.created_at else None
+                if not created_dt or (now_utc - created_dt).total_seconds() < 90:
+                    return existing
+
     ticket_code = f"BS-{random.randint(504, 9999)}"
     new_req = SupportRequest(
         ticket_code=ticket_code,
@@ -136,20 +206,53 @@ async def create_bell_request(
         department_id="DEP-BELL",
         service_type_id="ST-BELL",
         status="Pending",
+        request_type=req_type,
     )
     await sr_repo.create(new_req)
+
+    if req_type == "lost_found":
+        notif_title = f"Báo cáo Đồ thất lạc mới #{ticket_code}"
+    elif req_type == "emotion_alert":
+        notif_title = f"Cảnh báo Khách có biểu cảm khó chịu #{ticket_code}"
+    else:
+        notif_title = f"Yêu cầu Hỗ trợ Hành lý mới #{ticket_code}"
+
     await create_department_notification(
         db=db,
         department="Bell Services",
-        title=f"Yêu cầu Bellman mới: {req_in.title}",
-        description=f"{req_in.location}: {req_in.description or req_in.guest_name or 'Yêu cầu hỗ trợ hành lý'}",
+        title=notif_title,
+        description=f"{req_in.location}: {req_in.title} - {req_in.description or req_in.guest_name or ''}".strip(" -"),
         request_id=new_req.id,
         request_type="bell_service",
-        type="Request",
+        type="Alert" if req_type == "emotion_alert" else "Request",
     )
     await sr_repo.commit()
     await sr_repo.refresh(new_req)
     return new_req
+
+
+@router.patch(
+    "/bell-services/requests/{request_id}",
+    response_model=BellRequestResponse,
+    tags=TAG_BELL,
+    summary="Cập nhật trạng thái và nhân viên xử lý yêu cầu Bell Services",
+)
+async def update_bell_request(
+    request_id: str,
+    update_in: BellRequestStatusUpdate,
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+):
+    req = await sr_repo.get_by_id_or_code(request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Bell Services")
+    if update_in.status:
+        req.status = update_in.status
+    staff_val = update_in.assigned_to or update_in.assigned_staff
+    if staff_val is not None:
+        req.assigned_staff_name = staff_val
+    await sr_repo.commit()
+    await sr_repo.refresh(req)
+    return req
 
 
 @router.get(
@@ -177,5 +280,30 @@ async def get_bell_request(
     if not req:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Bell Services")
     return req
+
+
+@router.get(
+    "/bell-services/rooms/{room_number}/status",
+    response_model=BellRoomStatusResponse,
+    tags=TAG_BELL,
+    summary="Tra cứu tiến độ các yêu cầu Bellman của một phòng",
+)
+async def get_room_bell_status(room_number: str, db: AsyncSession = Depends(get_db)):
+    """Robot kiosk (sau khi xác thực PIN phòng) xem các yêu cầu hành lý / chuyển phòng của phòng, mới nhất trước."""
+    clean_room = normalize_room(room_number)
+    room_reqs = (await db.execute(
+        select(SupportRequest).where(
+            or_(SupportRequest.department_id == BELL_DEPARTMENT_ID, SupportRequest.service_type_id == BELL_SERVICE_TYPE_ID),
+            maintenance_room_filter(clean_room),
+        ).order_by(SupportRequest.created_at.desc()).limit(30)
+    )).scalars().all()
+    statuses = [(r.status or "Pending").strip().lower() for r in room_reqs]
+    return {
+        "room_number": clean_room,
+        "pending_count": sum(s in ("pending", "unassigned") for s in statuses),
+        "in_progress_count": sum(s in ("in progress", "assigned") for s in statuses),
+        "completed_count": sum(s in ("completed", "resolved", "done") for s in statuses),
+        "requests": room_reqs,
+    }
 
 

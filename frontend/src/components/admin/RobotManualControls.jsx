@@ -6,8 +6,14 @@ import { useRobotControlText } from '../../context/RobotControlLanguage';
 export const RobotManualControls = ({
   speed, speedDraft, onSpeedDraftChange, onSpeedChange,
   activeMotion = 'stop', onMove, onStop, stopOnLeave = false,
+  turnSpeed, onTurnSpeedChange,
 }) => {
   const rc = useRobotControlText();
+  // Kéo chuột ra khỏi nút khi vẫn đang nhấn -> không có mouseup trên nút -> phải dừng.
+  // Chỉ dừng khi chuột trái còn giữ: lướt chuột qua nút lúc đang lái bằng phím không làm robot dừng.
+  const handleMouseLeave = stopOnLeave
+    ? (event) => { if (event.buttons & 1) onStop(); }
+    : undefined;
   return (
         <div className="robot-manual-controls p-2.5 bg-[#18181B]/80 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-2 select-none">
           <div className="robot-speed-heading"><span> {rc("Drive speed")} </span><strong>{speedDraft ?? speed}%</strong></div>
@@ -60,13 +66,34 @@ export const RobotManualControls = ({
             </span>
           </div>
 
+          {/* Thanh trượt tốc độ quay tại chỗ (A/D), chỉ hiện khi màn hình truyền onTurnSpeedChange */}
+          {onTurnSpeedChange && (
+            <div className="w-full flex items-center gap-2 px-1">
+              <span className="font-mono text-[9px] font-bold text-cyan-300 shrink-0">{rc("Turn")}</span>
+              <input
+                type="range"
+                min={20}
+                max={100}
+                step={5}
+                value={turnSpeed}
+                onChange={(e) => onTurnSpeedChange(Number(e.target.value))}
+                aria-label={rc("Turn speed")}
+                className="flex-1 h-1 accent-cyan-400 cursor-pointer"
+                title={rc("In-place left/right turn speed (20% - 100%)")}
+              />
+              <span className="w-8 text-right font-mono text-[9px] font-bold text-cyan-300">
+                {turnSpeed}%
+              </span>
+            </div>
+          )}
+
           {/* Cross D-Pad Cluster (W, A, S, D + STOP) */}
           <div className="relative w-28 h-28 flex items-center justify-center">
             {/* W - Tiến */}
             <button
               onMouseDown={() => onMove('w')}
               onMouseUp={onStop}
-              onMouseLeave={stopOnLeave ? onStop : undefined}
+              onMouseLeave={handleMouseLeave}
               onTouchStart={(event) => { event.preventDefault(); onMove('w'); }}
               onTouchEnd={onStop}
               onTouchCancel={onStop}
@@ -85,7 +112,7 @@ export const RobotManualControls = ({
             <button
               onMouseDown={() => onMove('a')}
               onMouseUp={onStop}
-              onMouseLeave={stopOnLeave ? onStop : undefined}
+              onMouseLeave={handleMouseLeave}
               onTouchStart={(event) => { event.preventDefault(); onMove('a'); }}
               onTouchEnd={onStop}
               onTouchCancel={onStop}
@@ -118,7 +145,7 @@ export const RobotManualControls = ({
             <button
               onMouseDown={() => onMove('d')}
               onMouseUp={onStop}
-              onMouseLeave={stopOnLeave ? onStop : undefined}
+              onMouseLeave={handleMouseLeave}
               onTouchStart={(event) => { event.preventDefault(); onMove('d'); }}
               onTouchEnd={onStop}
               onTouchCancel={onStop}
@@ -137,7 +164,7 @@ export const RobotManualControls = ({
             <button
               onMouseDown={() => onMove('s')}
               onMouseUp={onStop}
-              onMouseLeave={stopOnLeave ? onStop : undefined}
+              onMouseLeave={handleMouseLeave}
               onTouchStart={(event) => { event.preventDefault(); onMove('s'); }}
               onTouchEnd={onStop}
               onTouchCancel={onStop}

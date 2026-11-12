@@ -9,6 +9,9 @@ import ollama
 
 from app.core.config import settings
 from app.services.ai.scenario_service import scenario_service
+from app.services.ai.constants import BELLMAN_MENU_TRIGGER_KEYWORDS, SERVICE_KEYWORDS
+from app.services.bell_request_service import classify_bell_request
+from app.services.maintenance_request_service import is_fault_report
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +263,13 @@ class OllamaService:
         ]
         has_action_verb = any(v in prompt_lower for v in service_action_verbs)
         has_service_noun = any(n in prompt_lower for n in service_nouns)
-        if has_action_verb and has_service_noun:
+        # "Điều hòa còn bị chảy nước nữa" has no request verb but is still a repair report;
+        # "menu hành lý" or a specific luggage task ("chuyển hành lý sang phòng mới") must
+        # reach the Bellman flow instead of the luggage-storage FAQ.
+        is_bell_task = any(k in prompt_lower for k in SERVICE_KEYWORDS["bellman"]) and bool(classify_bell_request(prompt))
+        if (has_action_verb and has_service_noun) or is_fault_report(prompt) or is_bell_task or any(
+            k in prompt_lower for k in BELLMAN_MENU_TRIGGER_KEYWORDS
+        ):
             logger.info(f"[OllamaService Fast-Path Bypass] Service action intent detected, skipping fast-path for: '{prompt[:40]}'")
             return None
 
@@ -283,6 +292,12 @@ class OllamaService:
         # 2. Lời chào chung theo thời gian thực (Real-time Clock Greetings)
         if re.search(r"^(xin chào|xin chao|chào em|chao em|chào robot|chao robot|chào bạn|chao ban|chào rora|chao rora|hello|hi|hey|good morning|good afternoon|good evening)[\?\.\!\s]*$", prompt_lower):
             return (time_greeting_en if is_en else time_greeting_vi), lang_name, lang_code, None, None
+
+        # 3. Fast-Path Danh tính Robot / Giới thiệu bản thân (Who Are You / Self Introduction)
+        if re.search(r"\b(bạn là ai|ban la ai|em là ai|em la ai|mày là ai|may la ai|rora là ai|rora la ai|robot là ai|robot la ai|tên bạn là gì|ten ban la gi|tên em là gì|ten em la gi|bạn tên gì|ban ten gi|em tên gì|em ten gi|giới thiệu bản thân|gioi thieu ban than|giới thiệu về bản thân|gioi thieu ve ban than|giới thiệu về bạn|gioi thieu ve ban|giới thiệu về em|gioi thieu ve em|giới thiệu về mình|gioi thieu ve minh|bạn giới thiệu bản thân được không|ban gioi thieu ban than duoc khong|bạn có thể giới thiệu bản thân|ban co the gioi thieu ban than|bạn có thể giới thiệu về bản thân|ban co the gioi thieu ve ban than|tự giới thiệu|tu gioi thieu|giới thiệu rora|gioi thieu rora|who are you|what is your name|who is rora|tell me about yourself|introduce yourself)\b", prompt_lower):
+            intro_vi = "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ và đồng hành cùng quý khách ạ!"
+            intro_en = "I am Rora, the smart AI Concierge Robot at Aurora Grand Hotel. It is my pleasure to assist and accompany you!"
+            return (intro_en if is_en else intro_vi), lang_name, lang_code, "conversation", {"eye_expression": "happy"}
 
         return None
 
@@ -374,8 +389,8 @@ class OllamaService:
             prompt += f"\n[Thông tin phòng]: Quý khách ở phòng {stored_room_number}."
 
         emotion_str = (emotion or "").lower()
-        if emotion_str in ["annoyed", "angry", "upset"]:
-            prompt += "\n[Cảm xúc khách]: Khách đang chưa hài lòng, hãy phản hồi với thái độ xin lỗi và xoa dịu ân cần."
+        if emotion_str in ["annoyed", "angry", "upset", "unhappy", "frustrated", "khó chịu", "kho chiu"]:
+            prompt += "\n[Cảm xúc khách]: Khách đang có biểu cảm khó chịu hoặc chưa hài lòng, hãy phản hồi với thái độ xin lỗi chân thành, xoa dịu ân cần và cho biết nhân viên Bellman tại sảnh sẽ hỗ trợ ngay."
         elif emotion_str in ["happy", "pleased"]:
             prompt += "\n[Cảm xúc khách]: Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
 
@@ -719,12 +734,7 @@ class OllamaService:
 
         clean_items = re.sub(r'(?:phòng|room|p\.)\s*[0-9]{3,4}', '', user_speech, flags=re.IGNORECASE).strip()
 
-        SERVICE_KEYWORDS = {
-            "housekeeping": ["khăn", "dọn", "gối", "chăn", "nệm", "dọn phòng", "towel", "clean", "pillow", "blanket", "housekeeping"],
-            "maintenance": ["hỏng", "sửa", "hư", "máy lạnh", "điều hòa", "bóng đèn", "vòi nước", "kẹt", "tivi", "remote", "broken", "repair", "ac", "air conditioner"],
-            "bellman": ["hành lý", "vali", "xách đồ", "chở đồ", "xe đẩy", "luggage", "baggage", "bellman"],
-            "room_service": ["đồ ăn", "nước uống", "thức ăn", "gọi món", "menu", "cơm", "phở", "bánh mì", "nước suối", "food", "drink", "room service"],
-        }
+        from app.services.ai.constants import SERVICE_KEYWORDS
 
         intent_prompt = f"""Bạn là bộ định tuyến AI của khách sạn Aurora Grand.
 Hãy phân tích yêu cầu của khách: "{user_speech}"

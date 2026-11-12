@@ -2,8 +2,9 @@ from typing import Dict, List
 
 # Tập trung toàn bộ từ khóa phân loại ý định dịch vụ khách sạn (DRY Principle)
 SERVICE_KEYWORDS: Dict[str, List[str]] = {
+    # No bare "huy": the router also substring-matches, and "chuyển" contains "huy".
     "cancel_service": [
-        "hủy", "huy", "hủy yêu cầu", "huy yeu cau", "hủy phòng", "huy phong",
+        "hủy", "hủy yêu cầu", "huy yeu cau", "hủy phòng", "huy phong",
         "hủy đơn", "huy don", "hủy món", "huy mon", "không cần nữa", "khong can nua",
         "thôi không cần", "thoi khong can", "không lấy nữa", "khong lay nua",
         "bỏ yêu cầu", "bo yeu cau", "cancel", "cancellation", "cancel request",
@@ -31,27 +32,45 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "mì", "mi", "mì xào", "mi xao", "hải sản", "hai san", "bún", "bun", "cháo", "chao", "súp", "sup",
         "món", "mon", "món ăn", "mon an", "đồ ăn thức uống",
         "food", "drink", "nước uống", "nuoc uong", "bữa sáng", "gọi món", "đặt món", "nước ngọt", "bia", "trái cây",
-        "đặt", "dat", "order", "gọi", "goi", "mang lên", "giao lên", "đem lên",
+        "đặt đồ ăn", "dat do an", "gọi đồ ăn", "goi do an", "order món", "order đồ ăn", "mang lên", "giao lên", "đem lên",
         "đặt dịch vụ", "dat dich vu", "đặt thêm dịch vụ", "dat them dich vu",
         "dịch vụ lên phòng", "dich vu len phong", "dịch vụ phòng", "dich vu phong",
         "muốn đặt dịch vụ", "muon dat dich vu", "muốn đặt thêm", "muon dat them",
         "thêm dịch vụ", "them dich vu", "room service", "tiện ích phòng", "tien ich phong",
         "ly", "tách", "muỗng", "nĩa", "chén", "đĩa", "đá lạnh", "xô đá", "tableware", "ice"
     ],
+    # Bare "túi"/"tui" were removed: "tui" is Southern for "tôi" ("tui muốn ăn cơm"),
+    # and "mang đồ" also matched food ("mang đồ ăn lên phòng"). A bare "chuyển phòng"
+    # (changing rooms) belongs to Reception; Bellman only moves the guest's belongings.
     "bellman": [
-        "hành lý", "hanh ly", "vali", "túi", "tui", "chuyển phòng", "chuyen phong",
-        "mang đồ", "xách đồ", "luggage", "bag", "mang hành lý", "gửi hành lý"
+        "hành lý", "hanh ly", "hành lí", "hanh li", "vali", "túi xách", "xách túi", "chuyển đồ", "chuyen do",
+        "xách đồ", "luggage", "bag", "bags", "baggage", "suitcase", "mang hành lý", "gửi hành lý", "giữ hành lý",
+        "gửi giữ", "lấy lại hành lý", "chuyển hành lý", "khuân", "hỗ trợ hành lý", "ho tro hanh ly",
+        "xách vali", "mang vali", "kéo vali", "bellman", "bellboy", "porter",
+        "đồ thất lạc", "do that lac", "thất lạc", "that lac", "báo mất đồ", "bao mat do",
+        "mất đồ", "mat do", "quên đồ", "quen do", "để quên đồ", "de quen do",
+        "rơi đồ", "roi do", "tìm đồ", "tim do", "bỏ quên đồ", "bo quen do",
+        "lost and found", "lost item", "missing item", "forgot item", "lost property"
     ],
     "maintenance": [
-        "hỏng", "hong", "sửa", "sua", "điều hòa", "dieu hoa", "bóng đèn", "bong den",
+        "hư", "hu", "bị hư", "bi hu", "hư hỏng", "hu hong", "hư đồ", "hu do", "đồ bị hư", "do bi hu",
+        "phòng bị hư", "phong bi hu", "phòng tôi bị hư", "phong toi bi hu",
+        "phòng bị hỏng", "phong bi hong", "phòng tôi bị hỏng", "phong toi bi hong",
+        "báo hư", "bao hu", "hỏng", "hong", "bị hỏng", "bi hong", "sửa", "sua",
+        "điều hòa", "dieu hoa", "bóng đèn", "bong den",
         "nước rò", "nuoc ro", "máy lạnh", "may lanh", "tủ lạnh", "tu lanh", "kẹt", "ket",
-        "fix", "repair", "vòi sen", "vòi nước", "bồn cầu", "tắc", "mất điện", "không lạnh", "cháy bóng"
+        "fix", "repair", "vòi sen", "vòi nước", "bồn cầu", "tắc", "mất điện", "không lạnh", "cháy bóng",
+        "báo hỏng", "báo sự cố", "bảo trì", "bao tri", "sửa chữa", "sua chua", "hỏng hóc", "hong hoc",
+        "menu bảo trì", "menu sua chua", "báo sửa", "maintenance menu", "open maintenance", "repair menu",
+        "broken", "not working", "chập điện", "hỏng điện", "không sáng", "bị nghẹt", "bị tắc"
     ],
     "restaurant": [
         "đặt bàn", "dat ban", "bàn ăn", "ban an", "nhà hàng", "table", "restaurant"
     ],
     "taxi": [
-        "taxi", "đặt xe", "dat xe", "gọi xe", "goi xe", "sân bay", "cab", "ride", "xe đón", "grab"
+        "đặt taxi", "dat taxi", "gọi taxi", "goi taxi", "bắt taxi", "bat taxi",
+        "xe taxi", "taxi", "đặt xe", "dat xe", "gọi xe", "goi xe",
+        "sân bay", "cab", "ride", "xe đón", "xe dua don", "xe đưa đón", "grab", "book taxi"
     ],
     "concierge": [
         "concierge", "gặp người", "trợ giúp trực tiếp", "nhân viên hỗ trợ",
@@ -66,6 +85,12 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "human agent", "live agent", "talk to a person", "speak to a person", "live support"
     ],
         "query_order_status": [
+        # Taxi & Vận chuyển (Taxi & Transport status query)
+        "taxi tới chưa", "taxi toi chua", "taxi đến chưa", "taxi den chua", "xe tới chưa", "xe toi chua",
+        "xe đến chưa", "xe den chua", "trạng thái taxi", "trang thai taxi", "kiểm tra taxi", "kiem tra taxi",
+        "kiểm tra đặt taxi", "kiem tra dat taxi", "trạng thái đặt taxi", "trang thai dat taxi",
+        "đã đặt taxi chưa", "da dat taxi chua", "xe taxi tới đâu rồi", "xe taxi toi dau roi",
+        "taxi status", "check taxi", "cab status",
         # Xem lại món / đơn đã đặt (Review placed orders)
         "xem lại", "xem lai", "xem lại món", "xem lai mon", "xem lại đơn", "xem lai don", "xem lại đồ", "xem lai do",
         "cho tôi xem lại", "cho toi xem lai", "cho tôi xem lại món", "cho toi xem lai mon",
@@ -96,6 +121,16 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "tiến độ room service", "tien do room service", "room service tới đâu", "room service xong chưa",
         "tình trạng phục vụ phòng", "tinh trang phuc vu phong", "tình trạng dọn phòng", "tinh trang don phong",
         "housekeeping status", "room cleaning status",
+        # Bảo trì & Kỹ thuật (Maintenance & Repair status query)
+        "sửa chữa tới đâu", "sua chua toi dau", "bảo trì tới đâu", "bao tri toi dau",
+        "sửa điều hòa tới đâu", "sua dieu hoa toi dau", "sửa máy lạnh tới đâu", "sua may lanh toi dau",
+        "tiến độ sửa chữa", "tien do sua chua", "tiến độ bảo trì", "tien do bao tri",
+        "sửa xong chưa", "sua xong chua", "bảo trì xong chưa", "bao tri xong chua",
+        "kỹ thuật lên chưa", "ky thuat len chua", "thợ tới chưa", "tho toi chua", "thợ lên chưa", "tho len chua",
+        "kỹ thuật viên tới chưa", "ky thuat vien toi chua", "tình trạng sửa chữa", "tinh trang sua chua",
+        "tình trạng bảo trì", "tinh trang bao tri", "trạng thái bảo trì", "trang thai bao tri",
+        "maintenance status", "repair status", "fix status", "is technician coming",
+        "repair progress", "maintenance progress", "how is my repair", "how is the repair", "is it fixed", "repaired yet", "is the repair done",
         "giao chưa", "giao chua", "đang giao chưa", "đem lên chưa", "mang lên chưa",
         "tới phòng chưa", "toi phong chua", "đến phòng chưa", "den phong chua",
         "đã tới phòng chưa", "da toi phong chua", "đã đến phòng chưa", "da den phong chua",
@@ -117,7 +152,11 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "tại sao bị hủy", "tai sao bi huy", "sao bị hủy", "sao bi huy", "lý do hủy", "ly do huy", "lý do bị hủy",
         "why was it rejected", "why was my order rejected", "reason for rejection", "why declined", "why rejected",
         "order status", "food status", "status of my order", "where is my order", "is my order ready",
-        "check my order", "check order"
+        "check my order", "check order",
+        # Bellman progress (English); phrased as questions so they never read as a new request.
+        "arrived yet", "here yet", "up yet", "delivered yet", "brought up yet", "on its way",
+        "on their way", "where is my luggage", "where are my bags", "where is my suitcase",
+        "luggage status", "status of my luggage"
     ],
     "reception": [
         "lễ tân", "check out", "checkout", "check in", "checkin",
@@ -125,3 +164,96 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "gia hạn phòng", "mất chìa khóa", "khóa phòng"
     ],
 }
+
+import re
+
+# Menu trigger keyword sets (Single Source of Truth)
+MAINTENANCE_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set([
+    "menu bảo trì", "menu bao tri", "menu sửa chữa", "menu sua chua",
+    "danh mục bảo trì", "danh muc bao tri", "danh mục sửa chữa", "danh muc sua chua",
+    "danh mục sự cố", "danh muc su co", "mở bảo trì", "mo bao tri",
+    "báo hỏng", "bao hong", "báo sự cố", "bao su co",
+    "báo hư", "bao hu",
+    "hỏng hóc", "hong hoc", "kỹ thuật phòng", "ky thuat phong",
+    "bị hư", "bi hu", "hư", "hu", "hư hỏng", "hu hong", "hư đồ", "hu do", "đồ bị hư", "do bi hu",
+    "phòng bị hư", "phong bi hu", "phòng tôi bị hư", "phong toi bi hu",
+    "phòng bị hỏng", "phong bi hong", "phòng tôi bị hỏng", "phong toi bi hong",
+    "bị hỏng", "bi hong",
+    "maintenance menu", "repair menu", "open maintenance", "fix issue", "report issue"
+])))
+
+# Phrases that ask for the Bellman menu itself rather than one specific luggage task.
+BELLMAN_MENU_TRIGGER_KEYWORDS: List[str] = [
+    "menu hành lý", "menu hanh ly", "menu bellman", "dịch vụ hành lý", "dich vu hanh ly",
+    "dịch vụ bellman", "hỗ trợ hành lý", "ho tro hanh ly", "danh mục hành lý",
+    "luggage menu", "bellman menu", "luggage service", "luggage services", "luggage assistance",
+    "luggage help", "bell service", "bell services",
+]
+
+LOST_FOUND_KEYWORDS: List[str] = [
+    "thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do",
+    "rơi đồ", "roi do", "tìm đồ", "tim do", "bỏ quên", "bo quen",
+    "lost", "missing", "forgot",
+]
+
+
+def is_lost_found_text(text: str) -> bool:
+    """Return True when the text describes a Lost & Found report rather than luggage handling."""
+    lower = (text or "").lower()
+    return any(k in lower for k in LOST_FOUND_KEYWORDS)
+
+ROOM_SERVICE_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set(
+    SERVICE_KEYWORDS["housekeeping"] + [
+        "dịch vụ phòng", "dich vu phong", "room service", "tiện ích phòng", "tien ich phong",
+        "menu dịch vụ", "menu dich vu", "open room service"
+    ]
+)))
+
+FOOD_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set(
+    SERVICE_KEYWORDS["room_service"] + [
+        "menu đồ ăn", "thực đơn", "menu món ăn", "food menu", "đặt món", "gọi món", "order món", "open food menu"
+    ]
+)))
+
+
+def contains_keyword(text: str, keywords: List[str]) -> bool:
+    """Match keywords as whole words; only longer ones may also match inside a phrase.
+
+    Short keywords (<= 3 chars) are word-boundary only: "hu" (= "hư") is inside
+    "chuyển", "hư" inside "như" and "ăn" inside "xe lăn".
+    """
+    return any(
+        re.search(rf"(?<!\w){re.escape(k)}(?!\w)", text) or (len(k) > 3 and k in text)
+        for k in keywords if k
+    )
+
+
+def build_keyword_regex(keywords: List[str]) -> re.Pattern:
+    """Build a fast, case-insensitive, boundary-aware regex from a list of keywords."""
+    escaped = [re.escape(k) for k in sorted(keywords, key=len, reverse=True) if k]
+    return re.compile(rf"(?<!\w)({'|'.join(escaped)})(?!\w)", re.IGNORECASE)
+
+
+MAINTENANCE_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["maintenance"])
+HOUSEKEEPING_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["housekeeping"])
+ROOM_SERVICE_FOOD_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["room_service"])
+STATUS_QUERY_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["query_order_status"])
+TAXI_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["taxi"])
+CANCEL_SERVICE_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["cancel_service"])
+
+# Compiled exclusion regex for wayfinding / map routing to NEVER intercept orders or maintenance requests
+ORDER_OR_SERVICE_EXCLUSION_KEYWORDS: List[str] = sorted(list(set(
+    SERVICE_KEYWORDS["maintenance"] +
+    SERVICE_KEYWORDS["housekeeping"] +
+    SERVICE_KEYWORDS["room_service"] +
+    SERVICE_KEYWORDS["laundry"] +
+    SERVICE_KEYWORDS["cancel_service"] +
+    [
+        "đặt", "dat", "order", "gọi món", "goi mon", "gọi", "goi", "mang", "giao",
+        "lấy", "lay", "đem", "gửi", "thêm", "mượn", "cần", "can", "muốn", "xin",
+        "cho tôi", "cho mình", "cho em", "yêu cầu", "sự cố", "broken", "repair", "fix"
+    ]
+)))
+
+ORDER_OR_SERVICE_EXCLUSION_REGEX: re.Pattern = build_keyword_regex(ORDER_OR_SERVICE_EXCLUSION_KEYWORDS)
+

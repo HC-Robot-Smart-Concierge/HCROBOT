@@ -1,5 +1,8 @@
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
+
+from app.services.bell_request_service import bell_status_reply, classify_bell_request, is_bell_inquiry
+from app.services.maintenance_request_service import is_fault_report
 
 
 
@@ -55,7 +58,7 @@ Quản lý luồng xử lý tinh gọn (Fast-Path -> Direct Conversational Gener
 
 
 
-import asyncio
+
 
 
 
@@ -128,6 +131,16 @@ from langgraph.checkpoint.memory import MemorySaver
 
 
 from app.services.ai.session_manager import session_manager, extract_room_number
+from app.services.ai.constants import (
+    SERVICE_KEYWORDS,
+    MAINTENANCE_MENU_TRIGGER_KEYWORDS,
+    BELLMAN_MENU_TRIGGER_KEYWORDS,
+    is_lost_found_text,
+    MAINTENANCE_REGEX,
+    HOUSEKEEPING_REGEX,
+    ROOM_SERVICE_FOOD_REGEX,
+    contains_keyword,
+)
 
 
 
@@ -216,6 +229,7 @@ class ConciergeState(TypedDict, total=False):
 
 
     prompt: str
+    current_query: Optional[str]
 
 
 
@@ -522,6 +536,25 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
     session_id = state.get("session_id") or "default_session"
 
+    # 0. Ưu tiên kiểm tra trực tiếp Fast-Path cho lệnh chuyển đổi ngôn ngữ giao tiếp
+    early_fast_hit = ollama_service.check_fast_path_full(prompt, language)
+    if early_fast_hit and early_fast_hit[3] == "switch_language":
+        reply, lang_name, lang_code, action_type, action_payload = early_fast_hit
+        session_manager.set_language(session_id, lang_name)
+        logger.info(f"[Harness FastPath] Language switch command detected -> '{lang_name}' in <1ms")
+        return {
+            "fast_path_hit": True,
+            "response": reply,
+            "lang_name": lang_name,
+            "lang_code": lang_code,
+            "language": lang_name,
+            "intent_category": "fast_path",
+            "action": action_type,
+            "destination_key": None,
+            "trigger_video_call": False,
+            "trigger_menu": None,
+        }
+
 
 
 
@@ -664,14 +697,6 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    from app.services.ai.constants import SERVICE_KEYWORDS
-
-
-
-
-
-
-
     prompt_lower_fp = prompt.lower()
 
 
@@ -681,37 +706,9 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
     is_service_action = any(
-
-
-
-
-
-
-
-        any(k in prompt_lower_fp for k in kws)
-
-
-
-
-
-
-
+        any(re.search(rf'\b{re.escape(k)}\b', prompt_lower_fp) for k in kws)
         for act, kws in SERVICE_KEYWORDS.items()
-
-
-
-
-
-
-
         if act not in ["chitchat", "faq"]
-
-
-
-
-
-
-
     )
 
 
@@ -775,7 +772,7 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        r'(cho (tôi|mình|em)|xin|lấy|mang|đem|gửi|thêm|mượn|cần|muốn|đặt|yêu cầu|order|bring|send|give me|need)',
+        r'(cho (tôi|mình|em)|xin|lấy|mang|đem|gửi|thêm|mượn|cần|muốn|đặt|yêu cầu|order|bring|send|give me|need)\b',
 
 
 
@@ -799,7 +796,7 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    )) or any(k in prompt_lower_fp for k in ['đặt dịch vụ', 'dat dich vu', 'dịch vụ lên phòng', 'dich vu len phong', 'thêm dịch vụ', 'them dich vu', 'dịch vụ phòng', 'dich vu phong'])
+    )) or any(k in prompt_lower_fp for k in ['đặt dịch vụ', 'dat dich vu', 'dịch vụ lên phòng', 'dich vu len phong', 'thêm dịch vụ', 'them dich vu', 'dịch vụ phòng', 'dich vu phong', 'hỗ trợ hành lý', 'ho tro hanh ly', 'mang hành lý', 'gửi hành lý', 'xách đồ', 'chuyển phòng', 'báo mất đồ', 'bao mat do', 'đồ thất lạc', 'do that lac', 'thất lạc', 'that lac', 'mất đồ', 'mat do', 'quên đồ', 'quen do', 'rơi đồ', 'roi do', 'lost item', 'lost and found', 'luggage assistance'])
 
 
 
@@ -1020,6 +1017,20 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
         dest_key = action_payload.get("destination_key") if isinstance(action_payload, dict) else None
+        if action_payload and action_payload.get("invalid_room"):
+            return {
+                "fast_path_hit": True,
+                "response": reply,
+                "lang_name": lang_name,
+                "lang_code": lang_code,
+                "language": lang_name,
+                "intent_category": "fast_path",
+                "action": action_type or "conversation",
+                "destination_key": None,
+                "current_room": None,
+                "trigger_video_call": False,
+                "trigger_menu": None,
+            }
 
 
 
@@ -1053,9 +1064,23 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
         elif action_type == "open_room_service_menu":
 
-
-
             trigger_menu = "room_service"
+
+        elif action_type == "open_maintenance_menu":
+
+            trigger_menu = "maintenance"
+
+        elif action_type == "open_bellman_menu":
+
+            trigger_menu = "bellman"
+
+        elif isinstance(action_payload, dict) and action_payload.get("trigger_menu"):
+
+            trigger_menu = action_payload.get("trigger_menu")
+
+        elif action_type == "switch_language":
+
+            session_manager.set_language(session_id, lang_name)
 
 
 
@@ -1160,6 +1185,8 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             "missing_room_number": False,
+            "room_number": (action_payload.get("target_room_number") if isinstance(action_payload, dict) else None) or state.get("room_number"),
+            "target_room_number": (action_payload.get("target_room_number") if isinstance(action_payload, dict) else None) or state.get("room_number"),
 
 
 
@@ -1495,14 +1522,6 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    from app.services.ai.constants import SERVICE_KEYWORDS
-
-
-
-
-
-
-
 
 
 
@@ -1653,7 +1672,8 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    is_query_status = (is_reject_inquiry or is_review_order or any(k in prompt_lower for k in query_status_kws)) and (not is_explicit_order_intent or has_status_timing_kw or is_reject_inquiry or is_review_order)
+    is_chitchat_mood = bool(re.search(r'\b(tâm trạng|tam trang|cảm xúc|cam xuc|cảm thấy|cam thay|khỏe không|khoe khong|bạn tên là|em tên là|em mấy tuổi)\b', prompt_lower))
+    is_query_status = not is_chitchat_mood and (is_reject_inquiry or is_review_order or any(k in prompt_lower for k in query_status_kws)) and (not is_explicit_order_intent or has_status_timing_kw or is_reject_inquiry or is_review_order)
 
 
 
@@ -1781,7 +1801,10 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        if is_svc_inq_flag and not is_food_inq_flag:
+        if is_bell_inquiry(prompt_inq_check):
+            # "Hành lý tôi đem lên chưa" asks about a Bellman request, not the latest food order.
+            detected_q_type = "bellman"
+        elif is_svc_inq_flag and not is_food_inq_flag:
 
 
 
@@ -2248,31 +2271,30 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        for act, kws in SERVICE_KEYWORDS.items():
-
-
-
-
-
-
-
-            if any(k in prompt_lower for k in kws):
-
-
-
-
-
-
-
+        SERVICE_INTENT_PRIORITY = [
+            "cancel_service",
+            "taxi",
+            "restaurant",
+            "concierge",
+            "wake_up",
+            "laundry",
+            "maintenance",
+            "bellman",
+            "housekeeping",
+            "room_service",
+        ]
+        for act in SERVICE_INTENT_PRIORITY:
+            kws = SERVICE_KEYWORDS.get(act, [])
+            if contains_keyword(prompt_lower, kws):
                 action = act
-
-
-
-
-
-
-
                 break
+        # Device + symptom ("tivi không lên hình", "điều hòa chảy nước") is a repair even when
+        # food/amenity words such as "nước" also match.
+        if action in (None, "room_service", "housekeeping") and is_fault_report(clean_prompt):
+            action = "maintenance"
+    # "menu hành lý" contains the FAQ word "menu" but asks for the Bellman menu.
+    if not action and any(k in prompt_lower for k in BELLMAN_MENU_TRIGGER_KEYWORDS):
+        action = "bellman"
 
 
 
@@ -3245,29 +3267,12 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
             ACTIVE_STATUS_SET = {
-
-
-
                 "pending", "waiting", "unassigned", "chờ tiếp nhận", "chờ xử lý",
-
-
-
+                "calling", "đang gọi", "driver assigned", "on the way",
                 "sent to kitchen", "sent_to_kitchen", "đã chuyển bếp",
-
-
-
                 "cooking", "in preparation", "in_progress", "in progress", "bếp đang nấu", "đang xử lý",
-
-
-
                 "ready", "food ready", "món đã nấu xong", "sẵn sàng",
-
-
-
                 "delivering", "in transit", "đang giao", "đang giao phòng", "đang mang lên"
-
-
-
             }
 
 
@@ -3308,7 +3313,7 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
 
-                        (RoomServiceOrder.room_id == room.id) if room.id else False,
+                        (RoomServiceOrder.room_id == room.id) if room.id else (RoomServiceOrder.room_id == -1),
 
 
 
@@ -3372,7 +3377,7 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
 
-                        (SupportRequest.room_id == room.id) if room.id else False,
+                        (SupportRequest.room_id == room.id) if room.id else (SupportRequest.room_id == -1),
 
 
 
@@ -3458,12 +3463,12 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
                         try:
                             if ord_item.status != req_st:
                                 ord_item.status = req_st
-                                ord_item.updated_at = datetime.utcnow()
+                                ord_item.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
                         except Exception:
                             pass
 
                 # Lọc đơn chờ quá hạn (> 12 giờ): đơn pending từ hôm qua xem như hết hạn/hủy
-                now_utc = datetime.utcnow()
+                now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
                 if ord_item.created_at and (now_utc - ord_item.created_at).total_seconds() > 12 * 3600:
                     if cur_status.lower() in ("pending", "waiting", "unassigned"):
                         cur_status = "Cancelled"
@@ -3473,7 +3478,7 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
                     "status": cur_status,
                     "created_at": ord_item.created_at,
                     "items_summary": items_summary,
-                    "is_service_request": bool(ord_item.is_service_request),
+                    "is_service_request": ord_item.is_service_request,
                     "progress": ord_item.progress or 0,
                     "note": ord_item.note or "",
                     "reject_reason": reject_reason,
@@ -3540,11 +3545,11 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
 
-                if req_item.items and isinstance(req_item.items, list):
+                if req_item.items and isinstance(cast(Any, req_item.items), list):
 
 
 
-                    it_names = [f"{it.get('qty', 1)}x {it.get('name', '')}" for it in req_item.items if isinstance(it, dict) and it.get('name')]
+                    it_names = [f"{it.get('qty', 1)}x {it.get('name', '')}" for it in req_item.items if isinstance(cast(Any, it), dict) and it.get('name')]
 
 
 
@@ -4151,7 +4156,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        inquiry_text = (items or "").lower()
+        inquiry_text = f"{items or ''} {state.get('prompt') or state.get('current_query') or ''}".lower().strip()
 
 
 
@@ -4183,103 +4188,42 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        is_svc_regex = bool(re.search(
-
-
-
-
-
-
-
-            r'\b(dọn|don|dọn dẹp|vệ sinh|ve sinh|khăn|khan|khăn tắm|gối|goi|chăn|chan|buồng|buong|housekeeping|room service|dịch vụ|dich vu|giặt|giat|giặt ủi|massage|mát xa|mat xa|spa|nệm|nem|tiện ích|tien ich)\b',
-
-
-
-
-
-
-
-            inquiry_text,
-
-
-
-
-
-
-
-            re.IGNORECASE
-
-
-
-
-
-
-
-        ))
-
-
-
-
-
-
-
-        is_food_regex = bool(re.search(
-
-
-
-
-
-
-
-            r'\b(món|mon|món ăn|mon an|bếp|bep|nấu|nau|chế biến|đồ ăn|do an|cơm|com|phở|pho|pizza|thực đơn|thuc don|thức ăn|thuc an|đồ uống|do uong)\b',
-
-
-
-
-
-
-
-            inquiry_text,
-
-
-
-
-
-
-
-            re.IGNORECASE
-
-
-
-
-
-
-
-        )) or bool(re.search(r'\b(ăn|uống|nước|thức uống)\b', inquiry_text, re.IGNORECASE))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        is_asking_service = (query_type_state == "service") or (is_svc_regex and not is_food_regex)
-
-
-
-
-
-
-
-        is_asking_food = (query_type_state == "food") or (is_food_regex and not is_svc_regex)
+        is_svc_regex = bool(HOUSEKEEPING_REGEX.search(inquiry_text))
+        is_food_regex = bool(ROOM_SERVICE_FOOD_REGEX.search(inquiry_text)) or bool(re.search(r'\b(ăn|uống|thức uống)\b', inquiry_text, re.IGNORECASE))
+        is_mnt_regex = bool(MAINTENANCE_REGEX.search(inquiry_text))
+
+        is_asking_maintenance = (query_type_state == "maintenance") or (is_mnt_regex and not is_food_regex)
+        is_asking_service = (query_type_state == "service") or (is_svc_regex and not is_food_regex and not is_mnt_regex)
+        is_asking_food = (query_type_state == "food") or (is_food_regex and not is_svc_regex and not is_mnt_regex)
+
+        # Bellman progress ("hành lý tôi đem lên chưa") reads the room's DEP-BELL requests;
+        # the generic path below only knows food, housekeeping, repair and taxi orders.
+        if query_type_state == "bellman" or is_bell_inquiry(inquiry_text):
+            if not current_room:
+                bell_ask = (
+                    "Could you tell me your room number so I can check your luggage request?"
+                    if is_en else
+                    "Dạ quý khách cho Rora biết mình đang ở phòng bao nhiêu để em kiểm tra yêu cầu hành lý giúp quý khách nhé ạ?"
+                )
+                return {
+                    "missing_room_number": True,
+                    "room_number": None,
+                    "response": bell_ask,
+                    "destination_key": None,
+                    "require_room_pin": False,
+                    "status_query_type": "bellman",
+                }
+            from app.core.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as bell_db:
+                bell_reply = await bell_status_reply(bell_db, current_room, english=is_en)
+            return {
+                "missing_room_number": False,
+                "room_number": current_room,
+                "response": bell_reply,
+                "destination_key": None,
+                "require_room_pin": False,
+                "status_query_type": "bellman",
+            }
 
 
 
@@ -4304,53 +4248,14 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             if is_en:
-
-
-
-
-
-
-
-                if is_asking_service:
-
-
-
-
-
-
-
-                    ask_reply = "Certainly! Could you please let me know your room number so I can check your housekeeping and room service status right away?"
-
-
-
-
-
-
-
+                if is_asking_maintenance:
+                    ask_reply = "Certainly! Could you please let me know your room number so I can check your maintenance and repair status right away?"
                     final_q_type = "service"
-
-
-
-
-
-
-
+                elif is_asking_service:
+                    ask_reply = "Certainly! Could you please let me know your room number so I can check your housekeeping and room service status right away?"
+                    final_q_type = "service"
                 elif is_asking_food:
-
-
-
-
-
-
-
                     ask_reply = "Certainly! Could you please let me know your room number so I can check your food order status right away?"
-
-
-
-
-
-
-
                     final_q_type = "food"
 
 
@@ -4384,53 +4289,14 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             else:
-
-
-
-
-
-
-
-                if is_asking_service:
-
-
-
-
-
-
-
-                    ask_reply = "Dạ quý khách cho Rora biết mình đang ở phòng bao nhiêu để em kiểm tra tiến độ dọn phòng và dịch vụ phòng giúp quý khách ngay ạ?"
-
-
-
-
-
-
-
+                if is_asking_maintenance:
+                    ask_reply = "Dạ quý khách cho Rora biết mình đang ở phòng bao nhiêu để em kiểm tra tiến độ sửa chữa và bảo trì giúp quý khách ngay ạ?"
                     final_q_type = "service"
-
-
-
-
-
-
-
+                elif is_asking_service:
+                    ask_reply = "Dạ quý khách cho Rora biết mình đang ở phòng bao nhiêu để em kiểm tra tiến độ dọn phòng và dịch vụ phòng giúp quý khách ngay ạ?"
+                    final_q_type = "service"
                 elif is_asking_food:
-
-
-
-
-
-
-
                     ask_reply = "Dạ quý khách cho Rora biết mình đang ở phòng bao nhiêu để em kiểm tra tiến độ đơn món ăn giúp quý khách ngay ạ?"
-
-
-
-
-
-
-
                     final_q_type = "food"
 
 
@@ -4759,7 +4625,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        latest_req = room_info.get("latest_request")
+
 
 
 
@@ -4776,6 +4642,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
         target_ord = None
+        is_service_mode = False
 
         # Ưu tiên khớp đúng món ăn khách hỏi đích danh trong câu thoại
         inquiry_lower = inquiry_text.lower()
@@ -4792,7 +4659,42 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
                 matched_by_dish = f_cand
                 break
 
-        if matched_by_dish:
+        is_taxi_inquiry = bool(re.search(r'\b(taxi|xe|đưa đón|dua don|chuyến xe|cuốc xe|chuyen xe|cuoc xe)\b', inquiry_text, re.IGNORECASE))
+        matched_by_taxi = None
+        if is_taxi_inquiry:
+            for s_cand in (room_info.get("service_orders") or []):
+                s_sum = (s_cand.get("items_summary") or "").lower()
+                s_num = (s_cand.get("order_number") or "").lower()
+                if "taxi" in s_sum or "tx-" in s_num or "xe" in s_sum:
+                    matched_by_taxi = s_cand
+                    break
+
+        is_maintenance_inquiry = bool(re.search(r'\b(sửa|sua|sửa chữa|sua chua|bảo trì|bao tri|hỏng|hong|hư|hu|kỹ thuật|ky thuat|điều hòa|dieu hoa|máy lạnh|may lanh|vòi nước|voi nuoc|thợ|tho|cửa|khoá|khóa|điện|mất điện|maintenance|repair|fix)\b', inquiry_text, re.IGNORECASE))
+        matched_by_maintenance = None
+        if is_maintenance_inquiry:
+            for s_cand in (room_info.get("service_orders") or []):
+                s_sum = (s_cand.get("items_summary") or "").lower()
+                s_num = (s_cand.get("order_number") or "").lower()
+                if "mn-" in s_num or any(k in s_sum for k in ["sửa", "sua", "bảo trì", "bao tri", "kỹ thuật", "điều hòa", "máy lạnh", "nước", "điện", "khóa", "maintenance"]):
+                    matched_by_maintenance = s_cand
+                    break
+
+        if is_reject_inquiry:
+            rej_food = next((f for f in (room_info.get("food_orders") or []) if (f.get("status") or "").lower() in ("rejected", "cancelled")), None)
+            rej_svc = next((s for s in (room_info.get("service_orders") or []) if (s.get("status") or "").lower() in ("rejected", "cancelled")), None)
+            if rej_food or rej_svc:
+                target_ord = rej_food or rej_svc
+                is_service_mode = bool(not rej_food and rej_svc)
+
+        if target_ord is not None:
+            pass
+        elif matched_by_maintenance:
+            target_ord = matched_by_maintenance
+            is_service_mode = True
+        elif matched_by_taxi:
+            target_ord = matched_by_taxi
+            is_service_mode = True
+        elif matched_by_dish:
             target_ord = matched_by_dish
             is_service_mode = False
         elif is_asking_service:
@@ -4814,29 +4716,12 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             ACTIVE_SET = {
-
-
-
                 "pending", "waiting", "unassigned", "chờ tiếp nhận", "chờ xử lý",
-
-
-
+                "calling", "đang gọi", "driver assigned", "on the way",
                 "sent to kitchen", "sent_to_kitchen", "đã chuyển bếp",
-
-
-
                 "cooking", "in preparation", "in_progress", "in progress", "bếp đang nấu", "đang xử lý",
-
-
-
                 "ready", "food ready", "món đã nấu xong", "sẵn sàng",
-
-
-
                 "delivering", "in transit", "đang giao", "đang giao phòng", "đang mang lên"
-
-
-
             }
 
 
@@ -4881,11 +4766,11 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-                t_f = latest_food.get("created_at") or datetime.min
+                t_f = (latest_food.get("created_at") if latest_food else None) or datetime.min
 
 
 
-                t_s = latest_service.get("created_at") or datetime.min
+                t_s = (latest_service.get("created_at") if latest_service else None) or datetime.min
 
 
 
@@ -5034,6 +4919,8 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             "delivering": "đang trên đường giao lên phòng",
+            "driver assigned": "đã có tài xế nhận cuốc và đang chuẩn bị đón quý khách",
+            "on the way": "xe taxi đang trên đường di chuyển đến sảnh đón quý khách",
 
 
 
@@ -5243,35 +5130,101 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         if is_service_mode:
-
             if target_ord:
-
                 st = (target_ord.get("status") or "").lower().strip()
-
                 items_summary = target_ord.get("items_summary", "")
-
                 items_desc = f" ({items_summary})" if items_summary else ""
-
                 raw_rej = (target_ord.get("reject_reason") or target_ord.get("note") or "").strip()
 
+                is_maintenance_item = bool(
+                    is_maintenance_inquiry
+                    or matched_by_maintenance
+                    or "mn-" in str(target_ord.get("order_number") or "").lower()
+                    or "mn-" in str(target_ord.get("ticket_code") or "").lower()
+                    or any(k in str(items_summary).lower() for k in ["sửa", "bảo trì", "kỹ thuật", "điều hòa", "máy lạnh", "nước", "điện", "khóa", "maintenance", "repair"])
+                )
 
+                is_taxi_item = bool(
+                    is_taxi_inquiry
+                    or matched_by_taxi
+                    or "taxi" in str(items_summary).lower()
+                    or "tx-" in str(target_ord.get("order_number") or "").lower()
+                    or "tx-" in str(target_ord.get("ticket_code") or "").lower()
+                    or "taxi" in str(target_ord.get("title") or "").lower()
+                )
 
-                if is_en:
+                if is_maintenance_item:
+                    if is_en:
+                        mnt_st_map_en = {
+                            "pending": f"Your maintenance request for Room {current_room}{items_desc} has been received and is queued for our Technical Team.",
+                            "waiting": f"Your maintenance request for Room {current_room}{items_desc} is waiting to be processed by our Technical Team.",
+                            "unassigned": f"Your maintenance request for Room {current_room}{items_desc} is waiting for technician assignment.",
+                            "in progress": f"Our Maintenance technician has been dispatched and is currently handling the repair for Room {current_room}{items_desc}.",
+                            "in_progress": f"Our Maintenance technician has been dispatched and is currently handling the repair for Room {current_room}{items_desc}.",
+                            "assigned": f"Our Maintenance technician has been dispatched and is currently handling the repair for Room {current_room}{items_desc}.",
+                            "completed": f"The maintenance and repair for Room {current_room}{items_desc} has been successfully completed by our Technical Team!",
+                            "success": f"The maintenance and repair for Room {current_room}{items_desc} has been successfully completed by our Technical Team!",
+                            "done": f"The maintenance and repair for Room {current_room}{items_desc} has been successfully completed by our Technical Team!",
+                            "cancelled": f"Your maintenance request for Room {current_room}{items_desc} was cancelled.",
+                            "rejected": f"Your maintenance request for Room {current_room}{items_desc} could not be fulfilled at this time.",
+                        }
+                        status_reply = mnt_st_map_en.get(st, f"Your maintenance request for Room {current_room}{items_desc} is currently {st}.")
+                    else:
+                        mnt_st_map_vn = {
+                            "pending": f"Dạ yêu cầu bảo trì sửa chữa của phòng {current_room}{items_desc} đã được tiếp nhận và đang chờ đội kỹ thuật phân công nhân viên lên xử lý ạ.",
+                            "waiting": f"Dạ yêu cầu bảo trì sửa chữa của phòng {current_room}{items_desc} đang chờ kỹ thuật viên tiếp nhận xử lý ạ.",
+                            "unassigned": f"Dạ yêu cầu bảo trì của phòng {current_room}{items_desc} đang chờ kỹ thuật viên tiếp nhận xử lý ạ.",
+                            "in progress": f"Dạ kỹ thuật viên đã tiếp nhận và đang tiến hành kiểm tra, sửa chữa cho phòng {current_room}{items_desc} rồi ạ.",
+                            "in_progress": f"Dạ kỹ thuật viên đã tiếp nhận và đang tiến hành kiểm tra, sửa chữa cho phòng {current_room}{items_desc} rồi ạ.",
+                            "assigned": f"Dạ kỹ thuật viên đã tiếp nhận và đang tiến hành kiểm tra, sửa chữa cho phòng {current_room}{items_desc} rồi ạ.",
+                            "completed": f"Dạ sự cố kỹ thuật của phòng {current_room}{items_desc} đã được nhân viên kỹ thuật hoàn tất sửa chữa thành công rồi ạ!",
+                            "success": f"Dạ sự cố kỹ thuật của phòng {current_room}{items_desc} đã được nhân viên kỹ thuật hoàn tất sửa chữa thành công rồi ạ!",
+                            "done": f"Dạ sự cố kỹ thuật của phòng {current_room}{items_desc} đã được hoàn tất sửa chữa thành công rồi ạ!",
+                            "cancelled": f"Dạ yêu cầu bảo trì của phòng {current_room}{items_desc} đã được hủy rồi ạ.",
+                            "rejected": f"Dạ yêu cầu bảo trì của phòng {current_room}{items_desc} tạm thời chưa được đáp ứng. Quý khách vui lòng liên hệ Lễ tân nhé ạ.",
+                        }
+                        status_reply = mnt_st_map_vn.get(st, f"Dạ yêu cầu bảo trì của phòng {current_room}{items_desc} hiện đang ở trạng thái: {st} ạ.")
+                elif is_taxi_item:
+                    if is_en:
+                        taxi_st_map_en = {
+                            "pending": f"Your taxi request for Room {current_room} has been received and is waiting for Concierge to call the taxi.",
+                            "waiting": f"Your taxi request for Room {current_room} is waiting for Concierge to call.",
+                            "unassigned": f"Your taxi request for Room {current_room} is waiting for Concierge to call.",
+                            "calling": f"Our Concierge team has received your request and is currently calling a taxi for Room {current_room}. Please wait a moment.",
+                            "đang gọi": f"Our Concierge team has received your request and is currently calling a taxi for Room {current_room}. Please wait a moment.",
+                            "in progress": f"Our Concierge team has received your request and is currently calling a taxi for Room {current_room}. Please wait a moment.",
+                            "in_progress": f"Our Concierge team has received your request and is currently calling a taxi for Room {current_room}. Please wait a moment.",
+                            "driver assigned": f"Our Concierge team has contacted the taxi company and a driver is on the way for Room {current_room}.",
+                            "on the way": f"The taxi is on the way to the lobby entrance for Room {current_room}.",
+                            "completed": f"Our Concierge team has successfully arranged a taxi for Room {current_room}. Please head to the main lobby to meet your ride!",
+                            "success": f"Our Concierge team has successfully arranged a taxi for Room {current_room}. Please head to the main lobby to meet your ride!",
+                            "thành công": f"Our Concierge team has successfully arranged a taxi for Room {current_room}. Please head to the main lobby to meet your ride!",
+                            "done": f"Our Concierge team has successfully arranged a taxi for Room {current_room}.",
+                            "cancelled": f"Your taxi request for Room {current_room} was cancelled.",
+                            "rejected": f"Your taxi request for Room {current_room} could not be fulfilled at this time.",
+                        }
+                        status_reply = taxi_st_map_en.get(st, f"Your taxi request for Room {current_room} is currently {st}.")
+                    else:
+                        taxi_st_map_vn = {
+                            "pending": f"Dạ yêu cầu gọi xe taxi của phòng {current_room} đang chờ nhân viên Concierge tiếp nhận để gọi xe cho quý khách ạ.",
+                            "waiting": f"Dạ yêu cầu gọi xe taxi của phòng {current_room} đang chờ Concierge gọi xe ạ.",
+                            "unassigned": f"Dạ yêu cầu gọi xe taxi của phòng {current_room} đang chờ nhân viên tiếp nhận gọi xe ạ.",
+                            "calling": f"Dạ bộ phận Concierge đã tiếp nhận yêu cầu và đang gọi xe taxi cho phòng {current_room} rồi ạ. Quý khách vui lòng đợi trong giây lát ạ.",
+                            "đang gọi": f"Dạ bộ phận Concierge đã tiếp nhận yêu cầu và đang gọi xe taxi cho phòng {current_room} rồi ạ. Quý khách vui lòng đợi trong giây lát ạ.",
+                            "in progress": f"Dạ bộ phận Concierge đã tiếp nhận yêu cầu và đang gọi xe taxi cho phòng {current_room} rồi ạ. Quý khách vui lòng đợi trong giây lát ạ.",
+                            "in_progress": f"Dạ bộ phận Concierge đã tiếp nhận yêu cầu và đang gọi xe taxi cho phòng {current_room} rồi ạ. Quý khách vui lòng đợi trong giây lát ạ.",
+                            "driver assigned": f"Dạ Concierge đã liên hệ xong hãng xe và tài xế đang chuẩn bị đón phòng {current_room} ạ.",
+                            "on the way": f"Dạ xe taxi đang di chuyển đến sảnh đón phòng {current_room} rồi ạ.",
+                            "completed": f"Dạ bộ phận Concierge đã gọi xe taxi thành công cho phòng {current_room} rồi ạ. Quý khách vui lòng chuẩn bị ra sảnh đón xe nhé!",
+                            "success": f"Dạ bộ phận Concierge đã gọi xe taxi thành công cho phòng {current_room} rồi ạ. Quý khách vui lòng chuẩn bị ra sảnh đón xe nhé!",
+                            "thành công": f"Dạ bộ phận Concierge đã gọi xe taxi thành công cho phòng {current_room} rồi ạ. Quý khách vui lòng chuẩn bị ra sảnh đón xe nhé!",
+                            "done": f"Dạ bộ phận Concierge đã gọi xe taxi thành công cho phòng {current_room} rồi ạ.",
+                            "cancelled": f"Dạ yêu cầu gọi xe taxi của phòng {current_room} đã được hủy rồi ạ.",
+                            "rejected": f"Dạ yêu cầu gọi xe taxi của phòng {current_room} tạm thời chưa được đáp ứng. Quý khách vui lòng liên hệ quầy Concierge nhé ạ.",
+                        }
+                        status_reply = taxi_st_map_vn.get(st, f"Dạ yêu cầu gọi xe của phòng {current_room} hiện đang ở trạng thái: {st} ạ.")
+                elif is_en:
 
                     if is_reject_inquiry and not raw_rej:
 
@@ -5602,13 +5555,53 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             "require_room_pin": False,
+        }
 
+    # 3. Kiểm tra yêu cầu mở menu / danh mục Báo hỏng & Sửa chữa kỹ thuật (Maintenance & Repair Menu)
+    user_p_text = (state.get("prompt") or state.get("current_query") or "").lower()
+    is_general_mnt_menu_request = contains_keyword(user_p_text, MAINTENANCE_MENU_TRIGGER_KEYWORDS) or \
+                                  (action == "maintenance" and contains_keyword((items or "").lower(), MAINTENANCE_MENU_TRIGGER_KEYWORDS))
 
+    if action == "maintenance" and is_general_mnt_menu_request:
+        if lang_code == "en-US":
+            mnt_reply = f"Certainly! I have opened our Maintenance & Repair menu on screen{f' for Room {current_room}' if current_room else ''}. Please select the issue you are experiencing or track your repair progress!"
+        else:
+            mnt_reply = f"Dạ em đã mở danh mục Báo hỏng & Sửa chữa trên màn hình{f' cho Phòng {current_room}' if current_room else ''} rồi ạ. Quý khách chạm chọn sự cố hoặc tra cứu tiến độ nhé ạ!"
+        return {
+            "missing_room_number": False,
+            "room_number": current_room,
+            "target_room_number": current_room,
+            "response": mnt_reply,
+            "trigger_menu": "maintenance",
+            "action": "open_maintenance_menu",
+            "require_room_pin": False,
+        }
 
-
-
-
-
+    # 3b. Bellman: a generic luggage request ("tôi cần hỗ trợ hành lý") or an unknown room opens the
+    # touch menu, where the guest picks the service and verifies the room with PIN/NFC. A specific
+    # request for a known room ("mang hành lý lên phòng") falls through and becomes a ticket.
+    bell_text = user_p_text or (items or "").lower()  # the stream endpoint passes only "items"
+    if action == "bellman" and not is_lost_found_text(bell_text) and (
+        not current_room
+        or any(k in bell_text for k in BELLMAN_MENU_TRIGGER_KEYWORDS)
+        or not classify_bell_request(bell_text)
+    ):
+        session_manager.clear_pending_intent(session_id)  # The menu collects the room itself.
+        room_part_en = f" for Room {current_room}" if current_room else ""
+        room_part_vi = f" cho Phòng {current_room}" if current_room else ""
+        bell_reply = (
+            f"I have opened the Luggage & Bell Services menu{room_part_en}. Please choose the service you need."
+            if lang_code == "en-US" else
+            f"Dạ em đã mở danh mục Hành lý & Bellman{room_part_vi} trên màn hình. Quý khách chạm chọn dịch vụ cần hỗ trợ nhé ạ!"
+        )
+        return {
+            "missing_room_number": False,
+            "room_number": current_room,
+            "target_room_number": current_room,
+            "response": bell_reply,
+            "trigger_menu": "bellman",
+            "action": "open_bellman_menu",
+            "require_room_pin": False,
         }
 
 
@@ -5649,7 +5642,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        room_check = await query_room_order_status_db(current_room, is_en=is_en)
+        room_check = await query_room_order_status_db(current_room or "", is_en=is_en)
 
 
 
@@ -5810,20 +5803,21 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
     # Trường hợp 4: Yêu cầu dịch vụ liên quan phòng nhưng CHƯA CÓ SỐ PHÒNG -> Bắt buộc hỏi khách số phòng!
-
-
-
-
-
-
-
     if not current_room:
-
-
-
-
-
-
+        if action == "maintenance":
+            if is_en:
+                mnt_ask_reply = "I have opened the Maintenance & Repair menu on screen for you. Please select the issue you are experiencing and enter your room number!"
+            else:
+                mnt_ask_reply = "Dạ em đã mở danh mục Báo hỏng & Sửa chữa trên màn hình rồi ạ. Quý khách vui lòng chạm chọn sự cố và nhập số phòng của mình nhé ạ!"
+            return {
+                "missing_room_number": True,
+                "room_number": None,
+                "target_room_number": None,
+                "response": mnt_ask_reply,
+                "trigger_menu": "maintenance",
+                "action": "open_maintenance_menu",
+                "require_room_pin": False,
+            }
 
         if is_en:
 
@@ -5929,7 +5923,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-            action_en = action_en_map.get(action, "this service")
+            action_en = "lost and found item report" if (action == "bellman" and any(k in (items or "").lower() for k in ["thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do", "rơi đồ", "roi do", "lost", "missing", "forgot"])) else action_en_map.get(action, "this service")
 
 
 
@@ -6049,7 +6043,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-            action_vn = action_vn_map.get(action, "dịch vụ")
+            action_vn = "báo cáo và tìm kiếm đồ thất lạc" if (action == "bellman" and any(k in (items or "").lower() for k in ["thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do", "rơi đồ", "roi do", "lost", "missing", "forgot"])) else action_vn_map.get(action, "dịch vụ")
 
 
 
@@ -6695,7 +6689,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    dept_name = (DEPT_MAP_EN if lang_code == "en-US" else DEPT_MAP_VI).get(action, "chuyên trách")
+    dept_name = ("Lost & Found / Bell Services Department" if lang_code == "en-US" else "báo cáo đồ thất lạc và hỗ trợ tiền sảnh") if (action == "bellman" and any(k in (items or "").lower() for k in ["thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do", "rơi đồ", "roi do", "lost", "missing", "forgot"])) else (DEPT_MAP_EN if lang_code == "en-US" else DEPT_MAP_VI).get(action, "chuyên trách")
 
 
 
@@ -6768,117 +6762,64 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
     elif is_authenticated:
-
-
-
         # Phiên đã được xác thực mã PIN phòng trước đó -> Tiếp nhận ngay, không bắt nhập lại PIN
-
-
-
-        if lang_code == "en-US":
-
-
-
-            confirm_reply = f"Rora has received your {dept_name} request for Room {current_room} and notified the team immediately!"
-
-
-
+        if action in ["taxi", "book_taxi"]:
+            if lang_code == "en-US":
+                confirm_reply = f"Room {current_room}. Would you like our partner taxi hotlines to book directly, or would you like Concierge to arrange a taxi for you?"
+            else:
+                confirm_reply = f"Dạ phòng {current_room}. Quý khách muốn tự gọi xe taxi theo số điện thoại đối tác hay nhờ bộ phận Concierge đặt xe giùm quý khách ạ?"
+            return {
+                "missing_room_number": False,
+                "room_number": current_room,
+                "response": confirm_reply,
+                "require_room_pin": False,
+                "target_room_number": current_room,
+                "pending_service_action": "book_taxi",
+                "action": "book_taxi",
+                "pending_service_items": items,
+            }
         else:
-
-
-
-            confirm_reply = f"Dạ Rora đã tiếp nhận yêu cầu {dept_name} cho Phòng {current_room} rồi ạ! Em đã gửi thông báo tới các bộ phận liên quan ngay lập tức."
-
-
-
+            if lang_code == "en-US":
+                confirm_reply = f"Rora has received your {dept_name} request for Room {current_room} and notified the team immediately!"
+            else:
+                confirm_reply = f"Dạ Rora đã tiếp nhận yêu cầu {dept_name} cho Phòng {current_room} rồi ạ! Em đã gửi thông báo tới các bộ phận liên quan ngay lập tức."
+            return {
+                "missing_room_number": False,
+                "room_number": current_room,
+                "response": confirm_reply,
+                "require_room_pin": False,
+                "target_room_number": current_room,
+                "pending_service_action": action,
+                "pending_service_items": items,
+            }
+    elif action in ["taxi", "book_taxi"]:
+        if lang_code == "en-US":
+            confirm_reply = f"To assist with taxi booking for Room {current_room}, please enter your 4-digit room PIN on the touchscreen."
+        else:
+            confirm_reply = f"Dạ để hỗ trợ đặt xe taxi cho Phòng {current_room}, quý khách vui lòng nhập mã PIN phòng gồm 4 số trên màn hình cảm ứng nhé ạ."
         return {
-
-
-
             "missing_room_number": False,
-
-
-
             "room_number": current_room,
-
-
-
             "response": confirm_reply,
-
-
-
-            "require_room_pin": False,
-
-
-
+            "require_room_pin": True,
             "target_room_number": current_room,
-
-
-
-            "pending_service_action": action,
-
-
-
+            "pending_service_action": "book_taxi",
+            "action": "book_taxi",
             "pending_service_items": items,
-
-
-
         }
-
-
-
     elif lang_code == "en-US":
-
-
-
         confirm_reply = f"To confirm your {dept_name} request for Room {current_room}, please enter your 4-digit room PIN on the touchscreen."
-
-
-
     else:
-
-
-
         confirm_reply = f"Dạ để xác nhận yêu cầu {dept_name} cho Phòng {current_room}, quý khách vui lòng nhập mã PIN phòng gồm 4 số trên màn hình cảm ứng nhé ạ."
 
-
-
-
-
-
-
     return {
-
-
-
         "missing_room_number": False,
-
-
-
         "room_number": current_room,
-
-
-
         "response": confirm_reply,
-
-
-
         "require_room_pin": True,
-
-
-
         "target_room_number": current_room,
-
-
-
         "pending_service_action": action,
-
-
-
         "pending_service_items": items,
-
-
-
     }
 
 

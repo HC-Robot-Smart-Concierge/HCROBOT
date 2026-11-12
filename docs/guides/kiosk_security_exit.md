@@ -49,7 +49,7 @@ Dành cho trường hợp bảo trì cắm bàn phím ngoài, chuột máy tính
 Sau khi kích hoạt thành công cử chỉ ẩn, giao diện sẽ yêu cầu nhập **Mật khẩu bảo vệ**:
 
 * **Mật khẩu mặc định hệ thống:** `123456`
-* **Mật khẩu quản trị viên:** `admin`, `robot123`, hoặc `aurora2026`
+* **Mật khẩu quản trị viên:** `admin`, `robot123`, `password123`, hoặc `aurora2026`
 
 Nếu nhập sai mật khẩu, hệ thống sẽ báo lỗi và tiếp tục khóa an toàn tại màn hình Robot để đảm bảo tính liên tục của dịch vụ.
 

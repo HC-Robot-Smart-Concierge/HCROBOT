@@ -2,7 +2,8 @@ import asyncio
 import logging
 import random
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from enum import Enum
+from typing import List, Dict, Any, Optional, Union
 
 logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,27 +22,27 @@ from app.models import (
 # TAG CONSTANTS FOR SWAGGER UI DOCS
 # =====================================================================
 
-TAG_REC = ["05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"]
-TAG_HK = ["06. Bộ phận Buồng phòng (Housekeeping Operations)"]
-TAG_BELL = ["07. Bộ phận Hành lý & Tiền sảnh (Bell Services)"]
-TAG_MNT = ["08. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
-TAG_ROOM_SERVICE = ["09. Bộ phận Phục vụ phòng (Room Service)"]
-TAG_FB = TAG_ROOM_SERVICE  # Backward compatibility alias
-TAG_KITCHEN = ["10. Bộ phận Bếp & Ẩm thực (Kitchen Operations & Menus)"]
-TAG_KITCHEN_FOOD_CATALOG = TAG_KITCHEN
-TAG_KITCHEN_MENU = TAG_KITCHEN
-TAG_KITCHEN_BOOKING = TAG_KITCHEN
-TAG_REST_BOOKING = TAG_KITCHEN
-TAG_REST_FOOD_CATALOG = TAG_KITCHEN
-TAG_REST_MENU = TAG_KITCHEN
-TAG_REST = TAG_KITCHEN  # Backward compatibility alias
-TAG_TAXI = ["11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"]
-TAG_CONCIERGE = ["12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"]
-TAG_STAFF = ["13. Quản lý Phòng ban & Tài khoản (Departments & Accounts)"]
-TAG_ACCOUNT = TAG_STAFF
-TAG_OPS = ["14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
-TAG_ADMIN = ["15. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
-TAG_NOTIF = ["16. Thông báo Hệ thống (Notifications)"]
+TAG_REC: List[Union[str, Enum]] = ["05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"]
+TAG_HK: List[Union[str, Enum]] = ["06. Bộ phận Buồng phòng (Housekeeping Operations)"]
+TAG_BELL: List[Union[str, Enum]] = ["07. Bộ phận Hành lý & Tiền sảnh (Bell Services)"]
+TAG_MNT: List[Union[str, Enum]] = ["08. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
+TAG_ROOM_SERVICE: List[Union[str, Enum]] = ["09. Bộ phận Phục vụ phòng (Room Service)"]
+TAG_FB: List[Union[str, Enum]] = TAG_ROOM_SERVICE  # Backward compatibility alias
+TAG_KITCHEN: List[Union[str, Enum]] = ["10. Bộ phận Bếp & Ẩm thực (Kitchen Operations & Menus)"]
+TAG_KITCHEN_FOOD_CATALOG: List[Union[str, Enum]] = TAG_KITCHEN
+TAG_KITCHEN_MENU: List[Union[str, Enum]] = TAG_KITCHEN
+TAG_KITCHEN_BOOKING: List[Union[str, Enum]] = TAG_KITCHEN
+TAG_REST_BOOKING: List[Union[str, Enum]] = TAG_KITCHEN
+TAG_REST_FOOD_CATALOG: List[Union[str, Enum]] = TAG_KITCHEN
+TAG_REST_MENU: List[Union[str, Enum]] = TAG_KITCHEN
+TAG_REST: List[Union[str, Enum]] = TAG_KITCHEN  # Backward compatibility alias
+TAG_TAXI: List[Union[str, Enum]] = ["11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"]
+TAG_CONCIERGE: List[Union[str, Enum]] = ["12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"]
+TAG_STAFF: List[Union[str, Enum]] = ["13. Quản lý Phòng ban & Tài khoản (Departments & Accounts)"]
+TAG_ACCOUNT: List[Union[str, Enum]] = TAG_STAFF
+TAG_OPS: List[Union[str, Enum]] = ["14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
+TAG_ADMIN: List[Union[str, Enum]] = ["15. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
+TAG_NOTIF: List[Union[str, Enum]] = ["16. Thông báo Hệ thống (Notifications)"]
 
 
 

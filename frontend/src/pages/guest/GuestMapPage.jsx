@@ -1,11 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   Compass,
-  Navigation,
   Clock,
   Footprints,
   PhoneCall,
-  ChevronRight,
   Maximize2,
   Minimize2,
   Plus,
@@ -14,7 +12,7 @@ import {
   Sparkles,
   MapPin,
   Building2,
-  CheckCircle2,
+  Check,
   ArrowRight,
   Share2,
   Smartphone,
@@ -26,15 +24,202 @@ import {
   HOTEL_DESTINATIONS,
   ROUTE_GROUND_TO_ELEVATOR,
 } from '../../components/robot/FloorMap';
+import { calculateFloorRoute } from '../../services/indoorNavigation/indoorPathfinder';
+
+const DESTINATION_ALIASES = {
+  luxury_spa: 'spa',
+  sky_bar: 'bar',
+  pool: 'infinity_pool',
+  wc: 'restroom_ground',
+  toilet: 'restroom_ground',
+  lobby: 'front_desk',
+  reception: 'front_desk',
+};
+
+const resolveKnownDestKey = (rawKey) => {
+  if (!rawKey || typeof rawKey !== 'string') return null;
+  const trimmed = rawKey.trim();
+  const mapped = DESTINATION_ALIASES[trimmed] || trimmed;
+  return HOTEL_DESTINATIONS[mapped] ? mapped : null;
+};
+
+const normalizeDestKey = (rawKey) => {
+  return resolveKnownDestKey(rawKey) || 'infinity_pool';
+};
+
+export const computeOrthogonalHeadingAngle = (startPt) => {
+  return startPt && startPt.x >= 920 ? 90 : -90;
+};
+
+const projectPointToSvgScreen = (x, y, rotZ) => {
+  if (rotZ === -90) {
+    return { sx: y, sy: 1840 - x };
+  }
+  if (rotZ === 90) {
+    return { sx: 1174 - y, sy: x };
+  }
+  return { sx: x, sy: y };
+};
+
+export const computeSmartRouteFrame = (pathStr, startPt, endPt, mode = 'heading') => {
+  const nums = (String(pathStr || '').match(/-?\d+(\.\d+)?/g) || []).map(Number);
+  let minX = Math.min(startPt.x, endPt.x);
+  let maxX = Math.max(startPt.x, endPt.x);
+  let minY = Math.min(startPt.y, endPt.y);
+  let maxY = Math.max(startPt.y, endPt.y);
+
+  for (let i = 0; i < nums.length - 1; i += 2) {
+    const px = nums[i];
+    const py = nums[i + 1];
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
+
+  const midX = Math.round((minX + maxX) / 2);
+  const midY = Math.round((minY + maxY) / 2);
+
+  const isHeading = mode === 'heading';
+  const rotZ = isHeading ? computeOrthogonalHeadingAngle(startPt) : 0;
+  const svgW = rotZ === 0 ? 1840 : 1174;
+  const svgH = rotZ === 0 ? 1174 : 1840;
+
+  const sStart = projectPointToSvgScreen(startPt.x, startPt.y, rotZ);
+  const sEnd = projectPointToSvgScreen(endPt.x, endPt.y, rotZ);
+  let minSX = Math.min(sStart.sx, sEnd.sx);
+  let maxSX = Math.max(sStart.sx, sEnd.sx);
+  let minSY = Math.min(sStart.sy, sEnd.sy);
+  let maxSY = Math.max(sStart.sy, sEnd.sy);
+
+  for (let i = 0; i < nums.length - 1; i += 2) {
+    const pt = projectPointToSvgScreen(nums[i], nums[i + 1], rotZ);
+    if (pt.sx < minSX) minSX = pt.sx;
+    if (pt.sx > maxSX) maxSX = pt.sx;
+    if (pt.sy < minSY) minSY = pt.sy;
+    if (pt.sy > maxSY) maxSY = pt.sy;
+  }
+
+  const midSX = (minSX + maxSX) / 2;
+  const midSY = (minSY + maxSY) / 2;
+  const spanSW = Math.max(340, maxSX - minSX);
+  const spanSH = Math.max(380, maxSY - minSY);
+
+  const cw = typeof window !== 'undefined' && window.innerWidth ? Math.min(window.innerWidth, 430) : 390;
+  const ch = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 760;
+  const svgScale = Math.min(cw / svgW, ch / svgH);
+
+  const fitW = (cw * 0.82) / ((spanSW + 340) * svgScale);
+  const fitH = (ch * 0.62) / ((spanSH + 420) * svgScale);
+  const zoom = Number(Math.min(1.65, Math.max(1.06, Math.min(fitW, fitH))).toFixed(2));
+
+  const panX = Math.round((svgW / 2 - midSX) * svgScale * zoom);
+  const panY = Math.round((svgH / 2 - midSY) * svgScale * zoom);
+
+  if (mode === 'flat2d') {
+    return {
+      midX,
+      midY,
+      baseW: 1840,
+      baseH: 1174,
+      zoom: 1.05,
+      panX,
+      panY,
+      tiltX: 0,
+      rotZ: 0,
+    };
+  }
+
+  return {
+    midX,
+    midY,
+    baseW: svgW,
+    baseH: svgH,
+    zoom,
+    panX,
+    panY,
+    tiltX: 20,
+    rotZ,
+  };
+};
+
+export const parseGuestMapParams = (searchStr = '') => {
+  let destKey = 'infinity_pool';
+  let expiresAt = Date.now() + 15 * 60 * 1000;
+  let ticketId = '';
+
+  try {
+    const params = new URLSearchParams(searchStr);
+    const tokenParam = params.get('t') || params.get('token');
+    const destParam = params.get('dest');
+
+    if (tokenParam) {
+      try {
+        let b64 = tokenParam.replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';
+        const parsed = JSON.parse(atob(b64));
+        const resolvedFromToken = resolveKnownDestKey(parsed.d);
+        if (resolvedFromToken) {
+          destKey = resolvedFromToken;
+        } else if (destParam) {
+          destKey = normalizeDestKey(destParam);
+        }
+        if (parsed.e && !Number.isNaN(Number(parsed.e))) expiresAt = Number(parsed.e);
+        if (parsed.n) ticketId = String(parsed.n);
+      } catch {
+        // Fallback nếu token có định dạng destKey_expiresAt hoặc lấy từ ?dest=
+        let recovered = false;
+        if (tokenParam.includes('_')) {
+          const parts = tokenParam.split('_');
+          const maybeExpire = Number(parts[parts.length - 1]);
+          const maybeDest = resolveKnownDestKey(parts.slice(0, -1).join('_'));
+          if (maybeDest && !Number.isNaN(maybeExpire) && maybeExpire > 1000000000000) {
+            destKey = maybeDest;
+            expiresAt = maybeExpire;
+            recovered = true;
+          }
+        }
+        if (!recovered && destParam) {
+          destKey = normalizeDestKey(destParam);
+        }
+      }
+    } else if (destParam) {
+      destKey = normalizeDestKey(destParam);
+    }
+  } catch {
+    destKey = 'infinity_pool';
+  }
+
+  return { destKey, expiresAt, ticketId };
+};
 
 export const GuestMapPage = () => {
-  // Đọc tham số điểm đến từ URL query ?dest=...
-  const [currentDestKey, setCurrentDestKey] = useState(() => {
+  const initialTicket = useMemo(() => {
+    let rawSearch = '';
     try {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('dest') || 'infinity_pool';
+      if (typeof window !== 'undefined') {
+        rawSearch = window.location.search || sessionStorage.getItem('aurora_qr_search') || '';
+      }
     } catch {
-      return 'infinity_pool';
+      rawSearch = '';
+    }
+    return parseGuestMapParams(rawSearch);
+  }, []);
+
+  const [currentDestKey, setCurrentDestKey] = useState(initialTicket.destKey);
+  const [expiresAt] = useState(initialTicket.expiresAt);
+  const [ticketId] = useState(initialTicket.ticketId);
+  const [remainingSeconds, setRemainingSeconds] = useState(() =>
+    Math.max(0, Math.floor((initialTicket.expiresAt - Date.now()) / 1000))
+  );
+  const [isManualDismissed, setIsManualDismissed] = useState(() => {
+    try {
+      return Boolean(
+        initialTicket.ticketId &&
+          localStorage.getItem(`aurora_finished_ticket_${initialTicket.ticketId}`)
+      );
+    } catch {
+      return false;
     }
   });
 
@@ -42,24 +227,35 @@ export const GuestMapPage = () => {
     return HOTEL_DESTINATIONS[currentDestKey] || HOTEL_DESTINATIONS.infinity_pool;
   }, [currentDestKey]);
 
-  // Trạng thái Chặng hiển thị trên điện thoại:
   // 1: Chặng 1 (Từ Sảnh Trệt đến Thang Máy A)
   // 2: Chặng 2 (Từ Thang Máy đến Điểm đến trên tầng mục tiêu)
   const [activeLeg, setActiveLeg] = useState(() => (currentDest.isDifferentFloor ? 1 : 2));
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isIphoneMockup, setIsIphoneMockup] = useState(false);
-  const [mockupOrientation, setMockupOrientation] = useState('portrait'); // 'portrait' | 'landscape'
+  const [mockupOrientation, setMockupOrientation] = useState('portrait');
 
-  // Zoom & Pan state cho màn hình điện thoại
-  const [zoomLevel, setZoomLevel] = useState(1);
+  // Trạng thái Camera chuẩn Google Maps:
+  // - isHeadingUp = true (Mặc định):
+  //   + Chặng 1: Xoay -90° từ Sảnh nhìn thẳng lên Thang máy A
+  //   + Chặng 2: Xoay +90° từ Thang máy A nhìn thẳng lên hành lang & phòng đích
+  const [isHeadingUp, setIsHeadingUp] = useState(true);
+  const [is3D, setIs3D] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1.25);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isCopied, setIsCopied] = useState(false);
+  const [dragState, setDragState] = useState(null);
+
+  // Đếm ngược thời hạn vé 15 phút
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const secs = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+      setRemainingSeconds(secs);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [expiresAt]);
 
   // Khi đổi điểm đến -> tự động đặt chặng phù hợp
   useEffect(() => {
     setActiveLeg(currentDest.isDifferentFloor ? 1 : 2);
-    setZoomLevel(1);
-    setPan({ x: 0, y: 0 });
   }, [currentDest]);
 
   // Tầng hiển thị tương ứng với chặng đang chọn
@@ -71,458 +267,619 @@ export const GuestMapPage = () => {
     return HOTEL_FLOORS.find((f) => f.id === targetFloorId) || HOTEL_FLOORS[2];
   }, [activeLeg, currentDest]);
 
-  const handleZoomIn = () => setZoomLevel((z) => Math.min(z + 0.35, 3.0));
-  const handleZoomOut = () => setZoomLevel((z) => Math.max(z - 0.35, 0.85));
-  const handleResetZoom = () => {
-    setZoomLevel(1);
-    setPan({ x: 0, y: 0 });
-  };
-
-  const handleShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `Chỉ đường đến ${currentDest.name} - Aurora Grand Hotel`,
-          text: `Sơ đồ chỉ đường 2 chặng đến ${currentDest.name} (${currentDest.floorLevel}).`,
-          url: window.location.href,
-        });
-      } catch (err) {
-        // User cancelled or share failed
-      }
-    } else {
-      navigator.clipboard?.writeText(window.location.href);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2500);
+  // Tọa độ đầu & cuối của chặng đang hiển thị
+  const activeEndpoints = useMemo(() => {
+    if (activeLeg === 1) {
+      return {
+        start: { x: 350, y: 580, label: 'BẠN Ở ĐÂY' },
+        end: { x: 1715, y: 560, label: 'THANG MÁY A' },
+      };
     }
+    return {
+      start: currentDest.isDifferentFloor
+        ? { x: 1715, y: 560, label: 'RA THANG MÁY' }
+        : { x: 350, y: 580, label: 'BẠN Ở ĐÂY' },
+      end: {
+        x: currentDest.coords.x,
+        y: currentDest.coords.y,
+        label: (currentDest.name || 'ĐÍCH ĐẾN').toUpperCase().slice(0, 16),
+      },
+    };
+  }, [activeLeg, currentDest]);
+
+  // Tính toán đường đi chuẩn qua cửa
+  const activeRoutePath = useMemo(() => {
+    if (activeLeg === 1) {
+      const leg1 = calculateFloorRoute({
+        floorId: '3',
+        start: { x: 350, y: 580 },
+        end: { x: 1715, y: 560 },
+      });
+      return leg1.valid && leg1.pathString ? leg1.pathString : ROUTE_GROUND_TO_ELEVATOR;
+    }
+
+    if (currentDest.routeTarget) {
+      return currentDest.routeTarget;
+    }
+
+    const startPt = currentDest.isDifferentFloor ? { x: 1715, y: 560 } : { x: 350, y: 580 };
+    const leg2 = calculateFloorRoute({
+      floorId: currentDest.floorId,
+      start: startPt,
+      end: currentDest.coords,
+      targetRoomId: currentDest.id,
+    });
+    return leg2.valid && leg2.pathString ? leg2.pathString : currentDest.routeTarget;
+  }, [activeLeg, currentDest]);
+
+  const currentFrame = useMemo(() => {
+    return computeSmartRouteFrame(
+      activeRoutePath,
+      activeEndpoints.start,
+      activeEndpoints.end,
+      isHeadingUp ? 'heading' : 'focus25d'
+    );
+  }, [activeRoutePath, activeEndpoints, isHeadingUp]);
+
+  // Khi chuyển chặng hoặc đổi điểm đến -> tự động căn giữa lộ trình bằng GPU
+  useEffect(() => {
+    setZoomLevel(currentFrame.zoom);
+    setPan({ x: currentFrame.panX, y: currentFrame.panY });
+  }, [currentFrame]);
+
+  const clampZoom = (z) => Math.min(3.2, Math.max(0.65, Number(z.toFixed(3))));
+  const clampPanX = (x, z = zoomLevel) => {
+    const limit = Math.round(540 * Math.max(1, z * 0.85));
+    return Math.max(-limit, Math.min(limit, Number(x.toFixed(2))));
+  };
+  const clampPanY = (y, z = zoomLevel) => {
+    const limit = Math.round(660 * Math.max(1, z * 0.85));
+    return Math.max(-limit, Math.min(limit, Number(y.toFixed(2))));
   };
 
-  // Nội dung chính giao diện Bản đồ Mobile (Hỗ trợ cả Dọc và Xoay Ngang Landscape)
+  const handleZoomIn = () => {
+    setZoomLevel((z) => {
+      const nextZoom = clampZoom(z + 0.22);
+      const ratio = nextZoom / z;
+      setPan((p) => ({
+        x: clampPanX(p.x * ratio, nextZoom),
+        y: clampPanY(p.y * ratio, nextZoom),
+      }));
+      return nextZoom;
+    });
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel((z) => {
+      const nextZoom = clampZoom(z - 0.22);
+      const ratio = nextZoom / z;
+      setPan((p) => ({
+        x: clampPanX(p.x * ratio, nextZoom),
+        y: clampPanY(p.y * ratio, nextZoom),
+      }));
+      return nextZoom;
+    });
+  };
+
+  const handleRecenter = () => {
+    setZoomLevel(currentFrame.zoom);
+    setPan({ x: currentFrame.panX, y: currentFrame.panY });
+  };
+
+  const handleFinishTicket = () => {
+    try {
+      if (ticketId) {
+        localStorage.setItem(`aurora_finished_ticket_${ticketId}`, '1');
+      }
+    } catch {
+      // ignore storage error
+    }
+    setIsManualDismissed(true);
+  };
+
+  const handleReopenTicket = () => {
+    try {
+      if (ticketId) {
+        localStorage.removeItem(`aurora_finished_ticket_${ticketId}`);
+      }
+    } catch {
+      // ignore storage error
+    }
+    setIsManualDismissed(false);
+  };
+
+  const formattedRemaining = useMemo(() => {
+    const m = Math.floor(remainingSeconds / 60);
+    const s = remainingSeconds % 60;
+    return `Còn ${m}:${s < 10 ? '0' : ''}${s}`;
+  }, [remainingSeconds]);
+
+  const isExpired = remainingSeconds <= 0;
+
+  const worldTransform =
+    currentFrame.rotZ === -90
+      ? 'translate(0, 1840) rotate(-90)'
+      : currentFrame.rotZ === 90
+        ? 'translate(1174, 0) rotate(90)'
+        : 'translate(0, 0) rotate(0)';
+
+  // Giao diện Bản đồ Toàn màn hình chuẩn Google Maps (Bản đồ chiếm 100% diện tích, GPU 60-120fps)
   const renderMobileContent = () => (
-    <div className="w-full min-h-full bg-[#0C0F17] text-stone-100 flex flex-col font-sans select-none antialiased">
-      {/* 1. Header Khách Sạn Cao Cấp */}
-      <header className="w-full bg-[#141923]/95 border-b border-stone-800/90 px-3.5 py-2.5 sticky top-0 z-40 backdrop-blur-md shadow-lg flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-white shadow-md shadow-emerald-900/30">
-            <Compass className="w-4 h-4 animate-spin-slow" />
+    <div className="w-full h-[100dvh] bg-[#EFECE6] text-[#1C1917] relative overflow-hidden font-sans select-none antialiased">
+      {(isExpired || isManualDismissed) ? (
+        <main className="w-full h-full flex items-center justify-center p-5 bg-[#FAF8F5]">
+          <div className="bg-white border border-[#E3DFD5] rounded-3xl p-6 max-w-sm w-full text-center shadow-lg flex flex-col items-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-[#EFECE6] border border-[#E3DFD5] flex items-center justify-center text-[#1C1917]">
+              <Clock className="w-6 h-6" />
+            </div>
+            <h2 className="text-base font-extrabold text-[#1C1917]">
+              {isManualDismissed && !isExpired ? 'Đã Đóng Chỉ Dẫn Đường Đi' : 'Chỉ Dẫn Đã Hết Hạn'}
+            </h2>
+            <p className="text-xs text-[#78716C] leading-relaxed">
+              {isManualDismissed && !isExpired
+                ? `Bạn đã xác nhận nhớ lộ trình tới ${currentDest.name}. Nếu cần xem lại bản đồ ngay lúc này, bạn có thể mở lại bên dưới.`
+                : 'Vé chỉ đường này có hiệu lực 15 phút để đảm bảo an ninh và riêng tư. Quý khách vui lòng quét lại mã trên Robot Concierge Rora tại sảnh khách sạn.'}
+            </p>
+            {!isExpired && isManualDismissed && (
+              <button
+                type="button"
+                onClick={handleReopenTicket}
+                className="mt-2 w-full py-2.5 px-4 rounded-xl bg-[#1C1917] text-[#FAF8F5] text-xs font-bold shadow-sm active:scale-95 transition cursor-pointer"
+              >
+                Xem lại bản đồ chỉ dẫn
+              </button>
+            )}
           </div>
-          <div>
-            <div className="text-[9px] font-black tracking-widest uppercase text-emerald-400">
-              Aurora Grand Hotel
-            </div>
-            <h1 className="text-xs font-extrabold text-white leading-tight">
-              Bản Đồ 2 Chặng · {currentDest.name}
-            </h1>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5">
-          {/* Nút bật/tắt Khung iPhone chỉ hiện trên máy tính Desktop */}
-          <button
-            onClick={() => setIsIphoneMockup(!isIphoneMockup)}
-            className="hidden md:flex p-1.5 px-2.5 rounded-xl bg-stone-800/80 hover:bg-stone-700 text-stone-300 hover:text-white transition cursor-pointer items-center gap-1 text-[11px] font-bold"
-            title="Đổi chế độ xem khung iPhone"
-          >
-            {isIphoneMockup ? <Monitor className="w-3.5 h-3.5 text-amber-400" /> : <Smartphone className="w-3.5 h-3.5 text-emerald-400" />}
-            <span>{isIphoneMockup ? 'Mở Rộng' : 'Khung iPhone'}</span>
-          </button>
-
-          <button
-            onClick={handleShare}
-            className="p-1.5 px-2 rounded-xl bg-stone-800/80 hover:bg-stone-700 text-stone-300 hover:text-white transition cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
-            title="Chia sẻ lộ trình"
-          >
-            <Share2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">{isCopied ? 'Đã sao chép' : 'Chia sẻ'}</span>
-          </button>
-        </div>
-      </header>
-
-      {/* 2. Container Nội Dung: Dọc (Portrait) -> 1 Cột, Xoay Ngang (Landscape) -> 2 Cột Song Song */}
-      <main className="w-full max-w-xl landscape:max-w-6xl mx-auto flex-1 px-3 py-2.5 flex flex-col landscape:flex-row landscape:items-stretch gap-3">
-        {/* Khung Bản Đồ (Trên mobile xoay ngang: Chiếm trọn bên trái) */}
-        <div className="flex-1 flex flex-col gap-2 min-w-0">
-          <div
-            className={`w-full rounded-2xl bg-stone-950 border border-stone-800 overflow-hidden relative shadow-2xl transition-all ${
-              isFullscreen
-                ? 'fixed inset-0 z-50 rounded-none border-none'
-                : 'h-[270px] sm:h-[340px] landscape:h-[calc(100vh-125px)] landscape:min-h-[260px]'
-            }`}
-          >
-            {/* Badge Tầng Hiện Tại Góc Trên Trái */}
-            <div className="absolute top-2 left-2 z-20 flex items-center gap-1 bg-stone-950/85 backdrop-blur-md px-2 py-0.5 rounded-lg border border-stone-800 text-[10px] font-bold text-stone-200 shadow-md">
-              <Building2 className="w-3 h-3 text-emerald-400" />
-              <span>
-                {activeLeg === 1 ? 'Sảnh Trệt (Lobby)' : currentDest.floorLevel}
-              </span>
-            </div>
-
-            {/* Quick Zoom Controls Góc Phải Trên */}
-            <div className="absolute top-2 right-2 z-20 flex items-center gap-0.5 bg-stone-950/85 backdrop-blur-md p-0.5 rounded-lg border border-stone-800 shadow-md">
-              <button
-                onClick={handleZoomIn}
-                className="w-6 h-6 rounded bg-stone-800 hover:bg-stone-700 text-white flex items-center justify-center text-[10px] font-bold cursor-pointer"
-                title="Phóng to"
-              >
-                <Plus className="w-3 h-3" />
-              </button>
-              <button
-                onClick={handleZoomOut}
-                className="w-6 h-6 rounded bg-stone-800 hover:bg-stone-700 text-white flex items-center justify-center text-[10px] font-bold cursor-pointer"
-                title="Thu nhỏ"
-              >
-                <Minus className="w-3 h-3" />
-              </button>
-              <button
-                onClick={handleResetZoom}
-                className="w-6 h-6 rounded hover:bg-stone-800 text-stone-400 hover:text-white flex items-center justify-center text-[10px] cursor-pointer"
-                title="Khôi phục"
-              >
-                <RotateCcw className="w-2.5 h-2.5" />
-              </button>
-              <button
-                onClick={() => setIsFullscreen(!isFullscreen)}
-                className="w-6 h-6 rounded hover:bg-stone-800 text-stone-400 hover:text-white flex items-center justify-center text-[10px] cursor-pointer ml-0.5"
-                title="Toàn màn hình"
-              >
-                {isFullscreen ? <Minimize2 className="w-3 h-3 text-amber-400" /> : <Maximize2 className="w-3 h-3 text-stone-300" />}
-              </button>
-            </div>
-
-            {/* Map Layer Zoomable Container */}
-            <div
-              className="w-full h-full relative transition-transform duration-150"
-              style={{
-                transform: `scale(${zoomLevel})`,
-                transformOrigin: 'center center',
-              }}
-            >
-              {/* Ảnh Mặt Bằng Tầng */}
-              <img
-                src={activeFloor.image}
-                alt={activeFloor.name}
-                className="w-full h-full object-contain pointer-events-none select-none"
-              />
-
-              {/* Lớp SVG Chỉ Đường Động Đúng Tọa Độ 1920 x 1080 */}
-              <svg
-                viewBox="0 0 1840 1174"
-                className="absolute inset-0 w-full h-full pointer-events-none z-10"
-                preserveAspectRatio="xMidYMid meet"
-              >
-                <defs>
-                  <filter id="guest-sky-glow" x="-30%" y="-30%" width="160%" height="160%">
-                    <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#38BDF8" floodOpacity="0.5" />
-                    <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#7DD3FC" floodOpacity="0.7" />
-                  </filter>
-                </defs>
-
-                {/* CHẶNG 1: TẦNG TRỆT (LOBBY -> THANG MÁY A) - Màu xanh nhạt dễ nhìn */}
-                {activeLeg === 1 && (
-                  <g>
-                    <path
-                      d={ROUTE_GROUND_TO_ELEVATOR}
-                      fill="none"
-                      stroke="#7DD3FC"
-                      strokeWidth="12"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      opacity="0.3"
-                      filter="url(#guest-sky-glow)"
-                    />
-                    <path
-                      d={ROUTE_GROUND_TO_ELEVATOR}
-                      fill="none"
-                      stroke="#38BDF8"
-                      strokeWidth="7"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeDasharray="14 10"
-                      className="animate-routeDash"
-                    />
-
-                    {/* Chấm Bạn Đang Ở Đây tại Lobby */}
-                    <g transform="translate(350, 580)">
-                      <circle r="14" fill="#38BDF8" opacity="0.25" />
-                      <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
-                    </g>
-
-                    {/* Vị trí Thang Máy A */}
-                    <g transform="translate(1715, 560)">
-                      <circle r="14" fill="#38BDF8" opacity="0.25" />
-                      <circle r="8" fill="#38BDF8" stroke="#ffffff" strokeWidth="2.5" />
-                    </g>
-                  </g>
-                )}
-
-                {/* CHẶNG 2: TẦNG ĐÍCH (THANG MÁY -> ĐIỂM ĐẾN) - Màu xanh nhạt dễ nhìn */}
-                {activeLeg === 2 && (
-                  <g>
-                    <path
-                      d={currentDest.routeTarget}
-                      fill="none"
-                      stroke="#7DD3FC"
-                      strokeWidth="12"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      opacity="0.3"
-                      filter="url(#guest-sky-glow)"
-                    />
-                    <path
-                      d={currentDest.routeTarget}
-                      fill="none"
-                      stroke="#38BDF8"
-                      strokeWidth="7"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeDasharray="14 10"
-                      className="animate-routeDash"
-                    />
-
-                    {/* Vị trí xuất phát chặng 2 */}
-                    {currentDest.isDifferentFloor ? (
-                      <g transform="translate(1715, 560)">
-                        <circle r="14" fill="#38BDF8" opacity="0.25" />
-                        <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
-                      </g>
-                    ) : (
-                      <g transform="translate(350, 580)">
-                        <circle r="14" fill="#38BDF8" opacity="0.25" />
-                        <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
-                      </g>
-                    )}
-
-                    {/* Điểm đích: chấm tròn xanh nhạt tinh gọn, không dùng icon mốc ghim to */}
-                    <g transform={`translate(${currentDest.coords.x}, ${currentDest.coords.y})`}>
-                      <circle r="14" fill="#38BDF8" opacity="0.3" />
-                      <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
-                    </g>
-                  </g>
-                )}
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        {/* Cột Chi Tiết Chỉ Dẫn & Nút Bấm: Xoay ngang thành cột bên phải cuộn được */}
-        <div className="w-full landscape:w-[340px] landscape:max-h-[calc(100vh-110px)] landscape:overflow-y-auto flex flex-col gap-2.5">
-          {/* Destination Card Info */}
-          <div className="w-full p-3 rounded-2xl bg-gradient-to-r from-stone-900 via-[#18202F] to-stone-900 border border-emerald-500/25 shadow-xl flex flex-col gap-2">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="p-1.5 rounded-xl bg-stone-800/90 border border-stone-700/80 shrink-0 flex items-center justify-center">
-                  <MapPin className="w-5 h-5 text-emerald-400" />
-                </span>
-                <div className="min-w-0">
-                  <span className="text-[9px] font-bold uppercase text-emerald-400 tracking-wider">
-                    {currentDest.category || 'Tiện ích'}
-                  </span>
-                  <h2 className="text-sm font-extrabold text-white truncate leading-tight">
+        </main>
+      ) : (
+        <>
+          {/* 1. Thanh Điều Hướng Nổi Nhỏ Gọn Phía Trên (Google Maps Top Pill) */}
+          <div className="absolute top-2.5 left-2.5 right-2.5 max-w-lg mx-auto z-30 bg-white/95 backdrop-blur-md border border-[#E3DFD5] rounded-2xl px-3 py-2 shadow-md flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="w-7 h-7 rounded-lg bg-[#1C1917] text-[#FAF8F5] font-extrabold text-xs flex items-center justify-center shrink-0">
+                  {activeLeg}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1 text-[9.5px] font-extrabold uppercase tracking-wider text-[#78716C]">
+                    <span>{activeLeg === 1 ? 'SẢNH TRỆT' : currentDest.floorLevel}</span>
+                    <span>·</span>
+                    <span>ĐÍCH: {currentDest.floorLevel}</span>
+                  </div>
+                  <h1 className="text-[13px] font-extrabold text-[#1C1917] truncate leading-tight">
                     {currentDest.name}
-                  </h2>
+                  </h1>
                 </div>
               </div>
 
-              <div className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-extrabold text-[10px] shrink-0 uppercase tracking-wide">
-                {currentDest.floorLevel}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-1.5 border-t border-stone-800/80 text-[10px] text-stone-300 font-medium">
-              <span className="flex items-center gap-1">
-                <Clock className="w-3 h-3 text-amber-400" />
-                <span>{currentDest.time || '2 Phút'}</span>
-              </span>
-              <span className="text-stone-600">•</span>
-              <span className="flex items-center gap-1">
-                <Footprints className="w-3 h-3 text-emerald-400" />
-                <span>{currentDest.distance || '90m'}</span>
-              </span>
-              <span className="text-stone-600">•</span>
-              <span className="text-stone-400 truncate">
-                {activeFloor.name}
-              </span>
-            </div>
-          </div>
-
-          {/* 3. Chuyển Chặng (2 Segmented Tabs) */}
-          {currentDest.isDifferentFloor && (
-            <div className="w-full grid grid-cols-2 p-1 bg-stone-900 rounded-2xl border border-stone-800 shadow-inner">
-              <button
-                onClick={() => setActiveLeg(1)}
-                className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeLeg === 1
-                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
-                    : 'text-stone-400 hover:text-white'
-                }`}
-              >
-                <span className="w-4 h-4 rounded-full bg-black/25 flex items-center justify-center text-[9px] font-black">
-                  1
-                </span>
-                <span className="truncate">Chặng 1: Thang Máy</span>
-              </button>
-
-              <button
-                onClick={() => setActiveLeg(2)}
-                className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  activeLeg === 2
-                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md'
-                    : 'text-stone-400 hover:text-white'
-                }`}
-              >
-                <span className="w-4 h-4 rounded-full bg-black/25 flex items-center justify-center text-[9px] font-black">
-                  2
-                </span>
-                <span className="truncate">Chặng 2: Đến Nơi</span>
-              </button>
-            </div>
-          )}
-
-          {/* Thẻ Hướng Dẫn Chi Tiết Chặng Đang Xem */}
-          <div className="w-full p-3 rounded-2xl bg-stone-900 border border-stone-800 shadow-lg flex flex-col gap-2">
-            <div className="flex items-center justify-between border-b border-stone-800/80 pb-1.5">
-              <div className="flex items-center gap-1.5">
-                <span className="w-5 h-5 rounded-md bg-emerald-500/20 text-emerald-400 font-black text-xs flex items-center justify-center border border-emerald-500/40">
-                  {activeLeg}
-                </span>
-                <span className="text-[11px] font-bold text-stone-200">
-                  {activeLeg === 1 ? 'Chặng 1: Từ Sảnh Trệt' : `Chặng 2: Tại ${currentDest.floorLevel}`}
-                </span>
-              </div>
-
+              {/* Nút Switch Chặng Siêu Nhỏ Gọn (Chuẩn Google Maps Pill) */}
               {currentDest.isDifferentFloor && (
-                <button
-                  onClick={() => setActiveLeg(activeLeg === 1 ? 2 : 1)}
-                  className="text-[10px] font-bold text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
-                >
-                  <span>{activeLeg === 1 ? 'Chặng 2' : 'Chặng 1'}</span>
-                  <ArrowRight className="w-3 h-3" />
-                </button>
+                <div className="inline-flex items-center bg-[#EFECE6] border border-[#E3DFD5] rounded-full p-0.5 gap-0.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setActiveLeg(1)}
+                    className={`px-2.5 py-1 rounded-full text-[10.5px] font-extrabold transition cursor-pointer ${
+                      activeLeg === 1
+                        ? 'bg-[#1C1917] text-[#FAF8F5] shadow-2xs'
+                        : 'text-[#57534E] hover:text-[#1C1917]'
+                    }`}
+                  >
+                    Chặng 1
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveLeg(2)}
+                    className={`px-2.5 py-1 rounded-full text-[10.5px] font-extrabold transition cursor-pointer ${
+                      activeLeg === 2
+                        ? 'bg-[#1C1917] text-[#FAF8F5] shadow-2xs'
+                        : 'text-[#57534E] hover:text-[#1C1917]'
+                    }`}
+                  >
+                    Chặng 2
+                  </button>
+                </div>
               )}
             </div>
 
-            <p className="text-xs font-semibold text-stone-100 leading-relaxed">
+            <div className="pt-1 border-t border-[#F0EDE6] text-[11.5px] font-semibold text-[#292524] leading-snug">
               {activeLeg === 1
-                ? currentDest.step1Text || 'Từ quầy tiếp tân, đi thẳng theo sảnh chính tới Thang máy A.'
-                : currentDest.step2Text || `Ra khỏi thang máy, đi theo biển chỉ dẫn tới ${currentDest.name}.`}
-            </p>
+                ? currentDest.step1Text || 'Đi từ sảnh Lobby đến Thang máy A và bấm lên tầng mục tiêu.'
+                : currentDest.step2Text || `Ra khỏi thang máy, đi theo chỉ dẫn tới ${currentDest.name}.`}
+            </div>
+          </div>
 
-            <div className="p-2 rounded-xl bg-stone-800/60 border border-stone-700/60 flex items-start gap-1.5 text-[10px] text-stone-300">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-              <div className="flex-1 leading-normal">
-                <span className="font-bold text-amber-300">Mẹo: </span>
-                {activeLeg === 1
-                  ? 'Thang máy A cạnh cầu thang bộ. Bấm số tầng trên bảng trong thang.'
-                  : 'Nếu cần hỗ trợ, bạn có thể gọi phím 0 gặp Lễ tân bất cứ lúc nào.'}
+          {/* 2. Bản Đồ Toàn Màn Hình (100% Diện Tích, GPU translate3d 60-120fps) */}
+          <div
+            className="absolute inset-0 w-full h-full touch-none cursor-grab active:cursor-grabbing overflow-hidden"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, rgba(28, 25, 23, 0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(28, 25, 23, 0.04) 1px, transparent 1px)',
+              backgroundSize: '40px 40px',
+            }}
+            onTouchStart={(e) => {
+              if (e.target.closest('button')) return;
+              if (e.touches.length === 1) {
+                setDragState({
+                  mode: 'pan',
+                  startX: e.touches[0].clientX,
+                  startY: e.touches[0].clientY,
+                  startPanX: pan.x,
+                  startPanY: pan.y,
+                });
+              } else if (e.touches.length >= 2) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
+                const dist = Math.max(12, Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY));
+                const midX = (t1.clientX + t2.clientX) / 2 - centerX;
+                const midY = (t1.clientY + t2.clientY) / 2 - centerY;
+                setDragState({
+                  mode: 'pinch',
+                  startDist: dist,
+                  startZoom: zoomLevel,
+                  startPanX: pan.x,
+                  startPanY: pan.y,
+                  startMidX: midX,
+                  startMidY: midY,
+                });
+              }
+            }}
+            onTouchMove={(e) => {
+              if (!dragState) return;
+              if (e.touches.length >= 2 && dragState.mode === 'pinch') {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
+                const dist = Math.max(12, Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY));
+                const midX = (t1.clientX + t2.clientX) / 2 - centerX;
+                const midY = (t1.clientY + t2.clientY) / 2 - centerY;
+                const nextZoom = clampZoom(dragState.startZoom * (dist / dragState.startDist));
+                const zoomRatio = nextZoom / dragState.startZoom;
+                const nextPanX = midX - (dragState.startMidX - dragState.startPanX) * zoomRatio;
+                const nextPanY = midY - (dragState.startMidY - dragState.startPanY) * zoomRatio;
+
+                setZoomLevel(nextZoom);
+                setPan({
+                  x: clampPanX(nextPanX, nextZoom),
+                  y: clampPanY(nextPanY, nextZoom),
+                });
+              } else if (e.touches.length === 1 && dragState.mode === 'pan') {
+                const dx = e.touches[0].clientX - dragState.startX;
+                const dy = e.touches[0].clientY - dragState.startY;
+                setPan({
+                  x: clampPanX(dragState.startPanX + dx, zoomLevel),
+                  y: clampPanY(dragState.startPanY + dy, zoomLevel),
+                });
+              }
+            }}
+            onTouchEnd={(e) => {
+              if (e.touches.length === 1) {
+                setDragState({
+                  mode: 'pan',
+                  startX: e.touches[0].clientX,
+                  startY: e.touches[0].clientY,
+                  startPanX: pan.x,
+                  startPanY: pan.y,
+                });
+              } else if (e.touches.length === 0) {
+                setDragState(null);
+              }
+            }}
+            onTouchCancel={() => setDragState(null)}
+            onPointerDown={(e) => {
+              if (e.pointerType === 'touch' || e.target.closest('button')) return;
+              setDragState({
+                mode: 'mouse',
+                startX: e.clientX,
+                startY: e.clientY,
+                startPanX: pan.x,
+                startPanY: pan.y,
+              });
+            }}
+            onPointerMove={(e) => {
+              if (e.pointerType === 'touch' || !dragState || dragState.mode !== 'mouse') return;
+              const dx = e.clientX - dragState.startX;
+              const dy = e.clientY - dragState.startY;
+              setPan({
+                x: clampPanX(dragState.startPanX + dx, zoomLevel),
+                y: clampPanY(dragState.startPanY + dy, zoomLevel),
+              });
+            }}
+            onPointerUp={(e) => {
+              if (e.pointerType === 'touch') return;
+              setDragState(null);
+            }}
+            onPointerCancel={(e) => {
+              if (e.pointerType === 'touch') return;
+              setDragState(null);
+            }}
+            onWheel={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const cursorX = e.clientX - (rect.left + rect.width / 2);
+              const cursorY = e.clientY - (rect.top + rect.height / 2);
+              const factor = e.deltaY < 0 ? 1.12 : 0.89;
+              const nextZoom = clampZoom(zoomLevel * factor);
+              const zoomRatio = nextZoom / zoomLevel;
+              setZoomLevel(nextZoom);
+              setPan({
+                x: clampPanX(cursorX - (cursorX - pan.x) * zoomRatio, nextZoom),
+                y: clampPanY(cursorY - (cursorY - pan.y) * zoomRatio, nextZoom),
+              });
+            }}
+          >
+            <div
+              className="w-full h-full transition-transform duration-300 ease-out"
+              style={{
+                transform: is3D ? 'perspective(1200px) rotateX(20deg) scale(1.03)' : 'none',
+                transformOrigin: '50% 52%',
+              }}
+            >
+              <div
+                className={`w-full h-full ${dragState ? '' : 'transition-transform duration-250 ease-out'}`}
+                style={{
+                  transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoomLevel})`,
+                  transformOrigin: '50% 50%',
+                  willChange: 'transform',
+                }}
+              >
+                <svg
+                  viewBox={currentFrame.rotZ === 0 ? '0 0 1840 1174' : '0 0 1174 1840'}
+                  className="w-full h-full block"
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  <g transform={worldTransform}>
+                    <rect
+                      x="0"
+                      y="0"
+                      width="1840"
+                      height="1174"
+                      rx="22"
+                      fill="#FFFFFF"
+                      stroke="#E3DFD5"
+                      strokeWidth="5"
+                    />
+                    <image
+                      href={activeFloor.image}
+                      x="0"
+                      y="0"
+                      width="1840"
+                      height="1174"
+                      preserveAspectRatio="none"
+                    />
+
+                    {/* 1. Lớp hào quang lộ trình nhẹ */}
+                    <path
+                      d={activeRoutePath}
+                      fill="none"
+                      stroke="#38BDF8"
+                      strokeWidth="24"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity="0.28"
+                    />
+                    {/* 2. Lớp nền lộ trình */}
+                    <path
+                      d={activeRoutePath}
+                      fill="none"
+                      stroke="#0284C7"
+                      strokeWidth="11"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity="0.92"
+                    />
+                    {/* 3. Tuyến đường nét đứt chuyển động */}
+                    <path
+                      d={activeRoutePath}
+                      fill="none"
+                      stroke="#E0F2FE"
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeDasharray="14 10"
+                      className="animate-routeDash"
+                    />
+
+                    {/* 4. Điểm xuất phát + Nhãn nổi nhỏ gọn tự giữ chữ nằm ngang */}
+                    <g transform={`translate(${activeEndpoints.start.x}, ${activeEndpoints.start.y})`}>
+                      <circle r="18" fill="#1C1917" opacity="0.16" />
+                      <circle r="11" fill="#1C1917" stroke="#FFFFFF" strokeWidth="3.5" />
+                      <g transform={`rotate(${-currentFrame.rotZ})`}>
+                        <rect
+                          x="-58"
+                          y="-40"
+                          width="116"
+                          height="23"
+                          rx="11.5"
+                          fill="#1C1917"
+                          stroke="#FAF8F5"
+                          strokeWidth="2"
+                        />
+                        <text
+                          x="0"
+                          y="-25"
+                          textAnchor="middle"
+                          fill="#FAF8F5"
+                          fontSize="11"
+                          fontWeight="800"
+                        >
+                          {activeEndpoints.start.label}
+                        </text>
+                      </g>
+                    </g>
+
+                    {/* 5. Điểm kết thúc + Nhãn nổi nhỏ gọn tự giữ chữ nằm ngang */}
+                    <g transform={`translate(${activeEndpoints.end.x}, ${activeEndpoints.end.y})`}>
+                      <circle r="20" fill="#0284C7" opacity="0.2" />
+                      <circle r="12" fill="#0284C7" stroke="#FFFFFF" strokeWidth="3.5" />
+                      <circle r="4.5" fill="#FFFFFF" />
+                      <g transform={`rotate(${-currentFrame.rotZ})`}>
+                        <rect
+                          x="-74"
+                          y="-42"
+                          width="148"
+                          height="25"
+                          rx="12.5"
+                          fill="#FFFFFF"
+                          stroke="#1C1917"
+                          strokeWidth="2.2"
+                        />
+                        <text
+                          x="0"
+                          y="-26"
+                          textAnchor="middle"
+                          fill="#1C1917"
+                          fontSize="11"
+                          fontWeight="800"
+                        >
+                          {activeEndpoints.end.label}
+                        </text>
+                      </g>
+                    </g>
+                  </g>
+                </svg>
               </div>
             </div>
           </div>
 
-          {/* Quick Switcher Các Điểm Khác */}
-          <div className="w-full flex flex-col gap-1 pt-1">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-stone-400 px-1">
-              Chuyển nhanh điểm khác
-            </div>
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
-              {Object.values(HOTEL_DESTINATIONS).map((dest) => {
-                const isSelected = dest.id === currentDest.id;
-                return (
-                  <button
-                    key={dest.id}
-                    onClick={() => {
-                      setCurrentDestKey(dest.id);
-                      window.history.replaceState(null, '', `?view=guest_map&dest=${dest.id}`);
-                    }}
-                    className={`px-2 py-1 rounded-xl text-[10px] font-bold shrink-0 transition-all flex items-center gap-1 cursor-pointer border ${
-                      isSelected
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/60 shadow-md'
-                        : 'bg-stone-900 text-stone-400 border-stone-800 hover:text-white hover:bg-stone-800'
-                    }`}
-                  >
-                    <span>{dest.name}</span>
-                  </button>
-                );
-              })}
+          {/* 3. Cụm Nút Điều Khiển Nổi Nhỏ Gọn Bên Phải (Chuẩn Google Maps 38x38px) */}
+          <div className="absolute right-2.5 bottom-[72px] z-30 flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsHeadingUp((v) => !v)}
+              className={`w-[38px] h-[38px] rounded-full border shadow-md flex flex-col items-center justify-center text-[11px] font-extrabold leading-none transition cursor-pointer ${
+                isHeadingUp
+                  ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
+                  : 'bg-white/95 text-[#1C1917] border-[#E3DFD5]'
+              }`}
+              title="Xoay hướng bước đi lên trên"
+            >
+              <span>↑</span>
+              <span className="text-[8px] mt-0.5">Hướng</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIs3D((v) => !v)}
+              className={`w-[38px] h-[38px] rounded-full border shadow-md flex items-center justify-center text-[11px] font-extrabold transition cursor-pointer ${
+                is3D
+                  ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
+                  : 'bg-white/95 text-[#1C1917] border-[#E3DFD5]'
+              }`}
+              title="Bật/Tắt góc nghiêng 3D"
+            >
+              {is3D ? '3D' : '2D'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleRecenter}
+              className="w-[38px] h-[38px] rounded-full bg-white/95 text-[#1C1917] border border-[#E3DFD5] shadow-md flex items-center justify-center cursor-pointer"
+              title="Căn giữa lộ trình"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+
+            <div className="flex flex-col bg-white/95 border border-[#E3DFD5] rounded-full shadow-md overflow-hidden">
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                className="w-9 h-8 flex items-center justify-center text-[#1C1917] border-b border-[#EFECE6] active:bg-[#EFECE6] cursor-pointer"
+                title="Phóng to"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                className="w-9 h-8 flex items-center justify-center text-[#1C1917] active:bg-[#EFECE6] cursor-pointer"
+                title="Thu nhỏ"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
-        </div>
-      </main>
 
-      {/* 3. Footer Hỗ Trợ 24/7 Bấm Gọi Nhanh */}
-      <footer className="w-full bg-[#141923] border-t border-stone-800 px-3.5 py-2 sticky bottom-0 z-30 flex items-center justify-between max-w-xl landscape:max-w-6xl mx-auto">
-        <div className="flex flex-col">
-          <span className="text-[9px] text-stone-400 font-bold uppercase">Tổng đài hỗ trợ</span>
-          <span className="text-xs font-extrabold text-white">Lễ Tân Khách Sạn (Phím 0)</span>
-        </div>
+          {/* 4. Thanh Nổi Đáy Màn Hình Tối Giản (Google Maps Bottom Pill) */}
+          <div className="absolute bottom-3 left-2.5 right-2.5 max-w-lg mx-auto z-30 bg-white/95 backdrop-blur-md border border-[#E3DFD5] rounded-full py-1.5 pl-3.5 pr-2 shadow-lg flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#57534E] truncate">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse shrink-0" />
+              <span>{currentDest.time || '2 Phút'}</span>
+              <span>·</span>
+              <span>{formattedRemaining}</span>
+            </div>
 
-        <a
-          href="tel:02438886666"
-          className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition cursor-pointer"
-        >
-          <PhoneCall className="w-3.5 h-3.5" />
-          <span>Gọi Lễ Tân</span>
-        </a>
-      </footer>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {currentDest.isDifferentFloor && (
+                <button
+                  type="button"
+                  onClick={() => setActiveLeg(activeLeg === 1 ? 2 : 1)}
+                  className="h-8 px-3 rounded-full bg-[#1C1917] text-[#FAF8F5] text-[11px] font-extrabold flex items-center gap-1 active:scale-95 transition cursor-pointer"
+                >
+                  <span>{activeLeg === 1 ? 'Chặng 2 →' : '← Chặng 1'}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleFinishTicket}
+                className="h-8 px-2.5 rounded-full bg-[#EFECE6] border border-[#E3DFD5] text-[#1C1917] text-[11px] font-extrabold flex items-center gap-1 active:scale-95 transition cursor-pointer"
+              >
+                <Check className="w-3 h-3" />
+                <span>Đóng</span>
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 
-  // Nếu đang bật Khung Mô Phỏng iPhone trên Desktop (Hỗ trợ cả Dọc và Xoay Ngang)
   if (isIphoneMockup) {
     const isLandscape = mockupOrientation === 'landscape';
 
     return (
-      <div className="w-full min-h-screen bg-[#07090E] flex flex-col items-center justify-center py-5 px-3">
-        {/* Thanh công cụ desktop bên ngoài khung điện thoại */}
-        <div className="mb-3 flex items-center gap-3 bg-stone-900/90 border border-stone-800 px-3.5 py-2 rounded-2xl shadow-xl">
+      <div className="w-full min-h-screen bg-[#EFECE6] flex flex-col items-center justify-center py-5 px-3">
+        <div className="mb-3 flex items-center gap-3 bg-white border border-[#E3DFD5] px-3.5 py-2 rounded-2xl shadow-sm">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-bold text-stone-200">
-              Giả lập iPhone 15 Pro ({isLandscape ? '852 × 393 px (Ngang)' : '393 × 852 px (Dọc)'})
+            <span className="w-2.5 h-2.5 rounded-full bg-[#1C1917]" />
+            <span className="text-xs font-bold text-[#1C1917]">
+              Khung Điện Thoại ({isLandscape ? '852 × 393 px' : '393 × 852 px'})
             </span>
           </div>
 
-          <div className="w-[1px] h-4 bg-stone-700" />
+          <div className="w-[1px] h-4 bg-[#E3DFD5]" />
 
-          {/* Nút Xoay Ngang / Dọc Trực Tiếp */}
           <button
+            type="button"
             onClick={() => setMockupOrientation(isLandscape ? 'portrait' : 'landscape')}
-            className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
-            title="Xoay ngang / dọc điện thoại"
+            className="px-2.5 py-1 rounded-lg bg-[#EFECE6] hover:bg-[#E3DFD5] text-[#1C1917] border border-[#E3DFD5] text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
           >
-            <RotateCw className="w-3.5 h-3.5 animate-spin-slow" />
+            <RotateCw className="w-3.5 h-3.5" />
             <span>{isLandscape ? 'Xoay Đứng' : 'Xoay Ngang'}</span>
           </button>
 
           <button
+            type="button"
             onClick={() => setIsIphoneMockup(false)}
-            className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white text-xs font-bold transition cursor-pointer flex items-center gap-1"
+            className="px-2.5 py-1 rounded-lg bg-[#1C1917] text-[#FAF8F5] text-xs font-bold transition cursor-pointer flex items-center gap-1"
           >
             <Monitor className="w-3.5 h-3.5" />
             <span>Toàn màn hình</span>
           </button>
         </div>
 
-        {/* Khung iPhone 15 Pro Titanium Sang Trọng (Co giãn theo orientation) */}
         <div
-          className={`bg-black p-3 shadow-[0_25px_70px_-15px_rgba(0,0,0,0.95)] border-[10px] border-[#2A2B2E] ring-2 ring-stone-700/60 relative flex flex-col overflow-hidden transition-all duration-300 ${
+          className={`bg-[#1C1917] p-3 shadow-2xl border-[8px] border-[#2A2B2E] relative flex flex-col overflow-hidden transition-all duration-300 ${
             isLandscape
               ? 'w-[852px] max-w-[95vw] h-[393px] max-h-[85vh] rounded-[46px]'
               : 'w-[393px] max-w-[95vw] h-[852px] max-h-[90vh] rounded-[54px]'
           }`}
         >
-          {/* Dynamic Island Pill */}
-          <div
-            className={`absolute bg-black rounded-full z-50 flex items-center justify-between px-2.5 border border-stone-900 shadow-inner ${
-              isLandscape
-                ? 'top-1/2 left-3.5 -translate-y-1/2 w-7 h-24 flex-col py-2'
-                : 'top-3.5 left-1/2 -translate-x-1/2 w-28 h-6'
-            }`}
-          >
-            <div className="w-2 h-2 rounded-full bg-[#0a0a0a]" />
-            <div className="w-2 h-2 rounded-full bg-emerald-500/80 animate-pulse" />
-          </div>
-
-          {/* Màn hình nội dung bên trong iPhone */}
-          <div className="flex-1 overflow-y-auto rounded-[38px] custom-scrollbar bg-[#0C0F17]">
+          <div className="flex-1 overflow-y-auto rounded-[38px] custom-scrollbar bg-[#FAF8F5]">
             {renderMobileContent()}
           </div>
         </div>
@@ -530,6 +887,5 @@ export const GuestMapPage = () => {
     );
   }
 
-  // Mặc định: Hiển thị responsive toàn màn hình (Mobile first)
   return renderMobileContent();
 };

@@ -25,8 +25,11 @@ class GlobalExceptionMiddleware(BaseHTTPMiddleware):
 
             tb_str = traceback.format_exc()
             try:
-                with open("unhandled_exception.log", "a", encoding="utf-8") as f:
-                    f.write(f"\n--- {datetime.now(timezone.utc).isoformat()} ---\n{exc}\n{tb_str}\n")
+                import asyncio
+                def _write_log():
+                    with open("unhandled_exception.log", "a", encoding="utf-8") as f:
+                        f.write(f"\n--- {datetime.now(timezone.utc).isoformat()} ---\n{exc}\n{tb_str}\n")
+                asyncio.create_task(asyncio.to_thread(_write_log))
             except Exception:
                 pass
 

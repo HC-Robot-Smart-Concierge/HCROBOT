@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, LogOut, KeyRound, UserCheck, ShieldCheck } from 'lucide-react';
 import { changeStaffPassword, updateStaffProfile } from '../../../../services/operationsApi';
+import { handleNumericKeyDown, sanitizePhoneNumber } from '../../../../utils/numberInputHelper';
 
 export const SecuritySection = ({ settings, setSettings, showToast, currentUser = {} }) => {
   // Password change state
@@ -18,11 +19,11 @@ export const SecuritySection = ({ settings, setSettings, showToast, currentUser 
   const handleChangePasswordSubmit = async (e) => {
     e.preventDefault();
     if (!newPassword || newPassword.length < 6) {
-      showToast('⚠️ Mật khẩu mới phải có ít nhất 6 ký tự!');
+      showToast('Mật khẩu mới phải có ít nhất 6 ký tự!');
       return;
     }
     if (newPassword !== confirmPassword) {
-      showToast('⚠️ Mật khẩu xác nhận không khớp!');
+      showToast('Mật khẩu xác nhận không khớp!');
       return;
     }
 
@@ -30,15 +31,15 @@ export const SecuritySection = ({ settings, setSettings, showToast, currentUser 
     try {
       const res = await changeStaffPassword(currentPassword, newPassword, currentUser?.username || 'admin');
       if (res && (res.message || res.success)) {
-        showToast('✅ Đã đổi mật khẩu tài khoản Admin thành công!');
+        showToast('Đã đổi mật khẩu tài khoản Admin thành công!');
         setCurrentPassword('');
         setNewPassword('');
         setConfirmPassword('');
       } else {
-        showToast('⚠️ Đổi mật khẩu không thành công. Vui lòng kiểm tra mật khẩu hiện tại.');
+        showToast('Đổi mật khẩu không thành công. Vui lòng kiểm tra mật khẩu hiện tại.');
       }
     } catch {
-      showToast('⚠️ Lỗi khi kết nối tới máy chủ đổi mật khẩu.');
+      showToast('Lỗi khi kết nối tới máy chủ đổi mật khẩu.');
     } finally {
       setIsChangingPassword(false);
     }
@@ -55,10 +56,10 @@ export const SecuritySection = ({ settings, setSettings, showToast, currentUser 
         phone,
       });
       if (res) {
-        showToast('✅ Đã cập nhật hồ sơ cá nhân Quản trị viên thành công!');
+        showToast('Đã cập nhật hồ sơ cá nhân Quản trị viên thành công!');
       }
     } catch {
-      showToast('⚠️ Lỗi khi cập nhật thông tin hồ sơ.');
+      showToast('Lỗi khi cập nhật thông tin hồ sơ.');
     } finally {
       setIsUpdatingProfile(false);
     }
@@ -120,9 +121,12 @@ export const SecuritySection = ({ settings, setSettings, showToast, currentUser 
                   SỐ ĐIỆN THOẠI:
                 </label>
                 <input
-                  type="text"
+                  type="tel"
+                  inputMode="tel"
+                  maxLength={15}
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onKeyDown={(e) => handleNumericKeyDown(e, { allowPlus: true })}
+                  onChange={(e) => setPhone(sanitizePhoneNumber(e.target.value, 15))}
                   className="w-full px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-900 font-semibold focus:outline-none focus:border-indigo-500"
                 />
               </div>

@@ -9,6 +9,7 @@ export const ROS_TOPICS = {
   ODOM: '/odom',
   AMCL_POSE: '/amcl_pose',
   GOAL_POSE: '/goal_pose',
+  INITIAL_POSE: '/initialpose',
   CMD_VEL: '/cmd_vel',
   GOAL_REACHED: '/goal_reached',
   HOTEL_ZONES: '/hotel_zones',
@@ -115,6 +116,19 @@ export const createGoalPoseMsg = (x, y, yaw = 0, frameId = 'map') => {
 };
 
 /**
+ * Tạo message vị trí ban đầu /initialpose cho AMCL (tương đương "2D Pose Estimate" của RViz)
+ * Covariance: ±0.25m (var 0.0625) cho x/y, ±~15° (var 0.068) cho yaw.
+ */
+export const createInitialPoseMsg = (x, y, yaw = 0, frameId = 'map') => {
+  const { header, pose } = createGoalPoseMsg(x, y, yaw, frameId);
+  const covariance = new Array(36).fill(0);
+  covariance[0] = 0.0625;
+  covariance[7] = 0.0625;
+  covariance[35] = 0.06853891945200942;
+  return { header, pose: { pose, covariance } };
+};
+
+/**
  * Tạo message vận tốc /cmd_vel cho Robot
  */
 export const createCmdVelMsg = (linearX = 0, angularZ = 0) => {
@@ -199,7 +213,7 @@ export class RosbridgeClient {
 
         // Resubscribe to all topics with explicit type specification
         this.subscriptions.forEach((sub, topic) => {
-          this.sendSubscribeOp(topic, sub.type);
+          this.sendSubscribeOp(topic, sub.type, sub.throttleRate);
         });
       };
 
@@ -269,20 +283,22 @@ export class RosbridgeClient {
     return false;
   }
 
-  sendSubscribeOp(topic, type) {
+  sendSubscribeOp(topic, type, throttleRate) {
     const payload = {
       op: 'subscribe',
       topic,
     };
     if (type) payload.type = type;
+    // rosbridge: so ms toi thieu giua 2 message gui ve client
+    if (throttleRate) payload.throttle_rate = throttleRate;
     return this.send(payload);
   }
 
-  subscribe(topic, type, callback) {
+  subscribe(topic, type, callback, options = {}) {
     if (!this.subscriptions.has(topic)) {
-      this.subscriptions.set(topic, { type, callbacks: new Set() });
+      this.subscriptions.set(topic, { type, throttleRate: options.throttleRate, callbacks: new Set() });
       if (this.isConnected) {
-        this.sendSubscribeOp(topic, type);
+        this.sendSubscribeOp(topic, type, options.throttleRate);
       }
     }
     const sub = this.subscriptions.get(topic);

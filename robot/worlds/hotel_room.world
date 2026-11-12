@@ -137,6 +137,15 @@
           <property type="string" key="state">docked</property>
         </gz-gui>
       </plugin>
+
+      <!-- Lai xe ao ngay trong Gazebo: publish gz.msgs.Twist len /cmd_vel (DiffDrive cua hc_robot) -->
+      <plugin filename="Teleop" name="Teleop">
+        <gz-gui>
+          <title>Teleop</title>
+          <property type="string" key="state">docked</property>
+        </gz-gui>
+        <topic>/cmd_vel</topic>
+      </plugin>
     </gui>
 
     <!-- Lighting -->
@@ -196,23 +205,91 @@
       </link>
 
       <!-- 2. TUONG BAO NGOAI (OUTER WALLS: Cao 1.4m, Day 0.20m) -->
-      <!-- Tuong Tay (West Wall: x = 0.0) -->
-      <link name="wall_west">
-        <pose>0.0 6.30 0.7 0 0 0</pose>
-        <collision name="col"><geometry><box><size>0.20 12.60 1.4</size></box></geometry></collision>
+      <!-- Front entrance on the west wall: y = 5.55 to 6.95 m. -->
+      <link name="wall_west_south">
+        <pose>0.00 2.775 0.7 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.20 5.55 1.4</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>0.20 12.60 1.4</size></box></geometry>
+          <geometry><box><size>0.20 5.55 1.4</size></box></geometry>
           <material><ambient>0.22 0.22 0.24 1</ambient><diffuse>0.22 0.22 0.24 1</diffuse></material>
         </visual>
       </link>
-
-      <!-- Tuong Dong (East Wall: x = 19.60) -->
-      <link name="wall_east">
-        <pose>19.60 6.30 0.7 0 0 0</pose>
-        <collision name="col"><geometry><box><size>0.20 12.60 1.4</size></box></geometry></collision>
+      <link name="wall_west_north">
+        <pose>0.00 9.775 0.7 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.20 5.65 1.4</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>0.20 12.60 1.4</size></box></geometry>
+          <geometry><box><size>0.20 5.65 1.4</size></box></geometry>
           <material><ambient>0.22 0.22 0.24 1</ambient><diffuse>0.22 0.22 0.24 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="front_door">
+        <pose>0.00 6.25 0 0 0 0</pose>
+        <collision name="south_leaf_collision">
+          <pose>0.32 -0.70 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+        </collision>
+        <visual name="south_leaf">
+          <pose>0.32 -0.70 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+          <material><ambient>0.20 0.55 0.70 1</ambient><diffuse>0.20 0.55 0.70 1</diffuse></material>
+        </visual>
+        <collision name="north_leaf_collision">
+          <pose>0.32 0.70 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+        </collision>
+        <visual name="north_leaf">
+          <pose>0.32 0.70 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+          <material><ambient>0.20 0.55 0.70 1</ambient><diffuse>0.20 0.55 0.70 1</diffuse></material>
+        </visual>
+        <visual name="threshold">
+          <pose>0 0 0.014 0 0 0</pose>
+          <geometry><box><size>0.22 1.40 0.004</size></box></geometry>
+          <material><ambient>0.20 0.55 0.70 1</ambient><diffuse>0.20 0.55 0.70 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!-- Rear exit between the lift and WC: y = 2.80 to 4.26 m. -->
+      <link name="wall_east_south">
+        <pose>19.60 1.40 0.7 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.20 2.80 1.4</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.20 2.80 1.4</size></box></geometry>
+          <material><ambient>0.22 0.22 0.24 1</ambient><diffuse>0.22 0.22 0.24 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="wall_east_north">
+        <pose>19.60 8.43 0.7 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.20 8.34 1.4</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.20 8.34 1.4</size></box></geometry>
+          <material><ambient>0.22 0.22 0.24 1</ambient><diffuse>0.22 0.22 0.24 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="rear_door">
+        <pose>19.60 3.53 0 0 0 0</pose>
+        <collision name="south_leaf_collision">
+          <pose>-0.32 -0.73 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+        </collision>
+        <visual name="south_leaf">
+          <pose>-0.32 -0.73 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+          <material><ambient>0.15 0.58 0.35 1</ambient><diffuse>0.15 0.58 0.35 1</diffuse></material>
+        </visual>
+        <collision name="north_leaf_collision">
+          <pose>-0.32 0.73 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+        </collision>
+        <visual name="north_leaf">
+          <pose>-0.32 0.73 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+          <material><ambient>0.15 0.58 0.35 1</ambient><diffuse>0.15 0.58 0.35 1</diffuse></material>
+        </visual>
+        <visual name="threshold">
+          <pose>0 0 0.014 0 0 0</pose>
+          <geometry><box><size>0.22 1.46 0.004</size></box></geometry>
+          <material><ambient>0.15 0.58 0.35 1</ambient><diffuse>0.15 0.58 0.35 1</diffuse></material>
         </visual>
       </link>
 
@@ -307,59 +384,105 @@
         </visual>
       </link>
 
-      <!-- 5. GIAN TRAI - TAY BAC: SOFA 1 VA BAN TRA -->
-      <link name="sofa_top_left">
-        <pose>1.07 10.52 0.30 0 0 0</pose>
-        <collision name="col"><geometry><box><size>2.14 4.16 0.60</size></box></geometry></collision>
+      <!-- 5. GIAN TRAI - TAY BAC: 1 SOFA DOC DUNG SAT TUONG TAY + BAN TRA -->
+      <!-- Sofa A: Doc (Dung) - Tay tren, sat tuong Tay -->
+      <link name="sofa_tl_vertical">
+        <pose>0.65 10.40 0.30 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.90 3.60 0.60</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>2.14 4.16 0.60</size></box></geometry>
-          <material><ambient>0.90 0.90 0.90 1</ambient><diffuse>0.90 0.90 0.90 1</diffuse></material>
+          <geometry><box><size>0.90 3.60 0.60</size></box></geometry>
+          <material><ambient>0.88 0.88 0.88 1</ambient><diffuse>0.88 0.88 0.88 1</diffuse></material>
         </visual>
       </link>
+      <!-- Sofa A dem tua lung (cushion back) -->
+      <link name="sofa_tl_vertical_back">
+        <pose>0.25 10.40 0.50 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>0.12 3.60 0.40</size></box></geometry>
+          <material><ambient>0.70 0.70 0.70 1</ambient><diffuse>0.70 0.70 0.70 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!-- Ban tra tron khu Tay Bac -->
       <link name="table_top_left">
-        <pose>3.44 10.58 0.20 0 0 0</pose>
-        <collision name="col"><geometry><cylinder><radius>0.68</radius><length>0.40</length></cylinder></geometry></collision>
+        <pose>2.00 10.40 0.22 0 0 0</pose>
+        <collision name="col"><geometry><cylinder><radius>0.55</radius><length>0.44</length></cylinder></geometry></collision>
         <visual name="vis">
-          <geometry><cylinder><radius>0.68</radius><length>0.40</length></cylinder></geometry>
-          <material><ambient>0.75 0.65 0.55 1</ambient><diffuse>0.75 0.65 0.55 1</diffuse></material>
+          <geometry><cylinder><radius>0.55</radius><length>0.44</length></cylinder></geometry>
+          <material><ambient>0.72 0.60 0.48 1</ambient><diffuse>0.72 0.60 0.48 1</diffuse></material>
         </visual>
       </link>
 
-      <!-- 6. GIAN TRAI - TAY NAM: SOFA 2 VA BAN TRA -->
+      <!-- 6. GIAN TRAI - TAY NAM: SOFA NGANG DAI SAT TUONG NAM + BAN TRA -->
+      <!-- Sofa ngang dai sat tuong Nam -->
       <link name="sofa_bot_left">
-        <pose>2.28 0.73 0.30 0 0 0</pose>
-        <collision name="col"><geometry><box><size>4.56 1.46 0.60</size></box></geometry></collision>
+        <pose>2.10 0.65 0.30 0 0 0</pose>
+        <collision name="col"><geometry><box><size>4.00 0.90 0.60</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>4.56 1.46 0.60</size></box></geometry>
-          <material><ambient>0.90 0.90 0.90 1</ambient><diffuse>0.90 0.90 0.90 1</diffuse></material>
+          <geometry><box><size>4.00 0.90 0.60</size></box></geometry>
+          <material><ambient>0.88 0.88 0.88 1</ambient><diffuse>0.88 0.88 0.88 1</diffuse></material>
         </visual>
       </link>
+      <link name="sofa_bot_left_back">
+        <pose>2.10 0.25 0.50 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>4.00 0.12 0.40</size></box></geometry>
+          <material><ambient>0.70 0.70 0.70 1</ambient><diffuse>0.70 0.70 0.70 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!-- Ban tra tron khu Tay Nam -->
       <link name="table_bot_left">
-        <pose>2.02 3.47 0.20 0 0 0</pose>
-        <collision name="col"><geometry><cylinder><radius>0.68</radius><length>0.40</length></cylinder></geometry></collision>
+        <pose>1.80 2.70 0.22 0 0 0</pose>
+        <collision name="col"><geometry><cylinder><radius>0.55</radius><length>0.44</length></cylinder></geometry></collision>
         <visual name="vis">
-          <geometry><cylinder><radius>0.68</radius><length>0.40</length></cylinder></geometry>
-          <material><ambient>0.75 0.65 0.55 1</ambient><diffuse>0.75 0.65 0.55 1</diffuse></material>
+          <geometry><cylinder><radius>0.55</radius><length>0.44</length></cylinder></geometry>
+          <material><ambient>0.72 0.60 0.48 1</ambient><diffuse>0.72 0.60 0.48 1</diffuse></material>
         </visual>
       </link>
 
-      <!-- 7. CAY CANH TRUNG TAM GIAN TRAI -->
+      <!-- 7. CHAU CAY CANH (POTTED PLANT) TRUNG TAM GIAN TRAI -->
+      <!-- De chau (day) -->
+      <link name="plant_base">
+        <pose>6.52 6.30 0.08 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.90 0.90 0.16</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.90 0.90 0.16</size></box></geometry>
+          <material><ambient>0.55 0.40 0.28 1</ambient><diffuse>0.55 0.40 0.28 1</diffuse></material>
+        </visual>
+      </link>
+      <!-- Than chau (gom) -->
       <link name="plant_pot">
-        <pose>6.52 6.26 0.35 0 0 0</pose>
-        <collision name="col"><geometry><box><size>1.36 1.36 0.70</size></box></geometry></collision>
+        <pose>6.52 6.30 0.30 0 0 0</pose>
+        <collision name="col"><geometry><cylinder><radius>0.35</radius><length>0.28</length></cylinder></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>1.36 1.36 0.70</size></box></geometry>
-          <material><ambient>0.25 0.55 0.30 1</ambient><diffuse>0.25 0.55 0.30 1</diffuse></material>
+          <geometry><cylinder><radius>0.35</radius><length>0.28</length></cylinder></geometry>
+          <material><ambient>0.60 0.42 0.28 1</ambient><diffuse>0.60 0.42 0.28 1</diffuse></material>
+        </visual>
+      </link>
+      <!-- Tan la cay (sphere xanh la) -->
+      <link name="plant_foliage">
+        <pose>6.52 6.30 0.72 0 0 0</pose>
+        <visual name="vis">
+          <geometry><sphere><radius>0.38</radius></sphere></geometry>
+          <material><ambient>0.20 0.55 0.22 1</ambient><diffuse>0.20 0.55 0.22 1</diffuse></material>
         </visual>
       </link>
 
-      <!-- 8. GIAN PHAI - DONG BAC: SOFA 3 -->
-      <link name="sofa_upper_right">
-        <pose>17.41 8.80 0.30 0 0 0</pose>
-        <collision name="col"><geometry><box><size>3.98 2.08 0.60</size></box></geometry></collision>
+      <!-- 8. GIAN PHAI: 1 SOFA NGANG (QUAY VE HUONG NAM) -->
+      <link name="sofa_right_horizontal">
+        <pose>17.35 8.85 0.30 0 0 0</pose>
+        <collision name="col"><geometry><box><size>3.60 0.90 0.60</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>3.98 2.08 0.60</size></box></geometry>
-          <material><ambient>0.90 0.90 0.90 1</ambient><diffuse>0.90 0.90 0.90 1</diffuse></material>
+          <geometry><box><size>3.60 0.90 0.60</size></box></geometry>
+          <material><ambient>0.88 0.88 0.88 1</ambient><diffuse>0.88 0.88 0.88 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="sofa_right_horizontal_back">
+        <pose>17.35 9.25 0.50 0 0 0</pose>
+        <visual name="vis">
+          <geometry><box><size>3.60 0.12 0.40</size></box></geometry>
+          <material><ambient>0.70 0.70 0.70 1</ambient><diffuse>0.70 0.70 0.70 1</diffuse></material>
         </visual>
       </link>
 
@@ -375,20 +498,20 @@
 
       <!-- 10. CUA THOAT HIEM KHAN CAP (EMERGENCY EXIT) -->
       <link name="emergency_exit_block">
-        <pose>18.92 5.46 0.70 0 0 0</pose>
-        <collision name="col"><geometry><box><size>1.35 1.00 1.40</size></box></geometry></collision>
+        <pose>18.92 4.93 0.70 0 0 0</pose>
+        <collision name="col"><geometry><box><size>1.35 1.34 1.40</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>1.35 1.00 1.40</size></box></geometry>
+          <geometry><box><size>1.35 1.34 1.40</size></box></geometry>
           <material><ambient>0.15 0.55 0.25 1</ambient><diffuse>0.15 0.55 0.25 1</diffuse></material>
         </visual>
       </link>
 
       <!-- 11. CUM NHA VE SINH (RESTROOMS WC 1 & WC 2 - GOC DONG NAM) -->
       <link name="wc_east">
-        <pose>18.92 1.70 0.70 0 0 0</pose>
-        <collision name="col"><geometry><box><size>1.35 3.40 1.40</size></box></geometry></collision>
+        <pose>18.92 1.40 0.70 0 0 0</pose>
+        <collision name="col"><geometry><box><size>1.35 2.80 1.40</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>1.35 3.40 1.40</size></box></geometry>
+          <geometry><box><size>1.35 2.80 1.40</size></box></geometry>
           <material><ambient>0.35 0.35 0.38 1</ambient><diffuse>0.35 0.35 0.38 1</diffuse></material>
         </visual>
       </link>
@@ -483,14 +606,14 @@
     <!-- Waypoint 1: Vi Tri Cho Robot Sanh (ROBOT_STANDBY - PARK: Amber) -->
     <model name="wp_marker_standby">
       <static>true</static>
-      <pose>4.56 11.98 0.01 0 0 0</pose>
+      <pose>15.32 6.82 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
           <material>
-            <ambient>0.38 0.65 0.98 0.9</ambient>
-            <diffuse>0.38 0.65 0.98 0.9</diffuse>
-            <emissive>0.25 0.50 0.80 1</emissive>
+            <ambient>0.58 0.64 0.72 0.9</ambient>
+            <diffuse>0.58 0.64 0.72 0.9</diffuse>
+            <emissive>0.45 0.5 0.58 1.0</emissive>
           </material>
         </visual>
       </link>
@@ -499,14 +622,14 @@
     <!-- Waypoint 2: Tram Sac Robot Sanh (CHARGER - CHARGER: Emerald Green) -->
     <model name="wp_marker_charger">
       <static>true</static>
-      <pose>0.00 0.00 -10.00 0 0 0</pose>
+      <pose>2.33 5.96 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
           <material>
-            <ambient>0.20 0.83 0.60 0.9</ambient>
-            <diffuse>0.20 0.83 0.60 0.9</diffuse>
-            <emissive>0.15 0.65 0.45 1</emissive>
+            <ambient>0.58 0.64 0.72 0.9</ambient>
+            <diffuse>0.58 0.64 0.72 0.9</diffuse>
+            <emissive>0.45 0.5 0.58 1.0</emissive>
           </material>
         </visual>
       </link>
@@ -515,14 +638,14 @@
     <!-- Waypoint 3: Truoc Quay Le Tan (FRONT_DESK - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_frontdesk">
       <static>true</static>
-      <pose>0.00 0.00 -10.00 0 0 0</pose>
+      <pose>3.95 6.60 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
           <material>
-            <ambient>0.58 0.64 0.72 0.9</ambient>
-            <diffuse>0.58 0.64 0.72 0.9</diffuse>
-            <emissive>0.45 0.50 0.58 1</emissive>
+            <ambient>0.2 0.83 0.6 0.9</ambient>
+            <diffuse>0.2 0.83 0.6 0.9</diffuse>
+            <emissive>0.15 0.65 0.45 1.0</emissive>
           </material>
         </visual>
       </link>
@@ -531,14 +654,14 @@
     <!-- Waypoint 4: Cua Chinh Ra Vao Sanh (MAIN_ENTRANCE - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_entrance">
       <static>true</static>
-      <pose>1.56 6.09 0.01 0 0 0</pose>
+      <pose>-0.05 0.76 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
           <material>
             <ambient>0.58 0.64 0.72 0.9</ambient>
             <diffuse>0.58 0.64 0.72 0.9</diffuse>
-            <emissive>0.45 0.50 0.58 1</emissive>
+            <emissive>0.45 0.5 0.58 1.0</emissive>
           </material>
         </visual>
       </link>
@@ -547,14 +670,14 @@
     <!-- Waypoint 5: Truoc Phong Noi Bo (STAFF_ONLY - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_staff">
       <static>true</static>
-      <pose>0.00 0.00 -10.00 0 0 0</pose>
+      <pose>1.76 1.03 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
           <material>
             <ambient>0.58 0.64 0.72 0.9</ambient>
             <diffuse>0.58 0.64 0.72 0.9</diffuse>
-            <emissive>0.45 0.50 0.58 1</emissive>
+            <emissive>0.45 0.5 0.58 1.0</emissive>
           </material>
         </visual>
       </link>
@@ -563,14 +686,14 @@
     <!-- Waypoint 6: Cum Thang May Tang 1 (ELEVATOR - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_elevator">
       <static>true</static>
-      <pose>17.49 6.86 0.01 0 0 0</pose>
+      <pose>0.54 0.96 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
           <material>
             <ambient>0.58 0.64 0.72 0.9</ambient>
             <diffuse>0.58 0.64 0.72 0.9</diffuse>
-            <emissive>0.45 0.50 0.58 1</emissive>
+            <emissive>0.45 0.5 0.58 1.0</emissive>
           </material>
         </visual>
       </link>
@@ -579,14 +702,14 @@
     <!-- Waypoint 7: Nha Ve Sinh Sanh WC (RESTROOMS - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_restrooms">
       <static>true</static>
-      <pose>17.32 3.73 0.01 0 0 0</pose>
+      <pose>0.59 0.29 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
           <material>
             <ambient>0.58 0.64 0.72 0.9</ambient>
             <diffuse>0.58 0.64 0.72 0.9</diffuse>
-            <emissive>0.45 0.50 0.58 1</emissive>
+            <emissive>0.45 0.5 0.58 1.0</emissive>
           </material>
         </visual>
       </link>
@@ -611,7 +734,7 @@
     <!-- Waypoint 9: Khu Sofa Sanh (LOBBY_LOUNGE - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_lounge">
       <static>true</static>
-      <pose>18.55 11.18 0.01 0 0 0</pose>
+      <pose>0.00 0.00 -10.00 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>

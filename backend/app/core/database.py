@@ -71,6 +71,9 @@ async def init_db() -> None:
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_started_at TIMESTAMP;"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_ended_at TIMESTAMP;"))
             await conn.execute(text("ALTER TABLE support_requests ADD COLUMN IF NOT EXISTS priority VARCHAR(20) DEFAULT 'NORMAL';"))
+            await conn.execute(text("ALTER TABLE robots ADD COLUMN IF NOT EXISTS serial_number VARCHAR(80);"))
+            await conn.execute(text("ALTER TABLE robots ADD COLUMN IF NOT EXISTS firmware_version VARCHAR(50);"))
+            await conn.execute(text("ALTER TABLE robots ADD COLUMN IF NOT EXISTS notes TEXT;"))
             # Xóa bảng maps theo yêu cầu không lưu bản đồ vào CSDL
             await conn.execute(text("DROP TABLE IF EXISTS maps CASCADE;"))
         except Exception:

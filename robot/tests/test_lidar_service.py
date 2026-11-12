@@ -202,6 +202,35 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         }, dt=0.1, update_yaw=True)
         self.assertGreater(self.core.robot_yaw, 0.0)
 
+    def test_internal_slam_auto_disables_while_ros2_bridge_connected(self):
+        """SLAM Toolbox nhận scan thì Pi không chạy scan matching/raytracing nội bộ."""
+        self.core.internal_slam_policy = "auto"
+        self.assertTrue(self.core.internal_slam_enabled())
+
+        self.core.external_slam_consumers = 1
+        self.assertFalse(self.core.internal_slam_enabled())
+
+        # Frontier exploration đọc grid nội bộ nên luôn cần SLAM nội bộ.
+        self.core.is_exploring = True
+        self.assertTrue(self.core.internal_slam_enabled())
+        self.core.is_exploring = False
+
+        self.core.internal_slam_policy = "on"
+        self.assertTrue(self.core.internal_slam_enabled())
+        self.core.internal_slam_policy = "off"
+        self.core.external_slam_consumers = 0
+        self.assertFalse(self.core.internal_slam_enabled())
+
+    def test_encoder_odometry_without_yaw_keeps_heading(self):
+        """Khi có IMU, encoder chỉ cập nhật x/y; yaw do gyro đảm nhận (không cộng 2 lần)."""
+        self.core.robot_x = self.core.robot_y = self.core.robot_yaw = 0.0
+        self.core.current_motion_cmd = "left"
+        zero = {k: {"ticks": 0} for k in ("m1", "m2", "m3", "m4")}
+        turn = {"m1": {"ticks": -50}, "m2": {"ticks": -50}, "m3": {"ticks": 50}, "m4": {"ticks": 50}}
+        self.core._apply_encoder_odometry(zero, dt=0.1, update_yaw=False)
+        self.core._apply_encoder_odometry(turn, dt=0.1, update_yaw=False)
+        self.assertEqual(self.core.robot_yaw, 0.0)
+
     def test_fixed_layout_3x5m_and_fog_of_war(self):
         """Kiểm tra layout cứng 3x5m: tường không bị xóa đè, vùng xám ngoài không bị mở rộng, và robot đi đến đâu mở map đến đó."""
         res = self.core.init_fixed_layout_3x5m("test_3x5m")

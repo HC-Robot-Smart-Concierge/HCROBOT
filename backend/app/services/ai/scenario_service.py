@@ -15,8 +15,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 from app.models.scenario import DialogueScenario
+from app.services.ai.session_manager import is_valid_hotel_room, extract_room_number
 
 from app.schemas.scenario import DialogueScenarioCreate, DialogueScenarioUpdate
+from app.services.ai.constants import (
+    SERVICE_KEYWORDS,
+    MAINTENANCE_MENU_TRIGGER_KEYWORDS,
+    ROOM_SERVICE_MENU_TRIGGER_KEYWORDS,
+    FOOD_MENU_TRIGGER_KEYWORDS,
+    ORDER_OR_SERVICE_EXCLUSION_REGEX,
+    MAINTENANCE_REGEX,
+    STATUS_QUERY_REGEX,
+)
 
 
 
@@ -29,6 +39,105 @@ logger = logging.getLogger(__name__)
 # Danh muc kich ban mac dinh ban dau (Seed Scenarios)
 
 DEFAULT_SEED_SCENARIOS = [
+    {
+
+        "id": "scn-switch-to-english",
+
+        "title": "Chuyển Đổi Ngôn Ngữ Sang Tiếng Anh (Switch Language to English)",
+
+        "category": "language",
+
+        "match_keywords": [
+            "chuyển sang tiếng anh", "chuyen sang tieng anh", "nói tiếng anh đi", "noi tieng anh di",
+            "đổi sang tiếng anh", "doi sang tieng anh", "giao tiếp bằng tiếng anh", "giao tiep bang tieng anh",
+            "bạn có thể nói tiếng anh không", "ban co the noi tieng anh khong", "dùng tiếng anh", "dung tieng anh",
+            "tiếng anh đi", "tieng anh di", "nói tiếng anh", "noi tieng anh",
+            "switch to english", "speak english please", "speak english", "can you speak english", "change language to english", "english please"
+        ],
+
+        "match_type": "keyword",
+
+        "response_vi": "Sure! I have switched our conversation language to English. How may I assist you today?",
+
+        "response_en": "Sure! I have switched our conversation language to English. How may I assist you today?",
+
+        "action_type": "switch_language",
+
+        "action_payload": {"target_language": "English", "lang_code": "en-US"},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 99,
+
+    },
+
+    {
+
+        "id": "scn-switch-to-vietnamese",
+
+        "title": "Chuyển Đổi Ngôn Ngữ Sang Tiếng Việt (Switch Language to Vietnamese)",
+
+        "category": "language",
+
+        "match_keywords": [
+            "switch to vietnamese", "speak vietnamese please", "speak vietnamese", "can you speak vietnamese",
+            "change language to vietnamese", "vietnamese please",
+            "chuyển sang tiếng việt", "chuyen sang tieng viet", "nói tiếng việt đi", "noi tieng viet di",
+            "đổi sang tiếng việt", "doi sang tieng viet", "đổi qua tiếng việt", "doi qua tieng viet",
+            "giao tiếp bằng tiếng việt", "giao tiep bang tieng viet", "dùng tiếng việt", "dung tieng viet",
+            "tiếng việt đi", "tieng viet di", "nói tiếng việt", "noi tieng viet"
+        ],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ vâng, Rora đã chuyển sang giao tiếp bằng Tiếng Việt rồi ạ. Em có thể hỗ trợ gì cho mình ạ?",
+
+        "response_en": "Dạ vâng, Rora đã chuyển sang giao tiếp bằng Tiếng Việt rồi ạ. Em có thể hỗ trợ gì cho mình ạ?",
+
+        "action_type": "switch_language",
+
+        "action_payload": {"target_language": "Tiếng Việt", "lang_code": "vi-VN"},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 99,
+
+    },
+
+    {
+
+        "id": "scn-toggle-language",
+
+        "title": "Đổi Ngôn Ngữ Giao Tiếp (Toggle Language EN / VI)",
+
+        "category": "language",
+
+        "match_keywords": [
+            "đổi ngôn ngữ", "doi ngon ngu", "chuyển ngôn ngữ", "chuyen ngon ngu",
+            "thay đổi ngôn ngữ", "thay doi ngon ngu", "switch language", "change language", "toggle language"
+        ],
+
+        "match_type": "keyword",
+
+        "response_vi": "I have switched to English. How can I help you?",
+
+        "response_en": "Dạ em đã chuyển sang Tiếng Việt rồi ạ. Em có thể giúp gì cho quý khách?",
+
+        "action_type": "switch_language",
+
+        "action_payload": {"target_language": "toggle"},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 98,
+
+    },
 
     {
 
@@ -268,23 +377,27 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "service",
 
-        "match_keywords": ['bị hỏng', 'hỏng hóc', 'đèn không sáng', 'tivi không lên', 'tivi hỏng', 'vòi nước hỏng', 'nước không chảy', 'nghẹt cống', 'tắc cống', 'máy lạnh không lạnh', 'điều hòa không mát', 'sửa chữa', 'kỹ thuật phòng', 'bảo trì phòng', 'bi hong', 'hong hoc', 'den khong sang', 'tivi khong len', 'voi nuoc hong', 'sua chua', 'broken', 'not working', 'maintenance', 'repair', 'light not working', 'ac not cooling', 'leaking tap'],
+        "match_keywords": MAINTENANCE_MENU_TRIGGER_KEYWORDS,
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ em rất xin lỗi vì sự bất tiện này trong phòng của mình ạ! Quý khách vui lòng cho em biết số phòng và thiết bị gặp sự cố, hoặc bấm phím số 0 trên điện thoại phòng để báo Lễ tân; đội ngũ kỹ thuật viên khách sạn sẽ có mặt tận phòng trong vòng 10 phút để kiểm tra và khắc phục ngay cho quý khách ạ.",
+        "response_vi": "Dạ em rất xin lỗi vì sự bất tiện này trong phòng của mình ạ! Em đã mở danh mục Báo hỏng & Sửa chữa trên màn hình rồi ạ. Quý khách vui lòng chọn sự cố hoặc tra cứu tiến độ nhé ạ.",
 
-        "response_en": "We sincerely apologize for this inconvenience! Please let me know your room number and the affected item, or dial '0' from your room telephone. Our maintenance engineering team will arrive within 10 minutes to inspect and resolve it immediately.",
+        "response_en": "We sincerely apologize for this inconvenience! I have opened the Maintenance & Repair screen for you. Please select the issue you are experiencing or track your repair progress.",
 
-        "action_type": "none",
+        "action_type": "open_maintenance_menu",
 
-        "action_payload": {'eye_expression': 'look_around'},
+        "action_payload": {'trigger_menu': 'maintenance', 'destination_key': None, 'eye_expression': 'attentive'},
 
         "is_fast_path": True,
 
         "is_active": True,
 
-        "priority": 90,
+        "is_system": True,
+
+        "is_custom_edited": False,
+
+        "priority": 98,
 
     },
 
@@ -738,6 +851,34 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
+        "id": "scn-room-410",
+
+        "title": "Chỉ đường Phòng 410",
+
+        "category": "facility",
+
+        "match_keywords": ['410', 'phòng 410', 'p410', 'p.410', 'phong 410', 'phòng số 410', 'phong so 410', 'phòng 410 ở đâu', 'tìm phòng 410', 'chỉ đường phòng 410', 'chỉ đường đến phòng 410', 'room 410'],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ Phòng 410 nằm tại Tầng 4, ở cuối hành lang đối diện thang máy ạ.",
+
+        "response_en": "Room 410 is on Level 4, located at the end of the corridor across from the elevator.",
+
+        "action_type": "show_map",
+
+        "action_payload": {'destination_key': 'room_410'},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
         "id": "scn-thanks",
 
         "title": "Lời cảm ơn & Ghi nhớ (Thanks & Acknowledged)",
@@ -800,11 +941,29 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "greeting",
 
-        "match_keywords": ["bạn là ai", "em là ai", "who are you", "what is your name", "tên bạn là gì", "tên em là gì"],
+        "match_keywords": [
+            "bạn là ai", "ban la ai", "em là ai", "em la ai", "mày là ai", "may la ai",
+            "rora là ai", "rora la ai", "robot là ai", "robot la ai",
+            "who are you", "what is your name", "who is rora", "what are you",
+            "tên bạn là gì", "ten ban la gi", "tên em là gì", "ten em la gi",
+            "bạn tên gì", "ban ten gi", "em tên gì", "em ten gi",
+            "giới thiệu bản thân", "gioi thieu ban than",
+            "giới thiệu về bản thân", "gioi thieu ve ban than",
+            "giới thiệu về bạn", "gioi thieu ve ban",
+            "giới thiệu về em", "gioi thieu ve em",
+            "giới thiệu về mình", "gioi thieu ve minh",
+            "bạn giới thiệu bản thân được không", "ban gioi thieu ban than duoc khong",
+            "bạn có thể giới thiệu bản thân", "ban co the gioi thieu ban than",
+            "bạn có thể giới thiệu về bản thân", "ban co the gioi thieu ve ban than",
+            "bạn có thể giới thiệu bản thân được không", "ban co the gioi thieu ban than duoc khong",
+            "bạn có thể giới thiệu về bản thân được không", "ban co the gioi thieu ve ban than duoc khong",
+            "tự giới thiệu", "tu gioi thieu", "giới thiệu rora", "gioi thieu rora",
+            "introduce yourself", "tell me about yourself", "can you introduce yourself"
+        ],
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ quý khách ạ!",
+        "response_vi": "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ và đồng hành cùng quý khách ạ!",
 
         "response_en": "I am Rora, the smart AI Concierge Robot at Aurora Grand Hotel. It is my pleasure to assist you!",
 
@@ -1074,6 +1233,34 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
+        "id": "scn-room-310",
+
+        "title": "Chỉ đường Phòng 310",
+
+        "category": "facility",
+
+        "match_keywords": ['310', 'phòng 310', 'p310', 'p.310', 'phong 310', 'phòng số 310', 'phong so 310', 'phòng 310 ở đâu', 'tìm phòng 310', 'chỉ đường phòng 310', 'chỉ đường đến phòng 310', 'room 310'],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ Phòng 310 nằm tại Tầng 3, ở cuối hành lang bên phải đối diện thang máy ạ.",
+
+        "response_en": "Room 310 is on Level 3, at the end of the right corridor across from the elevator.",
+
+        "action_type": "show_map",
+
+        "action_payload": {'destination_key': 'room_310'},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
         "id": "scn-restaurant",
 
         "title": "Chính sách Ẩm thực & Bữa sáng (Dining, Breakfast & Room Service)",
@@ -1108,7 +1295,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "service",
 
-        "match_keywords": ["thực đơn", "menu", "đặt món", "gọi món", "thực đơn phòng", "menu phòng", "ăn gì", "thuc don", "dat mon", "goi mon", "room service menu", "in room dining", "food menu", "xem menu", "xem thực đơn"],
+        "match_keywords": FOOD_MENU_TRIGGER_KEYWORDS,
 
         "match_type": "keyword",
 
@@ -1124,6 +1311,10 @@ DEFAULT_SEED_SCENARIOS = [
 
         "is_active": True,
 
+        "is_system": True,
+
+        "is_custom_edited": False,
+
         "priority": 95,
 
     },
@@ -1136,7 +1327,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "service",
 
-        "match_keywords": ["dịch vụ phòng", "tiện ích phòng", "tiện ích buồng phòng", "yêu cầu tiện ích", "xem tiện ích", "danh mục tiện ích", "dich vu phong", "tien ich phong", "tien ich buong phong", "room service", "room amenities", "housekeeping service"],
+        "match_keywords": ROOM_SERVICE_MENU_TRIGGER_KEYWORDS,
 
         "match_type": "keyword",
 
@@ -1152,7 +1343,43 @@ DEFAULT_SEED_SCENARIOS = [
 
         "is_active": True,
 
+        "is_system": True,
+
+        "is_custom_edited": False,
+
         "priority": 94,
+
+    },
+
+    {
+
+        "id": "scn-maintenance-menu",
+
+        "title": "Báo hỏng & Bảo trì kỹ thuật (Maintenance & Repair Menu)",
+
+        "category": "service",
+
+        "match_keywords": MAINTENANCE_MENU_TRIGGER_KEYWORDS,
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ em đã mở danh mục báo sự cố kỹ thuật và bảo trì trên màn hình. Quý khách vui lòng chọn sự cố để bộ phận kỹ thuật hỗ trợ nhanh nhất ạ!",
+
+        "response_en": "I have opened the maintenance and repair menu on the screen. Please select your issue so our technical team can assist you promptly!",
+
+        "action_type": "open_maintenance_menu",
+
+        "action_payload": {'trigger_menu': 'maintenance', 'destination_key': None, 'eye_expression': 'attentive'},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "is_system": True,
+
+        "is_custom_edited": False,
+
+        "priority": 98,
 
     },
 
@@ -1360,7 +1587,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "faq",
 
-        "match_keywords": ["chợ đêm sơn trà", "chợ đêm", "chợ hàn", "chợ cồn", "mua sắm", "mua quà", "cho dem son tra", "cho dem", "cho han", "cho con", "mua sam", "mua qua", "night market", "han market", "con market", "souvenir shopping", "local market", "son tra night market"],
+        "match_keywords": ["chợ đêm sơn trà", "chợ đêm", "chợ hàn", "chợ cồn", "mua sắm chợ đêm", "mua quà đặc sản", "mua đặc sản", "cho dem son tra", "cho dem", "cho han", "cho con", "mua sam cho dem", "mua qua dac san", "night market", "han market", "con market", "souvenir shopping", "local market", "son tra night market"],
 
         "match_type": "keyword",
 
@@ -1472,7 +1699,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "service",
 
-        "match_keywords": ["gặp người thật", "gặp nhân viên", "nói chuyện với nhân viên", "kết nối nhân viên", "video call", "live call", "gọi video", "gọi cho nhân viên", "gặp lễ tân", "gọi lễ tân", "cho tôi gặp nhân viên", "talk to human", "speak to human", "call staff"],
+        "match_keywords": ["gặp người thật", "gặp nhân viên", "nói chuyện với nhân viên", "kết nối nhân viên", "video call", "live call", "gọi video", "gọi cho nhân viên", "kết nối lễ tân", "gọi video lễ tân", "gọi lễ tân", "cho tôi gặp nhân viên", "talk to human", "speak to human", "call staff"],
 
         "match_type": "keyword",
 
@@ -1718,19 +1945,45 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
+        "id": "scn-coffee-hours",
+
+        "title": "Giờ mở cửa Rooftop Coffee",
+
+        "category": "facility",
+
+        "match_keywords": ["coffee mở cửa", "cà phê mở cửa", "cafe mở cửa", "rooftop coffee mở cửa", "quán cà phê mấy giờ mở cửa", "giờ mở cửa quán cafe"],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ quán Rooftop Coffee tại Tầng 6 mở cửa từ 7 giờ sáng đến 23 giờ đêm với view ngắm trọn toàn cảnh thành phố ạ.",
+
+        "response_en": "Rooftop Coffee on Level 6 is open from 7:00 AM to 11:00 PM with panoramic skyline views.",
+
+        "action_type": "none",
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
         "id": "scn-rooftop-coffee",
 
         "title": "Quán Rooftop Coffee & View",
 
         "category": "facility",
 
-        "match_keywords": ["quán coffee", "quán cà phê", "quán cafe", "cà phê", "cafe", "coffee", "rooftop coffee", "uống cà phê"],
+        "match_keywords": ["quán coffee", "quán cà phê", "quán cafe", "cà phê", "cafe", "coffee", "rooftop coffee", "uống cà phê", "cafe ở đâu", "cà phê ở đâu", "coffee ở đâu"],
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ quán Rooftop Coffee nằm tại Tầng 6 (Sân thượng), mở cửa từ 7 giờ sáng đến 23 giờ đêm với view ngắm trọn toàn cảnh thành phố ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ!",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Quán Rooftop Coffee tại Tầng 6: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 6 ạ.",
 
-        "response_en": "Rooftop Coffee is located on Level 6 (Rooftop), open from 7:00 AM to 11:00 PM with panoramic skyline views. In addition, you can scan the QR code on the screen to save the directions!",
+        "response_en": "Here are the directions to Rooftop Coffee on Level 6: Step 1, please proceed to Elevator A in the lobby and take it up to Level 6.",
 
         "action_type": "show_map",
 
@@ -1752,7 +2005,16 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "facility",
 
-        "match_keywords": ["nhà vệ sinh", "nha ve sinh", "đi vệ sinh", "di ve sinh", "toilet", "wc", "restroom", "phòng vệ sinh", "muốn đi vệ sinh", "muon di ve sinh", "buồn đi vệ sinh", "chỗ đi vệ sinh", "nơi đi vệ sinh", "nhà vệ sinh ở đâu", "đi vệ sinh ở đâu", "chỗ rửa tay", "nhà vệ sinh sảnh", "vệ sinh sảnh"],
+        "match_keywords": [
+            "nhà vệ sinh", "nha ve sinh", "đi vệ sinh", "di ve sinh",
+            "toilet", "tolet", "toa lét", "to lét", "toilét", "toalet", "tô lét", "toilette", "wc", "restroom", "rest room", "washroom",
+            "phòng vệ sinh", "phong ve sinh", "muốn đi vệ sinh", "muon di ve sinh", "buồn đi vệ sinh", "buon di ve sinh",
+            "chỗ đi vệ sinh", "nơi đi vệ sinh", "nhà vệ sinh ở đâu", "nha ve sinh o dau", "đi vệ sinh ở đâu",
+            "toilet ở đâu", "toilet o dau", "tolet ở đâu", "tolet o dau", "toa lét ở đâu", "toa let o dau", "to lét ở đâu", "to let o dau", "wc ở đâu", "wc o dau",
+            "where is the toilet", "where is toilet", "where is the restroom", "where is restroom", "where is the washroom", "where is washroom",
+            "toilet please", "restroom please", "find toilet", "find restroom",
+            "chỗ rửa tay", "nơi rửa tay", "nhà vệ sinh sảnh", "vệ sinh sảnh"
+        ],
 
         "match_type": "keyword",
 
@@ -1780,7 +2042,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "facility",
 
-        "match_keywords": ["đồ dùng vệ sinh", "tiện ích buồng phòng", "trong phòng có gì", "có khăn tắm không", "có bàn chải không", "có dầu gội không", "có máy sấy không", "tiện nghi trong phòng", "tiện nghi buồng phòng", "do dung ve sinh", "tien ich buong phong", "toiletries", "room amenities", "what amenities", "hotel amenities"],
+        "match_keywords": ["đồ dùng vệ sinh", "trong phòng có gì", "có khăn tắm không", "có bàn chải không", "có dầu gội không", "có máy sấy không", "tiện nghi trong phòng", "tiện nghi buồng phòng", "do dung ve sinh", "toiletries", "what amenities", "personal amenities"],
 
         "match_type": "keyword",
 
@@ -1948,7 +2210,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "facility",
 
-        "match_keywords": ["điều hòa", "máy lạnh", "chỉnh nhiệt độ", "máy lạnh không mát", "bật điều hòa", "tắt điều hòa", "dieu hoa", "may lanh", "chinh nhiet do", "may lanh khong mat", "air conditioner", "ac", "air conditioning", "climate control", "room temperature", "ac remote"],
+        "match_keywords": ["điều hòa", "máy lạnh", "chỉnh nhiệt độ", "bật điều hòa", "tắt điều hòa", "dieu hoa", "may lanh", "chinh nhiet do", "air conditioner", "ac", "air conditioning", "climate control", "room temperature", "ac remote"],
 
         "match_type": "keyword",
 
@@ -2060,7 +2322,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "chitchat",
 
-        "match_keywords": ["ăn cơm chưa", "ăn gì", "robot ăn gì", "bạn ăn gì", "ăn tối chưa", "ăn trưa chưa", "an com chua", "an gi", "robot an gi", "ban an gi", "what do you eat", "have you eaten", "do you eat food", "did you eat"],
+        "match_keywords": ["ăn cơm chưa", "robot ăn gì", "bạn ăn gì", "em ăn gì", "rora ăn gì", "ăn tối chưa", "ăn trưa chưa", "an com chua", "robot an gi", "ban an gi", "em an gi", "rora an gi", "what do you eat", "have you eaten", "do you eat food", "did you eat"],
 
         "match_type": "keyword",
 
@@ -2076,7 +2338,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "is_active": True,
 
-        "priority": 86,
+        "priority": 96,
 
     },
 
@@ -2116,13 +2378,13 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "facility",
 
-        "match_keywords": ["cửa hàng lưu niệm", "quà lưu niệm", "lưu niệm", "gift shop", "mua quà", "mua quà lưu niệm", "souvenir"],
+        "match_keywords": ["cửa hàng lưu niệm", "quà lưu niệm", "lưu niệm", "gift shop", "mua quà", "mua quà lưu niệm", "mua quà ở đâu", "mua qua", "souvenir", "hotel gift shop"],
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ cửa hàng quà lưu niệm Gift Shop tọa lạc tại Tầng 6, mở cửa từ 8 giờ sáng đến 22 giờ tối với các sản phẩm quà tặng và đặc sản tinh tế ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ!",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Cửa Hàng Lưu Niệm Gift Shop tại Tầng 6: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 6 ạ.",
 
-        "response_en": "The Gift Shop is located on Level 6, open from 8:00 AM to 10:00 PM with premium souvenirs and gifts. In addition, you can scan the QR code on the screen to save the directions!",
+        "response_en": "Here are the directions to the Gift Shop on Level 6: Step 1, please proceed to Elevator A in the lobby and take it up to Level 6.",
 
         "action_type": "show_map",
 
@@ -2132,7 +2394,33 @@ DEFAULT_SEED_SCENARIOS = [
 
         "is_active": True,
 
-        "priority": 85,
+        "priority": 91,
+
+    },
+
+    {
+
+        "id": "scn-gym-hours",
+
+        "title": "Giờ mở cửa Fitness & Gym",
+
+        "category": "facility",
+
+        "match_keywords": ["gym mở cửa", "phòng gym mở cửa", "giờ mở cửa phòng gym", "gym mấy giờ mở cửa", "giờ hoạt động phòng gym"],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ phòng Gym và trung tâm thể hình tại Tầng 5 mở cửa phục vụ 24/7 hoàn toàn miễn phí cho khách lưu trú với đầy đủ máy tập Technogym hiện đại ạ.",
+
+        "response_en": "The Fitness & Gym Center on Level 5 is open 24/7 complimentary for staying guests with modern Technogym equipment.",
+
+        "action_type": "none",
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
 
     },
 
@@ -2148,9 +2436,9 @@ DEFAULT_SEED_SCENARIOS = [
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ phòng Gym và trung tâm thể hình nằm tại Tầng 5, mở cửa phục vụ 24/7 hoàn toàn miễn phí cho khách lưu trú với đầy đủ máy tập Technogym hiện đại ạ.",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Trung tâm Fitness & Gym tại Tầng 5: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 5 ạ.",
 
-        "response_en": "The Fitness & Gym Center is located on Level 5, open 24/7 complimentary for staying guests with modern Technogym equipment.",
+        "response_en": "Here are the directions to the Fitness & Gym Center on Level 5: Step 1, please proceed to Elevator A in the lobby and take it up to Level 5.",
 
         "action_type": "show_map",
 
@@ -2166,19 +2454,45 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
+        "id": "scn-pool-hours",
+
+        "title": "Giờ mở cửa Hồ bơi vô cực",
+
+        "category": "facility",
+
+        "match_keywords": ["hồ bơi mở cửa", "giờ mở cửa hồ bơi", "hồ bơi mấy giờ mở cửa", "hồ bơi mở cửa mấy giờ", "hồ bơi đóng cửa lúc mấy giờ", "thời gian mở cửa hồ bơi"],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ hồ bơi vô cực tại Tầng 5 mở cửa từ 6 giờ sáng đến 22 giờ tối hàng ngày với khăn tắm và nước khoáng phục vụ miễn phí ạ.",
+
+        "response_en": "The Infinity Pool on Level 5 is open from 6:00 AM to 10:00 PM daily with complimentary towels and mineral water.",
+
+        "action_type": "none",
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
         "id": "scn-pool",
 
         "title": "Hồ bơi vô cực (Infinity Pool)",
 
         "category": "facility",
 
-        "match_keywords": ["hồ bơi", "bể bơi", "swimming pool", "hồ bơi ở đâu", "ho boi", "be boi", "ho boi o dau", "tắm hồ bơi", "tắm bơi", "hồ bơi mở cửa", "bể bơi ở đâu", "hồ bơi vô cực", "infinity pool"],
+        "match_keywords": ["hồ bơi", "bể bơi", "swimming pool", "hồ bơi ở đâu", "ho boi", "be boi", "ho boi o dau", "tắm hồ bơi", "tắm bơi", "bể bơi ở đâu", "hồ bơi vô cực", "infinity pool"],
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ hồ bơi vô cực nằm tại Tầng 5, mở cửa từ 6 giờ sáng đến 22 giờ tối hàng ngày với khăn tắm và nước khoáng phục vụ miễn phí ạ.",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Hồ Bơi Vô Cực tại Tầng 5: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 5 ạ.",
 
-        "response_en": "The Infinity Pool is located on Level 5, open from 6:00 AM to 10:00 PM daily with complimentary towels and mineral water.",
+        "response_en": "Here are the directions to the Infinity Pool on Level 5: Step 1, please proceed to Elevator A in the lobby and take it up to Level 5.",
 
         "action_type": "show_map",
 
@@ -2228,7 +2542,11 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "facility",
 
-        "match_keywords": ["vệ sinh tầng 2", "wc tầng 2", "toilet tầng 2", "nhà vệ sinh tầng 2", "restroom tầng 2"],
+        "match_keywords": [
+            "vệ sinh tầng 2", "ve sinh tang 2", "wc tầng 2", "wc tang 2", "toilet tầng 2", "tolet tầng 2", "toa lét tầng 2", "to lét tầng 2",
+            "nhà vệ sinh tầng 2", "nha ve sinh tang 2", "restroom tầng 2", "restroom floor 2", "toilet floor 2", "restroom f2", "toilet f2",
+            "vệ sinh lầu 2", "toilet lầu 2", "nhà vệ sinh lầu 2"
+        ],
 
         "match_type": "keyword",
 
@@ -2260,9 +2578,9 @@ DEFAULT_SEED_SCENARIOS = [
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ bãi giữ xe máy của khách sạn nằm tại Hầm B1, mở cửa 24/7 và hoàn toàn miễn phí cho quý khách lưu trú ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ!",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Bãi Giữ Xe Máy tại Hầm B1: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm xuống Hầm B1 ạ.",
 
-        "response_en": "Motorbike parking is at Basement B1, open 24/7 and complimentary for staying guests. In addition, you can scan the QR code on the screen to save the directions!",
+        "response_en": "Here are the directions to the Motorbike Parking at Basement B1: Step 1, please proceed to Elevator A in the lobby and take it down to Basement B1.",
 
         "action_type": "show_map",
 
@@ -2278,19 +2596,48 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
+        "id": "scn-bar-hours",
+
+        "title": "Giờ mở cửa Sky Lounge Bar",
+
+        "category": "facility",
+
+        "match_keywords": ["bar mở cửa", "quầy bar mở cửa", "sky bar mở cửa", "bar mấy giờ mở cửa", "giờ mở cửa quán bar", "quầy bar mở lúc mấy giờ"],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ Sky Lounge Bar nằm tại Tầng 6, mở cửa từ 16 giờ 30 chiều đến 1 giờ đêm phục vụ các loại cocktail và rượu vang thượng hạng với tầm nhìn ngắm trọn thành phố ạ.",
+
+        "response_en": "Sky Lounge Bar is on Level 6, open from 4:30 PM to 1:00 AM midnight with breathtaking skyline views and premium beverages.",
+
+        "action_type": "none",
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
         "id": "scn-rooftop-bar",
 
         "title": "Sky Lounge Bar",
 
         "category": "facility",
 
-        "match_keywords": ["quầy bar", "sky bar", "sky lounge", "uống rượu", "quán bar", "cocktail", "bar"],
+        "match_keywords": [
+            "quầy bar", "sky bar", "sky lounge", "uống rượu", "quán bar", "cocktail", "bar",
+            "ba ở đâu", "ba o dau", "quầy ba", "quay ba", "quán ba", "quan ba", "sky ba", "rooftop ba", "lên ba", "len ba", "đi ba", "di ba", "uống ở ba"
+        ],
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ Sky Lounge Bar nằm tại Tầng 6, mở cửa từ 16 giờ 30 chiều đến 1 giờ đêm phục vụ các loại cocktail và rượu vang thượng hạng với tầm nhìn ngắm trọn thành phố ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ!",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Sky Lounge Bar tại Tầng 6: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 6 ạ.",
 
-        "response_en": "Sky Lounge Bar is on Level 6, open from 4:30 PM to 1:00 AM midnight with breathtaking skyline views and premium beverages. In addition, you can scan the QR code on the screen to save the directions!",
+        "response_en": "Here are the directions to Sky Lounge Bar on Level 6: Step 1, please proceed to Elevator A in the lobby and take it up to Level 6.",
 
         "action_type": "show_map",
 
@@ -2336,11 +2683,11 @@ DEFAULT_SEED_SCENARIOS = [
 
         "id": "scn-kids-club",
 
-        "title": "Khu vui chơi trẻ em & Nôi em bé (Kids Club & Baby Cots)",
+        "title": "Khu vui chơi trẻ em (Kids Club & Children Play Area)",
 
         "category": "facility",
 
-        "match_keywords": ["khu trẻ em", "khu vui chơi", "khu vui chơi trẻ em", "trẻ em", "nôi em bé", "ghế em bé", "khu tre em", "khu vui choi", "tre em", "noi em be", "kids club", "children playground", "baby cot", "crib", "children play area", "high chair"],
+        "match_keywords": ["khu trẻ em", "khu vui chơi", "khu vui chơi trẻ em", "trẻ em", "ghế em bé", "khu tre em", "khu vui choi", "tre em", "kids club", "children playground", "children play area", "high chair"],
 
         "match_type": "keyword",
 
@@ -2390,19 +2737,45 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
-        "id": "scn-spa",
+        "id": "scn-spa-hours",
 
-        "title": "Aurora Luxury Spa & Sauna",
+        "title": "Giờ mở cửa Spa & Massage",
 
         "category": "facility",
 
-        "match_keywords": ["spa", "sauna", "massage", "xông hơi", "chăm sóc da", "spa ở đâu"],
+        "match_keywords": ["spa mở cửa", "massage mở cửa", "giờ mở cửa spa", "spa mấy giờ mở cửa", "giờ mở cửa massage"],
 
         "match_type": "keyword",
 
         "response_vi": "Dạ Thảo Mộc Spa & Massage nằm tại Tầng 5 (cùng tầng với Hồ bơi vô cực), mở cửa phục vụ từ 9 giờ sáng đến 22 giờ tối hàng ngày ạ.",
 
         "response_en": "Aurora Luxury Spa & Sauna is on Level 5, open from 9:00 AM to 10:00 PM daily.",
+
+        "action_type": "none",
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
+        "id": "scn-spa",
+
+        "title": "Aurora Luxury Spa & Sauna",
+
+        "category": "facility",
+
+        "match_keywords": ["spa", "sauna", "massage", "xông hơi", "chăm sóc da", "spa ở đâu", "massage ở đâu"],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Thảo Mộc Spa & Massage tại Tầng 5: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 5 ạ.",
+
+        "response_en": "Here are the directions to Aurora Luxury Spa & Sauna on Level 5: Step 1, please proceed to Elevator A in the lobby and take it up to Level 5.",
 
         "action_type": "show_map",
 
@@ -2484,9 +2857,9 @@ DEFAULT_SEED_SCENARIOS = [
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ bãi đỗ xe ô tô nằm tại Hầm B2, mở cửa 24/7 và hoàn toàn miễn phí cho khách lưu trú ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ!",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Bãi Đỗ Xe Ô Tô tại Hầm B2: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm xuống Hầm B2 ạ.",
 
-        "response_en": "Car parking is at Basement B2, open 24/7 and complimentary for staying guests. In addition, you can scan the QR code on the screen to save the directions!",
+        "response_en": "Here are the directions to the Car Parking at Basement B2: Step 1, please proceed to Elevator A in the lobby and take it down to Basement B2.",
 
         "action_type": "show_map",
 
@@ -2588,7 +2961,7 @@ class ScenarioService:
 
             result = await db.execute(stmt)
 
-            records = result.scalars().all()
+            records = list(result.scalars().all())
 
 
 
@@ -2640,33 +3013,105 @@ class ScenarioService:
 
                 result = await db.execute(select(DialogueScenario))
 
-                records = result.scalars().all()
+                records = list(result.scalars().all())
 
 
 
             # Đồng bộ và chuẩn hóa từ khóa các kịch bản mặc định nếu trong DB cũ còn chứa từ khóa bẫy
-            cleaned_keywords_map = {
-                "scn-pool": ["hồ bơi", "bể bơi", "swimming pool", "hồ bơi ở đâu", "ho boi", "be boi", "ho boi o dau", "tắm hồ bơi", "tắm bơi", "hồ bơi mở cửa", "bể bơi ở đâu", "hồ bơi vô cực", "infinity pool"],
-                "scn-karaoke": ["karaoke", "phòng karaoke", "hát karaoke", "phòng hát", "vip karaoke"],
-                "scn-gift-shop": ["cửa hàng lưu niệm", "quà lưu niệm", "lưu niệm", "gift shop", "mua quà", "mua quà lưu niệm", "souvenir"],
-            }
+            who_are_you_keywords = [
+                "bạn là ai", "ban la ai", "em là ai", "em la ai", "mày là ai", "may la ai",
+                "rora là ai", "rora la ai", "robot là ai", "robot la ai",
+                "who are you", "what is your name", "who is rora", "what are you",
+                "tên bạn là gì", "ten ban la gi", "tên em là gì", "ten em la gi",
+                "bạn tên gì", "ban ten gi", "em tên gì", "em ten gi",
+                "giới thiệu bản thân", "gioi thieu ban than",
+                "giới thiệu về bản thân", "gioi thieu ve ban than",
+                "giới thiệu về bạn", "gioi thieu ve ban",
+                "giới thiệu về em", "gioi thieu ve em",
+                "giới thiệu về mình", "gioi thieu ve minh",
+                "bạn giới thiệu bản thân được không", "ban gioi thieu ban than duoc khong",
+                "bạn có thể giới thiệu bản thân", "ban co the gioi thieu ban than",
+                "bạn có thể giới thiệu về bản thân", "ban co the gioi thieu ve ban than",
+                "bạn có thể giới thiệu bản thân được không", "ban co the gioi thieu ban than duoc khong",
+                "bạn có thể giới thiệu về bản thân được không", "ban co the gioi thieu ve ban than duoc khong",
+                "tự giới thiệu", "tu gioi thieu", "giới thiệu rora", "gioi thieu rora",
+                "introduce yourself", "tell me about yourself", "can you introduce yourself"
+            ]
+            records_by_id = {r.id: r for r in records}
             has_db_updates = False
+
+            # B. Phân định quyền giữa Database và Code (System vs Custom Scenarios):
+            # 1. Kịch bản hệ thống trong code chưa có trong DB -> Tự động nạp mới với is_system=True, is_custom_edited=False
+            # 2. Kịch bản đã có trong DB nhưng CHƯA bị Admin sửa tay (is_custom_edited=False) -> Đồng bộ cập nhật từ code
+            # 3. Kịch bản đã bị Admin chỉnh sửa tay (is_custom_edited=True) -> Tuyệt đối bảo tồn cấu hình Admin, KHÔNG ghi đè!
+            for seed in DEFAULT_SEED_SCENARIOS:
+                seed_id = seed["id"]
+                existing = records_by_id.get(seed_id)
+                if not existing:
+                    new_item = DialogueScenario(
+                        id=seed_id,
+                        title=seed["title"],
+                        category=seed.get("category", "service"),
+                        match_keywords=seed.get("match_keywords", []),
+                        match_type=seed.get("match_type", "keyword"),
+                        response_vi=seed.get("response_vi", ""),
+                        response_en=seed.get("response_en"),
+                        action_type=seed.get("action_type", "none"),
+                        action_payload=seed.get("action_payload"),
+                        is_fast_path=seed.get("is_fast_path", True),
+                        is_active=seed.get("is_active", True),
+                        is_system=True,
+                        is_custom_edited=False,
+                        priority=seed.get("priority", 0),
+                    )
+                    db.add(new_item)
+                    records.append(new_item)
+                    records_by_id[seed_id] = new_item
+                    has_db_updates = True
+                else:
+                    if not getattr(existing, "is_system", False):
+                        existing.is_system = True
+                        has_db_updates = True
+
+                    # Admin đã tùy biến qua UI -> Giữ nguyên cấu hình của Admin
+                    if getattr(existing, "is_custom_edited", False):
+                        continue
+
+                    # Kịch bản hệ thống chuẩn chưa bị sửa tay -> Đồng bộ định kỳ với SSOT trong code
+                    needs_update = False
+                    if existing.priority != seed.get("priority", 0):
+                        existing.priority = seed.get("priority", 0)
+                        needs_update = True
+                    if existing.action_type != seed.get("action_type", "none"):
+                        existing.action_type = seed.get("action_type", "none")
+                        needs_update = True
+                    if existing.action_payload != seed.get("action_payload"):
+                        existing.action_payload = seed.get("action_payload")
+                        needs_update = True
+                    if set(existing.match_keywords or []) != set(seed.get("match_keywords") or []):
+                        existing.match_keywords = seed.get("match_keywords", [])
+                        needs_update = True
+                    if existing.response_vi != seed.get("response_vi", ""):
+                        existing.response_vi = seed.get("response_vi", "")
+                        needs_update = True
+                    if existing.response_en != seed.get("response_en"):
+                        existing.response_en = seed.get("response_en")
+                        needs_update = True
+                    if needs_update:
+                        has_db_updates = True
+
+            # Dọn dẹp kịch bản scn-lost-keycard nếu còn kích hoạt
             for r in records:
-                if r.id == "scn-lost-keycard":
-                    if r.is_active or r.is_fast_path:
-                        r.is_active = False
-                        r.is_fast_path = False
-                        has_db_updates = True
-                elif r.id in cleaned_keywords_map:
-                    target_kw = cleaned_keywords_map[r.id]
-                    if r.match_keywords != target_kw and any(bad in (r.match_keywords or []) for bad in ["bơi lội", "hát", "đặc sản"]):
-                        r.match_keywords = target_kw
-                        has_db_updates = True
+                if r.id == "scn-lost-keycard" and (r.is_active or r.is_fast_path):
+                    r.is_active = False
+                    r.is_fast_path = False
+                    has_db_updates = True
+
             if has_db_updates:
                 try:
                     await db.commit()
                 except Exception as e_commit:
-                    logger.warning(f"[ScenarioService] Error updating sanitized keywords in DB: {e_commit}")
+                    logger.warning(f"[ScenarioService] Error committing synchronized scenarios to DB: {e_commit}")
 
             cache_list = []
 
@@ -2697,6 +3142,10 @@ class ScenarioService:
                         "is_fast_path": r.is_fast_path,
 
                         "is_active": r.is_active,
+
+                        "is_system": getattr(r, "is_system", False),
+
+                        "is_custom_edited": getattr(r, "is_custom_edited", False),
 
                         "priority": r.priority,
 
@@ -2747,19 +3196,46 @@ class ScenarioService:
         normalized = re.sub(r'\s+', ' ', normalized).strip()
 
         # 1b. Khong kich hoat Fast-Path khach san voi cac cau hoi ve kien thuc chung, nhan vat, thuc the ngoai khach san
-        is_general_knowledge = bool(re.search(
-            r'\b(vận động viên|van dong vien|cầu thủ|cau thu|ca sĩ|ca si|diễn viên|dien vien|nhạc sĩ|nhac si|tác giả|tac gia|nhà văn|nha van|nhà thơ|nha tho|tổng thống|tong thong|thủ tướng|thu tuong|chủ tịch|chu tich|người nổi tiếng|nguoi noi tieng|nhân vật|nhan vat|ông là ai|bà là ai|anh là ai|chị là ai|họ là ai|là ai|ai là|ai thế|ai vậy|who is|who are|who was|bài hát|bai hat|bài thơ|bai tho|bộ phim|bo phim|cuốn sách|cuon sach|lịch sử|lich su|tiểu sử|tieu su|nguồn gốc|nguon goc|định nghĩa|dinh nghia|khái niệm|khai niem|thế nào là|the nao la|ý nghĩa là|công thức|cong thuc|tại sao|tai sao|vì sao|vi sao|lý do gì|ly do gi)\b',
+        is_who_are_you_self = bool(re.search(
+            r'\b(bạn là ai|ban la ai|em là ai|em la ai|mày là ai|may la ai|rora là ai|rora la ai|robot là ai|robot la ai|tên bạn là gì|ten ban la gi|tên em là gì|ten em la gi|bạn tên gì|ban ten gi|em tên gì|em ten gi|giới thiệu bản thân|gioi thieu ban than|giới thiệu về bản thân|gioi thieu ve ban than|giới thiệu về bạn|gioi thieu ve ban|giới thiệu về em|gioi thieu ve em|giới thiệu về mình|gioi thieu ve minh|tự giới thiệu|tu gioi thieu|giới thiệu rora|who are you|what is your name|who is rora|tell me about yourself|introduce yourself)\b',
             normalized,
             re.IGNORECASE
         ))
-        if is_general_knowledge:
-            return None
+        if not is_who_are_you_self:
+            is_general_knowledge = bool(re.search(
+                r'\b(vận động viên|van dong vien|cầu thủ|cau thu|ca sĩ|ca si|diễn viên|dien vien|nhạc sĩ|nhac si|tác giả|tac gia|nhà văn|nha van|nhà thơ|nha tho|tổng thống|tong thong|thủ tướng|thu tuong|chủ tịch|chu tich|người nổi tiếng|nguoi noi tieng|nhân vật|nhan vat|ông là ai|bà là ai|anh là ai|chị là ai|họ là ai|bài hát|bai hat|bài thơ|bai tho|bộ phim|bo phim|cuốn sách|cuon sach|lịch sử|lich su|tiểu sử|tieu su|nguồn gốc|nguon goc|định nghĩa|dinh nghia|khái niệm|khai niem|thế nào là|the nao la|ý nghĩa là|công thức|cong thuc|tại sao|tai sao|vì sao|vi sao|lý do gì|ly do gi)\b',
+                normalized,
+                re.IGNORECASE
+            ))
+            if is_general_knowledge:
+                return None
 
 
 
         is_en = (lang_code == "en-US")
 
         lang_name = "English" if is_en else "Tiếng Việt"
+
+        # 1c. Kiem tra neu khach hoi duong di hoac thong tin ve phong KHONG TON TAI trong khach san
+        room_candidate = extract_room_number(normalized)
+        if room_candidate and not is_valid_hotel_room(room_candidate):
+            is_room_intent = bool(re.search(
+                r'(phòng|phong|room|p\.|p\b|số\s+phòng|so\s+phong|chỉ đường|chi duong|ở đâu|o dau|đường đến|duong den|đường lên|duong len|đường về|duong ve|lối lên|loi len|tìm phòng|tim phong|hướng dẫn|huong dan|tầng mấy|tang may|ở tầng|o tang|thông tin|thong tin|giá|gia|ban công|ban cong|giường|giuong|view|tiện nghi|tien nghi|diện tích|dien tich|mấy người|may nguoi|where is|how to get|directions|tell me about|information)',
+                normalized,
+                re.IGNORECASE
+            ))
+            if is_room_intent:
+                msg_vi = f"Dạ khách sạn Aurora Grand hiện không có phòng {room_candidate} ạ. Khách sạn chỉ có các phòng lưu trú từ 301 đến 310 tại Tầng 3 và từ 401 đến 410 tại Tầng 4. Quý khách vui lòng kiểm tra lại số phòng nhé ạ."
+                msg_en = f"Aurora Grand Hotel does not have room {room_candidate}. Our guest rooms are located on Level 3 (rooms 301 to 310) and Level 4 (rooms 401 to 410). Please double check your room number."
+                reply_text = msg_en if is_en else msg_vi
+                logger.info(f"[ScenarioService FastPath] Non-existent room query intercepted for '{room_candidate}'. Rejecting session room save.")
+                return (
+                    reply_text,
+                    lang_name,
+                    lang_code,
+                    "conversation",
+                    {"destination_key": None, "invalid_room": room_candidate}
+                )
 
 
 
@@ -2779,12 +3255,17 @@ class ScenarioService:
 
             is_physical_item_delivery = bool(re.search(
 
-                r'(cho\s+(tôi|toi|mình|minh|em)|xin|lấy|lay|mang|đem|dem|gửi|gui|thêm|them|mượn|muon|đặt|dat)\s+(thêm\s+|them\s+)?(khăn|khan|gối|goi|chăn|chan|nệm|nem|nước|nuoc|bàn ủi|ban ui|máy sấy|may say|bàn chải|ban chai|kem đánh răng|kem danh rang|dao cạo|dao cao|dép|dep|ly|tách|tach|dọn phòng|don phong|cơm|com|phở|pho|món|mon|đồ ăn|do an|nước uống|nuoc uong|thức uống|thuc uong|pizza)',
+                r'(cho\s+(tôi|toi|mình|minh|em)|xin|lấy|lay|mang|đem|dem|gửi|gui|thêm|them|mượn|muon|đặt|dat)\s+(thêm\s+|them\s+)?(khăn|khan|gối|goi|chăn|chan|nệm|nem|nước|nuoc|bàn ủi|ban ui|máy sấy|may say|bàn chải|ban chai|kem đánh răng|kem danh rang|dao cạo|dao cao|dép|dep|ly|tách|tach|dọn phòng|don phong|cơm|com|phở|pho|món|mon|đồ ăn|do an|nước uống|nuoc uong|thức uống|thuc uong|pizza|hành lý|hanh ly|vali)',
 
                 normalized,
 
                 re.IGNORECASE
 
+            )) or bool(re.search(
+                r'(hỗ trợ|ho tro|giúp|giup|cần|can|nhờ|nho|mang|xách|xach|lấy|lay|chuyển|chuyen|báo|bao|tìm|tim|phòng\s*\d+|room\s*\d+).*(hành lý|hanh ly|vali|thất lạc|that lac|mất đồ|mat do|quên đồ|quen do|rơi đồ|roi do|lost|luggage|bag)|'
+                r'(hành lý|hanh ly|vali|thất lạc|that lac|mất đồ|mat do|quên đồ|quen do|rơi đồ|roi do|lost|luggage|bag).*(phòng\s*\d+|room\s*\d+|lên phòng|len phong|xuống sảnh|xuong sanh|giúp|giup|hỗ trợ|ho tro)',
+                normalized,
+                re.IGNORECASE
             ))
 
             is_faq_inquiry = bool(re.search(
@@ -2803,17 +3284,8 @@ class ScenarioService:
 
 
 
-            # Bypass fast-path chi duong neu khach dang goi do / dat mon / yeu cau dich vu len phong
-
-            is_order_or_service = bool(re.search(
-
-                r'(đặt|dat|order|gọi món|goi mon|gọi|goi|mang|giao|lấy|lay|đem|gửi|thêm|mượn|cần|can|muốn|xin|cho (tôi|mình|em)|yêu cầu)',
-
-                normalized,
-
-                re.IGNORECASE
-
-            ))
+            # Bypass fast-path chi duong neu khach dang goi do / dat mon / yeu cau dich vu len phong (C. Quy tac phan tang kiem soat)
+            is_order_or_service = bool(ORDER_OR_SERVICE_EXCLUSION_REGEX.search(normalized))
 
             has_in_room_request = bool(re.search(
 
@@ -2849,7 +3321,39 @@ class ScenarioService:
 
                     continue
 
+                        # Neu kich ban la scn-restroom-ground, bo qua neu khach dang hoi ve nha ve sinh tang 2
+            if scn.get("id") == "scn-restroom-ground":
+                is_f2_query = bool(re.search(
+                    r'\b(tầng 2|tang 2|lầu 2|lau 2|floor 2|level 2|f2)\b',
+                    normalized,
+                    re.IGNORECASE
+                ))
+                if is_f2_query:
+                    continue
+
             # Neu kich ban la scn-rooms-general, bo qua neu khach dang tim phong chuc nang / tien ich khac
+                        # Neu kich ban la book_taxi / scn-airport-shuttle, bo qua neu khach dang hoi kiem tra trang thai dat xe
+            if scn.get("action_type") == "book_taxi" or scn.get("id") == "scn-airport-shuttle":
+                is_taxi_status_check = bool(re.search(
+                    r'(trạng thái|trang thai|kiểm tra|kiem tra|tới chưa|toi chua|đến chưa|den chua|sao rồi|sao roi|đang ở đâu|dang o dau|tới đâu|toi dau|check|status|\b(đã|da)?\s*(đặt|dat|gọi|goi)\b.*\b(chưa|chua)\b)',
+                    normalized,
+                    re.IGNORECASE
+                ))
+                if is_taxi_status_check:
+                    continue
+
+            # Neu kich ban la open_food_menu (nhu scn-in-room-dining), bo qua neu khach dang noi ve bao tri, sua chua, bao hong
+            if scn.get("action_type") == "open_food_menu":
+                is_mnt_intent = bool(MAINTENANCE_REGEX.search(normalized))
+                if is_mnt_intent:
+                    continue
+
+            # Neu kich ban la open_maintenance_menu hoac scn-room-maintenance, bo qua neu khach dang hoi kiem tra tien do / trang thai sua chua
+            if scn.get("action_type") == "open_maintenance_menu" or scn.get("id") in ["scn-maintenance-menu", "scn-room-maintenance"]:
+                is_maintenance_status_check = bool(STATUS_QUERY_REGEX.search(normalized))
+                if is_maintenance_status_check:
+                    continue
+
             if scn.get("id") == "scn-rooms-general":
                 non_bedroom_facilities = [
                     "gym", "karaoke", "họp", "hop", "xông hơi", "xong hoi", "spa", "bếp", "bep",
@@ -2940,9 +3444,46 @@ class ScenarioService:
 
                 raw_payload = scn.get("action_payload")
 
-                action_payload: Optional[Dict[str, Any]] = raw_payload if isinstance(raw_payload, dict) else None
+                action_payload: Optional[Dict[str, Any]] = dict(raw_payload) if isinstance(raw_payload, dict) else None
+
+                # Xu ly dac thu cho kich ban chuyen doi ngon ngu
+                if action_type == "switch_language":
+                    target_lang = (action_payload or {}).get("target_language")
+                    if target_lang == "toggle":
+                        if is_en:
+                            target_lang = "Tiếng Việt"
+                            target_lang_code = "vi-VN"
+                        else:
+                            target_lang = "English"
+                            target_lang_code = "en-US"
+                    elif target_lang == "English" or (target_lang and "en" in str(target_lang).lower()):
+                        target_lang = "English"
+                        target_lang_code = "en-US"
+                    else:
+                        target_lang = "Tiếng Việt"
+                        target_lang_code = "vi-VN"
+
+                    lang_name = target_lang
+                    lang_code = target_lang_code
+                    if target_lang_code == "en-US":
+                        response_text = str(scn.get("response_en") or scn.get("response_vi") or "Sure! I have switched to English.")
+                    else:
+                        response_text = str(scn.get("response_vi") or "Dạ vâng, em đã chuyển sang Tiếng Việt rồi ạ.")
 
                 resp_text = str((scn.get("response_en") if is_en and scn.get("response_en") else scn.get("response_vi")) or scn.get("response_vi") or "")
+
+                # Xu ly dac thu cho kich ban mo menu bao tri & sua chua phong
+                if action_type == "open_maintenance_menu":
+                    if not isinstance(action_payload, dict):
+                        action_payload = {}
+                    action_payload["trigger_menu"] = "maintenance"
+                    action_payload["destination_key"] = None
+                    if room_candidate and is_valid_hotel_room(room_candidate):
+                        action_payload["target_room_number"] = room_candidate
+                        if is_en:
+                            resp_text = f"We sincerely apologize for this inconvenience! I have opened the Maintenance & Repair screen for Room {room_candidate}. Please select the issue you are experiencing or track your repair progress."
+                        else:
+                            resp_text = f"Dạ em rất xin lỗi vì sự bất tiện này trong phòng {room_candidate} ạ! Em đã mở danh mục Báo hỏng & Sửa chữa trên màn hình cho phòng mình rồi ạ. Quý khách vui lòng chọn sự cố hoặc tra cứu tiến độ nhé ạ."
 
                 logger.info(f"[ScenarioService FastPath Hit] Matched scenario '{scn.get('id')}' - '{scn.get('title')}' in <1ms")
 
@@ -3140,6 +3681,10 @@ class ScenarioService:
 
                 is_active=data.is_active,
 
+                is_system=False,
+
+                is_custom_edited=True,
+
                 priority=data.priority,
 
             )
@@ -3215,6 +3760,8 @@ class ScenarioService:
 
 
             update_dict = data.model_dump(exclude_unset=True)
+            # Admin chinh sua qua UI -> Danh dau is_custom_edited = True de initialize_cache khong bao gio tu y ghi de
+            update_dict["is_custom_edited"] = True
 
             for k, v in update_dict.items():
 

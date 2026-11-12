@@ -54,6 +54,7 @@ function playNotificationChime() {
  * @param {Object} options
  * @param {string} options.department - Tên phòng ban cần lắng nghe (vd: 'Housekeeping', 'F&B', 'All')
  * @param {Function} options.onNotificationReceived - Callback nhận object thông báo mới
+ * @param {Function} options.onWorkflowDispatch - Callback nhận lệnh WORKFLOW_DISPATCH ({ workflow, robot_id })
  * @param {boolean} options.enabled - Bật/tắt kết nối (vd: khi user đã login)
  */
 export function useNotificationWebSocket({
@@ -61,6 +62,7 @@ export function useNotificationWebSocket({
   onNotificationReceived,
   onStatusUpdated,
   onOrderCreated,
+  onWorkflowDispatch,
   enabled = true,
 }) {
   const socketRef = useRef(null);
@@ -71,11 +73,16 @@ export function useNotificationWebSocket({
   const onNotificationReceivedRef = useRef(onNotificationReceived);
   const onStatusUpdatedRef = useRef(onStatusUpdated);
   const onOrderCreatedRef = useRef(onOrderCreated);
+  const onWorkflowDispatchRef = useRef(onWorkflowDispatch);
 
   // Giữ callback mới nhất mà không trigger re-connect
   useEffect(() => {
     onNotificationReceivedRef.current = onNotificationReceived;
   }, [onNotificationReceived]);
+
+  useEffect(() => {
+    onWorkflowDispatchRef.current = onWorkflowDispatch;
+  }, [onWorkflowDispatch]);
 
   useEffect(() => {
     onStatusUpdatedRef.current = onStatusUpdated;
@@ -182,6 +189,10 @@ export function useNotificationWebSocket({
             console.log('[NotificationWS] Incoming advertisement push:', payload);
             if (onNotificationReceivedRef.current) {
               onNotificationReceivedRef.current(payload);
+            }
+          } else if (payload.type === 'WORKFLOW_DISPATCH') {
+            if (onWorkflowDispatchRef.current) {
+              onWorkflowDispatchRef.current(payload);
             }
           } else if (payload.type === 'TASK_STATUS_UPDATED') {
             console.log('[NotificationWS] Incoming task status update:', payload.data);

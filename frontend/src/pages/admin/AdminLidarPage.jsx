@@ -13,6 +13,8 @@ import {
   startRos2Mapping,
   saveRos2Map,
   startRos2Navigation,
+  startRos2Explore,
+  stopRos2Explore,
 } from '../../services/workflowApi';
 import {
   RosbridgeClient,
@@ -22,6 +24,7 @@ import {
   parseLaserScan,
   quaternionToYaw,
 } from '../../services/rosbridgeService';
+import { defaultMapName, describeExploreResult, piRequestErrorMessage } from './exploreResult';
 import {
   Activity,
   BatteryCharging,
@@ -54,6 +57,9 @@ import {
 
 const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
 const PI5_API = `http://${PI5_IP}:8000/api/v1`;
+// Tu quet xe that: tu luc bam den khi frontier_explorer chay mat ~20-30 s
+// (kiem tra Pi/LiDAR/encoder + bat Nav2 + dem nguoc 10 s an toan).
+const EXPLORE_START_GRACE_MS = 60000;
 const ROSBRIDGE_DEFAULT_URL = import.meta.env.VITE_ROSBRIDGE_URL || 'ws://127.0.0.1:9090';
 
 // Trạng thái nguồn Pi 5 do robot/scripts/pi_power_monitor.py phân loại.
@@ -137,9 +143,11 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
   // Frontier Exploration (Quet full phong tu dong bang SLAM)
   const [isExploring, setIsExploring] = useState(false);
   const [exploredCount, setExploredCount] = useState(0);
-  const [exploreAutoSave, setExploreAutoSave] = useState(true);
-  const [exploreSaveName, setExploreSaveName] = useState('auto_explored_map');
   const [isExploreModalOpen, setIsExploreModalOpen] = useState(false);
+  // Ket qua cuoi cua frontier_explorer (/explore/status) + bang Luu map mo ra vi quet xong
+  const [exploreResult, setExploreResult] = useState(null);
+  const [saveFromExplore, setSaveFromExplore] = useState(false);
+  const [exploreError, setExploreError] = useState('');
 
   // Workflow Manager
   const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
@@ -166,6 +174,8 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
   const [safetyInfo, setSafetyInfo] = useState({ front_cm: null, rear_cm: null, left_cm: null, right_cm: null, alert: ''});
 
   const rosClientRef = useRef(null);
+  const exploreStartedAtRef = useRef(0); // Date.now() luc bam "Quet Full Phong" (0 = khong cho)
+  const exploreSeenRef = useRef(false); // da thay backend bao EXPLORING trong phien nay
   const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
   const menuDropdownRef = useRef(null);
 
@@ -238,36 +248,39 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
     initMaps();
   }, []);
 
-  // Polling dong bo trang thai SLAM Frontier Exploration tu Pi 5
+  // Dong bo trang thai tu quet tu backend ROS 2 (frontier_explorer chay -> mode EXPLORING).
+  // Sau khi bam bat dau, stack can ~20-30 s (kiem tra cam bien + Nav2 + dem nguoc 10 s)
+  // moi co explorer: giu isExploring=true trong luc cho de nut khong nhay ve "Quet".
   useEffect(() => {
     let isMounted = true;
     const pollExploreStatus = async () => {
       try {
-        const res = await fetch(`${PI5_API}/map/explore/status`);
-        if (res.ok) {
-          const data = await res.json();
-          if (isMounted && data.status === 'SUCCESS') {
-            setIsExploring(Boolean(data.is_exploring));
-            if (typeof data.explored_count === 'number') {
-              setExploredCount(data.explored_count);
-            }
+        const data = await fetchRos2RuntimeStatus();
+        if (!isMounted) return;
+        const startedAt = exploreStartedAtRef.current;
+        const waitingForExplorer = startedAt > 0 && Date.now() - startedAt < EXPLORE_START_GRACE_MS;
+        if (data?.mode === 'EXPLORING') {
+          exploreSeenRef.current = true;
+          setIsExploring(true);
+        } else if (!waitingForExplorer) {
+          if (exploreSeenRef.current && data?.mode === 'MAPPING') {
+            // Explorer da bao ket qua va tu thoat; SLAM van giu map => hoi ten de luu ngay.
+            setMapMode('MAPPING');
+            setIsMapLocked(false);
+            setSaveMapName(defaultMapName());
+            setSaveFromExplore(true);
+            setIsSaveMapModalOpen(true);
           }
-        } else {
-          // Fallback sang endpoint workflow status de dong bo robot_status
-          const fallbackRes = await fetch(`${PI5_API}/workflow/status`);
-          if (fallbackRes.ok) {
-            const fbData = await fallbackRes.json();
-            if (isMounted) {
-              setIsExploring(fbData.robot_status === 'EXPLORING');
-            }
-          }
+          exploreSeenRef.current = false;
+          exploreStartedAtRef.current = 0;
+          setIsExploring(false);
         }
       } catch {
-        // Bo qua loi khi Pi 5 dang ban
+        // Backend/WSL dang ban: giu nguyen trang thai
       }
     };
 
-    const timer = setInterval(pollExploreStatus, 1500);
+    const timer = setInterval(pollExploreStatus, 3000);
     pollExploreStatus();
     return () => {
       isMounted = false;
@@ -492,6 +505,15 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
       }
     });
 
+    // 9. Ket qua tu quet (frontier_explorer phat roi tu thoat): noi dung bang Luu map
+    const unsubExplore = client.subscribe('/explore/status', 'std_msgs/String', (msg) => {
+      try {
+        setExploreResult(typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data);
+      } catch {
+        // bo qua goi tin hong
+      }
+    });
+
     return () => {
       unsubMap();
       unsubScan();
@@ -501,6 +523,7 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
       unsubGoal();
       unsubStatus();
       unsubSensorHealth();
+      unsubExplore();
       client.disconnect();
     };
   }, [rosbridgeUrl]);
@@ -520,7 +543,10 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       try {
         const statusData = await fetchRos2RuntimeStatus();
-        if (statusData?.rosbridge_online && statusData?.foxglove_online && statusData?.mode === expectedMode) {
+        const modeOk = Array.isArray(expectedMode)
+          ? expectedMode.includes(statusData?.mode)
+          : statusData?.mode === expectedMode;
+        if (statusData?.rosbridge_online && statusData?.foxglove_online && modeOk) {
           return statusData;
         }
       } catch {
@@ -674,7 +700,8 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
       setTimeout(() => setNavNotification(''), 6500);
       return;
     }
-    setSaveMapName(`map_${new Date().toISOString().slice(0, 10).replace(/-/g, '_')}_${Date.now().toString().slice(-4)}`);
+    setSaveMapName(defaultMapName());
+    setSaveFromExplore(false);
     setIsSaveMapModalOpen(true);
   };
 
@@ -959,11 +986,18 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
   };
 
   const handleEmergencyStop = async () => {
+    // 0. Tắt ngay bộ tự quét ROS 2 (explorer + Nav2) để ngừng phát /cmd_vel; backend còn
+    //    gửi UDP "stop" thẳng tới Pi. Không await để các bước dừng bên dưới chạy ngay.
+    exploreStartedAtRef.current = 0;
+    stopRos2Explore().catch((err) => console.warn('Lỗi dừng tự quét ROS 2:', err));
+
+    // Dừng vòng lặp lái tay đang giữ phím và báo tab Camera (dùng chung nút lái) dừng theo.
     if (teleopIntervalRef.current) clearInterval(teleopIntervalRef.current);
     teleopIntervalRef.current = null;
     activeTeleopCmdRef.current = null;
     setSlamActiveMotion('stop');
     setEmergencyStopVersion((version) => version + 1);
+
     // 1. Cập nhật state UI ngay lập tức
     setIsExploring(false);
     setActiveNavGoal(null);
@@ -1017,34 +1051,73 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
   };
 
   // ─── Frontier Exploration (SLAM Tu Hanh Quet Full Phong) ────────────────
+  // Xe THAT tu quet: SLAM Toolbox + Nav2 + frontier explorer tren laptop (backend chay
+  // start_wsl_slam.sh EXPLORE=1). KHONG dung bo tu quet cu tren Pi (/map/explore/start):
+  // hai bo cung lai xe se tranh lenh motor.
   const handleStartExplore = async () => {
+    if (isRos2RuntimeBusy) return;
+    setIsRos2RuntimeBusy(true);
+    setIsExploreModalOpen(false);
+    setExploreError('');
+    setNavNotification('Đang kiểm tra Pi rồi bật SLAM + Nav2 để robot tự quét map...');
+    let failed = false;
     try {
-      setNavNotification(rc("Starting SLAM Frontier Exploration: the robot will navigate and scan the room..."));
-      const res = await fetch(`${PI5_API}/map/explore/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json'},
-        body: JSON.stringify({ auto_save: exploreAutoSave, save_name: exploreSaveName }),
+      // Tat bo tu quet cu tren Pi neu dang chay (bo qua loi neu Pi khong co).
+      await fetch(`${PI5_API}/map/explore/stop`, { method: 'POST', signal: AbortSignal.timeout(4000) })
+        .catch(() => null);
+      const lidarResponse = await fetch(`${PI5_API}/map/connect_lidar`, {
+        method: 'POST', signal: AbortSignal.timeout(15000),
+      }).catch((err) => {
+        throw new Error(piRequestErrorMessage(err, PI5_IP));
       });
-      const data = await res.json();
+      const lidarResult = await lidarResponse.json().catch(() => null);
+      if (!lidarResponse.ok || lidarResult?.status !== 'SUCCESS') {
+        throw new Error(lidarResult?.message || 'Pi đã mở cổng nhưng RPLiDAR không phát dữ liệu scan.');
+      }
+      setGridData(new Array(200 * 200).fill(-1));
+      setScanPoints([]);
+      setHasLiveRosMap(false);
+      setExploreResult(null);
+      setSaveFromExplore(false);
+      // Khong tu luu: quet xong Web hien bang de nguoi dung dat ten roi moi luu.
+      const result = await startRos2Explore('auto_explored_map', false);
+      setExploredCount(0);
+      exploreStartedAtRef.current = Date.now();
+      exploreSeenRef.current = false;
       setIsExploring(true);
-      setIsExploreModalOpen(false);
-      setNavNotification(`${data.message || rc("The robot is moving autonomously to scan the entire room...")}`);
+      await waitForRos2Runtime(['MAPPING', 'EXPLORING']);
+      setMapMode('MAPPING');
+      setIsMapLocked(false);
+      rosClientRef.current?.connect();
+      setNavNotification(
+        result?.message
+          || rc("The robot will DRIVE ITSELF after the sensor check and a 10-second countdown. Stand clear; press Stop Exploration / E-STOP to stop.")
+      );
     } catch (err) {
-      setNavNotification(rc("Could not start exploration: {0}", [err.message]));
+      failed = true;
+      exploreStartedAtRef.current = 0;
+      setIsExploring(false);
+      setNavNotification('');
+      // Loi hien bang do, giu toi khi nguoi dung tat (toast thuong tu mat sau 10 s - de bo lo)
+      setExploreError(rc("Could not enable autonomous scanning: {0}", [err.message]));
+    } finally {
+      setIsRos2RuntimeBusy(false);
+      if (!failed) setTimeout(() => setNavNotification(''), 10000);
     }
-    setTimeout(() => setNavNotification(''), 5000);
   };
 
   const handleStopExplore = async () => {
+    exploreStartedAtRef.current = 0;
+    setIsExploring(false);
+    publishCmdVel(0, 0);
     try {
-      await fetch(`${PI5_API}/map/explore/stop`, { method: 'POST'});
-      setIsExploring(false);
-      publishCmdVel(0, 0);
-      setNavNotification(rc("Automatic scanning stopped. The robot is stationary."));
+      await stopRos2Explore();
+      await fetch(`${PI5_API}/map/explore/stop`, { method: 'POST' }).catch(() => null);
+      setNavNotification(rc("Automatic scanning stopped. The robot is stationary. SLAM is still running: you can save the map or keep driving manually."));
     } catch (err) {
-      setNavNotification(rc("Could not stop exploration: {0}", [err.message]));
+      setNavNotification(rc("Could not stop exploration: {0}. Press E-STOP if the robot is still moving!", [err.message]));
     }
-    setTimeout(() => setNavNotification(''), 3500);
+    setTimeout(() => setNavNotification(''), 6000);
   };
 
   // ─── Workflow Manager ────────────────────────────────────────────────
@@ -1324,7 +1397,7 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
                   <AlertTriangle className="w-4 h-4 text-red-600 shrink-0"/>
                   <div className="flex flex-col">
                     <span> {rc("Stop Exploration")} </span>
-                    <span className="text-[10px] text-red-500 font-normal"> {rc("Explored")} {exploredCount || 0} {rc("points")} </span>
+                    <span className="text-[10px] text-red-500 font-normal"> {rc("The robot is exploring (SLAM + Nav2) · click to stop")} </span>
                   </div>
                 </button>
               ) : (
@@ -1463,8 +1536,21 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
         </div>
       </div>
 
+      {/* Loi bat tu quet: do, giu nguyen toi khi bam X */}
+      {exploreError && (
+        <div
+          role="alert"
+          className="absolute top-14 left-1/2 -translate-x-1/2 z-50 max-w-xl px-4 py-2.5 rounded-lg shadow-lg border flex items-start gap-2 text-xs font-bold pointer-events-auto"
+          style={{ background: '#FEF2F2', borderColor: '#FCA5A5', color: '#991B1B'}}
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 mt-0.5"/>
+          <span className="leading-relaxed">{exploreError}</span>
+          <button onClick={() => setExploreError('')} className="ml-2 text-red-400 hover:text-red-700 font-bold text-xs cursor-pointer">✕</button>
+        </div>
+      )}
+
       {/* Floating Toast Notification (Absolute - Never shifts workspace layout height) */}
-      {navNotification && (
+      {navNotification && !exploreError && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-md border flex items-center gap-2 text-xs font-bold font-mono pointer-events-auto backdrop-blur-xs"
           style={{ background: 'rgba(250, 248, 245, 0.95)', borderColor: '#BFBFBD', color: '#262626'}}>
           <Radio className="w-3.5 h-3.5 shrink-0 text-amber-600 animate-pulse"/>
@@ -1809,10 +1895,32 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
               </div>
               <button
                 type="button"
-                onClick={() => setIsSaveMapModalOpen(false)}
+                onClick={() => {
+                  setIsSaveMapModalOpen(false);
+                  setSaveFromExplore(false);
+                }}
                 className="text-stone-400 hover:text-stone-700 text-lg cursor-pointer"
               > {rc("×")} </button>
             </div>
+
+            {/* Mo ra vi robot tu quet xong: bao ket qua truoc khi dat ten */}
+            {saveFromExplore && (() => {
+              const info = describeExploreResult(exploreResult);
+              const tone = info.tone === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : info.tone === 'warning'
+                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                : 'border-stone-200 bg-stone-50 text-stone-700';
+              return (
+                <div className={`p-3 rounded-lg border text-xs leading-relaxed ${tone}`}>
+                  <span className="font-bold block mb-0.5">{info.title}</span>
+                  {info.detail}
+                  <span className="block mt-1 opacity-80">
+                    Đặt tên rồi bấm Lưu. Bấm Hủy nếu muốn lái tay quét thêm (SLAM vẫn giữ bản đồ), lưu sau bằng nút “2. LƯU & KHÓA”.
+                  </span>
+                </div>
+              );
+            })()}
 
             <form onSubmit={handleSaveMap} className="space-y-3">
               <div>
@@ -1843,7 +1951,10 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
               <div className="flex justify-end gap-2 pt-3 border-t"style={{ borderColor: '#BFBFBD'}}>
                 <button
                   type="button"
-                  onClick={() => setIsSaveMapModalOpen(false)}
+                  onClick={() => {
+                    setIsSaveMapModalOpen(false);
+                    setSaveFromExplore(false);
+                  }}
                   className="px-4 py-2 rounded-lg text-xs font-semibold border cursor-pointer"
                   style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626'}}
                 > {rc("Cancel")} </button>
@@ -1988,28 +2099,11 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px]"> {rc("Ensure the floor has no steep steps or holes. You can select \"STOP EXPLORATION\" at any time.")} </div>
             </div>
 
-            <div className="space-y-3 pt-2">
-              <div>
-                <label className="block text-xs font-semibold text-stone-700 mb-1"> {rc("Map name to save")} </label>
-                <input
-                  type="text"
-                  value={exploreSaveName}
-                  onChange={(e) => setExploreSaveName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border text-xs bg-white text-stone-800 outline-none focus:border-emerald-500"
-                  style={{ borderColor: '#BFBFBD'}}
-                  placeholder="auto_explored_map"
-                />
-              </div>
-
-              <label className="flex items-center gap-2 cursor-pointer text-xs text-stone-700">
-                <input
-                  type="checkbox"
-                  checked={exploreAutoSave}
-                  onChange={(e) => setExploreAutoSave(e.target.checked)}
-                  className="rounded text-emerald-600"
-                />
-                <span> {rc("Automatically save the map when the full scan completes")} </span>
-              </label>
+            <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-[11px] text-emerald-800 flex items-start gap-2">
+              <Save className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"/>
+              <span> {rc("No need to name the map first: when the robot finishes scanning (or is stopped), the web app reports the result and opens the")}
+                <strong> {rc("Save map")}</strong> {rc("panel so you can name and save it.")}
+              </span>
             </div>
 
             <div className="flex justify-end gap-2 pt-3 border-t"style={{ borderColor: '#BFBFBD'}}>

@@ -1,6 +1,14 @@
-**STEPS**
+# ĐẶC TẢ CÁC BƯỚC VÀ KỊCH BẢN STEPFLOW CHO ROBOT (HC-ROBOT)
 
-###
+> **Tài liệu liên quan:**
+> - Bản đồ code: [[01-File-Map|Bản đồ source code]]
+> - Kiến trúc hệ thống: [[02-Architecture|Kiến trúc tổng thể]]
+> - Triển khai thực tế: `backend/app/api/v1/endpoints/workflows.py` và Trình tạo kịch bản tại Tab Scenarios (`AdminPortalPage.jsx`).
+> - Luồng phiên dịch trực tiếp: [[../guides/video_call_flow|Luồng Phiên dịch Video Call (Staff <-> Robot)]].
+
+---
+
+## 1. Danh Sách 8 Khối Lệnh Chuẩn (Action Blocks)
 
 | **STT** | **Tên Step** | **Giải thích** | **Nhiệm vụ chính của Robot** |
 | --- | --- | --- | --- |
@@ -145,10 +153,11 @@ Mục đích: Hướng dẫn đường đi trên bản đồ và robot trực ti
   4. SPEAK (text: "Đã cài đặt báo thức lúc 6 giờ 30 sáng cho phòng 305.", language: "vi-VN", speed: 1.0)
   5. SHOW (screen\_type: "MENU", content\_id: "UI\_CONFIRMATION", timeout: 10)
 
-**Workflow 9: Cầu nối dịch thuật trực tiếp Khách - Lễ tân**
+**Workflow 9: Cầu nối dịch thuật trực tiếp Khách - Lễ tân (Live Concierge Translation)**
 
-* Mục đích: Hỗ trợ phiên dịch hai chiều giữa khách quốc tế không thạo tiếng và nhân viên lễ tân.
-* Chuỗi Step:
+* Mục đích: Hỗ trợ phiên dịch hai chiều giữa khách quốc tế không thạo tiếng và nhân viên lễ tân/concierge.
+* *Hiện trạng triển khai thực tế:* Kịch bản này đã được nâng cấp và triển khai thành hệ thống **WebRTC 2-Way Live Video Call** thời gian thực (`MessengerVideoCallModal.jsx`), tự động nhận diện tiếng nói đa ngữ qua audio stream STT adapter, hiển thị phụ đề song ngữ và phát giọng đọc EdgeTTS hai chiều (`vi-VN-HoaiMyNeural` $\leftrightarrow$ `en-US-JennyNeural`). Chi tiết xem tại [[../guides/video_call_flow|Luồng Phiên Dịch Video Call (Staff <-> Robot)]].
+* Chuỗi Step mô phỏng cơ bản:
   1. SPEAK (text: "Tôi sẽ làm phiên dịch viên hỗ trợ bạn và lễ tân.", language: "vi-VN", speed: 1.0)
   2. SHOW (screen\_type: "MENU", content\_id: "UI\_TRANSLATE\_MODE", timeout: 60)
   3. LISTEN (input\_source: "VOICE", timeout: 15, output\_var: "guest\_speech")

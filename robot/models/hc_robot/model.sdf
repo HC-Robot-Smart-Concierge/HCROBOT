@@ -6,7 +6,7 @@
     <!-- BASE LINK / CHASSIS -->
     <link name="base_link">
       <inertial>
-        <pose>-0.038 0 0.045 0 0 0</pose>
+        <pose>0 0 0.045 0 0 0</pose>
         <mass>1.2</mass>
         <inertia>
           <ixx>0.01</ixx>
@@ -20,10 +20,10 @@
 
       <!-- Chassis Visual (Orange Body) -->
       <visual name="chassis_visual">
-        <pose>-0.038 0 0.045 0 0 0</pose>
+        <pose>0 0 0.045 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.22 0.18 0.09</size>
+            <size>0.32 0.16 0.09</size>
           </box>
         </geometry>
         <material>
@@ -34,17 +34,17 @@
       </visual>
 
       <collision name="chassis_collision">
-        <pose>-0.038 0 0.045 0 0 0</pose>
+        <pose>0 0 0.045 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.22 0.18 0.09</size>
+            <size>0.32 0.16 0.09</size>
           </box>
         </geometry>
       </collision>
 
       <!-- Caster Wheel (White Low-Friction Ball) -->
       <visual name="caster_visual">
-        <pose>-0.095 0 -0.016 0 0 0</pose>
+        <pose>-0.13 0 -0.025 0 0 0</pose>
         <geometry>
           <sphere>
             <radius>0.008</radius>
@@ -57,7 +57,40 @@
       </visual>
 
       <collision name="caster_collision">
-        <pose>-0.095 0 -0.016 0 0 0</pose>
+        <pose>-0.13 0 -0.025 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.008</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.001</mu>
+              <mu2>0.001</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+
+      <!-- Banh ti PHIA TRUOC: xe that 4 banh nen khong chui dau khi phanh. Thieu banh
+           nay, phanh gap luc dang tien thi than xe chui ~1.6 do (0.3 m/s) -> LiDAR cao
+           ~0.19 m quet trung san o ~7 m, SLAM ve san thanh tuong. -->
+      <visual name="front_caster_visual">
+        <pose>0.13 0 -0.025 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.008</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.9 0.9 0.9 1</ambient>
+          <diffuse>0.9 0.9 0.9 1</diffuse>
+        </material>
+      </visual>
+
+      <collision name="front_caster_collision">
+        <pose>0.13 0 -0.025 0 0 0</pose>
         <geometry>
           <sphere>
             <radius>0.008</radius>
@@ -89,7 +122,7 @@
 
       <!-- Robot Eyes (Display Face) -->
       <visual name="face_eye_left">
-        <pose>0.11 0.05 0.09 0 1.5708 0</pose>
+        <pose>0.162 0.05 0.09 0 1.5708 0</pose>
         <geometry>
           <cylinder>
             <radius>0.015</radius>
@@ -104,7 +137,7 @@
       </visual>
 
       <visual name="face_eye_right">
-        <pose>0.11 -0.05 0.09 0 1.5708 0</pose>
+        <pose>0.162 -0.05 0.09 0 1.5708 0</pose>
         <geometry>
           <cylinder>
             <radius>0.015</radius>
@@ -120,7 +153,7 @@
 
       <!-- Robot Mouth / LED Screen Indicator -->
       <visual name="face_mouth">
-        <pose>0.11 0 0.05 0 1.5708 0</pose>
+        <pose>0.162 0 0.05 0 1.5708 0</pose>
         <geometry>
           <box>
             <size>0.01 0.06 0.005</size>
@@ -158,7 +191,7 @@
 
     <!-- LIDAR LINK & SENSOR (Explicit link with fixed joint to base_link) -->
     <link name="laser_frame">
-      <pose relative_to="base_link">-0.065 0 0.17 0 0 0</pose>
+      <pose relative_to="base_link">0.08 0 0.202 0 0 0</pose>
       <inertial>
         <mass>0.05</mass>
         <inertia>
@@ -173,11 +206,11 @@
 
       <!-- LiDAR Stand (Visual connecting base to puck) -->
       <visual name="lidar_stand">
-        <pose>0 0 -0.045 0 0 0</pose>
+        <pose>0 0 -0.056 0 0 0</pose>
         <geometry>
           <cylinder>
             <radius>0.008</radius>
-            <length>0.07</length>
+            <length>0.112</length>
           </cylinder>
         </geometry>
         <material>
@@ -211,11 +244,13 @@
         </geometry>
       </collision>
 
-      <!-- LiDAR Sensor Plugin (Elevated 360 Rays, Clean Clearance, Range Min 0.22m) -->
+      <!-- LiDAR GIONG XE THAT (RPLiDAR A1M8 qua lidar_ws_to_ros2.py): gan truoc tam xe
+           8 cm, cao 0.202 m tren base_link (lidar.xacro); /scan 360 o 1 do, 0.20-12 m,
+           chu ky ~0.125 s (8 Hz); nhieu do xa ~1 cm (A1M8: ~1% o 1-3 m). -->
       <sensor name="laser" type="gpu_lidar">
         <pose>0 0 0 0 0 0</pose>
         <visualize>true</visualize>
-        <update_rate>15</update_rate>
+        <update_rate>8</update_rate>
         <topic>/scan</topic>
         <gz_frame_id>laser_frame</gz_frame_id>
         <lidar>
@@ -234,10 +269,15 @@
             </vertical>
           </scan>
           <range>
-            <min>0.22</min>
+            <min>0.20</min>
             <max>12.0</max>
             <resolution>0.01</resolution>
           </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
         </lidar>
       </sensor>
     </link>
@@ -271,7 +311,7 @@
 
     <!-- LEFT WHEEL -->
     <link name="left_wheel">
-      <pose>0 0.10 0 -1.5708 0 0</pose>
+      <pose>0 0.07 0 -1.5708 0 0</pose>
       <inertial>
         <mass>0.08</mass>
         <inertia>
@@ -286,7 +326,7 @@
       <visual name="visual">
         <geometry>
           <cylinder>
-            <radius>0.024</radius>
+            <radius>0.033</radius>
             <length>0.018</length>
           </cylinder>
         </geometry>
@@ -297,9 +337,10 @@
       </visual>
       <collision name="collision">
         <geometry>
-          <sphere>
-            <radius>0.024</radius>
-          </sphere>
+          <cylinder>
+            <radius>0.033</radius>
+            <length>0.018</length>
+          </cylinder>
         </geometry>
         <surface>
           <friction>
@@ -314,7 +355,7 @@
 
     <!-- RIGHT WHEEL -->
     <link name="right_wheel">
-      <pose>0 -0.10 0 1.5708 0 0</pose>
+      <pose>0 -0.07 0 1.5708 0 0</pose>
       <inertial>
         <mass>0.08</mass>
         <inertia>
@@ -329,7 +370,7 @@
       <visual name="visual">
         <geometry>
           <cylinder>
-            <radius>0.024</radius>
+            <radius>0.033</radius>
             <length>0.018</length>
           </cylinder>
         </geometry>
@@ -340,9 +381,10 @@
       </visual>
       <collision name="collision">
         <geometry>
-          <sphere>
-            <radius>0.024</radius>
-          </sphere>
+          <cylinder>
+            <radius>0.033</radius>
+            <length>0.018</length>
+          </cylinder>
         </geometry>
         <surface>
           <friction>
@@ -384,13 +426,29 @@
     <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
       <left_joint>left_wheel_joint</left_joint>
       <right_joint>right_wheel_joint</right_joint>
-      <wheel_separation>0.20</wheel_separation>
-      <wheel_radius>0.024</wheel_radius>
+      <!-- GIONG XE THAT: than 32 x 16 cm nen hai ben banh cach nhau ~0.14 m. (0.297 trong
+           lidar_ws_to_ros2.py la track HIEU DUNG cua skid-steer khi tinh odom bang encoder;
+           xe that lay goc quay tu gyro nen khong phu thuoc so nay.) Plugin tinh odom bang
+           0.142 / 0.0333 trong khi banh that 0.14 / 0.033: lech ~1.4% goc, ~1% quang duong,
+           de SLAM duoc thu voi odom CO sai so nho nhu xe that. -->
+      <wheel_separation>0.142</wheel_separation>
+      <wheel_radius>0.0333</wheel_radius>
+      <!-- Xe that: PWM tran 50% ~ 0.24 m/s moi ben (diff_drive.py) -->
+      <max_linear_velocity>0.24</max_linear_velocity>
+      <min_linear_velocity>-0.24</min_linear_velocity>
+      <max_angular_velocity>1.6</max_angular_velocity>
+      <min_angular_velocity>-1.6</min_angular_velocity>
       <topic>cmd_vel</topic>
       <odom_topic>odom</odom_topic>
       <tf_topic>tf</tf_topic>
       <frame_id>odom</frame_id>
       <child_frame_id>base_link</child_frame_id>
+      <!-- Gioi han gia toc = dung gia tri Nav2 gia dinh (nav2_params acc_lim/decel_lim):
+           dung tu 0.2 m/s chi mat ~0.08 s (~1 cm) nhung khong giat tuc thoi. -->
+      <max_linear_acceleration>2.5</max_linear_acceleration>
+      <min_linear_acceleration>-2.5</min_linear_acceleration>
+      <max_angular_acceleration>3.2</max_angular_acceleration>
+      <min_angular_acceleration>-3.2</min_angular_acceleration>
     </plugin>
   </model>
 </sdf>

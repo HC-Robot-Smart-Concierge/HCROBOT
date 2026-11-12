@@ -1,6 +1,6 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
 
 # ---------------------------------------------------------
@@ -381,6 +381,10 @@ class BellRequestCreate(BaseModel):
     reporter: Optional[str] = None
     description: Optional[str] = None
     request_type: str = "luggage"
+    # Robot kiosk: a key from bell_request_service.BELL_SERVICES, or "auto" to classify the
+    # guest's words. Either enables duplicate protection; staff quick requests omit it.
+    service_key: Optional[str] = Field(None, max_length=50)
+    source: Optional[str] = Field(None, max_length=100)
 
 class BellRequestStatusUpdate(BaseModel):
     status: Optional[str] = None # 'Pending', 'In Progress', 'Completed'
@@ -399,8 +403,18 @@ class BellRequestResponse(BaseModel):
     status: str
     assigned_to: Optional[str]
     created_at: datetime
+    bell_service: Optional[str] = None
+    duplicate: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class BellRoomStatusResponse(BaseModel):
+    room_number: str
+    pending_count: int
+    in_progress_count: int
+    completed_count: int
+    requests: List[BellRequestResponse]
 
 
 # ---------------------------------------------------------
@@ -408,6 +422,7 @@ class BellRequestResponse(BaseModel):
 # ---------------------------------------------------------
 class MaintenanceRequestCreate(BaseModel):
     title: str
+    catalog_item_id: Optional[str] = Field(None, max_length=50)
     category: str = "general"
     location: str
     description: Optional[str] = None
@@ -418,8 +433,14 @@ class MaintenanceRequestStatusUpdate(BaseModel):
     assigned_to: Optional[str] = None
     assigned_technician: Optional[str] = None
 
+class MaintenanceRequestPriorityUpdate(BaseModel):
+    priority: Literal["Normal", "Urgent"]
+
 class MaintenanceRequestResponse(BaseModel):
     id: str
+    duplicate: bool = False
+    merged: bool = False
+    priority: str = "Normal"
     ticket_code: str
     title: str
     category: str
@@ -432,6 +453,69 @@ class MaintenanceRequestResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MaintenanceCatalogItemCreate(BaseModel):
+    name_vi: str = Field(..., description="Tên sự cố tiếng Việt", min_length=2, max_length=150)
+    name_en: str = Field(..., description="Tên sự cố tiếng Anh", min_length=2, max_length=150)
+    category: str = Field("hvac", description="Phân loại: hvac, plumbing, electrical, door_lock, media_network, appliance, other")
+    priority: str = Field("NORMAL", description="Mức độ ưu tiên: LOW, NORMAL, HIGH, URGENT")
+    description_vi: Optional[str] = None
+    description_en: Optional[str] = None
+    estimated_fix_time: int = Field(15, description="Thời gian xử lý ước tính (phút)")
+    is_active: bool = True
+    display_order: int = 0
+
+
+class MaintenanceCatalogItemUpdate(BaseModel):
+    name_vi: Optional[str] = None
+    name_en: Optional[str] = None
+    category: Optional[str] = None
+    priority: Optional[str] = None
+    description_vi: Optional[str] = None
+    description_en: Optional[str] = None
+    estimated_fix_time: Optional[int] = None
+    is_active: Optional[bool] = None
+    display_order: Optional[int] = None
+
+
+class MaintenanceCatalogItemResponse(BaseModel):
+    id: str
+    name_vi: str
+    name_en: str
+    category: str
+    priority: str
+    description_vi: Optional[str] = None
+    description_en: Optional[str] = None
+    estimated_fix_time: int
+    is_active: bool
+    display_order: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RoomMaintenanceRequestItem(BaseModel):
+    id: str
+    ticket_code: str
+    title: str
+    category: str
+    status: str
+    priority: str
+    assigned_to: Optional[str] = None
+    created_at: datetime
+    est_completion: Optional[str] = None
+    description: Optional[str] = None
+
+
+class RoomMaintenanceStatusResponse(BaseModel):
+    room_number: str
+    total_requests: int
+    pending_count: int
+    in_progress_count: int
+    completed_count: int
+    requests: List[RoomMaintenanceRequestItem]
 
 
 # ---------------------------------------------------------
@@ -812,6 +896,7 @@ class NotificationResponse(BaseModel):
 # Taxi & Transportation Schemas
 # ---------------------------------------------------------
 class TaxiRequestCreate(BaseModel):
+    room_number: Optional[str] = Field(None, description="Số phòng của khách yêu cầu", json_schema_extra={"example": "301"})
     guest_name: str = Field("Hotel Guest", description="Tên khách hàng yêu cầu xe", json_schema_extra={"example": "Mr. David Miller"})
     pickup_location: str = Field("Main Lobby", description="Điểm đón khách (vd: 'Main Lobby', 'Cổng trước', 'Room 502')", json_schema_extra={"example": "Main Lobby & Front Entrance"})
     destination: str = Field(..., description="Điểm đến (vd: 'Sân bay Quốc tế Đà Nẵng', 'Bà Nà Hills')", json_schema_extra={"example": "Sân bay Quốc tế Đà Nẵng (DAD)"})
@@ -833,6 +918,7 @@ class TaxiRequestResponse(BaseModel):
     ticket_code: str = Field(..., description="Mã vé / Mã chuyến xe (vd: 'TX-102')")
     guest_name: str = Field(..., description="Tên khách hàng")
     pickup_location: str = Field(..., description="Điểm đón khách")
+    room_number: Optional[str] = Field(None, description="Số phòng của khách yêu cầu")
     destination: str = Field(..., description="Điểm đến")
     pickup_time: str = Field(..., description="Thời gian đón")
     party_size: int = Field(..., description="Số lượng khách")
@@ -887,6 +973,8 @@ class RoomNfcVerifyRequest(BaseModel):
 
 class RoomPinVerifyResponse(BaseModel):
     verified: bool = Field(..., description="True nếu mã PIN/CCCD/NFC chính xác")
+    duplicate: bool = False
+    merged: bool = False
     success: bool = Field(True, description="True nếu xác thực thành công")
     room_number: str = Field(..., description="Số phòng")
     guest_name: Optional[str] = Field(None, description="Tên khách đang ở")
@@ -902,11 +990,24 @@ class RoomCheckInRequest(BaseModel):
     guest_name: str = Field(..., description="Tên khách hàng check-in")
     guest_phone: Optional[str] = Field(None, alias="guestPhone", description="Số điện thoại di động của khách lưu trú")
     room_phone: Optional[str] = Field(None, alias="roomPhone", description="Số máy nhánh nội bộ phòng (ví dụ: Ext 301 hoặc 028...)")
-    identity_number: Optional[str] = Field(None, description="Số CCCD / CMND / Hộ chiếu")
+    identity_number: Optional[str] = Field(None, description="Số CCCD / CMND / Hộ chiếu (chỉ gồm chữ số 0-9)")
     pin_code: Optional[str] = Field(None, description="Mã PIN 4 số (nếu không truyền sẽ tự sinh hoặc lấy 4 số cuối CCCD)")
     tag_code: Optional[str] = Field(None, alias="tagCode", description="Mã thẻ phòng NFC / TagCode cấp cho khách lưu trú")
     nfc_card_uid: Optional[str] = Field(None, description="Mã thẻ phòng NFC (legacy)")
     status: Optional[str] = Field("OCCUPIED", description="Trạng thái phòng sau check-in")
+
+    @field_validator("identity_number")
+    @classmethod
+    def validate_identity_number(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            clean = v.strip()
+            if clean:
+                if not clean.isdigit():
+                    raise ValueError("Số CCCD / Hộ chiếu chỉ được chứa các chữ số (0-9).")
+                if len(clean) < 4:
+                    raise ValueError("Số CCCD / Hộ chiếu phải có ít nhất 4 chữ số để tạo mã PIN phòng.")
+            return clean or None
+        return v
 
     model_config = ConfigDict(populate_by_name=True)
 

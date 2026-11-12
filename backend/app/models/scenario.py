@@ -26,6 +26,8 @@ class DialogueScenario(Base):
     action_payload: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     is_fast_path: Mapped[bool] = mapped_column(Boolean, default=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_system: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_custom_edited: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=0)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

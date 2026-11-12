@@ -13,6 +13,7 @@ Tai lieu nay huong dan quy trinh van hanh va khoi dong day du tat ca cac thanh p
 | **Backend API** | Windows (Python 3.11) | Port 8000 (HTTP/WS) | FastAPI, LangGraph AI Agent, Ollama LLM, Database, REST APIs |
 | **Frontend Web** | Windows (Node.js/Vite) | Port 3000 (HTTP) | Man hinh Kiosk Robot, Admin Portal, Phong Gia Lap Workflow |
 | **WSL 2 ROS 2 Stack** | Windows WSL2 (Ubuntu 24.04) | Port 9090 (WebSocket) | Rosbridge Suite, SLAM Toolbox, Nav2, Gazebo Simulation |
+| **Foxglove Bridge** | Windows WSL2 (Ubuntu 24.04) | Port 8765 (WebSocket) | Xem ban do /map, tia /scan, TF realtime tren Foxglove (xem muc 7) |
 
 ---
 
@@ -176,6 +177,8 @@ python3 /mnt/f/DoAn/HC-Robot/robot/scripts/autonomous_navigator.py
 | **Frontend Kiosk** | `http://localhost:3000` | `http://100.92.82.61:3000` | Giao dien khach hang |
 | **Admin Portal** | `http://localhost:3000/admin` | `http://100.92.82.61:3000/admin` | Quan tri vien |
 | **ROS 2 Rosbridge** | `ws://localhost:9090` | `ws://100.92.82.61:9090` | WebSocket bridge |
+| **Foxglove Bridge** | `ws://localhost:8765` | `ws://100.92.82.61:8765` | Viewer ban do realtime (muc 7) |
+| **LiDAR Service Pi 5** | - | `http://100.99.72.51:8000` | API + WebSocket `/api/v1/map/ws` cua `main.py` |
 | **Raspberry Pi 5** | `ssh phuc@raspberrypi.local` | `ssh phuc@100.99.72.51` | May chu dieu khien xe |
 | **Ollama Local LLM** | `http://localhost:11434` | - | AI model Llama/Qwen |
 
@@ -220,3 +223,149 @@ Tren Pi 5, kiem tra quyen doc cong Serial:
 ls -l /dev/ttyUSB*
 sudo chmod 666 /dev/ttyUSB0
 ```
+
+---
+
+## 6. CHAY ROS 2: QUET MAP (MAPPING) VA TU HANH (NAVIGATION)
+
+ROS 2 chay trong WSL2 tren laptop. Pi 5 chi doc LiDAR/encoder/IMU va gui sang laptop qua WebSocket; SLAM Toolbox, Nav2 chay tren laptop.
+
+**Thu tu bat bat buoc:**
+1. Pi 5: `sudo python3 main.py` (xem Buoc 1). Bridge tren laptop phai ket noi duoc vao Pi.
+2. Laptop: Backend (Buoc 2) va Frontend (Buoc 3).
+3. Laptop: ROS 2 theo mot trong cac cach duoi day.
+
+> Tat ca lenh `wsl ...` ben duoi chay trong **PowerShell tai thu muc goc HCROBOT** (duong dan `robot/...` la duong dan tuong doi).
+
+### 6.1 Bat ROS 2 o che do QUET MAP
+
+**Cach A - Bam nut tren Web (khong can go lenh):**
+Admin Portal -> trang LiDAR -> **"1. Bat Dau Quet Map"**. Backend tu goi `wsl.exe` chay `start_wsl_slam.sh` o che do nen.
+
+**Cach B - Chay tay trong Terminal rieng (de xem log truc tiep):**
+```powershell
+wsl -d Ubuntu-24.04 bash robot/ros2_configs/start_wsl_slam.sh
+```
+Hoac nhap dup [quet_map_mot_lan.bat](quet_map_mot_lan.bat) (cung stack, mo them RViz).
+
+Script se tat stack cu roi bat lan luot:
+
+| Thanh phan | Vai tro |
+| :--- | :--- |
+| `robot_state_publisher` | Mo hinh robot (URDF) va cay TF |
+| `rosbridge_websocket` (:9090) | Cau noi Web Admin <-> ROS 2 (lai xe, nhan /map) |
+| `foxglove_bridge` (:8765) | Cau noi Foxglove <-> ROS 2 |
+| `lidar_ws_to_ros2.py` | Doc WebSocket cua Pi -> phat `/scan`, `/odom`, TF |
+| `slam_toolbox` (online async) | Ve ban do `/map` tu `/scan` + odom |
+
+Khi thay dong `HE THONG SLAM DANG HOAT DONG TREN LAPTOP WSL2!` la san sang. Dung bang `Ctrl+C`.
+
+> **Khong lam ca A va B cung luc.** Nut "1. Bat Dau Quet Map" se tat stack dang chay va bat lai tu dau, lam mat phan map dang quet do.
+
+**Kiem tra da chay dung:**
+- Log tren Pi (`main.py`) phai co: `🤖 Bridge ROS 2 đã kết nối (1); SLAM nội bộ Pi: TẮT`.
+- Log bridge tren laptop in dinh ky: `📡 Dang publish /scan (... lag=XX ms, bo khi quay=N)`. `lag` nen duoi ~200 ms; `bo khi quay` tang nhanh nghia la dang quay qua nhanh.
+- Kiem tra tan so `/scan` (mo them mot terminal):
+  ```powershell
+  wsl -d Ubuntu-24.04 -- bash -lc "source /opt/ros/jazzy/setup.bash && ros2 topic hz /scan"
+  ```
+
+### 6.2 Lai robot de quet
+- Di thang ~0.10 m/s (mac dinh tren Web), quay <= 15 deg/s. Giu nut quay: xe tu quay theo xung 0.2 s chay / 0.5 s dung.
+- Di doc tuong, cach tuong 0.5 - 1 m (duoi 35 cm se bi phanh an toan).
+- Quay tai cho tung goc nho (~45 deg), dung mot chut giua cac lan.
+- **Cuoi cung quay lai dung diem xuat phat** de SLAM Toolbox tu nan lai ban do (loop closure).
+- Diem xuat phat se la goc toa do (0, 0) cua map moi.
+
+### 6.3 Luu map
+**Tren Web:** bam **"2. Luu & Khoa"**, nhap ten moi (vd `lab_v2`, khong trung ten cu). He thong luu xong se tu chuyen sang Navigation.
+
+**Bang lenh** (khi dang o che do quet map):
+```powershell
+wsl -d Ubuntu-24.04 bash robot/ros2_configs/save_ros2_map.sh lab_v2
+```
+Ket qua nam trong `robot/maps/`: `lab_v2.yaml`, `lab_v2.pgm` (luu qua Web co them `lab_v2.json`). Lenh nay cung khoa mapping va chuyen Pi sang NAVIGATION; them tham so `--no-pause` neu chi muon luu ma van tiep tuc quet.
+
+### 6.4 Tu hanh (Navigation) voi map da luu
+```powershell
+.\chay_navigation_map_tinh.bat lab_v2
+# hoac
+wsl -d Ubuntu-24.04 bash robot/ros2_configs/start_wsl_navigation.sh lab_v2
+```
+Bat Map Server + AMCL + Nav2 voi map tinh; LaserScan chi dung de dinh vi va tranh vat can, khong sua map.
+
+Sau do tren Admin Portal -> **Ban Do Vat Ly**:
+1. Chon map o o **"Ban do:"** tren thanh tieu de (diem moc / vung duoc luu rieng cho tung map).
+2. Bam **"Chon tren map"**, click dung cho robot dang dung (keo de chon huong dau xe), roi **"Dinh vi lai"**. Khi cac cham laser xanh nam de len tuong den la da dinh vi dung.
+
+### 6.5 Bien moi truong lien quan (tren Pi 5)
+| Bien | Gia tri | Y nghia |
+| :--- | :--- | :--- |
+| `HCROBOT_PI_INTERNAL_SLAM` | `auto` (mac dinh) / `on` / `off` | SLAM noi bo tren Pi. `auto`: tu tat khi bridge ROS 2 ket noi de Pi khong bi nghen; frontier exploration van luon bat. |
+| `HCROBOT_LIDAR_OFFSET` | `180.0` | Goc lap LiDAR (do) so voi dau xe |
+
+Vi du ep tat SLAM noi bo: `sudo HCROBOT_PI_INTERNAL_SLAM=off python3 main.py`
+
+---
+
+## 7. SETUP FOXGLOVE (XEM BAN DO REALTIME)
+
+Foxglove la cong cu xem du lieu ROS 2 (thay cho RViz), ket noi vao `foxglove_bridge` o cong **8765**. Bridge da duoc bat san trong `start_wsl_slam.sh` va `start_wsl_navigation.sh`, khong can chay rieng.
+
+### Chay world explore_room + map da quet trong Gazebo
+
+Huong dan day du: [Mo world/map, ket noi Foxglove va chi diem cho robot](robot/maps/README_explore_room.md).
+
+Mo WSL bang `wsl -d Ubuntu-24.04`, sau do chay **trong WSL**:
+
+```bash
+cd "/mnt/d/FPT MATERIALS/9th Semeter (Final)/HCROBOT"
+WORLD="$PWD/robot/worlds/explore_room.world" \
+MAP=explore_room GZ_GUI=1 \
+bash robot/ros2_configs/start_sim_foxglove.sh
+```
+
+Giu terminal mo. Ket noi Foxglove toi `ws://localhost:8765`, them panel **3D**,
+chon **Fixed frame = map** va bat `/map`, `/scan`, `/plan`.
+De robot di: dung **Publish Pose / 2D Pose** voi topic `/goal_pose`, bam giu tai
+diem dich, keo chon huong roi tha chuot. **Publish Point** (`/clicked_point`)
+khong gui lenh dieu huong cho stack nay. **Pose Estimate** dung `/initialpose`.
+
+Chi xem map, khong chay robot Gazebo, thi dung lenh nay thay cho lenh tren:
+
+```bash
+bash robot/ros2_configs/view_map_foxglove.sh explore_room
+```
+
+### 7.1 Cai dat (lam mot lan)
+1. Kiem tra goi bridge trong WSL (neu chua co thi cai):
+   ```bash
+   wsl -d Ubuntu-24.04
+   sudo apt update && sudo apt install -y ros-jazzy-foxglove-bridge
+   ```
+2. Chon cach xem:
+   - **Foxglove Web**: mo `https://app.foxglove.dev` (can tai khoan Foxglove mien phi).
+   - **Foxglove Desktop**: tai tai `https://foxglove.dev/download` (nen dung khi ket noi tu may khac qua IP Tailscale).
+
+### 7.2 Ket noi
+**Cach nhanh:** Admin Portal -> tab Foxglove -> **"MO FOXGLOVE TAB RIENG"** (tu dien san `ws://127.0.0.1:8765`). Huy hieu `BRIDGE ONLINE (:8765)` mau xanh nghia la bridge dang chay.
+
+**Cach thu cong:** trong Foxglove chon **Open connection -> Foxglove WebSocket**, nhap:
+- Tren chinh laptop chay WSL: `ws://localhost:8765`
+- Tu may khac trong Tailscale: `ws://100.92.82.61:8765` (dung Foxglove Desktop; ban Web tren https co the bi trinh duyet chan ket noi `ws://` toi IP khong phai localhost).
+
+### 7.3 Nap layout cua du an
+1. Lay file layout: [frontend/public/foxglove/hcrobot-slam-layout.json](frontend/public/foxglove/hcrobot-slam-layout.json) (hoac bam **"TAI LAYOUT 2D"** tren tab Foxglove).
+2. Trong Foxglove: **Layouts -> Import from file**, chon file tren, roi chon layout **HCROBOT SLAM 2D**.
+3. Kiem tra cai dat panel 3D:
+   - **Fixed frame** va **Display frame**: `map`; **Follow mode**: Off.
+   - Bat cac topic: `/map`, `/scan`, `/tf`, `/foxglove/robot_marker`.
+   - Khong them lop URDF custom (Foxglove Web ve sai hinh tren may nay); dung `/foxglove/robot_marker` de hien robot.
+
+### 7.4 Xu ly su co Foxglove
+| Hien tuong | Cach kiem tra / xu ly |
+| :--- | :--- |
+| `BRIDGE OFFLINE (:8765)` / khong ket noi duoc | `wsl -d Ubuntu-24.04 -- bash -lc "ss -tulpn \| grep 8765"`. Khong co thi ROS 2 chua chay (muc 6.1). Khi bat qua Web, log o `/tmp/hcrobot-foxglove.log` trong WSL. |
+| Ket noi duoc nhung khong thay ban do | Fixed frame phai la `map`; khi quet map phai lai robot mot doan thi `/map` moi co du lieu. |
+| Thay `/scan` nhung ban do bi nhoe khi quay | Xem log bridge (`lag`, `bo khi quay`) o muc 6.1; quay cham lai. |
+| May khac khong ket noi duoc | Dung Foxglove Desktop; kiem tra Tailscale (`tailscale status`) va Windows Firewall cho cong 8765. |

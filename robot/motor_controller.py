@@ -512,6 +512,24 @@ class MotorController:
             self._last_logged_motion = "STOP"
             logger.info("🛑 [DI CHUYỂN] Dừng lại")
 
+    def drive_wheels(self, left_pct: int, right_pct: int):
+        """Điều khiển vi sai: % PWM có dấu cho từng bên (+ tiến, - lùi, 0 dừng bên đó).
+
+        Dùng cho Nav2: tốc độ hai bên khác nhau cho phép rẽ cung mượt và chỉnh
+        hướng nhỏ, thay vì chỉ có các lệnh rời rạc tiến/xoay/dừng.
+        """
+        left = max(-100, min(100, int(left_pct)))
+        right = max(-100, min(100, int(right_pct)))
+        if left == 0 and right == 0:
+            self.stop()
+            return
+        self._set_outputs(
+            left > 0, left < 0, right > 0, right < 0,
+            left_speed=abs(left), right_speed=abs(right),
+        )
+        self.motion = "drive"
+        logger.debug("🚗 [DI CHUYỂN] Vi sai L=%+d%% R=%+d%%", left, right)
+
     def set_drive_cmd(self, linear_x: float, angular_z: float):
         """Chuyển đổi tín hiệu vận tốc Twist / Analog Joystick sang hướng chạy."""
         if linear_x > 0.1:

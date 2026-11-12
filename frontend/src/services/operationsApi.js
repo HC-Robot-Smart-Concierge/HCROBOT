@@ -7,8 +7,6 @@ import {
   INITIAL_RECEPTION_DATA,
   INITIAL_ROOM_SERVICE_DATA,
   INITIAL_HOUSEKEEPING_DATA,
-  INITIAL_BELL_SERVICES_DATA,
-  INITIAL_MAINTENANCE_DATA,
 } from '../data/mockHotelData';
 
 const BASE_URL = '/api/v1/operations';
@@ -251,18 +249,34 @@ export const fetchHousekeepingRequestById = async (requestId) => {
 // ---------------------------------------------------------
 // 3. Bell Services
 // ---------------------------------------------------------
+// Returns null when the backend is unreachable, so staff never see mock requests as real ones.
 export const fetchBellServicesDashboard = async () => {
-  return await fetchWithFallback(`${BASE_URL}/dashboard/bell-services`, {}, INITIAL_BELL_SERVICES_DATA);
+  return await fetchWithFallback(`${BASE_URL}/dashboard/bell-services`, {}, null);
 };
 
+// Throws on failure: a guest or staff member must not be told a request was sent when it was not.
 export const createBellRequest = async (requestData) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/bell-services/requests`,
-    {
-      method: 'POST',
-      body: JSON.stringify(requestData),
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(`${BASE_URL}/bell-services/requests`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    { id: `BS-${Date.now()}`, ...requestData, status: 'Pending' }
+    body: JSON.stringify(requestData),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.id || !result?.ticket_code) {
+    throw new Error('Unable to create Bell Services request');
+  }
+  return result;
+};
+
+export const fetchRoomBellStatus = async (roomNumber) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/bell-services/rooms/${encodeURIComponent(roomNumber)}/status`,
+    {},
+    { room_number: roomNumber, pending_count: 0, in_progress_count: 0, completed_count: 0, requests: [] }
   );
 };
 
@@ -289,23 +303,29 @@ export const fetchBellRequestById = async (requestId) => {
 // 4. Maintenance
 // ---------------------------------------------------------
 export const fetchMaintenanceDashboard = async () => {
-  return await fetchWithFallback(`${BASE_URL}/dashboard/maintenance`, {}, INITIAL_MAINTENANCE_DATA);
+  return await fetchWithFallback(`${BASE_URL}/dashboard/maintenance`, {}, null);
 };
 
 export const createMaintenanceRequest = async (requestData) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/maintenance/requests`,
-    {
-      method: 'POST',
-      body: JSON.stringify(requestData),
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(`${BASE_URL}/maintenance/requests`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    { id: `MN-${Date.now()}`, ...requestData, status: 'Pending' }
-  );
+    body: JSON.stringify(requestData),
+  });
+  const result = await response.json();
+  if (!response.ok || !result?.id || !result?.ticket_code) {
+    throw new Error('Unable to create maintenance request');
+  }
+  return result;
 };
 
 export const updateMaintenanceStatus = async (requestId, status, assignedTo = null) => {
   return await fetchWithFallback(
-    `${BASE_URL}/tasks/${encodeURIComponent(requestId)}`,
+    `${BASE_URL}/maintenance/requests/${encodeURIComponent(requestId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify({
@@ -317,12 +337,116 @@ export const updateMaintenanceStatus = async (requestId, status, assignedTo = nu
   );
 };
 
+export const updateMaintenancePriority = async (requestId, priority) => {
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(`${BASE_URL}/maintenance/requests/${encodeURIComponent(requestId)}/priority`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ priority }),
+  });
+  if (!response.ok) throw new Error('Could not update repair priority');
+  return response.json();
+};
+
 export const fetchMaintenanceRequestById = async (requestId) => {
   return await fetchWithFallback(
     `${BASE_URL}/maintenance/requests/${encodeURIComponent(requestId)}`,
     {},
     null
   );
+};
+
+export const fetchMaintenanceCatalog = async ({ category = null, is_active = null } = {}) => {
+  try {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+    if (is_active !== null && is_active !== undefined) params.append('is_active', is_active);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return await fetchWithFallback(`${BASE_URL}/maintenance/catalog${qs}`, {}, []);
+  } catch (error) {
+    console.warn('[OperationsAPI] Error fetching maintenance catalog:', error.message);
+    return [];
+  }
+};
+
+export const createMaintenanceCatalogItem = async (itemData) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(itemData),
+      },
+      { id: `MNT-${Date.now()}`, ...itemData, is_active: true }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error creating maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const updateMaintenanceCatalogItem = async (itemId, updateData) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog/${encodeURIComponent(itemId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData),
+      },
+      { id: itemId, ...updateData }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error updating maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const deleteMaintenanceCatalogItem = async (itemId) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog/${encodeURIComponent(itemId)}`,
+      {
+        method: 'DELETE',
+      },
+      { message: 'Deleted', id: itemId }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error deleting maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const toggleMaintenanceCatalogItem = async (itemId) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog/${encodeURIComponent(itemId)}/toggle`,
+      {
+        method: 'PATCH',
+      },
+      { id: itemId, is_active: true }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error toggling maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const fetchRoomMaintenanceStatus = async (roomNumber) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/rooms/${encodeURIComponent(roomNumber)}/status`,
+      {},
+      { room_number: roomNumber, total_requests: 0, pending_count: 0, in_progress_count: 0, completed_count: 0, requests: [] }
+    );
+  } catch (error) {
+    console.warn('[OperationsAPI] Error fetching room maintenance status:', error.message);
+    return { room_number: roomNumber, total_requests: 0, pending_count: 0, in_progress_count: 0, completed_count: 0, requests: [] };
+  }
 };
 
 // ---------------------------------------------------------
@@ -821,7 +945,7 @@ export const verifyRoomPin = async (roomNumber, pin = null, action = null, items
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     const detail = errorData.detail;
-    const msg = typeof detail === 'object' && detail ? detail.message : (detail || 'Mã PIN 4 số, số CCCD hoặc thẻ NFC không chính xác.');
+    const msg = typeof detail === 'object' && detail ? detail.message : (detail || 'Mã PIN phòng không chính xác. Quý khách vui lòng thử lại sau.');
     const err = new Error(msg);
     err.data = typeof detail === 'object' ? detail : errorData;
     err.not_checked_in = Boolean(err.data?.not_checked_in);
@@ -919,4 +1043,86 @@ export const syncRoomsFromRAG = async () => {
   }
 
   return await response.json();
+};
+
+// ---------------------------------------------------------
+// 11. Robot Profile, Job Execution History & Maintenance (RC-001)
+// ---------------------------------------------------------
+async function requestRobotJson(url, options = {}) {
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `HTTP error ${response.status}`);
+  }
+
+  return await response.json();
+}
+
+export const fetchRobotProfile = async (robotId = 'RC-001') => {
+  return await requestRobotJson(`${BASE_URL}/robot/profile?robot_id=${encodeURIComponent(robotId)}`);
+};
+
+export const updateRobotProfile = async (profileData, robotId = 'RC-001') => {
+  return await requestRobotJson(`${BASE_URL}/robot/profile?robot_id=${encodeURIComponent(robotId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(profileData),
+  });
+};
+
+export const fetchRobotJobs = async (params = {}) => {
+  const query = new URLSearchParams();
+  query.append('robot_id', params.robotId || 'RC-001');
+  if (params.status && params.status !== 'ALL') query.append('status', params.status);
+  if (params.triggerType && params.triggerType !== 'ALL') query.append('trigger_type', params.triggerType);
+  if (params.limit) query.append('limit', String(params.limit));
+  if (params.offset) query.append('offset', String(params.offset));
+  return await requestRobotJson(`${BASE_URL}/robot/jobs?${query.toString()}`);
+};
+
+export const fetchRobotJobDetail = async (jobId) => {
+  return await requestRobotJson(`${BASE_URL}/robot/jobs/${encodeURIComponent(jobId)}`);
+};
+
+export const createRobotJob = async (jobData) => {
+  return await requestRobotJson(`${BASE_URL}/robot/jobs`, {
+    method: 'POST',
+    body: JSON.stringify(jobData),
+  });
+};
+
+export const fetchRobotMaintenance = async (params = {}) => {
+  const query = new URLSearchParams();
+  query.append('robot_id', params.robotId || 'RC-001');
+  if (params.status && params.status !== 'all') query.append('status', params.status);
+  if (params.component && params.component !== 'all') query.append('component', params.component);
+  return await requestRobotJson(`${BASE_URL}/robot/maintenance?${query.toString()}`);
+};
+
+export const createRobotMaintenance = async (payload) => {
+  return await requestRobotJson(`${BASE_URL}/robot/maintenance`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const updateRobotMaintenance = async (scheduleId, payload) => {
+  return await requestRobotJson(`${BASE_URL}/robot/maintenance/${encodeURIComponent(scheduleId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const deleteRobotMaintenance = async (scheduleId) => {
+  return await requestRobotJson(`${BASE_URL}/robot/maintenance/${encodeURIComponent(scheduleId)}`, {
+    method: 'DELETE',
+  });
 };

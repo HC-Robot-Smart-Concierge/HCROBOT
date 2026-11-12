@@ -11,6 +11,7 @@ export function StaffSettingsPage({ portal = 'room_service' }) {
     room_service: 'Display preferences for the Room Service portal.',
     reception: 'Display preferences for the Reception portal.',
     maintenance: 'Display preferences for the Maintenance portal.',
+    bell_services: 'Display preferences for the Bell Services portal.',
   }[portal] || 'Display preferences for the Room Service portal.';
   return (
     <div className="staff-page-body flex-1 overflow-y-auto p-4">

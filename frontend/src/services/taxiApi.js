@@ -77,23 +77,33 @@ export async function createTaxiRequest(requestData) {
 }
 
 /**
- * 4. Cap nhat trang thai cuoc xe va dieu phoi tai xe
+ * 4. Cap nhat trang thai yeu cau taxi (Concierge nhan yeu cau -> Dang goi -> Thanh cong)
  */
-export async function updateTaxiRequestStatus(requestId, status, assignedDriver = null) {
+export async function updateTaxiRequestStatus(requestId, status, note = null) {
+  const payload = { status, note };
+  try {
+    const res = await fetchWithFallback(
+      `${BASE_URL}/requests/${encodeURIComponent(requestId)}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      },
+      null
+    );
+    if (res && res.id) return res;
+  } catch {
+    // fallback
+  }
+
   return await fetchWithFallback(
     `/api/v1/operations/tasks/${encodeURIComponent(requestId)}`,
     {
       method: 'PATCH',
-      body: JSON.stringify({
-        status,
-        assigned_driver: assignedDriver,
-        assigned_to: assignedDriver,
-      }),
+      body: JSON.stringify(payload),
     },
     {
       id: requestId,
       status,
-      assigned_driver: assignedDriver,
     }
   );
 }

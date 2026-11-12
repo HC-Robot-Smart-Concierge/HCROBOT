@@ -13,6 +13,7 @@ from app.repositories.directive_repository import DirectiveRepository
 from app.repositories.support_session_repository import SupportSessionRepository
 from app.repositories.map_repository import MapRepository
 from app.repositories.audit_log_repository import AuditLogRepository
+from app.repositories.robot_repository import RobotRepository
 
 
 def get_support_request_repository(db: AsyncSession = Depends(get_db)) -> SupportRequestRepository:
@@ -55,6 +56,10 @@ def get_audit_log_repository(db: AsyncSession = Depends(get_db)) -> AuditLogRepo
     return AuditLogRepository(db)
 
 
+def get_robot_repository(db: AsyncSession = Depends(get_db)) -> RobotRepository:
+    return RobotRepository(db)
+
+
 __all__ = [
     "BaseRepository",
     "SupportRequestRepository",
@@ -67,6 +72,7 @@ __all__ = [
     "SupportSessionRepository",
     "MapRepository",
     "AuditLogRepository",
+    "RobotRepository",
     "get_support_request_repository",
     "get_notification_repository",
     "get_room_service_repository",
@@ -77,4 +83,5 @@ __all__ = [
     "get_support_session_repository",
     "get_map_repository",
     "get_audit_log_repository",
+    "get_robot_repository",
 ]

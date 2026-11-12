@@ -1,14 +1,11 @@
 import logging
 import uuid
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
 
-from app.core.database import get_db
-from app.models.workflow import RobotWorkflow, RobotWaypoint
-from app.repositories import WorkflowRepository, get_workflow_repository
+from app.models.workflow import RobotWorkflow
+from app.repositories import RobotRepository, WorkflowRepository, get_robot_repository, get_workflow_repository
 from app.schemas.workflow import (
     WorkflowResponse,
     WorkflowCreate,
@@ -20,7 +17,7 @@ from app.schemas.workflow import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-from app.api.v1.endpoints.default_workflows import CORE_WORKFLOWS
+from app.api.v1.endpoints.default_workflows import CORE_WORKFLOWS, upgrade_legacy_move_step, upgrade_guest_service_steps
 
 _workflows_seeded = False
 
@@ -32,6 +29,9 @@ async def ensure_default_workflow(repo: WorkflowRepository):
         return
 
     await repo.seed_defaults(CORE_WORKFLOWS)
+    upgraded = await repo.upgrade_steps(upgrade_legacy_move_step, upgrade_guest_service_steps)
+    if upgraded:
+        logger.info("Updated legacy lobby workflow steps in: %s", ", ".join(upgraded))
     _workflows_seeded = True
 
 
@@ -69,7 +69,7 @@ async def create_or_save_workflow(
         existing.trigger_type = payload.trigger_type
         existing.is_active = payload.is_active
         existing.steps = steps_data
-        existing.updated_at = datetime.utcnow()
+        existing.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
         await repo.commit()
         await repo.refresh(existing)
         return existing
@@ -107,7 +107,7 @@ async def update_workflow(
     if payload.steps is not None:
         existing.steps = [s.model_dump() if hasattr(s, "model_dump") else s for s in payload.steps]
 
-    existing.updated_at = datetime.utcnow()
+    existing.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
     await repo.commit()
     await repo.refresh(existing)
     return existing
@@ -134,6 +134,7 @@ async def execute_workflow(
     workflow_id: str,
     payload: WorkflowExecuteRequest = WorkflowExecuteRequest(),
     repo: WorkflowRepository = Depends(get_workflow_repository),
+    robot_repo: RobotRepository = Depends(get_robot_repository),
 ):
     wf = await repo.get_by_id(workflow_id)
     if not wf:
@@ -196,10 +197,46 @@ async def execute_workflow(
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [CREATE_REQUEST] Đóng gói phiếu dịch vụ [{urgency}] gửi {dept} (Phòng: {room}, Ghi chú: {note})")
         elif step_type == "FEEDBACK":
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [FEEDBACK] Mở màn hình khảo sát 1-5 sao. Ghi nhận đánh giá thành công!")
+        elif step_type == "CHOICE":
+            options = [o for o in params.get("options", []) if isinstance(o, dict)]
+            labels = " / ".join(str(o.get("label") or o.get("id")) for o in options)
+            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [CHOICE] Chờ khách chọn: {labels} (Timeout: {params.get('timeout_sec', 30)}s)")
         else:
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [{step_type}] Thực thi {step_title}")
 
     logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Hoàn thành toàn bộ {len(steps)} bước kịch bản thành công!")
+
+    # Ghi nhận lịch sử thực thi Job thực tế vào DB cho Robot RC-001
+    try:
+        job_events = [
+            {
+                "event_type": "STEP_COMPLETED" if idx < len(steps) else "JOB_COMPLETED",
+                "message": log_line,
+                "severity": "INFO",
+            }
+            for idx, log_line in enumerate(logs)
+        ]
+        await robot_repo.create_job_record(
+            robot_id=robot_code,
+            title=wf.name,
+            workflow_id=wf.id,
+            trigger_type=wf.trigger_type or "MANUAL",
+            status="COMPLETED",
+            current_step_index=len(steps),
+            total_steps=len(steps),
+            steps=[
+                {
+                    "type": s.get("type", "STEP"),
+                    "params": s.get("params", {}),
+                    "status": "COMPLETED",
+                }
+                for s in steps
+                if isinstance(s, dict)
+            ],
+            events=job_events,
+        )
+    except Exception as e_job:
+        logger.warning(f"Could not persist workflow job record: {e_job}")
 
     return WorkflowExecuteResponse(
         status="SUCCESS",

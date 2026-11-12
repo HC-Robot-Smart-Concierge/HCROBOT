@@ -1,3 +1,18 @@
+export const VALID_HOTEL_ROOMS = new Set([
+  '301', '302', '303', '304', '305', '306', '307', '308', '309', '310',
+  '401', '402', '403', '404', '405', '406', '407', '408', '409', '410'
+]);
+
+/**
+ * Kiểm tra xem số phòng có tồn tại hợp lệ trong danh mục 20 phòng của khách sạn hay không
+ * @param {string|number} roomNumber
+ * @returns {boolean}
+ */
+export function isValidHotelRoom(roomNumber) {
+  if (!roomNumber) return false;
+  return VALID_HOTEL_ROOMS.has(String(roomNumber).trim());
+}
+
 const WORD_TO_DIGIT = {
   'không': '0', 'khong': '0', 'linh': '0', 'lẻ': '0', 'le': '0',
   'một': '1', 'mot': '1', 'mốt': '1', '1': '1',

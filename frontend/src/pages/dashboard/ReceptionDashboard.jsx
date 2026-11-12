@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
+import { handleNumericKeyDown, sanitizeDigitsOnly, sanitizePhoneNumber } from '../../utils/numberInputHelper';
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import { useStaffText, staffStatusLabel } from '../../context/StaffLanguage';
 import {
@@ -185,12 +186,12 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
       onNotify(st("Enter the guest’s full name."));
       return;
     }
-    if (!checkInForm.identity_number || checkInForm.identity_number.trim().length < 4) {
-      onNotify(st("Enter an ID or passport number with at least 4 characters to generate a PIN."));
+    const cleanDigits = sanitizeDigitsOnly(checkInForm.identity_number);
+    if (!cleanDigits || cleanDigits.length < 4) {
+      onNotify(st("Enter an ID or passport number with at least 4 digits to generate a PIN."));
       return;
     }
-    const cleanDigits = checkInForm.identity_number.replace(/\D/g, '');
-    const expectedPin = cleanDigits.length >= 4 ? cleanDigits.slice(-4) : checkInForm.identity_number.trim().slice(-4);
+    const expectedPin = cleanDigits.slice(-4);
     if (!checkInForm.pin_code || checkInForm.pin_code.trim().length !== 4) {
       checkInForm.pin_code = expectedPin;
     }
@@ -198,9 +199,9 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
     try {
       const res = await checkInRoom(checkInTargetRoom.id, {
         guest_name: checkInForm.guest_name.trim(),
-        guest_phone: checkInForm.guest_phone.trim() || undefined,
+        guest_phone: sanitizePhoneNumber(checkInForm.guest_phone) || undefined,
         room_phone: checkInForm.room_phone.trim() || undefined,
-        identity_number: checkInForm.identity_number.trim() || undefined,
+        identity_number: cleanDigits,
         pin_code: checkInForm.pin_code.trim() || undefined,
       });
       onNotify(st("Room {0} checked in. PIN: {1}", res.room_number, res.pin_code));
@@ -931,9 +932,15 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                     </label>
                     <input
                       type="tel"
+                      inputMode="tel"
+                      maxLength={15}
                       placeholder={st("e.g. 0901234567")}
                       value={checkInForm.guest_phone}
-                      onChange={(e) => setCheckInForm((prev) => ({ ...prev, guest_phone: e.target.value }))}
+                      onKeyDown={(e) => handleNumericKeyDown(e, { allowPlus: true })}
+                      onChange={(e) => {
+                        const digits = sanitizePhoneNumber(e.target.value, 15);
+                        setCheckInForm((prev) => ({ ...prev, guest_phone: digits }));
+                      }}
                       className="w-full px-3 py-2 text-xs rounded-lg border border-stone-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-white"
                     />
                   </div>
@@ -955,16 +962,19 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                   </label>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={15}
                     required
-                    placeholder={st("e.g. 079201012345 (required to generate a PIN)")}
+                    placeholder={st("e.g. 079201012345 (numbers only)")}
                     value={checkInForm.identity_number}
+                    onKeyDown={handleNumericKeyDown}
                     onChange={(e) => {
-                      const val = e.target.value;
-                      const digits = val.replace(/\D/g, '');
-                      const autoPin = digits.length >= 4 ? digits.slice(-4) : (val.trim().length >= 4 ? val.trim().slice(-4) : '');
+                      const digits = sanitizeDigitsOnly(e.target.value, 15);
+                      const autoPin = digits.length >= 4 ? digits.slice(-4) : '';
                       setCheckInForm((prev) => ({
                         ...prev,
-                        identity_number: val,
+                        identity_number: digits,
                         pin_code: autoPin || prev.pin_code,
                       }));
                     }}
@@ -979,10 +989,16 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                   </div>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     maxLength={4}
                     placeholder={st("Last 4 digits of ID")}
                     value={checkInForm.pin_code}
-                    onChange={(e) => setCheckInForm((prev) => ({ ...prev, pin_code: e.target.value }))}
+                    onKeyDown={handleNumericKeyDown}
+                    onChange={(e) => {
+                      const digits = sanitizeDigitsOnly(e.target.value, 4);
+                      setCheckInForm((prev) => ({ ...prev, pin_code: digits }));
+                    }}
                     className="w-full font-mono font-bold tracking-widest text-center px-3 py-2 text-sm rounded-lg border border-stone-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-amber-50/30 text-stone-900"
                   />
                   <p className="mt-1 text-[10px] text-stone-500">{st("The 4-digit PIN is generated from the last 4 digits of the guest’s ID for ordering at the Robot Kiosk.")} </p>

@@ -18,6 +18,10 @@ import {
   ConciergeBell,
   Sparkles,
   LogOut,
+  Car,
+  UserCheck,
+  Wrench,
+  Luggage,
 } from 'lucide-react';
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {
@@ -28,7 +32,15 @@ const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListeni
   return 'welcome';
 };
 
-const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
+const MobileCinemaSubtitle = ({
+  fullText,
+  isSpeaking,
+  onClose,
+  onStartTalk,
+  onStopSpeaking,
+  onPrime,
+  isEn,
+}) => {
   const sentences = useMemo(() => {
     if (!fullText) return [];
     const raw = String(fullText).trim();
@@ -78,21 +90,45 @@ const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
 
       <p
         key={currentIndex}
-        className="text-xs sm:text-[13px] font-medium text-stone-100 leading-snug px-6 select-text animate-in fade-in duration-200 line-clamp-2"
+        className="text-xs sm:text-[13px] font-medium text-stone-100 leading-snug px-8 select-text animate-in fade-in duration-200 line-clamp-2"
       >
         {activeSentence}
       </p>
 
-      {onClose && (
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-2.5 w-4 h-4 rounded-full hover:bg-stone-800 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-all cursor-pointer"
-          title="Ẩn phụ đề"
-        >
-          <X className="w-3 h-3" />
-        </button>
-      )}
+      {/* Cụm công cụ bên phải subtitle: Nút Micro & Nút Đóng */}
+      <div className="absolute right-2.5 flex items-center gap-1.5">
+        {onStartTalk && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onStopSpeaking && isSpeaking) onStopSpeaking();
+              if (onPrime) onPrime();
+              onStartTalk();
+            }}
+            className="w-6 h-6 rounded-full bg-stone-800/80 hover:bg-stone-700 text-stone-300 hover:text-white flex items-center justify-center transition-all cursor-pointer active:scale-95"
+            title={isSpeaking ? (isEn ? 'Stop and speak' : 'Dừng & Nói tiếp') : (isEn ? 'Touch or speak' : 'Chạm hoặc nói')}
+            aria-label={isEn ? 'Microphone' : 'Micro'}
+          >
+            <Mic className="w-3 h-3 text-stone-300" />
+          </button>
+        )}
+
+        {onClose && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="w-6 h-6 rounded-full hover:bg-stone-800 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-all cursor-pointer active:scale-95"
+            title={isEn ? 'Hide subtitle' : 'Ẩn phụ đề'}
+            aria-label={isEn ? 'Close' : 'Đóng'}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
     </div>
   );
 };
@@ -126,8 +162,17 @@ export const MobileRobotScreen = ({
   onOpenFacilities,
   onOpenFoodMenu,
   onOpenRoomService,
+  onOpenMaintenance = null,
+  onOpenBellman = null,
+  onOpenMaintenanceStatus = null,
   onOpenOrderStatus,
   onOpenServiceStatus,
+  onOpenTaxiBooking = null,
+  taxiFlowStage = null,
+  onSelectTaxiSelfBooking = null,
+  onSelectTaxiConciergeBooking = null,
+  onCancelTaxiFlow = null,
+  onSubmitTaxiRoomNumber = null,
   navigationDestinationKey = 'infinity_pool',
   onSelectDestination,
   availableWorkflows = [],
@@ -143,6 +188,7 @@ export const MobileRobotScreen = ({
   const [isMapManualOpen, setIsMapManualOpen] = useState(false);
   const [isUtilitiesMenuOpen, setIsUtilitiesMenuOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const [navActiveStep, setNavActiveStep] = useState(1);
   const isBusy = isProcessing || currentState === 'RT-04';
 
   const handleDismissMap = () => {
@@ -272,11 +318,10 @@ export const MobileRobotScreen = ({
                   setIsUtilitiesMenuOpen(false);
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
-                className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${
-                  isLangMenuOpen
+                className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${isLangMenuOpen
                     ? 'bg-stone-900 text-white border-stone-900'
                     : 'bg-stone-900/90 hover:bg-stone-800 text-stone-300 hover:text-white border-stone-700/80'
-                }`}
+                  }`}
                 title={isEn ? 'Switch Language' : 'Chọn ngôn ngữ'}
                 aria-label={isEn ? 'Switch Language' : 'Chọn ngôn ngữ'}
               >
@@ -284,20 +329,19 @@ export const MobileRobotScreen = ({
               </button>
             )}
 
-            {/* Nút Menu Dịch Vụ / Tiện ích chỉ icon */}
+            {/* Nút Menu Dịch Vụ / Fast Menu */}
             <button
               type="button"
               onClick={() => {
                 setIsUtilitiesMenuOpen((prev) => !prev);
                 setIsLangMenuOpen(false);
               }}
-              className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${
-                isUtilitiesMenuOpen || isNavigating
+              className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${isUtilitiesMenuOpen || isNavigating
                   ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
                   : 'bg-stone-900/90 hover:bg-stone-800 text-stone-300 hover:text-white border-stone-700/80'
-              }`}
-              title={isEn ? 'Utilities Menu' : 'Menu Dịch vụ và Tiện ích'}
-              aria-label={isEn ? 'Utilities Menu' : 'Menu Dịch vụ và Tiện ích'}
+                }`}
+              title={isEn ? 'Fast Menu' : 'Menu nhanh & Tiện ích'}
+              aria-label={isEn ? 'Fast Menu' : 'Menu nhanh & Tiện ích'}
             >
               <Menu className="w-3.5 h-3.5 text-stone-300" />
             </button>
@@ -347,11 +391,10 @@ export const MobileRobotScreen = ({
                     onToggleLanguage('Tiếng Việt');
                     setIsLangMenuOpen(false);
                   }}
-                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
-                    !isEn
+                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${!isEn
                       ? 'bg-stone-800/90 border-stone-500 ring-2 ring-stone-400/40 text-white shadow-lg'
                       : 'bg-stone-800/40 border-stone-700/60 hover:bg-stone-800/70 text-stone-300 hover:text-white'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     <svg viewBox="0 0 32 24" className="w-10 h-7 rounded-md overflow-hidden shadow-xs border border-rose-800/60 shrink-0">
@@ -376,11 +419,10 @@ export const MobileRobotScreen = ({
                     onToggleLanguage('English');
                     setIsLangMenuOpen(false);
                   }}
-                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
-                    isEn
+                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${isEn
                       ? 'bg-stone-800/90 border-stone-500 ring-2 ring-stone-400/40 text-white shadow-lg'
                       : 'bg-stone-800/40 border-stone-700/60 hover:bg-stone-800/70 text-stone-300 hover:text-white'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     <svg viewBox="0 0 32 24" className="w-10 h-7 rounded-md overflow-hidden shadow-xs border border-blue-900/60 shrink-0">
@@ -575,7 +617,82 @@ export const MobileRobotScreen = ({
                   </button>
                 )}
 
-                                {/* 5. Kiểm tra trạng thái món ăn */}
+                {/* 3z. Hành lý & Bellman (Bellman Menu) */}
+                {onOpenBellman && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenBellman();
+                      setIsUtilitiesMenuOpen(false);
+                    }}
+                    className="p-3 sm:p-3.5 rounded-2xl bg-white hover:bg-stone-50 active:scale-[0.98] border border-[#E3DFD5] hover:border-stone-400 transition-all cursor-pointer flex items-center gap-3.5 group text-left shadow-xs hover:shadow-md min-h-[64px]"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white group-hover:scale-105 transition-all">
+                      <Luggage className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-extrabold text-stone-900 group-hover:text-black transition-colors truncate">
+                        {isEn ? 'Luggage & Bellman' : 'Hành lý & Bellman'}
+                      </p>
+                      <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
+                        {isEn ? 'Bring, store & retrieve bags, room moves' : 'Mang, gửi giữ hành lý & chuyển đồ sang phòng mới'}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </button>
+                )}
+
+                {/* 4a. Báo hỏng & Sửa chữa kỹ thuật (Maintenance Menu) */}
+                {onOpenMaintenance && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenMaintenance();
+                      setIsUtilitiesMenuOpen(false);
+                    }}
+                    className="p-3 sm:p-3.5 rounded-2xl bg-white hover:bg-stone-50 active:scale-[0.98] border border-[#E3DFD5] hover:border-stone-400 transition-all cursor-pointer flex items-center gap-3.5 group text-left shadow-xs hover:shadow-md min-h-[64px]"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white group-hover:scale-105 transition-all">
+                      <Wrench className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-extrabold text-stone-900 group-hover:text-black transition-colors truncate">
+                        {isEn ? 'Repairs & Maintenance' : 'Báo hỏng & Sửa chữa'}
+                      </p>
+                      <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
+                        {isEn ? 'AC, plumbing, electrical, door locks & facilities' : 'Điều hòa, điện nước, khóa phòng & sự cố'}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </button>
+                )}
+
+                {/* 4b. Đặt Xe & Taxi Sảnh */}
+                {onOpenTaxiBooking && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenTaxiBooking();
+                      setIsUtilitiesMenuOpen(false);
+                    }}
+                    className="p-3 sm:p-3.5 rounded-2xl bg-white hover:bg-stone-50 active:scale-[0.98] border border-[#E3DFD5] hover:border-stone-400 transition-all cursor-pointer flex items-center gap-3.5 group text-left shadow-xs hover:shadow-md min-h-[64px]"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white group-hover:scale-105 transition-all">
+                      <Car className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-extrabold text-stone-900 group-hover:text-black transition-colors truncate">
+                        {isEn ? 'Book Taxi & Lobby Ride' : 'Đặt xe & Gọi taxi'}
+                      </p>
+                      <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
+                        {isEn ? '4 - 7 seater cars, hotlines & airport shuttle' : 'Xe 4 - 7 chỗ, hotline & đưa đón sân bay'}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </button>
+                )}
+
+                {/* 5. Kiểm tra trạng thái món ăn */}
                 {onOpenOrderStatus && (
                   <button
                     type="button"
@@ -619,6 +736,31 @@ export const MobileRobotScreen = ({
                       </p>
                       <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
                         {isEn ? 'Check room cleaning & amenities progress' : 'Tra cứu dọn phòng, khăn tắm, massage'}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </button>
+                )}
+
+                {/* 5c. Kiểm tra tiến độ sửa chữa kỹ thuật */}
+                {onOpenMaintenanceStatus && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenMaintenanceStatus();
+                      setIsUtilitiesMenuOpen(false);
+                    }}
+                    className="p-3 sm:p-3.5 rounded-2xl bg-white hover:bg-stone-50 active:scale-[0.98] border border-[#E3DFD5] hover:border-stone-400 transition-all cursor-pointer flex items-center gap-3.5 group text-left shadow-xs hover:shadow-md min-h-[64px]"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white group-hover:scale-105 transition-all">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-extrabold text-stone-900 group-hover:text-black transition-colors truncate">
+                        {isEn ? 'Technical Repair Status' : 'Tiến độ sửa chữa'}
+                      </p>
+                      <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
+                        {isEn ? 'Check room repair progress' : 'Tra cứu tiến độ xử lý sự cố thiết bị'}
                       </p>
                     </div>
                     <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />
@@ -673,17 +815,20 @@ export const MobileRobotScreen = ({
                 showQrModalExternal={showQrModalExternal}
                 qrCountdown={qrCountdown}
                 onCloseQrModal={onCloseQrModal || (() => {})}
+                onStepChange={setNavActiveStep}
                 defaultZoom={1.0}
                 className="w-full h-full rounded-none border-none shadow-none"
               />
 
-              {/* Thanh chỉ dẫn nổi tinh gọn ở đáy màn hình: 1 câu tóm tắt duy nhất, không Chặng 1/Chặng 2/QR thừa */}
+              {/* Thanh chỉ dẫn nổi tinh gọn ở đáy màn hình: hiển thị chỉ dẫn tương ứng theo Chặng 1 hoặc Chặng 2 */}
               <div className="absolute bottom-2.5 left-2.5 right-2.5 z-30 pointer-events-none flex items-center justify-between gap-2.5">
                 <div className="pointer-events-auto flex-1 min-w-0 max-w-xl bg-stone-900/90 text-stone-100 backdrop-blur-md px-3.5 py-1.5 rounded-2xl border border-stone-700/80 shadow-xl flex items-center gap-2.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
                   <span className="text-xs font-semibold text-stone-100 truncate">
                     {currentDestination.isDifferentFloor
-                      ? `Thang máy A lên ${currentDestination.floorLevel} → ${currentDestination.step2Text || `tới ${currentDestination.name}`}`
+                      ? (navActiveStep === 1
+                        ? `${currentDestination.step1Text || 'Chặng 1: Đi tới Thang máy A và bấm lên tầng mục tiêu.'}`
+                        : `${currentDestination.step2Text || `Chặng 2: Ra khỏi thang máy tới ${currentDestination.name}.`}`)
                       : `${currentDestination.step1Text || `Đi theo hành lang tới ${currentDestination.name}`}`}
                   </span>
                 </div>
@@ -731,12 +876,16 @@ export const MobileRobotScreen = ({
                 />
               </div>
 
-              {/* 1. Khi đang nói hoặc có phụ đề trả lời: Subtitle điện ảnh nổi tinh tế */}
+              {/* 1. Khi đang nói hoặc có phụ đề trả lời: Subtitle điện ảnh nổi tinh tế (Tích hợp nút mic bên phải) */}
               {displayText ? (
                 <MobileCinemaSubtitle
                   fullText={displayText}
                   isSpeaking={isSpeaking}
                   onClose={onCloseAiResponse}
+                  onStartTalk={onStartTalk}
+                  onStopSpeaking={onStopSpeaking}
+                  onPrime={onPrime}
+                  isEn={isEn}
                 />
               ) : currentState === 'RT-03' || isListening ? (
                 /* 2. Khi đang nghe: Dock âm thanh sóng AudioWave tinh giản tối đa từ ngữ */
@@ -788,8 +937,8 @@ export const MobileRobotScreen = ({
                   <span>{isEn ? 'Processing...' : 'Đang xử lý...'}</span>
                 </div>
               ) : (
-                /* 4. Trạng thái chờ: Nút chạm nói tối giản từ ngữ */
-                <div className="mt-2.5 flex flex-col items-center gap-1.5 animate-fadeIn">
+                /* 4. Trạng thái chờ: Nút chạm nói */
+                <div className="mt-2.5 flex items-center justify-center animate-fadeIn">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -797,7 +946,7 @@ export const MobileRobotScreen = ({
                       if (onPrime) onPrime();
                       if (onStartTalk) onStartTalk();
                     }}
-                    className="px-4 py-2 bg-stone-900/90 hover:bg-stone-800 backdrop-blur-xl border border-stone-700/80 rounded-full shadow-lg flex items-center gap-2 cursor-pointer active:scale-95 transition-all text-stone-200 hover:text-white group outline-none touch-manipulation"
+                    className="px-4 py-1.5 bg-stone-900/90 hover:bg-stone-800 backdrop-blur-xl border border-stone-700/80 rounded-full shadow-lg flex items-center gap-2 cursor-pointer active:scale-95 transition-all text-stone-200 hover:text-white group outline-none touch-manipulation"
                     title={isEn ? 'Touch or speak' : 'Chạm hoặc nói'}
                   >
                     <Mic className="w-3.5 h-3.5 text-stone-300 group-hover:text-white" />

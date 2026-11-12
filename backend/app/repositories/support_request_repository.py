@@ -1,7 +1,7 @@
 from typing import Optional, List, Sequence, Tuple
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, or_, func
+from sqlalchemy import select, desc, or_, and_, func
 from sqlalchemy.orm import selectinload
 
 from app.models.support_request import SupportRequest
@@ -98,9 +98,10 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         department_ids: List[str],
         service_type_ids: List[str],
         limit: int = 10,
+        skip: int = 0,
     ) -> Sequence[SupportRequest]:
         """
-        Retrieves recent requests for the given department / service types.
+        Retrieves recent requests for the given department / service types with SQL offset/limit pagination.
         """
         stmt = (
             select(SupportRequest)
@@ -111,10 +112,29 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
                 )
             )
             .order_by(desc(SupportRequest.created_at))
+            .offset(skip)
             .limit(limit)
         )
         res = await self.db.execute(stmt)
         return res.scalars().all()
+
+    async def count_by_department(
+        self,
+        department_ids: List[str],
+        service_type_ids: List[str],
+    ) -> int:
+        """Returns total count of requests for given department/service types."""
+        stmt = (
+            select(func.count(SupportRequest.id))
+            .where(
+                or_(
+                    SupportRequest.department_id.in_(department_ids),
+                    SupportRequest.service_type_id.in_(service_type_ids),
+                )
+            )
+        )
+        res = await self.db.execute(stmt)
+        return res.scalar() or 0
 
     async def close_expired_pending(
         self,
@@ -126,13 +146,22 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         """Closes pending requests older than cutoff_time."""
         from sqlalchemy import update
         now = datetime.utcnow()
+        dept_cond = (
+            and_(
+                SupportRequest.department_id.in_(department_ids),
+                SupportRequest.service_type_id.in_(service_type_ids),
+            )
+            if department_ids and service_type_ids
+            else (
+                SupportRequest.department_id.in_(department_ids)
+                if department_ids
+                else SupportRequest.service_type_id.in_(service_type_ids)
+            )
+        )
         stmt = (
             update(SupportRequest)
             .where(
-                or_(
-                    SupportRequest.department_id.in_(department_ids),
-                    SupportRequest.service_type_id.in_(service_type_ids),
-                ),
+                dept_cond,
                 SupportRequest.status == "Pending",
                 SupportRequest.created_at < cutoff_time,
             )
@@ -152,13 +181,22 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         """Closes stuck in-progress/connected calls older than cutoff_time."""
         from sqlalchemy import update
         now = datetime.utcnow()
+        dept_cond = (
+            and_(
+                SupportRequest.department_id.in_(department_ids),
+                SupportRequest.service_type_id.in_(service_type_ids),
+            )
+            if department_ids and service_type_ids
+            else (
+                SupportRequest.department_id.in_(department_ids)
+                if department_ids
+                else SupportRequest.service_type_id.in_(service_type_ids)
+            )
+        )
         stmt = (
             update(SupportRequest)
             .where(
-                or_(
-                    SupportRequest.department_id.in_(department_ids),
-                    SupportRequest.service_type_id.in_(service_type_ids),
-                ),
+                dept_cond,
                 SupportRequest.status.in_(["In Progress", "Connected"]),
                 SupportRequest.created_at < cutoff_time,
             )
@@ -176,13 +214,22 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
     ) -> Optional[SupportRequest]:
         """Gets the most recent live call in pending or active status."""
         statuses = active_statuses or ["Pending", "In Progress", "Connected"]
+        dept_cond = (
+            and_(
+                SupportRequest.department_id.in_(department_ids),
+                SupportRequest.service_type_id.in_(service_type_ids),
+            )
+            if department_ids and service_type_ids
+            else (
+                SupportRequest.department_id.in_(department_ids)
+                if department_ids
+                else SupportRequest.service_type_id.in_(service_type_ids)
+            )
+        )
         stmt = (
             select(SupportRequest)
             .where(
-                or_(
-                    SupportRequest.department_id.in_(department_ids),
-                    SupportRequest.service_type_id.in_(service_type_ids),
-                ),
+                dept_cond,
                 SupportRequest.status.in_(statuses),
             )
             .order_by(desc(SupportRequest.created_at))
@@ -199,13 +246,22 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
     ) -> int:
         """Counts active calls."""
         statuses = active_statuses or ["Pending", "In Progress", "Connected"]
+        dept_cond = (
+            and_(
+                SupportRequest.department_id.in_(department_ids),
+                SupportRequest.service_type_id.in_(service_type_ids),
+            )
+            if department_ids and service_type_ids
+            else (
+                SupportRequest.department_id.in_(department_ids)
+                if department_ids
+                else SupportRequest.service_type_id.in_(service_type_ids)
+            )
+        )
         stmt = (
             select(func.count(SupportRequest.id))
             .where(
-                or_(
-                    SupportRequest.department_id.in_(department_ids),
-                    SupportRequest.service_type_id.in_(service_type_ids),
-                ),
+                dept_cond,
                 SupportRequest.status.in_(statuses),
             )
         )

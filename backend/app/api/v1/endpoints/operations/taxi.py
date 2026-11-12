@@ -32,19 +32,21 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
     party_size = 2
     vehicle_type = "4-Seater Sedan"
 
-    if "Điểm đến:" in desc_str:
+    desc_lower = desc_str.lower()
+    if "điểm đến:" in desc_lower or "diem den:" in desc_lower:
         try:
             parts = desc_str.split("|")
             for part in parts:
                 p = part.strip()
-                if p.startswith("Điểm đến:"):
-                    destination = p.replace("Điểm đến:", "").strip()
-                elif p.startswith("Thời gian đón:"):
-                    pickup_time = p.replace("Thời gian đón:", "").strip()
-                elif p.startswith("Số lượng khách:"):
-                    party_size = int(p.replace("Số lượng khách:", "").strip())
-                elif p.startswith("Loại xe:"):
-                    vehicle_type = p.replace("Loại xe:", "").strip()
+                p_lower = p.lower()
+                if p_lower.startswith("điểm đến:") or p_lower.startswith("diem den:"):
+                    destination = p.split(":", 1)[1].strip().rstrip(".")
+                elif p_lower.startswith("thời gian đón:") or p_lower.startswith("thoi gian don:"):
+                    pickup_time = p.split(":", 1)[1].strip().rstrip(".")
+                elif p_lower.startswith("số lượng khách:") or p_lower.startswith("so luong khach:"):
+                    party_size = int(p.split(":", 1)[1].strip().rstrip("."))
+                elif p_lower.startswith("loại xe:") or p_lower.startswith("loai xe:"):
+                    vehicle_type = p.split(":", 1)[1].strip().rstrip(".")
         except Exception:
             pass
 
@@ -53,6 +55,7 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
         ticket_code=req.ticket_code,
         guest_name=req.guest_name or "Hotel Guest",
         pickup_location=req.room_number or "Main Lobby & Front Entrance",
+        room_number=req.room_number,
         destination=destination,
         pickup_time=pickup_time,
         party_size=party_size,
@@ -61,7 +64,7 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
         assigned_driver=req.assigned_staff_name,
         license_plate="43A-888.99" if req.assigned_staff_name else None,
         notes=desc_str,
-        created_at=req.created_at,
+        created_at=req.created_at or datetime.utcnow(),
     )
 
 
@@ -95,9 +98,9 @@ async def get_taxi_dashboard(
     )
     requests = [_format_taxi_request(r) for r in raw_requests]
 
-    pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
-    active_count = sum(1 for r in requests if r.status in ["In Progress", "Driver Assigned", "On The Way"])
-    completed_count = sum(1 for r in requests if r.status == "Completed")
+    pending_count = sum(1 for r in requests if (r.status or "").lower() in ["pending", "unassigned", "chờ tiếp nhận", "missed"])
+    calling_count = sum(1 for r in requests if (r.status or "").lower() in ["calling", "in progress", "driver assigned", "on the way", "đang gọi"])
+    completed_count = sum(1 for r in requests if (r.status or "").lower() in ["completed", "thành công", "success", "done"])
 
     taxi_staff = await staff_repo.list_staff(department="Taxi")
 
@@ -135,8 +138,13 @@ async def get_taxi_dashboard(
     available_drivers_count = sum(1 for f in fleet_status if f.get("status") == "Available")
 
     kpis = {
+        "totalRequests": len(requests),
+        "pendingRequests": pending_count,
+        "callingRequests": calling_count,
+        "activeTrips": calling_count,
+        "completedTrips": completed_count,
         "pendingRides": pending_count,
-        "activeRides": active_count,
+        "activeRides": calling_count,
         "completedToday": completed_count,
         "availableDrivers": available_drivers_count,
     }
@@ -175,8 +183,9 @@ async def create_taxi_request(
     Tiếp nhận yêu cầu gọi xe từ Khách hàng hoặc Concierge Robot.
     Tự động gắn mã dịch vụ `ST-TAXI` và phòng ban `DEP-TAXI` vào bảng `support_requests`.
     """
+    resolved_room = req_in.room_number or (req_in.pickup_location if any(c.isdigit() for c in req_in.pickup_location) else None)
     ticket_code = f"TX-{random.randint(10000, 99999)}"
-    title = f"Taxi: {req_in.pickup_location} -> {req_in.destination}"
+    title = f"Taxi: Phòng {resolved_room} -> {req_in.destination}" if resolved_room else f"Taxi: {req_in.pickup_location} -> {req_in.destination}"
     description = (
         f"Điểm đến: {req_in.destination} | Thời gian đón: {req_in.pickup_time or 'Immediate'} | "
         f"Số lượng khách: {req_in.party_size} | Loại xe: {req_in.vehicle_type}. "
@@ -186,7 +195,7 @@ async def create_taxi_request(
     new_req = SupportRequest(
         ticket_code=ticket_code,
         title=title,
-        room_number=req_in.pickup_location,
+        room_number=resolved_room or req_in.pickup_location,
         guest_name=req_in.guest_name,
         source="From HCRobot",
         description=description,
@@ -197,9 +206,18 @@ async def create_taxi_request(
     await sr_repo.create(new_req)
     await create_department_notification(
         db=db,
+        department="Concierge",
+        title=f"Yêu cầu Đặt xe mới #{ticket_code}",
+        description=f"Phòng {resolved_room or req_in.pickup_location}: {req_in.destination} ({req_in.vehicle_type})",
+        request_id=new_req.id,
+        request_type="taxi",
+        type="Request",
+    )
+    await create_department_notification(
+        db=db,
         department="Taxi",
         title=f"Yêu cầu Đặt xe mới #{ticket_code}",
-        description=f"{req_in.pickup_location} -> {req_in.destination} ({req_in.vehicle_type})",
+        description=f"Phòng {resolved_room or req_in.pickup_location}: {req_in.destination} ({req_in.vehicle_type})",
         request_id=new_req.id,
         request_type="taxi",
         type="Request",
@@ -207,6 +225,49 @@ async def create_taxi_request(
     await sr_repo.commit()
     await sr_repo.refresh(new_req)
     return _format_taxi_request(new_req)
+
+
+@router.get(
+    "/taxi/requests",
+    response_model=List[TaxiRequestResponse],
+    tags=TAG_TAXI,
+    summary="Lấy danh sách các yêu cầu đặt xe Taxi",
+    responses={
+        200: {"description": "Lấy danh sách yêu cầu gọi xe thành công."}
+    },
+)
+async def list_taxi_requests(
+    search: Optional[str] = Query(None, description="Tìm kiếm theo số phòng, mã vé, điểm đón, điểm đến hoặc tên khách"),
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái chuyến xe"),
+    limit: int = Query(50, ge=1, le=100, description="Số lượng bản ghi tối đa"),
+    skip: int = Query(0, ge=0, description="Số lượng bản ghi bỏ qua (Offset)"),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Tra cứu danh sách các cuốc xe taxi / đưa đón do Robot hoặc Lễ tân tạo ra.
+    Hỗ trợ phân trang chuẩn SQL (offset/limit), lọc theo từ khóa tìm kiếm (số phòng, mã vé, điểm đến) và trạng thái.
+    """
+    raw_requests = await sr_repo.get_recent_by_department(
+        department_ids=["DEP-TAXI"],
+        service_type_ids=["ST-TAXI"],
+        limit=limit,
+        skip=skip,
+    )
+    formatted = [_format_taxi_request(r) for r in raw_requests]
+    if search:
+        s = search.lower().strip()
+        formatted = [
+            r for r in formatted
+            if s in (r.ticket_code or "").lower()
+            or s in (r.pickup_location or "").lower()
+            or s in (r.guest_name or "").lower()
+            or (r.room_number and s in r.room_number.lower())
+            or s in (r.destination or "").lower()
+        ]
+    if status and status != "All":
+        formatted = [r for r in formatted if (r.status or "").lower() == status.lower()]
+    return formatted
 
 
 @router.get(
@@ -230,5 +291,61 @@ async def get_taxi_request(
     req = await sr_repo.get_by_id_or_code(request_id)
     if not req:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu đặt xe Taxi")
+    return _format_taxi_request(req)
+
+
+@router.patch(
+    "/taxi/requests/{request_id}",
+    response_model=TaxiRequestResponse,
+    tags=TAG_TAXI,
+    summary="Cập nhật trạng thái yêu cầu gọi xe taxi (Concierge tiếp nhận và gọi)",
+)
+@router.patch(
+    "/taxi/requests/{request_id}/status",
+    response_model=TaxiRequestResponse,
+    tags=TAG_TAXI,
+    include_in_schema=False,
+)
+async def update_taxi_request_status(
+    request_id: str,
+    update_in: TaxiRequestStatusUpdate = Body(...),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Concierge tiếp nhận và cập nhật trạng thái yêu cầu gọi xe taxi:
+    1. Khi Concierge nhận yêu cầu: Chuyển trạng thái sang Calling (Đang gọi).
+    2. Khi Concierge đã gọi xong cho khách: Chuyển trạng thái sang Completed (Thành công).
+    """
+    req = await sr_repo.get_by_id_or_code(request_id)
+    if not req:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu đặt xe Taxi")
+
+    target_st = (update_in.status or "").strip()
+    st_lower = target_st.lower()
+
+    if st_lower in ["calling", "đang gọi"]:
+        req.status = "Calling"
+        req.progress = 50
+    elif st_lower in ["completed", "thành công", "success", "done"]:
+        req.status = "Completed"
+        req.progress = 100
+    elif st_lower in ["cancelled", "đã hủy", "rejected"]:
+        req.status = "Cancelled"
+    elif st_lower in ["pending", "chờ tiếp nhận", "unassigned"]:
+        req.status = "Pending"
+        req.progress = 0
+    else:
+        req.status = target_st
+
+    if update_in.assigned_driver:
+        req.assigned_staff_name = update_in.assigned_driver
+    if update_in.note:
+        clean_note = update_in.note.strip()
+        req.description = f"{req.description or ''} | Ghi chú: {clean_note}".strip(" |")
+
+    req.updated_at = datetime.utcnow()
+    await sr_repo.commit()
+    await sr_repo.refresh(req)
     return _format_taxi_request(req)
 

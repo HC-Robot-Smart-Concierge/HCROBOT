@@ -26,6 +26,9 @@ import {
 
 const DEFAULT_STREAM_URL = 'http://100.99.72.51:8554/stream';
 const HEALTH_CHECK_INTERVAL_MS = 5000;
+// Pi dừng động cơ nếu quá HCROBOT_UDP_CMD_TIMEOUT (mặc định 1.0 s) không có lệnh chạy mới
+// (robot/udp_command_watchdog.py) -> phải gửi lại lệnh nhanh hơn ngưỡng đó khi đang giữ phím.
+const MOTION_RESEND_INTERVAL_MS = 250;
 
 const MOTION_CONFIG = {
   w: { label: 'Forward', eng: 'Forward', icon: ArrowUp, color: 'text-emerald-400' },
@@ -85,6 +88,9 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
   const speedRef = useRef(75);
   // Giá trị tạm khi đang kéo thanh trượt; chỉ gửi lên Pi khi thả tay
   const [speedDraft, setSpeedDraft] = useState(null);
+  // Tốc độ xoay tại chỗ (A/D) tách riêng với tốc độ tiến/lùi
+  const [turnSpeed, setTurnSpeed] = useState(50);
+  const turnSpeedRef = useRef(50);
 
   // Live Movement Logs
   const [movementLogs, setMovementLogs] = useState([
@@ -313,6 +319,9 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
 
       const info = MOTION_CONFIG[cmd] || { label: cmd, eng: cmd };
       const nowStr = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+      // Xoay tại chỗ (A/D) dùng thanh "Tốc độ quay", còn lại dùng tốc độ chạy.
+      const isSpin = cmd === 'a' || cmd === 'd';
+      const cmdSpeed = isSpin ? turnSpeedRef.current : speedRef.current;
 
       setMovementLogs((prev) => [
         {
@@ -320,7 +329,7 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
           time: nowStr,
           cmd,
           label: rc(info.label),
-          speed: speedRef.current,
+          speed: cmdSpeed,
           type: cmd === 'stop' ? 'stop' : 'move',
         },
         ...prev.slice(0, 24),
@@ -334,7 +343,7 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
             command: cmd,
             target_ip: controlIp,
             port: 9999,
-            speed: speedRef.current,
+            speed: cmdSpeed,
           }),
         });
       } catch (err) {
@@ -343,6 +352,42 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
     },
     [controlIp]
   );
+
+  // Đang giữ phím/nút -> gửi lại lệnh hiện tại định kỳ để watchdog trên Pi không cắt động cơ.
+  // Nhả tay -> activeMotion = 'stop' -> ngừng gửi.
+  useEffect(() => {
+    if (activeMotion === 'stop') return undefined;
+
+    const isSpin = activeMotion === 'a' || activeMotion === 'd';
+    let inFlight = false;
+    let cancelled = false;
+
+    const post = (command, speedVal) =>
+      fetch('/api/v1/operations/robot/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, target_ip: controlIp, port: 9999, speed: speedVal }),
+      });
+
+    const intervalId = setInterval(() => {
+      if (inFlight) return; // mạng chậm: không dồn request
+      inFlight = true;
+      post(activeMotion, isSpin ? turnSpeedRef.current : speedRef.current)
+        .catch(() => {})
+        .finally(() => {
+          inFlight = false;
+          // Lệnh gửi lại có thể tới Pi SAU lệnh 'stop' -> gửi 'stop' thêm lần nữa.
+          if (cancelled && activeMotionRef.current === 'stop') {
+            post('stop', speedRef.current).catch(() => {});
+          }
+        });
+    }, MOTION_RESEND_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [activeMotion, controlIp]);
 
   useEffect(() => {
     if (!active) return;
@@ -743,6 +788,12 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
       activeMotion={activeMotion}
       onMove={sendControlCommand}
       onStop={() => sendControlCommand('stop')}
+      stopOnLeave
+      turnSpeed={turnSpeed}
+      onTurnSpeedChange={(val) => {
+        setTurnSpeed(val);
+        turnSpeedRef.current = val;
+      }}
     />
   );
   const cameraExtras = (

@@ -169,3 +169,49 @@ async def test_all_operations_dashboards_and_endpoints():
         assert patch_res.status_code == 200
         assert patch_res.json()["status"] == "Completed"
 
+        # 12. Test Bellman 3 Core Flows: Luggage, Lost & Found, Emotion Alert
+        lug_res = await ac.post("/api/v1/operations/bell-services/requests", json={
+            "title": "Mang hành lý lên phòng (2 kiện)",
+            "location": "Room 302",
+            "guest_name": "Mr. Nguyen",
+            "reporter": "Bellman Desk",
+            "description": "Khách cần mang 2 vali lớn lên phòng 302",
+            "request_type": "luggage",
+        })
+        assert lug_res.status_code == 201
+        assert lug_res.json()["request_type"] == "luggage"
+
+        lf_res = await ac.post("/api/v1/operations/bell-services/requests", json={
+            "title": "Báo cáo đồ thất lạc: Ví da màu đen",
+            "location": "Room 305",
+            "guest_name": "Ms. Tran",
+            "reporter": "HCRobot Kiosk",
+            "description": "Khách báo để quên ví da đen tại sảnh chờ",
+            "request_type": "lost_found",
+        })
+        assert lf_res.status_code == 201
+        lf_data = lf_res.json()
+        assert lf_data["request_type"] == "lost_found"
+
+        em_res = await ac.post("/api/v1/operations/bell-services/requests", json={
+            "title": "Cảnh báo AI: Khách có biểu cảm khó chịu tại Main Lobby Kiosk",
+            "location": "Main Lobby Kiosk",
+            "guest_name": "Khách tại Sảnh",
+            "reporter": "HCRobot Emotion AI",
+            "description": "Camera AI phát hiện khách có biểu cảm khó chịu",
+            "request_type": "emotion_alert",
+        })
+        assert em_res.status_code == 201
+        em_data = em_res.json()
+        assert em_data["request_type"] == "emotion_alert"
+
+        # Test PATCH /bell-services/requests/{id}
+        upd_bell = await ac.patch(
+            f"/api/v1/operations/bell-services/requests/{em_data['ticket_code']}",
+            json={"status": "In Progress", "assigned_to": "Marcus T."},
+        )
+        assert upd_bell.status_code == 200
+        assert upd_bell.json()["status"] == "In Progress"
+        assert upd_bell.json()["assigned_to"] == "Marcus T."
+
+

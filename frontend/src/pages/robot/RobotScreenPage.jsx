@@ -2699,7 +2699,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onGuestLeft={handleGuestLeft}
         onEmotionChange={handleGuestEmotionDetected}
         source={import.meta.env.VITE_CAMERA_SOURCE || 'local'}
-        streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || 'http://localhost:8554/stream'}
+        streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || '/api/v1/operations/robot/camera/stream'}
         defaultMinimized={true}
         visible={false}
       />

@@ -7,17 +7,34 @@ from fastapi import WebSocket
 logger = logging.getLogger(__name__)
 
 
-def get_lan_ip() -> str:
-    """Lấy địa chỉ IPv4 LAN thực tế của máy chủ để hỗ trợ WebRTC P2P direct routing."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+def get_host_ips() -> List[str]:
+    """Lấy danh sách địa chỉ IPv4 thực tế của máy chủ (LAN Wi-Fi và Tailscale) hỗ trợ WebRTC P2P."""
+    ips = []
+    # 1. Thử qua default gateway (thường là Wi-Fi / Ethernet LAN)
     try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))
-        ip = s.getsockname()[0]
-    except Exception:
-        ip = '127.0.0.1'
-    finally:
+        primary_ip = s.getsockname()[0]
         s.close()
-    return ip
+        if primary_ip and primary_ip != '127.0.0.1':
+            ips.append(primary_ip)
+    except Exception:
+        pass
+
+    # 2. Lấy thêm các IP phụ của host (đặc biệt là IP Tailscale 100.x.x.x)
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if ip and ip != '127.0.0.1' and not ip.startswith('169.254.') and ip not in ips:
+                ips.append(ip)
+    except Exception:
+        pass
+
+    return ips if ips else ['127.0.0.1']
+
+
+def get_lan_ip() -> str:
+    """Lấy địa chỉ IPv4 chính của máy chủ."""
+    return get_host_ips()[0]
 
 
 class VideoCallManager:
@@ -72,11 +89,13 @@ class VideoCallManager:
             f"input_session='{session_id}', canonical_room='{canonical_session}'"
         )
 
-        # Gửi thông tin server LAN IP cho peer để hỗ trợ de-anonymize mDNS candidate
+        # Gửi thông tin server LAN IP và Tailscale IPs cho peer để hỗ trợ de-anonymize mDNS candidate
         try:
+            host_ips = get_host_ips()
             await websocket.send_text(json.dumps({
                 "type": "server_info",
-                "lan_ip": get_lan_ip(),
+                "lan_ip": host_ips[0],
+                "all_ips": host_ips,
             }))
         except Exception:
             pass
@@ -163,20 +182,21 @@ class VideoCallManager:
             if isinstance(cand_obj, dict) and "candidate" in cand_obj and sender_role == "guest":
                 cand_str = cand_obj.get("candidate", "")
                 if ".local" in cand_str:
-                    lan_ip = get_lan_ip()
-                    if lan_ip and lan_ip != "127.0.0.1":
-                        import re
-                        unmdns_str = re.sub(r'([a-zA-Z0-9_\-]+\.local)', lan_ip, cand_str)
+                    host_ips = get_host_ips()
+                    # Forward candidate gốc trước
+                    for role, data in room.items():
+                        if data["ws"] != websocket:
+                            try:
+                                await data["ws"].send_text(json.dumps(message_data))
+                            except Exception as e:
+                                logger.warning(f"[VideoCall] Lỗi forward candidate gốc tới {role}: {e}")
+
+                    # Forward thêm candidate đã de-anonymize cho từng IP thực tế (Wi-Fi LAN và Tailscale P2P)
+                    import re
+                    for h_ip in host_ips:
+                        unmdns_str = re.sub(r'([a-zA-Z0-9_\-]+\.local)', h_ip, cand_str)
                         if unmdns_str != cand_str:
-                            logger.info(f"[VideoCall] Forwarding de-anonymized LAN candidate for Robot Kiosk: {lan_ip}")
-                            # Forward candidate gốc trước
-                            for role, data in room.items():
-                                if data["ws"] != websocket:
-                                    try:
-                                        await data["ws"].send_text(json.dumps(message_data))
-                                    except Exception as e:
-                                        logger.warning(f"[VideoCall] Lỗi forward candidate gốc tới {role}: {e}")
-                            # Forward thêm candidate đã de-anonymize sang IP LAN thực tế
+                            logger.info(f"[VideoCall] Forwarding de-anonymized candidate ({h_ip}) for Robot Kiosk")
                             alt_msg = dict(message_data)
                             alt_cand = dict(cand_obj)
                             alt_cand["candidate"] = unmdns_str
@@ -186,8 +206,18 @@ class VideoCallManager:
                                     try:
                                         await data["ws"].send_text(json.dumps(alt_msg))
                                     except Exception as e:
-                                        logger.warning(f"[VideoCall] Lỗi forward unmdns candidate tới {role}: {e}")
-                            return
+                                        logger.warning(f"[VideoCall] Lỗi forward unmdns candidate ({h_ip}) tới {role}: {e}")
+                    return
+
+        receivers = [role for role, data in room.items() if data["ws"] != websocket]
+        if msg_type in ("live_subtitle", "live_audio", "live_audio_status"):
+            # Chẩn đoán luồng phiên dịch 2 chiều: chỉ log metadata, không log nội dung câu nói/âm thanh
+            logger.info(
+                f"[VideoCall Relay] type={msg_type} sender={sender_role} -> {receivers or 'NO_PEER'} "
+                f"utteranceId={message_data.get('utteranceId')} seq={message_data.get('seq')} "
+                f"needsTrans={message_data.get('needsTranslation')} "
+                f"audioLen={len(message_data.get('audioBase64') or '')} room='{canonical_session}'"
+            )
 
         for role, data in room.items():
             if data["ws"] != websocket:

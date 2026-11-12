@@ -210,16 +210,6 @@ export const INITIAL_BELL_SERVICES_DATA = {
       status: 'In Progress',
       type: 'lost_found',
     },
-    {
-      id: 'BS-504',
-      title: 'Cảnh báo AI: Khách có biểu cảm khó chịu tại Kiosk Sảnh',
-      location: 'Main Lobby Kiosk',
-      guestName: 'Khách tại Sảnh (Phòng 305)',
-      reporter: 'HCRobot Emotion AI',
-      description: 'Camera AI trên Robot Rora phát hiện khách có biểu cảm khó chịu (Unhappy) khi tra cứu dịch vụ tại Kiosk. Cần nhân viên Bellman tiếp cận hỗ trợ trực tiếp ngay.',
-      status: 'Pending',
-      type: 'emotion_alert',
-    },
   ],
   teamStatus: [
     { id: 'b1', name: 'Marcus T.', role: 'Bell Captain', status: 'available', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80' },

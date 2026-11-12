@@ -1,5 +1,6 @@
 import { useStaffText } from '../../context/StaffLanguage';
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
+import { Pagination } from '../../components/common/Pagination';
 import { handleNumberInputBlockExponent } from '../../utils/numberInputHelper';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
@@ -114,6 +115,25 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
       return matchCategory && matchSearch;
     });
   }, [services, selectedCategory, searchQuery]);
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  const totalPages = Math.max(1, Math.ceil(filteredServices.length / pageSize));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCategory]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
+  const paginatedServices = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredServices.slice(start, start + pageSize);
+  }, [filteredServices, currentPage, pageSize]);
 
   const handleOpenCreateModal = () => {
     setEditingService(null);
@@ -344,6 +364,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
             <p className="text-xs text-[#7D716A] max-w-sm mx-auto">{st("No services match your filters, or the catalog is empty.")} </p>
           </div>
         ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm">
               <thead>
@@ -357,7 +378,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E8E2D9]">
-                {filteredServices.map((service) => (
+                {paginatedServices.map((service) => (
                   <tr key={service.id} className="hover:bg-[#FAF8F5]/60 transition-colors">
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-3">
@@ -463,6 +484,14 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
               </tbody>
             </table>
           </div>
+          <Pagination
+            currentPage={currentPage}
+            totalItems={filteredServices.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            itemName={st('services')}
+          />
+          </>
         )}
       </div>
 

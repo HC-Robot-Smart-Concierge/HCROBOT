@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from app.services.zone_geometry import zone_points, points_bounds, distance_to_polygon
+
 logger = logging.getLogger(__name__)
 
 # Vung ve tren Web -> mask Nav2: phan CAM HAN / GIOI HAN TOC DO chi rong hon hinh ve vai cm
@@ -462,24 +464,18 @@ class Ros2RuntimeService:
         Xet tam o (khong phai "o cham vao vung") => lam tron chi lech +-nua o, khong nuot them ca o.
         """
         width, height, res, ox, oy = grid
-        half_w = float(zone.get("width") or 0.0) / 2.0
-        half_h = float(zone.get("height") or 0.0) / 2.0
-        zx, zy = float(zone.get("x") or 0.0), float(zone.get("y") or 0.0)
-        angle = math.radians(float(zone.get("yaw") or 0.0))
-        co, si = math.cos(angle), math.sin(angle)
-        extent_x = abs(co) * half_w + abs(si) * half_h
-        extent_y = abs(si) * half_w + abs(co) * half_h
-        x0 = max(0, math.floor((zx - extent_x - reach_m - ox) / res))
-        x1 = min(width - 1, math.floor((zx + extent_x + reach_m - ox) / res))
-        y0 = max(0, math.floor((zy - extent_y - reach_m - oy) / res))
-        y1 = min(height - 1, math.floor((zy + extent_y + reach_m - oy) / res))
+        points = zone_points(zone)
+        min_x, min_y, max_x, max_y = points_bounds(points)
+        x0 = max(0, math.floor((min_x - reach_m - ox) / res))
+        x1 = min(width - 1, math.floor((max_x + reach_m - ox) / res))
+        y0 = max(0, math.floor((min_y - reach_m - oy) / res))
+        y1 = min(height - 1, math.floor((max_y + reach_m - oy) / res))
         for gy in range(y0, y1 + 1):
-            wy = oy + (gy + 0.5) * res - zy
-            row = (height - 1 - gy) * width  # PGM: hang 0 la dinh anh (y lon nhat)
+            wy = oy + (gy + 0.5) * res
+            row = (height - 1 - gy) * width  # PGM rows run top to bottom.
             for gx in range(x0, x1 + 1):
-                wx = ox + (gx + 0.5) * res - zx
-                local_x, local_y = wx * co + wy * si, -wx * si + wy * co
-                d = math.hypot(max(abs(local_x) - half_w, 0.0), max(abs(local_y) - half_h, 0.0))
+                wx = ox + (gx + 0.5) * res
+                d = distance_to_polygon(wx, wy, points)
                 if d <= reach_m + 1e-9:
                     yield row + gx, d
 

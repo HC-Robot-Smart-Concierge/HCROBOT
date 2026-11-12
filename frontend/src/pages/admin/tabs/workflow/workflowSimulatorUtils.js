@@ -1,3 +1,5 @@
+import { isPointInZone, isPolygonZone, zoneBounds } from '../physicalMapZones';
+
 // Danh sach toa do cac diem moc Sanh Tang Tret (Ground Floor - Lobby Arena 9.80m x 6.30m)
 // Robot mac dinh o vi tri truc Khu Vuc Phia Bac cua Lobby (x: 3.6, y: 4.8)
 export const ROBOT_INITIAL_POSE = { x: 7.2, y: 9.6, yaw: -Math.PI / 2 };
@@ -168,11 +170,7 @@ export const SIMULATOR_HOTEL_ZONES = [
 
 export const isPointInSimulatorZone = (x, y, zone) => {
   if (!zone) return false;
-  const halfW = (Number(zone.width) || 2.0) / 2;
-  const halfH = (Number(zone.height) || 2.0) / 2;
-  const zx = Number(zone.x) || 0;
-  const zy = Number(zone.y) || 0;
-  return x >= (zx - halfW) && x <= (zx + halfW) && y >= (zy - halfH) && y <= (zy + halfH);
+  return isPointInZone(x, y, zone);
 };
 
 export const getActiveSimulatorZone = (x, y, zones = SIMULATOR_HOTEL_ZONES) => {
@@ -196,14 +194,14 @@ export const getActiveSimulatorZone = (x, y, zones = SIMULATOR_HOTEL_ZONES) => {
 };
 
 export const zoneToSvgRect = (zone) => {
-  const zw = Number(zone.width) || 2.0;
-  const zh = Number(zone.height) || 2.0;
-  const zx = Number(zone.x) || 0.0;
-  const zy = Number(zone.y) || 0.0;
-
-  const minX = zx - zw / 2;
-  const maxY = zy + zh / 2;
-
+  const bounds = isPolygonZone(zone) ? zoneBounds(zone) : {
+    minX: Number(zone.x || 0) - Number(zone.width || 2) / 2,
+    maxX: Number(zone.x || 0) + Number(zone.width || 2) / 2,
+    minY: Number(zone.y || 0) - Number(zone.height || 2) / 2,
+    maxY: Number(zone.y || 0) + Number(zone.height || 2) / 2,
+  };
+  const zw = bounds.maxX - bounds.minX, zh = bounds.maxY - bounds.minY;
+  const minX = bounds.minX, maxY = bounds.maxY;
   // Dong bo ti le 1:1 voi 19.60m x 12.60m sang canvas 490x315 px (25 px/m) + padding 35px
   const svgX = 35 + minX * 25;
   const svgY = 35 + (12.60 - maxY) * 25;

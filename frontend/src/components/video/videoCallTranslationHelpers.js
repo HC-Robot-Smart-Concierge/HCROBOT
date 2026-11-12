@@ -147,11 +147,13 @@ export function evaluateSpokenTextCommit({
 /**
  * Xác định ngôn ngữ đích của phía nhận (targetLang) và giọng đọc TTS tương ứng.
  * Tách biệt hoàn toàn khỏi ngôn ngữ đầu vào (sourceLang):
- * - Khi role === 'guest' nói -> người nhận là Staff -> targetLang = 'vi', voice = 'vi-VN-HoaiMyNeural'
- * - Khi role === 'staff' nói -> người nhận là Guest -> targetLang = 'en' (khi mode === 'auto'), voice = 'en-US-JennyNeural'
  * - Khi mode === 'bypass' (Thuần Việt do người dùng chọn) -> targetLang = 'vi', không gọi TTS
+ * - Khi role === 'staff' nói:
+ *   + Nếu khách là người Việt (guestLang là 'Tiếng Việt' / 'vi') -> targetLang = 'vi', isBypassMode = true (nghe âm thanh gốc cuộc gọi, không dịch, không TTS thừa)
+ *   + Nếu khách là người nói tiếng Anh (guestLang là 'English' / 'en') -> targetLang = 'en', voice = 'en-US-JennyNeural'
+ * - Khi role === 'guest' nói -> người nhận là Staff -> targetLang = 'vi', voice = 'vi-VN-HoaiMyNeural'
  */
-export function resolveTranslationTarget(senderRole, translateMode = 'auto') {
+export function resolveTranslationTarget(senderRole, translateMode = 'auto', guestLang = 'English') {
   if (translateMode === 'bypass') {
     return {
       peerRole: senderRole === 'staff' ? 'robot' : 'staff',
@@ -162,7 +164,18 @@ export function resolveTranslationTarget(senderRole, translateMode = 'auto') {
     };
   }
 
+  const isGuestVi = normalizeLanguageCode(guestLang) === 'vi' || guestLang === 'Tiếng Việt';
+
   if (senderRole === 'staff') {
+    if (isGuestVi) {
+      return {
+        peerRole: 'robot',
+        targetLang: 'vi',
+        ttsLangCode: 'vi-VN',
+        ttsVoice: 'vi-VN-HoaiMyNeural',
+        isBypassMode: true,
+      };
+    }
     return {
       peerRole: 'robot',
       targetLang: 'en',

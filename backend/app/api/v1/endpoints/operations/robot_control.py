@@ -438,7 +438,7 @@ async def proxy_camera_stream(
             async with client.stream("GET", pi_camera_url) as response:
                 if response.status_code != 200:
                     return
-                async for chunk in response.aiter_raw():
+                async for chunk in response.aiter_raw(chunk_size=2048):
                     yield chunk
         except Exception:
             return
@@ -453,6 +453,7 @@ async def proxy_camera_stream(
             "Pragma": "no-cache",
             "Expires": "0",
             "Access-Control-Allow-Origin": "*",
+            "X-Accel-Buffering": "no",
         },
     )
 

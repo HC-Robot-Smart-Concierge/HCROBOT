@@ -52,6 +52,17 @@ export function zoneFromVertices(vertices) {
     width: b.maxX - b.minX, height: b.maxY - b.minY, yaw: 0 };
 }
 
+export function removeZoneVertex(zone, index) {
+  if (!isPolygonZone(zone) || !Number.isInteger(index) || index < 0 || index >= zone.vertices.length) {
+    return { error: 'Hãy chọn một đỉnh trên vùng đa giác.' };
+  }
+  if (zone.vertices.length <= 3) return { error: 'Đa giác phải giữ ít nhất 3 đỉnh. Không thể xóa thêm đỉnh của tam giác.' };
+  // Removing a vertex joins its two neighbours, including the first/last pair.
+  const vertices = zone.vertices.filter((_, i) => i !== index);
+  const error = polygonValidationError(vertices);
+  return error ? { error } : { zone: { ...zone, ...zoneFromVertices(vertices) } };
+}
+
 export function translateZone(zone, dx, dy) {
   return isPolygonZone(zone)
     ? { ...zone, ...zoneFromVertices(zone.vertices.map((p) => ({ x: p.x + dx, y: p.y + dy }))) }

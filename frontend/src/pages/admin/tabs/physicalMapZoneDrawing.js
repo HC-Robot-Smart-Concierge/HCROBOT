@@ -1,5 +1,5 @@
 // Canvas coordinates only: callers project the absolute map vertices first.
-export function drawPolygonZone(ctx, points, { color, label, selected = false, active = false, draft = false, hover = null }) {
+export function drawPolygonZone(ctx, points, { color, label, selected = false, selectedVertex = null, active = false, draft = false, hover = null }) {
   if (!points.length) return;
   const outline = () => {
     ctx.beginPath();
@@ -44,11 +44,12 @@ export function drawPolygonZone(ctx, points, { color, label, selected = false, a
   ctx.setLineDash([]);
   if (selected || draft) {
     points.forEach((p, index) => {
+      const isSelectedVertex = selected && index === selectedVertex;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, draft && index === 0 ? 7 : 5, 0, Math.PI * 2);
-      ctx.fillStyle = draft && index === 0 ? '#22D3EE' : '#FFFFFF';
+      ctx.arc(p.x, p.y, isSelectedVertex || (draft && index === 0) ? 7 : 5, 0, Math.PI * 2);
+      ctx.fillStyle = isSelectedVertex ? '#FBBF24' : draft && index === 0 ? '#22D3EE' : '#FFFFFF';
       ctx.fill();
-      ctx.strokeStyle = '#0891B2';
+      ctx.strokeStyle = isSelectedVertex ? '#FFFFFF' : '#0891B2';
       ctx.stroke();
     });
   }

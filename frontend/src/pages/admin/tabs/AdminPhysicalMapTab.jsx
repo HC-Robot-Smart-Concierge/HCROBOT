@@ -46,6 +46,7 @@ import {
   polygonValidationError,
   zoneFromVertices,
   translateZone,
+  removeZoneVertex,
 } from './physicalMapZones';
 import {
   OTTO_ENDPOINT_TEMPLATES,
@@ -346,6 +347,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Che do chon va sua Endpoint / Zone
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
+  const [selectedZoneVertex, setSelectedZoneVertex] = useState(null);
+  const deleteZoneVertexRef = useRef(null);
+  useEffect(() => { setSelectedZoneVertex(null); }, [selectedZone?.id]);
   const [hasUnsavedEndpoints, setHasUnsavedEndpoints] = useState(false);
   const [hasUnsavedZones, setHasUnsavedZones] = useState(false);
   const [isSavingEndpoints, setIsSavingEndpoints] = useState(false);
@@ -404,6 +408,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setZoneDrawType(null);
     setZoneDraft(null);
     setDragState(null);
+    setSelectedZoneVertex(null);
     zoneEditRef.current = null;
     clickStartRef.current = null;
   }, [mapConfig.mapId]);
@@ -1102,6 +1107,26 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
   };
 
+  const handleDeleteSelectedVertex = () => {
+    if (!isPolygonZone(selectedZone) || selectedZoneVertex === null || !showZones
+      || zoneDrawType || isPoseSetMode || isAddEndpointMode || dragState || isDraggingRef.current) return false;
+    const result = removeZoneVertex(selectedZone, selectedZoneVertex);
+    const conflict = result.zone && zoneEndpointConflict(result.zone, endpoints);
+    if (result.error || conflict) {
+      rejectZoneRule(result.error || conflict.message);
+      return true;
+    }
+    const updated = result.zone;
+    const nextList = zones.map((z) => z.id === updated.id ? updated : z);
+    setZones(nextList);
+    setSelectedZone(updated);
+    setSelectedZoneVertex(null);
+    persistZone(updated, nextList, `Đã xóa đỉnh ${selectedZoneVertex + 1} của vùng "${updated.name}" • Còn ${updated.vertices.length} đỉnh`);
+    return true;
+  };
+  // The keyboard listener is stable; keep its vertex action on the current selection.
+  deleteZoneVertexRef.current = handleDeleteSelectedVertex;
+
   const toggleZoneDraw = (type) => {
     setZoneDraft(null);
     setZoneDrawType((cur) => (cur === type ? null : type));
@@ -1288,6 +1313,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           drawPolygonZone(ctx, zone.vertices.map((p) => worldToCanvas(p.x, p.y, width, height)), {
             color: zone.type === 'KEEP_OUT' ? '#EF4444' : zone.type === 'SPEED_ZONE' ? '#F59E0B' : '#FB7185',
             label: zone.name, selected: isSelected,
+            selectedVertex: isSelected ? selectedZoneVertex : null,
             active: zone.type === 'SPEED_ZONE' && isPointInZone(robotPose.x, robotPose.y, zone),
           });
           continue;
@@ -1716,6 +1742,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     zones,
     selectedEndpoint,
     selectedZone,
+    selectedZoneVertex,
     invertHeading,
     poseDraft,
     worldToCanvas,
@@ -1751,6 +1778,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const handleCanvasMouseDown = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    e.currentTarget.focus({ preventScroll: true });
     e.currentTarget.setPointerCapture?.(e.pointerId);
     zoneEditRef.current = null;
     const rect = canvas.getBoundingClientRect();
@@ -1814,6 +1842,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         return Math.hypot(canvasX - c.x, canvasY - c.y) <= 12;
       });
       if (vertex >= 0) {
+        setSelectedZoneVertex(vertex);
         clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
         setDragState({ type: 'ZONE_VERTEX', id: selectedZone.id, vertex, orig: selectedZone });
         isDraggingRef.current = true;
@@ -1846,6 +1875,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         return;
       }
     }
+
+    setSelectedZoneVertex(null);
 
     // 1. Kiem tra click trúng Endpoint (r <= 18px)
     if (showEndpoints) {
@@ -2322,6 +2353,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       if (e.defaultPrevented) return;
       const key = e.key.toLowerCase();
       if (key === 'escape') {
+        setSelectedZoneVertex(null);
         // Huy ve vung dang do dang
         setZoneDrawType(null);
         setZoneDraft(null);
@@ -2332,6 +2364,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         return;
       }
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (key === 'delete') {
+        if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.isContentEditable
+          && !e.target.closest?.('[role="dialog"], [role="textbox"]') && deleteZoneVertexRef.current?.()) {
+          e.preventDefault();
+        }
+        return;
+      }
       // Space activates focused popup buttons; it must not also send a motor command.
       if (e.target.closest?.('[role="dialog"]') && [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) return;
       if (key === 'w' || key === 'arrowup') {
@@ -2392,6 +2431,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               khi thu gon panel ben phai). Canvas absolute de kich thuoc canvas khong day khung ra. */}
           <div ref={canvasHostRef} className="relative w-full flex-1 min-h-0">
           <canvas
+            tabIndex={0}
+            aria-label="Bản đồ: chọn đỉnh đa giác rồi nhấn Delete để xóa đỉnh"
             ref={canvasRef}
             width={canvasSize.width}
             height={canvasSize.height}
@@ -2630,7 +2671,18 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                   ({Number(selectedZone.x).toFixed(2)}, {Number(selectedZone.y).toFixed(2)})
                 </span>
                 {isPolygonZone(selectedZone) ? (
-                  <span className="ml-2 text-cyan-300">Đa giác · {selectedZone.vertices.length} đỉnh · Kéo đỉnh để sửa, kéo trong vùng để di chuyển</span>
+                  <>
+                    <span className="ml-2 text-cyan-300">Đa giác · {selectedZone.vertices.length} đỉnh</span>
+                    <span className={selectedZoneVertex === null ? 'text-slate-400' : 'text-amber-300'}>
+                      {selectedZoneVertex === null ? 'Chọn đỉnh để kéo hoặc xóa' : `Đã chọn đỉnh ${selectedZoneVertex + 1}`}
+                    </span>
+                    <button type="button" onClick={handleDeleteSelectedVertex}
+                      disabled={selectedZoneVertex === null || selectedZone.vertices.length <= 3 || !!dragState}
+                      title={selectedZone.vertices.length <= 3 ? 'Đa giác phải giữ ít nhất 3 đỉnh' : 'Xóa đỉnh đang chọn và nối hai đỉnh liền kề (Delete)'}
+                      className="ml-1 flex items-center gap-1 rounded border border-rose-800 bg-rose-950/60 px-2 py-1 text-rose-300 hover:bg-rose-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                      <Trash2 className="h-3 w-3" /> Xóa đỉnh (Delete)
+                    </button>
+                  </>
                 ) : <>
                 <span className="text-slate-400 ml-1">KT:</span>
                 <input

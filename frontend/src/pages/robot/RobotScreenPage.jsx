@@ -1620,6 +1620,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
         // Tự động mở video call nếu nhận diện ý định gọi nhân viên
         if (chatRes.trigger_video_call) {
+          stopSpeaking();
+          stopListening();
           const canonicalCode = chatRes.ticket_code || chatRes.support_session_id || chatRes.session_id || sessionId;
           setVideoCallSessionId(canonicalCode);
           setVideoCallTicketCode(chatRes.ticket_code || canonicalCode);

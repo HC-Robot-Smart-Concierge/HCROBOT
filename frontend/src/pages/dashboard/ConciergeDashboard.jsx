@@ -58,6 +58,8 @@ export const ConciergeDashboard = ({
 
   // Live Call states
   const [activeSession, setActiveSession] = useState(null);
+  const [activeCallSessionId, setActiveCallSessionId] = useState(null);
+  const [activeCallSession, setActiveCallSession] = useState(null);
   const [activeCount, setActiveCount] = useState(0);
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
@@ -224,6 +226,37 @@ export const ConciergeDashboard = ({
     }
   };
 
+  const handleAcceptCall = (session = activeSession) => {
+    if (!session) return;
+    const targetId = session.ticket_code || session.id;
+    setActiveCallSessionId(targetId);
+    setActiveCallSession(session);
+    setIsVideoModalOpen(true);
+
+    const reqId = session.id || session.ticket_code;
+    if (reqId) {
+      updateConciergeRequest(reqId, {
+        status: 'Connected',
+        assigned_staff_name: currentUser?.full_name || 'Concierge Specialist',
+      }).catch(() => {});
+    }
+  };
+
+  const handleFinishCall = async () => {
+    setIsVideoModalOpen(false);
+    const targetId = activeCallSessionId || activeSession?.ticket_code || activeSession?.id;
+    setActiveCallSessionId(null);
+    setActiveCallSession(null);
+    setActiveSession(null);
+    if (targetId) {
+      await updateConciergeRequest(targetId, {
+        status: 'Closed',
+        assigned_staff_name: currentUser?.full_name || 'Concierge Specialist',
+      }).catch(() => {});
+    }
+    await loadData();
+  };
+
   const handleUpdateStatus = async (status) => {
     if (!activeSession) return;
     const reqId = activeSession.id || activeSession.ticket_code;
@@ -231,6 +264,7 @@ export const ConciergeDashboard = ({
     // Optimistic UI: nếu từ chối hoặc đóng cuộc gọi, lập tức tắt modal
     if (status === 'Closed' || status === 'Completed' || status === 'Cancelled') {
       setActiveSession(null);
+      setIsVideoModalOpen(false);
     }
 
     const result = await updateConciergeRequest(reqId, {
@@ -502,10 +536,7 @@ export const ConciergeDashboard = ({
                     {activeSession.status !== 'Connected' && activeSession.status !== 'Closed' && (
                       <button
                         type="button"
-                        onClick={async () => {
-                          await handleUpdateStatus('Connected');
-                          setIsVideoModalOpen(true);
-                        }}
+                        onClick={() => handleAcceptCall(activeSession)}
                         className="flex-1 sm:flex-initial w-full sm:w-auto px-5 py-3 sm:py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
                       >
                         <Video className="w-4 h-4" />
@@ -516,7 +547,7 @@ export const ConciergeDashboard = ({
                     {activeSession.status === 'Connected' && (
                       <button
                         type="button"
-                        onClick={() => setIsVideoModalOpen(true)}
+                        onClick={() => handleAcceptCall(activeSession)}
                         className="flex-1 sm:flex-initial w-full sm:w-auto px-5 py-3 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
                       >
                         <Video className="w-4 h-4" />
@@ -527,10 +558,7 @@ export const ConciergeDashboard = ({
                     {activeSession.status === 'Connected' && (
                       <button
                         type="button"
-                        onClick={async () => {
-                          setIsVideoModalOpen(false);
-                          await handleUpdateStatus('Closed');
-                        }}
+                        onClick={handleFinishCall}
                         className="px-4 py-3 sm:py-2 rounded-xl bg-neutral-700 hover:bg-neutral-800 active:bg-neutral-900 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
                       >
                         <PhoneOff className="w-4 h-4" />
@@ -1341,10 +1369,7 @@ export const ConciergeDashboard = ({
               </button>
               <button
                 type="button"
-                onClick={async () => {
-                  await handleUpdateStatus('Connected');
-                  setIsVideoModalOpen(true);
-                }}
+                onClick={() => handleAcceptCall(activeSession)}
                 className="flex-1 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 cursor-pointer active:scale-95 animate-pulse"
               >
                 <PhoneCall className="w-4 h-4" />
@@ -1358,28 +1383,15 @@ export const ConciergeDashboard = ({
       {/* MESSENGER VIDEO CALL MODAL (STAFF CALLEE ROLE) */}
       <MessengerVideoCallModal
         isOpen={isVideoModalOpen}
-        sessionId={activeSession?.ticket_code || activeSession?.id || 'SUP-STAFF'}
+        sessionId={activeCallSessionId || activeSession?.ticket_code || activeSession?.id || 'SUP-STAFF'}
         role="staff"
-        callerName={activeSession?.guest_name || 'Khách hàng'}
+        callerName={activeCallSession?.guest_name || activeSession?.guest_name || 'Khách hàng'}
         calleeName={currentUser?.full_name || 'Nhân viên hỗ trợ'}
-        roomNumber={activeSession?.room_number || ''}
-        ticketCode={activeSession?.ticket_code}
-        guestLanguage={activeSession?.language || 'Tiếng Việt'}
-        onClose={async () => {
-          setIsVideoModalOpen(false);
-          if (activeSession && activeSession.status === 'Connected') {
-            await handleUpdateStatus('Closed');
-          }
-          loadData();
-        }}
-        onCallEnded={async (recordRes) => {
-          console.log('[ConciergeDashboard] Staff call ended:', recordRes);
-          setIsVideoModalOpen(false);
-          if (activeSession && activeSession.status === 'Connected') {
-            await handleUpdateStatus('Closed');
-          }
-          loadData();
-        }}
+        roomNumber={activeCallSession?.room_number || activeSession?.room_number || ''}
+        ticketCode={activeCallSession?.ticket_code || activeSession?.ticket_code}
+        guestLanguage={activeCallSession?.language || activeSession?.language || 'Tiếng Việt'}
+        onClose={handleFinishCall}
+        onCallEnded={handleFinishCall}
       />
     </div>
   );

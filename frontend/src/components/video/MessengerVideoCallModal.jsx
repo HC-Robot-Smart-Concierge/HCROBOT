@@ -2381,33 +2381,39 @@ export const MessengerVideoCallModal = ({
       ref={modalContainerRef}
       onClick={primeAudioContext}
       onTouchStart={primeAudioContext}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/80 backdrop-blur-xs transition-all duration-300 p-0 lg:p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#141413]/85 backdrop-blur-sm transition-all duration-300 p-0 lg:p-6"
     >
       {/* Thẻ audio cố định để giải phóng autoplay trên iOS Safari / Chrome */}
       <audio ref={persistentAudioRef} playsInline autoPlay={false} style={{ display: 'none' }} />
 
       {/* Video Call Modal Window */}
-      <div className="relative w-full h-full lg:h-[620px] lg:max-w-4xl bg-[#1E1E1E] rounded-none lg:rounded-2xl overflow-hidden shadow-2xl border-0 lg:border lg:border-stone-700/80 flex flex-col">
-        {/* TOP BAR */}
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 sm:px-4 py-2 sm:py-2.5 lg:p-4 pt-[max(0.75rem,env(safe-area-inset-top))] bg-gradient-to-b from-stone-900/95 via-stone-900/60 to-transparent robot-safe-x">
+      <div className="relative w-full h-full lg:h-[620px] lg:max-w-4xl bg-[#1A1A1A] rounded-none lg:rounded-3xl overflow-hidden shadow-2xl border-0 lg:border lg:border-stone-800 flex flex-col">
+        {/* TOP BAR (GOOGLE MEET MINIMALIST HEADER) */}
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 sm:px-5 py-2.5 sm:py-3 pt-[max(0.75rem,env(safe-area-inset-top))] bg-gradient-to-b from-[#141413]/90 via-[#141413]/50 to-transparent robot-safe-x">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="text-stone-200 text-xs sm:text-sm font-semibold tracking-wide truncate max-w-[110px] sm:max-w-[160px] md:max-w-xs">
-              {role === 'guest' ? (calleeName || 'Nhân viên hỗ trợ') : (callerName || 'Khách hàng')}
+            <div className="text-white text-xs sm:text-sm font-semibold tracking-wide truncate max-w-[120px] sm:max-w-[180px] md:max-w-xs flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+              <span className="truncate">{role === 'guest' ? (calleeName || 'Nhân viên hỗ trợ') : (callerName || 'Khách hàng')}</span>
+              {roomNumber && (
+                <span className="hidden sm:inline-block text-[11px] text-stone-300 bg-white/10 px-2 py-0.5 rounded-full font-normal">
+                  Phòng {roomNumber}
+                </span>
+              )}
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {callStatus === 'connected' && (
               <div className="flex items-center gap-1 sm:gap-1.5">
-                <div className="flex items-center bg-stone-900/90 p-0.5 rounded-lg border border-stone-700/80 shadow-inner">
+                <div className="flex items-center bg-[#202124]/90 backdrop-blur-md p-1 rounded-full border border-white/10 shadow-lg">
                   {/* 1. NÚT THÔNG DỊCH AI (EN ⇄ VI) */}
                   <button
                     type="button"
                     onClick={() => handleToggleTranslateMode('auto')}
-                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
+                    className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
                       translateMode === 'auto'
-                        ? 'bg-amber-500/30 text-amber-300 border border-amber-500/60 shadow-sm'
-                        : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
+                        ? 'bg-amber-500/25 text-amber-300 border border-amber-500/60 shadow-sm'
+                        : 'text-stone-300 hover:text-white hover:bg-white/10'
                     }`}
                     title="Bật chế độ Thông dịch AI: Khách nói tiếng Anh ➔ Dịch tiếng Việt (phát âm Hoài My); Nhân viên nói tiếng Việt ➔ Dịch tiếng Anh (phát âm Jenny); Tự động giữ nguyên nếu cùng ngôn ngữ"
                   >
@@ -2419,10 +2425,10 @@ export const MessengerVideoCallModal = ({
                   <button
                     type="button"
                     onClick={() => handleToggleTranslateMode('bypass')}
-                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
+                    className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
                       translateMode === 'bypass'
                         ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 shadow-sm'
-                        : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
+                        : 'text-stone-300 hover:text-white hover:bg-white/10'
                     }`}
                     title="Bật chế độ Thuần Việt: Cả 2 bên nói tiếng Việt trực tiếp, không dịch, không phát âm AI"
                   >
@@ -2434,7 +2440,7 @@ export const MessengerVideoCallModal = ({
                     <button
                       type="button"
                       onClick={cycleInputLangMode}
-                      className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold text-sky-300 hover:bg-stone-800 transition-all cursor-pointer"
+                      className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold text-sky-300 hover:bg-white/10 transition-all cursor-pointer"
                       title="Chuyển chế độ nhận diện ngôn ngữ đầu vào của Micro: Đa ngữ tự động (AUTO EN/VI) / Cố định EN / Cố định VI"
                     >
                       <span>Nghe: {inputLangMode === 'auto' ? 'Đa ngữ' : inputLangMode.toUpperCase()}</span>
@@ -2445,10 +2451,10 @@ export const MessengerVideoCallModal = ({
                   <button
                     type="button"
                     onClick={() => setShowTestPanel(!showTestPanel)}
-                    className={`hidden md:flex items-center gap-1 px-2 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
+                    className={`hidden md:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
                       showTestPanel
                         ? 'bg-amber-500 text-stone-950 font-bold shadow-md'
-                        : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
+                        : 'text-stone-300 hover:text-white hover:bg-white/10'
                     }`}
                     title="Mở bảng công cụ Thử nghiệm Nhanh: 1-click test giọng đọc Edge TTS & phiên dịch tức thì"
                   >
@@ -2458,14 +2464,14 @@ export const MessengerVideoCallModal = ({
                 </div>
 
                 {isAiSpeaking && (
-                  <span className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-950/80 px-1.5 sm:px-2 py-1 rounded-md border border-emerald-500/50 animate-pulse font-medium">
+                  <span className="flex items-center gap-1 text-[10px] text-emerald-300 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-500/50 animate-pulse font-medium">
                     <Volume2 className="w-3 h-3 text-emerald-400" />
                     <span className="hidden sm:inline">AI Đang nói</span>
                   </span>
                 )}
 
                 {ttsStatus?.status === 'generating' && (
-                  <span className="flex items-center gap-1 text-[10px] text-amber-300 bg-amber-950/80 px-1.5 sm:px-2 py-1 rounded-md border border-amber-500/50 animate-pulse font-medium">
+                  <span className="flex items-center gap-1 text-[10px] text-amber-300 bg-amber-950/80 px-2.5 py-1 rounded-full border border-amber-500/50 animate-pulse font-medium">
                     <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
                     <span className="hidden sm:inline">Đang tạo giọng...</span>
                   </span>
@@ -2473,7 +2479,7 @@ export const MessengerVideoCallModal = ({
 
                 {ttsStatus?.status === 'failed' && (
                   <span
-                    className="flex items-center gap-1 text-[10px] text-rose-300 bg-rose-950/80 px-1.5 sm:px-2 py-1 rounded-md border border-rose-500/50 font-medium"
+                    className="flex items-center gap-1 text-[10px] text-rose-300 bg-rose-950/80 px-2.5 py-1 rounded-full border border-rose-500/50 font-medium"
                     title={ttsStatus.message}
                   >
                     <AlertCircle className="w-3 h-3 text-rose-400" />
@@ -2488,10 +2494,10 @@ export const MessengerVideoCallModal = ({
               <button
                 type="button"
                 onClick={toggleMic}
-                className={`flex items-center gap-1 px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-mono font-medium border cursor-pointer transition-all active:scale-95 ${
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono font-medium border cursor-pointer transition-all active:scale-95 ${
                   isMicMuted
                     ? 'bg-red-950/80 text-red-300 border-red-500/70 shadow-sm animate-pulse'
-                    : 'bg-stone-800 hover:bg-stone-700/80 border-stone-700 text-stone-300'
+                    : 'bg-[#202124]/90 hover:bg-white/10 border-white/10 text-stone-200'
                 }`}
                 title={
                   isMicMuted
@@ -2518,8 +2524,8 @@ export const MessengerVideoCallModal = ({
 
             {/* CALL DURATION BADGE */}
             {callStatus === 'connected' && (
-              <div className="flex items-center gap-1.5 px-2 py-0.5 sm:px-3 sm:py-1 rounded-md text-[10px] sm:text-xs font-mono font-medium bg-stone-800 border border-stone-700 text-stone-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-stone-300 animate-pulse" />
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] sm:text-xs font-mono font-medium bg-[#202124]/90 border border-white/10 text-stone-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
                 <span>
                   {role === 'staff'
                     ? `REC ${formatTime(recordingDuration)}`
@@ -2530,7 +2536,7 @@ export const MessengerVideoCallModal = ({
 
             <button
               onClick={toggleFullscreen}
-              className="p-1 sm:p-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700 transition-colors cursor-pointer"
+              className="w-8 h-8 rounded-full bg-[#202124]/90 hover:bg-white/10 text-stone-300 border border-white/10 flex items-center justify-center transition-colors cursor-pointer"
               title="Toàn màn hình"
             >
               {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
@@ -2540,7 +2546,7 @@ export const MessengerVideoCallModal = ({
 
         {/* STT Status Warning Notification */}
         {sttStatusMessage && (
-          <div className="absolute top-14 left-3 right-3 sm:left-4 sm:right-4 z-25 bg-amber-950/85 border border-amber-600/50 text-amber-200 text-xs px-3 py-1.5 rounded-lg flex items-center justify-between shadow-lg backdrop-blur-xs">
+          <div className="absolute top-14 left-3 right-3 sm:left-4 sm:right-4 z-25 bg-[#202124]/95 border border-amber-500/50 text-amber-200 text-xs px-3.5 py-2 rounded-2xl flex items-center justify-between shadow-xl backdrop-blur-md">
             <div className="flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
               <span>{sttStatusMessage}</span>
@@ -2548,7 +2554,7 @@ export const MessengerVideoCallModal = ({
             <button
               type="button"
               onClick={() => setSttStatusMessage('')}
-              className="text-amber-400 hover:text-amber-200 ml-2 px-1 text-sm font-bold"
+              className="text-amber-400 hover:text-amber-200 ml-2 px-1 text-sm font-bold cursor-pointer"
             >
               ✕
             </button>
@@ -2565,7 +2571,7 @@ export const MessengerVideoCallModal = ({
                 setIsAudioBlocked(false);
                 processAudioQueue();
               }}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs sm:text-sm shadow-2xl border border-amber-300 cursor-pointer"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs sm:text-sm shadow-2xl border border-amber-300 cursor-pointer"
             >
               <Volume2 className="w-4 h-4 text-stone-950" />
               <span>Nhấn để bật tiếng loa phiên dịch (Autoplay Unlock)</span>
@@ -2575,7 +2581,7 @@ export const MessengerVideoCallModal = ({
 
         {/* INTERACTIVE LIVE TRANSLATION & TTS TEST BAR */}
         {callStatus === 'connected' && showTestPanel && (
-          <div className="absolute top-13 sm:top-15 left-3 right-3 sm:left-6 sm:right-6 z-30 bg-[#141414]/95 backdrop-blur-md border border-amber-500/50 rounded-xl p-2.5 sm:p-3 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="absolute top-14 sm:top-16 left-3 right-3 sm:left-6 sm:right-6 z-30 bg-[#202124]/95 backdrop-blur-md border border-white/10 rounded-2xl p-3 sm:p-4 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
                 <Sparkles className="w-4 h-4 text-amber-400" />
@@ -2584,38 +2590,38 @@ export const MessengerVideoCallModal = ({
               <button
                 type="button"
                 onClick={() => setShowTestPanel(false)}
-                className="text-[11px] text-stone-400 hover:text-stone-200 px-1.5 py-0.5 rounded hover:bg-stone-800 cursor-pointer"
+                className="text-[11px] text-stone-400 hover:text-stone-200 px-2 py-0.5 rounded-full hover:bg-white/10 cursor-pointer"
               >
                 ✕ Đóng
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2.5">
               <button
                 type="button"
                 disabled={isTestTranslating}
                 onClick={() => handleSimulateGuestSpeech("Where is the swimming pool?")}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-600 text-[11px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-1 px-3 py-1 rounded-full bg-[#3c4043] hover:bg-[#474a4d] text-stone-200 border border-white/10 text-[11px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
               >
-                <span>🇺🇸 Khách: "Where is the swimming pool?"</span>
+                <span>Khách: "Where is the swimming pool?"</span>
               </button>
 
               <button
                 type="button"
                 disabled={isTestTranslating}
                 onClick={() => handleSimulateStaffSpeech("Bể bơi nằm ở tầng 3 thưa quý khách")}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-600 text-[11px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-1 px-3 py-1 rounded-full bg-[#3c4043] hover:bg-[#474a4d] text-stone-200 border border-white/10 text-[11px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
               >
-                <span>🇻🇳 Staff: "Bể bơi nằm ở tầng 3 thưa quý khách"</span>
+                <span>Staff: "Bể bơi nằm ở tầng 3 thưa quý khách"</span>
               </button>
 
               <button
                 type="button"
                 disabled={isTestTranslating}
                 onClick={() => handleSimulateGuestSpeech("Cho tôi hỏi nhà hàng mở cửa lúc mấy giờ?")}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-600 text-[11px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-1 px-3 py-1 rounded-full bg-[#3c4043] hover:bg-[#474a4d] text-stone-200 border border-white/10 text-[11px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
               >
-                <span>🇻🇳 Khách: "Nhà hàng mở cửa lúc mấy giờ?"</span>
+                <span>Khách: "Nhà hàng mở cửa lúc mấy giờ?"</span>
               </button>
             </div>
 
@@ -2630,13 +2636,13 @@ export const MessengerVideoCallModal = ({
                   }
                 }}
                 placeholder="Nhập câu bất kỳ để test thông dịch & giọng đọc Edge Neural..."
-                className="flex-1 bg-stone-900 border border-stone-700 rounded-lg px-3 py-1.5 text-xs text-stone-200 placeholder-stone-500 focus:outline-none focus:border-amber-500"
+                className="flex-1 bg-[#141414] border border-white/15 rounded-full px-4 py-1.5 text-xs text-stone-200 placeholder-stone-500 focus:outline-none focus:border-amber-400"
               />
               <button
                 type="button"
                 disabled={!testCustomText.trim() || isTestTranslating}
                 onClick={() => handleSimulateGuestSpeech(testCustomText.trim())}
-                className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-full bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer"
               >
                 <span>Khách nói</span>
               </button>
@@ -2644,7 +2650,7 @@ export const MessengerVideoCallModal = ({
                 type="button"
                 disabled={!testCustomText.trim() || isTestTranslating}
                 onClick={() => handleSimulateStaffSpeech(testCustomText.trim())}
-                className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer"
               >
                 <span>Staff nói</span>
               </button>
@@ -2653,7 +2659,7 @@ export const MessengerVideoCallModal = ({
         )}
 
         {/* MAIN VIDEO SCREEN */}
-        <div className="relative flex-1 bg-[#181818] flex items-center justify-center overflow-hidden">
+        <div className="relative flex-1 bg-[#121212] flex items-center justify-center overflow-hidden">
           <video
             ref={remoteVideoRef}
             autoPlay
@@ -2666,37 +2672,37 @@ export const MessengerVideoCallModal = ({
           />
 
           {callStatus !== 'connected' && callStatus !== 'ended' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-4 sm:p-6 text-center z-10 bg-[#181818]/95">
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-4 sm:p-6 text-center z-10 bg-[#121212]/95">
               <div className="relative mb-3 sm:mb-5">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-stone-700 border-t-stone-300 animate-spin" />
+                <div className="w-12 h-12 rounded-full border-3 border-stone-700 border-t-emerald-400 animate-spin" />
               </div>
 
-              <h2 className="text-stone-100 text-sm sm:text-base font-semibold">
+              <h2 className="text-white text-sm sm:text-base font-medium">
                 Đang kết nối với nhân viên...
               </h2>
 
               {errorMessage && (
-                <div className="mt-2.5 flex items-center gap-2 text-[11px] sm:text-xs text-stone-300 bg-stone-800 border border-stone-700 px-3 py-1.5 rounded-lg">
-                  <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-stone-400" />
-                  {errorMessage}
+                <div className="mt-3 flex items-center gap-2 text-xs text-rose-300 bg-rose-950/70 border border-rose-500/50 px-3.5 py-2 rounded-xl">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{errorMessage}</span>
                 </div>
               )}
             </div>
           )}
 
           {callStatus === 'ended' && (
-            <div className="absolute inset-0 z-30 bg-[#181818]/95 flex flex-col items-center justify-center p-4 sm:p-6 text-center animate-fadeIn">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-stone-300 mb-2.5 shadow-lg">
-                <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
+            <div className="absolute inset-0 z-30 bg-[#121212]/95 flex flex-col items-center justify-center p-4 sm:p-6 text-center animate-fadeIn">
+              <div className="w-12 h-12 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-stone-300 mb-3 shadow-lg">
+                <PhoneOff className="w-5 h-5 text-red-400" />
               </div>
-              <h3 className="text-stone-100 text-xs sm:text-sm font-semibold">Cuộc gọi đã kết thúc</h3>
+              <h3 className="text-white text-sm sm:text-base font-semibold">Cuộc gọi đã kết thúc</h3>
             </div>
           )}
 
-          {/* FLOATING CINEMA SUBTITLE BAR */}
+          {/* FLOATING CINEMA SUBTITLE BAR (GOOGLE MEET CLOSED CAPTIONS STYLE) */}
           {(activeSubtitle || (interimText && translateMode !== 'bypass')) && (
-            <div className="absolute bottom-4 sm:bottom-6 lg:bottom-8 left-3 right-3 sm:left-6 sm:right-6 z-25 flex justify-center pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="bg-[#141414]/90 backdrop-blur-md border border-stone-700/80 rounded-2xl px-4 py-2 sm:px-6 sm:py-3 max-w-2xl text-center shadow-2xl space-y-1 pointer-events-auto">
+            <div className="absolute bottom-20 sm:bottom-24 lg:bottom-26 left-3 right-3 sm:left-6 sm:right-6 z-25 flex justify-center pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="bg-[#202124]/95 backdrop-blur-md border border-white/10 rounded-2xl px-5 py-3 sm:px-6 sm:py-3.5 max-w-2xl text-center shadow-2xl space-y-1.5 pointer-events-auto">
                 {interimText && !activeSubtitle && (
                   <p className="text-stone-300 text-xs sm:text-sm italic font-mono animate-pulse">
                     "{interimText}..."
@@ -2705,13 +2711,13 @@ export const MessengerVideoCallModal = ({
 
                 {activeSubtitle && (
                   <>
-                    <div className="flex items-center justify-center gap-2 mb-0.5">
-                      <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-stone-800 text-stone-300 border border-stone-700">
+                    <div className="flex items-center justify-center gap-2 mb-0.5 flex-wrap">
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-white/10 text-stone-200 border border-white/10">
                         {activeSubtitle.senderRole === role
                           ? 'Bạn'
                           : (activeSubtitle.senderRole === 'staff' ? calleeName : callerName)}
                       </span>
-                      <span className="text-[10px] font-semibold text-amber-400 flex items-center gap-1">
+                      <span className="text-[10px] font-semibold text-amber-400 flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
                         <Languages className="w-3 h-3" />
                         <span>
                           {activeSubtitle.needsTranslation
@@ -2720,7 +2726,7 @@ export const MessengerVideoCallModal = ({
                         </span>
                       </span>
                       {activeSubtitle.needsTranslation && (
-                        <span className="text-[10px] font-medium text-emerald-400 flex items-center gap-1 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                        <span className="text-[10px] font-medium text-emerald-300 flex items-center gap-1 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
                           <Volume2 className={`w-2.5 h-2.5 ${isAiSpeaking ? 'animate-bounce text-emerald-300' : ''}`} />
                           <span>AI Voice</span>
                         </span>
@@ -2733,7 +2739,7 @@ export const MessengerVideoCallModal = ({
                       </p>
                     )}
 
-                    <p className="text-stone-100 text-xs sm:text-sm md:text-base font-semibold leading-relaxed tracking-wide">
+                    <p className="text-white text-xs sm:text-sm md:text-base font-semibold leading-relaxed tracking-wide">
                       {activeSubtitle.translatedText || activeSubtitle.originalText}
                     </p>
                   </>
@@ -2742,17 +2748,17 @@ export const MessengerVideoCallModal = ({
             </div>
           )}
 
-          {/* PICTURE-IN-PICTURE: LOCAL SELF VIDEO */}
-          <div className="absolute bottom-20 sm:bottom-22 lg:bottom-24 right-3 sm:right-4 w-24 h-32 sm:w-28 sm:h-36 lg:w-40 lg:h-52 rounded-xl overflow-hidden bg-stone-900 border border-stone-700 shadow-xl z-20 transition-all">
+          {/* PICTURE-IN-PICTURE: LOCAL SELF VIDEO (GOOGLE MEET STYLE) */}
+          <div className="absolute bottom-20 sm:bottom-24 right-3 sm:right-4 w-24 h-32 sm:w-28 sm:h-36 lg:w-44 lg:h-56 rounded-2xl overflow-hidden bg-[#202124] border border-white/15 shadow-2xl z-20 transition-all">
             {hasNoCamera ? (
-              <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-stone-900 to-stone-950 p-2 text-center select-none">
-                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center mb-1.5 shadow-inner">
-                  <Mic className={`w-4 h-4 sm:w-5 sm:h-5 ${isMicMuted ? 'text-red-400' : 'text-emerald-400 animate-pulse'}`} />
+              <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#202124] to-[#141414] p-2 text-center select-none">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#3c4043] flex items-center justify-center mb-1.5 shadow-inner">
+                  <Mic className={`w-5 h-5 ${isMicMuted ? 'text-red-400' : 'text-emerald-400 animate-pulse'}`} />
                 </div>
-                <span className="text-[10px] sm:text-[11px] font-semibold text-stone-200">
+                <span className="text-[10px] sm:text-[11px] font-semibold text-white">
                   {role === 'guest' ? 'Robot Kiosk' : 'Nhân viên'}
                 </span>
-                <span className="text-[8px] sm:text-[9px] text-stone-400 leading-tight">
+                <span className="text-[9px] text-stone-400 leading-tight">
                   {isMicMuted ? 'Micro đã tắt' : 'Đang bật Micro'}
                 </span>
               </div>
@@ -2767,94 +2773,84 @@ export const MessengerVideoCallModal = ({
                   className={`w-full h-full object-cover ${isVideoDisabled ? 'hidden' : 'block'}`}
                 />
                 {isVideoDisabled && (
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-stone-900 text-stone-400">
-                    <VideoOff className="w-4 h-4 mb-1 text-stone-500" />
-                    <span className="text-[9px] sm:text-[10px]">Camera tắt</span>
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-[#202124] text-stone-400">
+                    <VideoOff className="w-5 h-5 mb-1 text-stone-500" />
+                    <span className="text-[10px]">Camera tắt</span>
                   </div>
                 )}
               </>
             )}
-            <div className="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 text-[9px] sm:text-[10px] text-stone-200 bg-stone-950/80 border border-stone-700/60 px-1.5 py-0.5 rounded font-medium">
+            <div className="absolute bottom-2 left-2 text-[10px] text-white/90 bg-[#202124]/80 backdrop-blur-md border border-white/10 px-2 py-0.5 rounded-full font-medium">
               Bạn
             </div>
           </div>
         </div>
 
-        {/* BOTTOM ACTION CONTROLS BAR */}
-        <div className="px-3 sm:px-4 py-2 sm:py-2.5 lg:py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-[#1A1A1A] border-t border-stone-800 flex items-center justify-center gap-3 sm:gap-6 lg:gap-8 z-30 shrink-0 robot-safe-x">
-          {/* MUTE MIC BUTTON */}
-          <button
-            type="button"
-            onClick={toggleMic}
-            className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group min-w-[44px] min-h-[44px]"
-          >
-            <div
-              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
+        {/* BOTTOM ACTION CONTROLS BAR (GOOGLE MEET FLOATING DOCK STYLE) */}
+        <div className="p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-center justify-center z-30 shrink-0 robot-safe-x">
+          <div className="flex items-center gap-2 sm:gap-3 bg-[#202124]/90 backdrop-blur-md px-3 sm:px-5 py-2 sm:py-2.5 rounded-full border border-white/10 shadow-2xl">
+            {/* 1. MUTE MIC BUTTON */}
+            <button
+              type="button"
+              onClick={toggleMic}
+              title={isMicMuted ? 'Bật mic' : 'Tắt mic'}
+              aria-label={isMicMuted ? 'Bật micro' : 'Tắt micro'}
+              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm ${
                 isMicMuted
-                  ? 'bg-red-950/80 text-red-400 border border-red-500/70 shadow-lg animate-pulse'
-                  : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
+                  ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
+                  : 'bg-[#3c4043] hover:bg-[#474a4d] text-white hover:shadow-md'
               }`}
             >
-              {isMicMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4" />}
-            </div>
-            <span className={`text-[10px] font-medium ${isMicMuted ? 'text-red-400 font-bold' : 'text-stone-400'}`}>
-              {isMicMuted ? 'Bật Mic' : 'Tắt Mic'}
-            </span>
-          </button>
+              {isMicMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+            </button>
 
-          {/* TOGGLE SPEAKER BUTTON */}
-          <button
-            type="button"
-            onClick={toggleSpeaker}
-            className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group min-w-[44px] min-h-[44px]"
-          >
-            <div
-              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
-                isSpeakerMuted
-                  ? 'bg-stone-800 text-stone-400 border border-stone-700'
-                  : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
-              }`}
-            >
-              {isSpeakerMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-            </div>
-            <span className="text-[10px] font-medium text-stone-400">
-              {isSpeakerMuted ? 'Bật Loa' : 'Tắt Loa'}
-            </span>
-          </button>
-
-          {/* STAFF ONLY CONTROLS */}
-          {role === 'staff' && (
-            <>
+            {/* 2. CAMERA TOGGLE (STAFF ONLY) */}
+            {role === 'staff' && (
               <button
                 type="button"
                 onClick={toggleVideo}
-                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group min-w-[44px] min-h-[44px]"
+                title={isVideoDisabled ? 'Bật máy ảnh' : 'Tắt máy ảnh'}
+                aria-label={isVideoDisabled ? 'Bật camera' : 'Tắt camera'}
+                className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm ${
+                  isVideoDisabled
+                    ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
+                    : 'bg-[#3c4043] hover:bg-[#474a4d] text-white hover:shadow-md'
+                }`}
               >
-                <div
-                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
-                    isVideoDisabled
-                      ? 'bg-stone-800 text-stone-400 border border-stone-700'
-                      : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
-                  }`}
-                >
-                  {isVideoDisabled ? <VideoOff className="w-4 h-4" /> : <Video className="w-4 h-4" />}
-                </div>
-                <span className="text-[10px] font-medium text-stone-400">
-                  {isVideoDisabled ? 'Bật Cam' : 'Tắt Cam'}
-                </span>
+                {isVideoDisabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
               </button>
-            </>
-          )}
+            )}
 
-          {/* END CALL BUTTON */}
-          <button
-            type="button"
-            onClick={() => handleEndCall(true)}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 sm:px-8 sm:py-2.5 min-h-[44px] rounded-xl bg-stone-800 hover:bg-stone-700 active:scale-98 text-stone-200 hover:text-white border border-stone-600 transition-all cursor-pointer shadow-sm"
-          >
-            <PhoneOff className="w-4 h-4 text-red-400" />
-            <span className="text-xs font-semibold tracking-wide">Kết thúc cuộc gọi</span>
-          </button>
+            {/* 3. SPEAKER / AUDIO TOGGLE */}
+            <button
+              type="button"
+              onClick={toggleSpeaker}
+              title={isSpeakerMuted ? 'Bật loa' : 'Tắt loa'}
+              aria-label={isSpeakerMuted ? 'Bật loa' : 'Tắt loa'}
+              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm ${
+                isSpeakerMuted
+                  ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
+                  : 'bg-[#3c4043] hover:bg-[#474a4d] text-white hover:shadow-md'
+              }`}
+            >
+              {isSpeakerMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+            </button>
+
+            {/* DIVIDER */}
+            <div className="w-px h-6 bg-white/15 mx-1 hidden sm:block" />
+
+            {/* 4. END CALL BUTTON (GOOGLE MEET RED PILL) */}
+            <button
+              type="button"
+              onClick={() => handleEndCall(true)}
+              title="Rời khỏi cuộc gọi"
+              aria-label="Rời khỏi cuộc gọi"
+              className="px-5 sm:px-6 h-11 sm:h-12 rounded-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 transition-all cursor-pointer active:scale-95"
+            >
+              <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+              <span className="font-semibold hidden xs:inline sm:inline">Kết thúc</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

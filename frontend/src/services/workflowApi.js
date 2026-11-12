@@ -1,10 +1,12 @@
 const API_BASE = '/api/v1';
 
+const mapQuery = (mapId) => (mapId ? `?${new URLSearchParams({ map_id: mapId })}` : '');
+
 /**
- * Fetch all persistent LiDAR waypoints from database
+ * Fetch persistent LiDAR waypoints from database (only those of mapId when given)
  */
-export async function fetchWaypoints() {
-  const res = await fetch(`${API_BASE}/map/waypoints`);
+export async function fetchWaypoints(mapId = null) {
+  const res = await fetch(`${API_BASE}/map/waypoints${mapQuery(mapId)}`);
   if (!res.ok) throw new Error('Không thể tải danh sách Waypoints');
   return res.json();
 }
@@ -12,13 +14,20 @@ export async function fetchWaypoints() {
 /**
  * Save (create or upsert) a waypoint coordinate
  */
+// Loi tu backend (vd. 400 "nam trong vung cam dung ... xoa endpoint truoc"): dung nguyen loi giai thich.
+async function errorFromResponse(res, fallback) {
+  const body = await res.json().catch(() => null);
+  const detail = typeof body?.detail === 'string' ? body.detail : null;
+  return new Error(detail || fallback);
+}
+
 export async function saveWaypoint(waypoint) {
   const res = await fetch(`${API_BASE}/map/waypoints`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(waypoint),
   });
-  if (!res.ok) throw new Error('Lỗi khi lưu Waypoint');
+  if (!res.ok) throw await errorFromResponse(res, 'Lỗi khi lưu Waypoint');
   return res.json();
 }
 
@@ -31,7 +40,7 @@ export async function updateWaypoint(waypointId, waypoint) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(waypoint),
   });
-  if (!res.ok) throw new Error('Lỗi khi cập nhật Endpoint');
+  if (!res.ok) throw await errorFromResponse(res, 'Lỗi khi cập nhật Endpoint');
   return res.json();
 }
 
@@ -104,10 +113,73 @@ export async function executeWorkflow(workflowId, payload = {}) {
 /**
  * Fetch all persistent functional zones from database
  */
-export async function fetchZones() {
-  const res = await fetch(`${API_BASE}/map/zones`);
+export async function fetchZones(mapId = null) {
+  const res = await fetch(`${API_BASE}/map/zones${mapQuery(mapId)}`);
   if (!res.ok) throw new Error('Không thể tải danh sách Vùng Chức Năng');
   return res.json();
+}
+
+/**
+ * Danh sách map SLAM (.yaml + .pgm) kèm kích thước, độ phân giải và gốc tọa độ
+ */
+export async function listMapLayouts() {
+  const res = await fetch(`${API_BASE}/map/layouts`);
+  if (!res.ok) throw new Error('Không thể tải danh sách bản đồ');
+  const data = await res.json();
+  return data.maps || [];
+}
+
+/**
+ * Giải mã PGM binary (P5) thành canvas để vẽ bằng drawImage (hàng 0 là đỉnh ảnh)
+ */
+export function decodePgmToCanvas(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let pos = 0;
+  const tokens = [];
+  while (tokens.length < 4 && pos < bytes.length) {
+    while (pos < bytes.length && /\s/.test(String.fromCharCode(bytes[pos]))) pos += 1;
+    if (bytes[pos] === 0x23) {
+      while (pos < bytes.length && bytes[pos] !== 0x0a) pos += 1;
+      continue;
+    }
+    let token = '';
+    while (pos < bytes.length && !/\s/.test(String.fromCharCode(bytes[pos]))) {
+      token += String.fromCharCode(bytes[pos]);
+      pos += 1;
+    }
+    tokens.push(token);
+  }
+  pos += 1; // một ký tự trắng ngăn header và pixel
+  const [magic, w, h, maxVal] = tokens;
+  const width = Number(w);
+  const height = Number(h);
+  if (magic !== 'P5' || !width || !height || Number(maxVal) > 255 || bytes.length < pos + width * height) {
+    throw new Error('File PGM không hợp lệ');
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(width, height);
+  for (let i = 0; i < width * height; i += 1) {
+    const v = bytes[pos + i];
+    img.data[i * 4] = v;
+    img.data[i * 4 + 1] = v;
+    img.data[i * 4 + 2] = v;
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+/**
+ * Tải ảnh map SLAM và trả về canvas sẵn sàng cho drawImage
+ */
+export async function fetchMapLayoutImage(mapId) {
+  const res = await fetch(`${API_BASE}/map/layouts/${encodeURIComponent(mapId)}/image`);
+  if (!res.ok) throw new Error(`Không tải được ảnh bản đồ "${mapId}"`);
+  return decodePgmToCanvas(await res.arrayBuffer());
 }
 
 /**
@@ -119,7 +191,7 @@ export async function saveZone(zone) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(zone),
   });
-  if (!res.ok) throw new Error('Lỗi khi lưu Vùng Chức Năng');
+  if (!res.ok) throw await errorFromResponse(res, 'Lỗi khi lưu Vùng Chức Năng');
   return res.json();
 }
 
@@ -244,12 +316,36 @@ export async function saveRos2Map(mapName) {
   return parseRos2RuntimeResponse(res, 'Không lưu được bản đồ ROS 2');
 }
 
-export async function startRos2Navigation(mapName) {
+// Xe THAT tu di quet map: backend chay start_wsl_slam.sh EXPLORE=1 (SLAM + Nav2 + frontier).
+export async function startRos2Explore(mapName, autoSave = true) {
+  const res = await fetch(`${API_BASE}/map/ros2/start_explore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: mapName || 'auto_explored_map', auto_save: autoSave }),
+  });
+  return parseRos2RuntimeResponse(res, 'Không khởi động được chế độ tự quét map');
+}
+
+// Dung xe tu quet: tat explorer + Nav2, gui stop toi Pi; GIU SLAM de con luu map.
+export async function stopRos2Explore() {
+  const res = await fetch(`${API_BASE}/map/ros2/stop_explore`, { method: 'POST' });
+  return parseRos2RuntimeResponse(res, 'Không dừng được chế độ tự quét map');
+}
+
+export async function startRos2Navigation(mapName, piIp = null) {
   const res = await fetch(`${API_BASE}/map/ros2/start_navigation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: mapName }),
+    body: JSON.stringify({ name: mapName, ...(piIp ? { pi_ip: piIp } : {}) }),
   });
   return parseRos2RuntimeResponse(res, 'Không khởi động được Navigation');
+}
+
+// Ghi lai mask vung cam (KEEP_OUT) cua map tu CSDL; Nav2 dang chay thi nap lai ngay.
+export async function updateRos2KeepoutMask(mapName) {
+  const res = await fetch(`${API_BASE}/map/ros2/keepout_mask/${encodeURIComponent(mapName)}`, {
+    method: 'POST',
+  });
+  return parseRos2RuntimeResponse(res, 'Không cập nhật được vùng cấm cho Nav2');
 }
 

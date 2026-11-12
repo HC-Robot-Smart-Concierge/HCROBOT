@@ -709,14 +709,14 @@
     <!-- Waypoint 8: Loi Thoat Hiem Khan Cap (STAIRS / EMERGENCY - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_emergency">
       <static>true</static>
-      <pose>0.00 0.00 -10.00 0 0 0</pose>
+      <pose>0.82 0.00 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
           <material>
             <ambient>0.58 0.64 0.72 0.9</ambient>
             <diffuse>0.58 0.64 0.72 0.9</diffuse>
-            <emissive>0.45 0.50 0.58 1</emissive>
+            <emissive>0.45 0.5 0.58 1.0</emissive>
           </material>
         </visual>
       </link>
@@ -725,14 +725,14 @@
     <!-- Waypoint 9: Khu Sofa Sanh (LOBBY_LOUNGE - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_lounge">
       <static>true</static>
-      <pose>0.00 0.00 -10.00 0 0 0</pose>
+      <pose>0.15 -0.16 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
           <material>
             <ambient>0.58 0.64 0.72 0.9</ambient>
             <diffuse>0.58 0.64 0.72 0.9</diffuse>
-            <emissive>0.45 0.50 0.58 1</emissive>
+            <emissive>0.45 0.5 0.58 1.0</emissive>
           </material>
         </visual>
       </link>

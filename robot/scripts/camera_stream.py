@@ -240,7 +240,7 @@ class OpenCVBackend(CameraBackend):
                             self._fail_count = 0
                             try:
                                 _, jpeg = self._cv2.imencode(
-                                    ".jpg", frame, [self._cv2.IMWRITE_JPEG_QUALITY, 75]
+                                    ".jpg", frame, [self._cv2.IMWRITE_JPEG_QUALITY, 65]
                                 )
                                 self._last_good_jpeg = jpeg.tobytes()
                                 self._last_frame_ts = time.time()
@@ -286,7 +286,7 @@ class OpenCVBackend(CameraBackend):
             if ret and frame is not None:
                 try:
                     _, jpeg = self._cv2.imencode(
-                        ".jpg", frame, [self._cv2.IMWRITE_JPEG_QUALITY, 75]
+                        ".jpg", frame, [self._cv2.IMWRITE_JPEG_QUALITY, 65]
                     )
                     with self._lock:
                         self._last_good_jpeg = jpeg.tobytes()
@@ -532,6 +532,10 @@ class MJPEGHandler(BaseHTTPRequestHandler):
                 )
                 self.wfile.write(frame)
                 self.wfile.write(b"\r\n")
+                try:
+                    self.wfile.flush()
+                except Exception:
+                    pass
                 time.sleep(target_interval)
         except (BrokenPipeError, ConnectionResetError):
             logger.info("Client disconnected from stream")
@@ -560,6 +564,14 @@ class MJPEGHandler(BaseHTTPRequestHandler):
 
 class ThreadedHTTPServer(HTTPServer):
     """HTTP server xử lý mỗi request trên thread riêng (hỗ trợ nhiều client)."""
+
+    def server_bind(self):
+        super().server_bind()
+        try:
+            import socket
+            self.socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except Exception:
+            pass
 
     def process_request(self, request, client_address):
         thread = threading.Thread(
@@ -601,7 +613,7 @@ def parse_args():
 
 
 def main():
-    global camera_backend
+    global camera_broadcaster, camera_backend
 
     args = parse_args()
     logging.basicConfig(
@@ -609,22 +621,25 @@ def main():
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
 
-    camera_backend = create_camera_backend(
-        args.width, args.height, args.fps, device=args.device
+    broadcaster = CameraBroadcaster(
+        width=args.width, height=args.height, fps=args.fps, device=args.device
     )
+    broadcaster.start()
+    camera_broadcaster = broadcaster
+    camera_backend = broadcaster.backend
 
     server = ThreadedHTTPServer(("0.0.0.0", args.port), MJPEGHandler)
 
     def shutdown_handler(sig, frame):
         logger.info("Shutting down camera stream server...")
-        camera_backend.stop()
+        broadcaster.stop()
         server.shutdown()
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown_handler)
     signal.signal(signal.SIGTERM, shutdown_handler)
 
-    logger.info("📹 Pi5 MJPEG Camera Stream Server started")
+    logger.info("Pi5 MJPEG Camera Stream Server started (Broadcaster & Zero-Buffer Enabled)")
     logger.info(f"   Stream URL : http://0.0.0.0:{args.port}/stream")
     logger.info(f"   Health URL : http://0.0.0.0:{args.port}/health")
     logger.info(f"   Preview    : http://0.0.0.0:{args.port}/")

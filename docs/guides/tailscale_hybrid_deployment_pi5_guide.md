@@ -217,11 +217,84 @@ Nếu phòng thi hoặc hội trường bị phá sóng 4G và không có kết 
 
 ---
 
-## 6. Cấu Hình Tự Động Hóa trên Pi 5 (Systemd Services)
+## 6. Hướng Dẫn Cấu Hình Khi Chuyển Sang Máy Khác (Máy Bạn Làm Brain Server)
+
+Khi chuyển giao vai trò Brain Server sang một máy tính Laptop khác (ví dụ: máy của bạn trong nhóm làm máy chủ thay thế), cần thực hiện 6 bước sau:
+
+### Bước 1: Cài đặt Tailscale và gia nhập cùng mạng Tailnet
+1. Tải Tailscale cho Windows/macOS/Linux tại `https://tailscale.com/download` và cài đặt.
+2. Đăng nhập vào **cùng tài khoản Tailnet của nhóm** (hoặc được Admin nhóm gửi link mời tham gia Tailnet).
+3. Mở PowerShell/Terminal kiểm tra danh sách thiết bị:
+   ```powershell
+   tailscale status
+   ```
+   *Yêu cầu:* Phải nhìn thấy thiết bị Raspberry Pi 5 (`100.99.72.51`) xuất hiện trong danh sách.
+
+### Bước 2: Mở Windows Firewall cho cổng 8000
+Mặc định tường lửa Windows sẽ chặn kết nối bên ngoài vào cổng 8000. Mở PowerShell với quyền **Run as Administrator**:
+```powershell
+New-NetFirewallRule -DisplayName "HCRobot Backend 8000" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow
+```
+
+### Bước 3: Kích hoạt Tailscale Funnel trên máy mới
+1. Mở PowerShell chạy lệnh kích hoạt chuyển tiếp cổng 8000 ra Internet:
+   ```powershell
+   tailscale funnel --bg 8000
+   ```
+2. Lấy tên miền công cộng được cấp riêng cho máy mới:
+   ```powershell
+   tailscale serve status
+   # hoặc: tailscale funnel status
+   ```
+   *Kết quả hiển thị tương tự:*
+   ```text
+   https://laptop-ban-toi.taila9018b.ts.net (Funnel on)
+   |-- / proxy http://127.0.0.1:8000
+   ```
+   Ghi lại tên miền này (ví dụ: `laptop-ban-toi.taila9018b.ts.net`).
+
+### Bước 4: Cập nhật tên miền mới vào Cloudflare Worker
+Vì máy chủ Cloudflare đang trỏ ngược về tên miền máy cũ (`yungwhore.taila9018b.ts.net`), bạn cần cập nhật tên miền mới của máy mình:
+1. Mở 2 file mã nguồn:
+   - `worker.js` (tại thư mục gốc dự án)
+   - `frontend/worker.js`
+2. Tìm dòng khai báo `yungwhore.taila9018b.ts.net` và thay bằng tên miền mới lấy từ Bước 3:
+   ```javascript
+   // Đổi sang tên miền Funnel của máy mới
+   const targetUrl = new URL(`https://laptop-ban-toi.taila9018b.ts.net${url.pathname}${url.search}`);
+   const headers = new Headers(request.headers);
+   headers.set('host', 'laptop-ban-toi.taila9018b.ts.net');
+   ```
+3. Triển khai cấu hình mới lên Cloudflare:
+   ```powershell
+   cd f:\DoAn\HC-Robot\frontend
+   npx wrangler deploy
+   ```
+   *(Hoặc commit và push code lên nhánh main để GitHub Actions tự động deploy).*
+
+### Bước 5: Khởi động Backend trên máy mới
+Tại thư mục dự án trên máy mới:
+```powershell
+cd f:\DoAn\HC-Robot\backend
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Bước 6: Kiểm tra kết nối từ thiết bị ngoài
+1. Dùng điện thoại mở mạng 4G (không dùng Wi-Fi nhà) truy cập:
+   `https://laptop-ban-toi.taila9018b.ts.net/docs`
+   *Nếu hiển thị giao diện Swagger UI của FastAPI kèm biểu tượng ổ khóa SSL xanh lá, máy mới đã trở thành Brain Server công cộng thành công 100%.*
+2. Bây giờ:
+   - Màn hình Robot trên điện thoại: Mở `https://hcrobot.dinhhoangkha107.workers.dev/robot-screen`.
+   - Admin điều khiển trên máy mới: Mở `https://localhost:3000/admin`.
+   - Mọi tương tác (quảng cáo, đổi trạng thái món ăn, điều khiển xe) sẽ tự động chạy qua máy mới.
+
+---
+
+## 7. Cấu Hình Tự Động Hóa trên Pi 5 (Systemd Services)
 
 Để khi cắm điện pin vào Pi 5 xe tự động chạy 100% mà không cần gõ lệnh SSH, cài đặt 2 service sau trên Pi 5:
 
-### 6.1. Service điều khiển xe (`/etc/systemd/system/hcrobot-main.service`)
+### 7.1. Service điều khiển xe (`/etc/systemd/system/hcrobot-main.service`)
 ```ini
 [Unit]
 Description=HC-Robot Main Hardware Controller
@@ -239,7 +312,7 @@ RestartSec=3
 WantedBy=multi-user.target
 ```
 
-### 6.2. Service Camera WebRTC (`/etc/systemd/system/hcrobot-camera.service`)
+### 7.2. Service Camera WebRTC (`/etc/systemd/system/hcrobot-camera.service`)
 ```ini
 [Unit]
 Description=HC-Robot WebRTC Camera Streamer
@@ -257,7 +330,7 @@ RestartSec=3
 WantedBy=multi-user.target
 ```
 
-### 6.3. Kích hoạt service trên Pi 5:
+### 7.3. Kích hoạt service trên Pi 5:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now hcrobot-main.service
@@ -266,7 +339,7 @@ sudo systemctl enable --now hcrobot-camera.service
 
 ---
 
-## 7. Bảng Tra Cứu Xử Lý Sự Cố Nhanh (Troubleshooting)
+## 8. Bảng Tra Cứu Xử Lý Sự Cố Nhanh (Troubleshooting)
 
 | Hiện tượng | Nguyên nhân | Lệnh khắc phục nhanh |
 | :--- | :--- | :--- |

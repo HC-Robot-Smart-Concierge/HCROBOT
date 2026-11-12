@@ -116,9 +116,9 @@ WATCHDOG_PID=$!
 sleep 2
 
 echo "=== [3/6] TF TINH base_link -> laser_frame (dung vi tri LiDAR trong model.sdf) ==="
-# Xe ao gan LiDAR DUNG vi tri xe that (lidar.xacro): truoc tam 8 cm, cao 0.202 m.
+# Xe ao gan LiDAR DUNG vi tri xe that (lidar.xacro): giua than xe, cao 0.202 m.
 ros2 run tf2_ros static_transform_publisher \
-  --x 0.08 --y 0 --z 0.202 --frame-id base_link --child-frame-id laser_frame \
+  --x 0 --y 0 --z 0.202 --frame-id base_link --child-frame-id laser_frame \
   --ros-args -p use_sim_time:=true &
 TF_PID=$!
 

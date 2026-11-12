@@ -8,9 +8,13 @@ import os
 from pathlib import Path
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'ros2_configs'))
+from robot_geometry import LIDAR_X_M
 
 
 @unittest.skipUnless(os.getenv('HCROBOT_RUN_AMCL_SMOKE') == '1'
@@ -66,8 +70,8 @@ class TestAmclSmoke(unittest.TestCase):
             angle = truth[2] + i * scan.angle_increment
             distance = 0.2
             while distance < 12:
-                x = truth[0] + 0.08 * math.cos(truth[2]) + distance * math.cos(angle)
-                y = truth[1] + 0.08 * math.sin(truth[2]) + distance * math.sin(angle)
+                x = truth[0] + LIDAR_X_M * math.cos(truth[2]) + distance * math.cos(angle)
+                y = truth[1] + LIDAR_X_M * math.sin(truth[2]) + distance * math.sin(angle)
                 gx, gy = int(x / 0.05), int(y / 0.05)
                 if not (0 <= gx < 120 and 0 <= gy < 80) or grid.data[gy * 120 + gx] == 100:
                     break
@@ -89,7 +93,7 @@ class TestAmclSmoke(unittest.TestCase):
                 self.assertTrue(call(lifecycle, req).success)
                 fixed = TransformStamped()
                 fixed.header.frame_id, fixed.child_frame_id = 'base_link', 'laser_frame'
-                fixed.transform.translation.x = 0.08
+                fixed.transform.translation.x = LIDAR_X_M
                 fixed.transform.rotation.w = 1.0
                 static_tf.sendTransform(fixed)
                 start = time.monotonic()

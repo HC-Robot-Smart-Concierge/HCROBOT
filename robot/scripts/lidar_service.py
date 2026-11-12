@@ -1470,6 +1470,7 @@ free_thresh: 0.196
                     "y": float(z.get("y", 0.0)),
                     "width": float(z.get("width", 0.0)),
                     "height": float(z.get("height", 0.0)),
+                    "yaw": float(z.get("yaw") or 0.0),
                     "speed_limit": z.get("speed_limit"),
                 })
             except (TypeError, ValueError):

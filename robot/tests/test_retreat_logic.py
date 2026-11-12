@@ -30,7 +30,7 @@ class TestRetreatScan(unittest.TestCase):
 
     def test_laser_offset_matches_xacro(self):
         points, _ = body_scan(math.pi, 1.0, [0.4], 0.12, 12.0)
-        self.assertAlmostEqual(points[0][0], -0.32)
+        self.assertAlmostEqual(points[0][0], -0.4)
 
 
 class TestRetreatTrail(unittest.TestCase):

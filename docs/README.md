@@ -92,7 +92,7 @@ flowchart LR
   * Cấu hình CycloneDDS, VPN Tailscale kết nối giữa Laptop NUC và Raspberry Pi 5.
 * **[[guides/tailscale_hybrid_deployment_pi5_guide|Hướng Dẫn Triển Khai Tailscale Hybrid Pi 5 (guides/tailscale_hybrid_deployment_pi5_guide.md)]]**:
   * Thiết lập mạng riêng WireGuard P2P (< 5ms) kết hợp Tailscale Funnel phục vụ bản đồ tĩnh ra ngoài Internet qua mã QR.
-* **[[guides/hybrid_architecture_deployment_guide|Kiến Trúc Hybrid Cloud & Hướng Dẫn Triển Khai Demo (guides/hybrid_architecture_deployment_guide.md)]]**:
+* **[[guides/hybrid_architecture_demo_guide|Kiến Trúc Hybrid Cloud & Hướng Dẫn Vận Hành Demo (guides/hybrid_architecture_demo_guide.md)]]**:
   * Mô hình Hybrid Cloud phân tán: Điện thoại (Cloudflare Workers) ↔ Tailscale Funnel ↔ Laptop Backend ↔ Raspberry Pi 5.
   * Chi tiết luồng dữ liệu thời gian thực: Đẩy quảng cáo (WebSocket), Camera WebRTC P2P không độ trễ, Điều khiển động cơ UDP và 2 chế độ vận hành khi Demo (Online vs Offline 100% Local).
 * **[[guides/ultrasonic_setup|Cấu Hình Cảm Biến Siêu Âm HC-SR04 & ESP32 (guides/ultrasonic_setup.md)]]**:

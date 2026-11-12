@@ -200,3 +200,9 @@ robot/maps/last_pose/
 # HTML build artifacts from doc generation scripts
 docs/*.html
 
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example

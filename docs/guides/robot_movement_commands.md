@@ -150,3 +150,4 @@ wsl -d Ubuntu-24.04 -- bash -lc "source /opt/ros/jazzy/setup.bash && ros2 topic 
 | `HCROBOT_SCAN_MAX_TURN_DPS` | `15` | `start_wsl_slam.sh` | Giới hạn tốc độ quay tối đa (15 độ/giây) |
 | `UDP_WATCHDOG_TIMEOUT` | `0.5` | `robot/main.py` | Ngắt động cơ tự động sau 500ms nếu mất tín hiệu truyền thông |
 | `ULTRASONIC_BRAKE_DIST` | `0.35` | `robot/main.py` | Khoảng cách phanh an toàn vật lý từ 4 cảm biến siêu âm (mét) |
+

@@ -47,6 +47,8 @@ import {
   zoneFromVertices,
   translateZone,
   removeZoneVertex,
+  insertZoneVertex,
+  polygonEdgeAtPoint,
 } from './physicalMapZones';
 import {
   OTTO_ENDPOINT_TEMPLATES,
@@ -348,8 +350,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
   const [selectedZoneVertex, setSelectedZoneVertex] = useState(null);
+  const [zoneEdgeHover, setZoneEdgeHover] = useState(null);
   const deleteZoneVertexRef = useRef(null);
-  useEffect(() => { setSelectedZoneVertex(null); }, [selectedZone?.id]);
+  useEffect(() => { setSelectedZoneVertex(null); setZoneEdgeHover(null); }, [selectedZone?.id]);
   const [hasUnsavedEndpoints, setHasUnsavedEndpoints] = useState(false);
   const [hasUnsavedZones, setHasUnsavedZones] = useState(false);
   const [isSavingEndpoints, setIsSavingEndpoints] = useState(false);
@@ -409,6 +412,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setZoneDraft(null);
     setDragState(null);
     setSelectedZoneVertex(null);
+    setZoneEdgeHover(null);
     zoneEditRef.current = null;
     clickStartRef.current = null;
   }, [mapConfig.mapId]);
@@ -1314,6 +1318,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             color: zone.type === 'KEEP_OUT' ? '#EF4444' : zone.type === 'SPEED_ZONE' ? '#F59E0B' : '#FB7185',
             label: zone.name, selected: isSelected,
             selectedVertex: isSelected ? selectedZoneVertex : null,
+            edgeHover: isSelected && zoneEdgeHover?.zoneId === zone.id ? {
+              edgeIndex: zoneEdgeHover.edgeIndex,
+              point: worldToCanvas(zoneEdgeHover.point.x, zoneEdgeHover.point.y, width, height),
+            } : null,
             active: zone.type === 'SPEED_ZONE' && isPointInZone(robotPose.x, robotPose.y, zone),
           });
           continue;
@@ -1743,6 +1751,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     selectedEndpoint,
     selectedZone,
     selectedZoneVertex,
+    zoneEdgeHover,
     invertHeading,
     poseDraft,
     worldToCanvas,
@@ -1781,6 +1790,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     e.currentTarget.focus({ preventScroll: true });
     e.currentTarget.setPointerCapture?.(e.pointerId);
     zoneEditRef.current = null;
+    setZoneEdgeHover(null);
     const rect = canvas.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
@@ -1845,6 +1855,24 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         setSelectedZoneVertex(vertex);
         clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
         setDragState({ type: 'ZONE_VERTEX', id: selectedZone.id, vertex, orig: selectedZone });
+        isDraggingRef.current = true;
+        return;
+      }
+      const edge = polygonEdgeAtPoint(
+        selectedZone.vertices.map((p) => worldToCanvas(p.x, p.y, canvas.width, canvas.height)),
+        { x: canvasX, y: canvasY }
+      );
+      if (edge) {
+        const result = insertZoneVertex(selectedZone, edge.edgeIndex, { x: worldX, y: worldY });
+        if (result.error) { rejectZoneRule(result.error); return; }
+        setSelectedZone(result.zone);
+        setSelectedZoneVertex(result.vertexIndex);
+        setZones((prev) => prev.map((z) => z.id === selectedZone.id ? result.zone : z));
+        zoneEditRef.current = result.zone;
+        clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
+        // Commit on release, so one press can insert and drag without saving an intermediate shape.
+        setDragState({ type: 'ZONE_VERTEX', id: selectedZone.id, vertex: result.vertexIndex,
+          orig: selectedZone, editBase: result.zone, inserted: true });
         isDraggingRef.current = true;
         return;
       }
@@ -1964,7 +1992,17 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         return Math.hypot(canvasX - c.x, canvasY - c.y) <= 12;
       });
       const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
-      setZoneCursor(vertex ? 'crosshair' : isPointInZone(worldX, worldY, selectedZone) ? 'move' : null);
+      const edge = !vertex && polygonEdgeAtPoint(
+        selectedZone.vertices.map((p) => worldToCanvas(p.x, p.y, canvas.width, canvas.height)),
+        { x: canvasX, y: canvasY }
+      );
+      const canInsert = selectedZone.vertices.length < MAX_ZONE_VERTICES;
+      if (edge && canInsert) {
+        const p = canvasToWorld(edge.point.x, edge.point.y, canvas.width, canvas.height);
+        setZoneEdgeHover({ zoneId: selectedZone.id, edgeIndex: edge.edgeIndex, point: { x: p.worldX, y: p.worldY } });
+      } else setZoneEdgeHover(null);
+      setZoneCursor(vertex ? 'crosshair' : edge ? (canInsert ? 'copy' : 'not-allowed')
+        : isPointInZone(worldX, worldY, selectedZone) ? 'move' : null);
     } else if (!dragState && showZones && selectedZone) {
       const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, viewConfig);
       const rotation = zoneRotationHandle(selectedZone, 28 / scale);
@@ -2032,9 +2070,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
     if (dragState.type === 'ZONE_VERTEX') {
       const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
-      const vertices = dragState.orig.vertices.map((p, i) => i === dragState.vertex
+      const base = dragState.editBase || dragState.orig;
+      const vertices = base.vertices.map((p, i) => i === dragState.vertex
         ? { x: Number(worldX.toFixed(3)), y: Number(worldY.toFixed(3)) } : p);
-      const updated = { ...dragState.orig, ...zoneFromVertices(vertices) };
+      const updated = { ...base, ...zoneFromVertices(vertices) };
       zoneEditRef.current = updated;
       setSelectedZone(updated);
       setZones((prev) => prev.map((z) => z.id === updated.id ? updated : z));
@@ -2107,7 +2146,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
 
     // Keo/doi kich thuoc vung xong: de len endpoint => tra ve cho cu + bao; khong thi luu + cap nhat Nav2
-    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE', 'ZONE_VERTEX'].includes(finishedDrag?.type) && clickCandidate?.hasMoved) {
+    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE', 'ZONE_VERTEX'].includes(finishedDrag?.type) && (clickCandidate?.hasMoved || finishedDrag.inserted)) {
       const zone = zoneEditRef.current || zones.find((z) => z.id === finishedDrag.id);
       const conflict = zone && zoneEndpointConflict(zone, endpoints);
       const geometryError = isPolygonZone(zone) && polygonValidationError(zone.vertices);
@@ -2116,11 +2155,14 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         const reverted = { ...zone, ...orig };
         setZones((prev) => prev.map((z) => (z.id === zone.id ? reverted : z)));
         setSelectedZone(reverted);
+        if (finishedDrag.inserted) setSelectedZoneVertex(null);
         rejectZoneRule(geometryError || conflict.message);
       } else if (zone) {
         const nextList = zones.map((z) => z.id === zone.id ? zone : z);
         setZones(nextList);
-        persistZone(zone, nextList, `Đã cập nhật vùng "${zone.name}" (${Number(zone.width).toFixed(2)} × ${Number(zone.height).toFixed(2)} m • ${normalizeZoneYaw(zone.yaw)}°)`);
+        persistZone(zone, nextList, finishedDrag.inserted
+          ? `Đã thêm đỉnh ${finishedDrag.vertex + 1} vào vùng "${zone.name}" • ${zone.vertices.length} đỉnh`
+          : `Đã cập nhật vùng "${zone.name}" (${Number(zone.width).toFixed(2)} × ${Number(zone.height).toFixed(2)} m • ${normalizeZoneYaw(zone.yaw)}°)`);
       }
       zoneEditRef.current = null;
     }
@@ -2154,6 +2196,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (dragState?.orig && dragState.type.startsWith('ZONE')) {
       setZones((prev) => prev.map((z) => z.id === dragState.id ? dragState.orig : z));
       setSelectedZone(dragState.orig);
+      if (dragState.inserted) setSelectedZoneVertex(null);
     }
     zoneEditRef.current = null;
     clickStartRef.current = null;
@@ -2432,7 +2475,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           <div ref={canvasHostRef} className="relative w-full flex-1 min-h-0">
           <canvas
             tabIndex={0}
-            aria-label="Bản đồ: chọn đỉnh đa giác rồi nhấn Delete để xóa đỉnh"
+            aria-label="Bản đồ: bấm cạnh đa giác để thêm đỉnh, kéo đỉnh để sửa, nhấn Delete để xóa đỉnh đã chọn"
             ref={canvasRef}
             width={canvasSize.width}
             height={canvasSize.height}
@@ -2442,6 +2485,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             onPointerCancel={handleCanvasPointerCancel}
             onPointerLeave={() => {
               setHoveredEndpointId(null);
+              setZoneEdgeHover(null);
               if (dragState?.type === 'PAN') handleCanvasMouseUp();
             }}
             style={{ touchAction: 'none', cursor: !zoneDrawType && !isPoseSetMode && !isAddEndpointMode ? (dragState ? 'grabbing' : zoneCursor || undefined) : undefined }}
@@ -2676,6 +2720,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                     <span className={selectedZoneVertex === null ? 'text-slate-400' : 'text-amber-300'}>
                       {selectedZoneVertex === null ? 'Chọn đỉnh để kéo hoặc xóa' : `Đã chọn đỉnh ${selectedZoneVertex + 1}`}
                     </span>
+                    <span className="text-slate-400">· Bấm cạnh để thêm đỉnh</span>
                     <button type="button" onClick={handleDeleteSelectedVertex}
                       disabled={selectedZoneVertex === null || selectedZone.vertices.length <= 3 || !!dragState}
                       title={selectedZone.vertices.length <= 3 ? 'Đa giác phải giữ ít nhất 3 đỉnh' : 'Xóa đỉnh đang chọn và nối hai đỉnh liền kề (Delete)'}

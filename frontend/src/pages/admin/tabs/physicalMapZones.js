@@ -11,11 +11,29 @@ export const isPolygonZone = (zone) => Array.isArray(zone?.vertices);
 const cross = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
 const EPS = 1e-9;
 
-export function segmentDistance(p, a, b) {
+export function closestPointOnSegment(p, a, b) {
   const dx = b.x - a.x, dy = b.y - a.y;
   const length2 = dx * dx + dy * dy;
   const t = length2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length2)) : 0;
-  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+  return { x: a.x + t * dx, y: a.y + t * dy };
+}
+
+export function segmentDistance(p, a, b) {
+  const nearest = closestPointOnSegment(p, a, b);
+  return Math.hypot(p.x - nearest.x, p.y - nearest.y);
+}
+
+// Use canvas coordinates here so the clickable edge width stays constant when zooming.
+export function polygonEdgeAtPoint(points, point, tolerance = 8) {
+  let nearest = null;
+  points.forEach((a, edgeIndex) => {
+    const projected = closestPointOnSegment(point, a, points[(edgeIndex + 1) % points.length]);
+    const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
+    if (distance <= tolerance && (!nearest || distance < nearest.distance)) {
+      nearest = { edgeIndex, point: projected, distance };
+    }
+  });
+  return nearest;
 }
 
 function segmentsIntersect(a, b, c, d) {
@@ -61,6 +79,20 @@ export function removeZoneVertex(zone, index) {
   const vertices = zone.vertices.filter((_, i) => i !== index);
   const error = polygonValidationError(vertices);
   return error ? { error } : { zone: { ...zone, ...zoneFromVertices(vertices) } };
+}
+
+export function insertZoneVertex(zone, edgeIndex, point) {
+  if (!isPolygonZone(zone) || !Number.isInteger(edgeIndex) || edgeIndex < 0 || edgeIndex >= zone.vertices.length) {
+    return { error: 'Hãy chọn một cạnh trên vùng đa giác.' };
+  }
+  if (zone.vertices.length >= MAX_ZONE_VERTICES) return { error: 'Đa giác tối đa 64 đỉnh. Hãy xóa bớt đỉnh trước khi thêm.' };
+  if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) return { error: 'Tọa độ đỉnh không hợp lệ.' };
+  // Snap to the edge: inserting alone must not expand or shrink the zone.
+  const projected = closestPointOnSegment(point, zone.vertices[edgeIndex], zone.vertices[(edgeIndex + 1) % zone.vertices.length]);
+  const vertexIndex = edgeIndex + 1;
+  const vertices = [...zone.vertices.slice(0, vertexIndex), projected, ...zone.vertices.slice(vertexIndex)];
+  const error = polygonValidationError(vertices);
+  return error ? { error } : { zone: { ...zone, ...zoneFromVertices(vertices) }, vertexIndex };
 }
 
 export function translateZone(zone, dx, dy) {

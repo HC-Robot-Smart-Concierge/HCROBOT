@@ -33,7 +33,7 @@ from diff_drive import (  # noqa: E402
 from nav_result_tracker import NavResultTracker  # noqa: E402
 from localization_support import LocalizationWarmup, sensor_frame_is_fresh  # noqa: E402
 from speed_zone_logic import limit_wheel_pwm  # noqa: E402
-from robot_geometry import BODY_LENGTH_M, BODY_WIDTH_M, HALF_LENGTH_M  # noqa: E402
+from robot_geometry import BODY_LENGTH_M, BODY_WIDTH_M, HALF_LENGTH_M, LIDAR_X_M  # noqa: E402
 from robot_status import (  # noqa: E402
     describe_drive_block, diagnose_stuck, format_status_line, lidar_clearances, threshold_warnings,
 )
@@ -350,7 +350,7 @@ class LidarWsToRos2Bridge(Node):
         marker_array.markers = [
             cube(0, 'body', (0.0, 0.0, 0.08), (BODY_LENGTH_M, BODY_WIDTH_M, 0.16), (1.0, 0.30, 0.05, 1.0)),
             cube(1, 'front', (HALF_LENGTH_M - 0.025, 0.0, 0.09), (0.05, 0.14, 0.06), (0.90, 0.05, 0.05, 1.0)),
-            cube(2, 'lidar', (0.08, 0.0, 0.19), (0.08, 0.08, 0.04), (0.05, 0.05, 0.05, 1.0)),
+            cube(2, 'lidar', (LIDAR_X_M, 0.0, 0.19), (0.08, 0.08, 0.04), (0.05, 0.05, 0.05, 1.0)),
         ]
         self.foxglove_marker_pub.publish(marker_array)
 

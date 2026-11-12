@@ -32,11 +32,14 @@ import {
   endpointPlacementViolation,
   endpointZoneViolation,
   isPointInZone,
+  normalizeZoneYaw,
   resizeZoneFromCorner,
+  rotateZoneFromPointer,
   speedZoneStatus,
   zoneEndpointConflict,
   zoneCorners,
   zoneFromCorners,
+  zoneRotationHandle,
 } from './physicalMapZones';
 import {
   OTTO_ENDPOINT_TEMPLATES,
@@ -327,6 +330,12 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Che do chon va sua Endpoint / Zone
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
+  const zoneEditRef = useRef(null);
+  const [zoneCursor, setZoneCursor] = useState(null);
+  const [zoneYawInput, setZoneYawInput] = useState('0');
+  useEffect(() => {
+    setZoneYawInput(String(Math.round(normalizeZoneYaw(selectedZone?.yaw) * 10) / 10));
+  }, [selectedZone?.id, selectedZone?.yaw]);
   const [hasUnsavedEndpoints, setHasUnsavedEndpoints] = useState(false);
   const [hasUnsavedZones, setHasUnsavedZones] = useState(false);
   const [isSavingEndpoints, setIsSavingEndpoints] = useState(false);
@@ -1009,6 +1018,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       id: `zone-${Date.now().toString(36)}`,
       name: `${prefix} #${count}`,
       type,
+      yaw: 0,
       ...geometry,
       speed_limit: tmpl.defaultSpeed,
       description: tmpl.description,
@@ -1036,15 +1046,15 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   };
 
   const handleUpdateSelectedZone = (field, value) => {
-    if (!selectedZone) return;
+    if (!selectedZone) return false;
     const updated = { ...selectedZone, [field]: value };
     // Doi loai sang cam dung/cam vao, hoac doi tam/kich thuoc bang o nhap => de len endpoint?
     // (Doi ten/mo ta thi khong xet, de vung cu lo de endpoint van sua ten duoc.)
-    const geometryChange = ['type', 'x', 'y', 'width', 'height'].includes(field);
+    const geometryChange = ['type', 'x', 'y', 'width', 'height', 'yaw'].includes(field);
     const conflict = geometryChange && zoneEndpointConflict(updated, endpoints);
     if (conflict) {
       rejectZoneRule(conflict.message);
-      return;
+      return false;
     }
     setSelectedZone(updated);
     const nextList = zones.map((z) => (z.id === updated.id ? updated : z));
@@ -1054,6 +1064,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (rosClientRef.current?.isConnected) {
       rosClientRef.current.publish('/hotel_zones', 'std_msgs/String', createZoneSyncMsg(nextList));
     }
+    return true;
   };
 
   // KEEP_OUT -> mask Keepout Filter, SPEED_ZONE -> mask Speed Filter cua Nav2
@@ -1200,10 +1211,14 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         const zx = Number(zone.x) || 0;
         const zy = Number(zone.y) || 0;
 
-        const tl = worldToCanvas(zx - halfW, zy + halfH, width, height);
-        const br = worldToCanvas(zx + halfW, zy - halfH, width, height);
-        const zw = Math.max(8, br.x - tl.x);
-        const zh = Math.max(8, br.y - tl.y);
+        const center = worldToCanvas(zx, zy, width, height);
+        const zw = 2 * halfW * scale;
+        const zh = 2 * halfH * scale;
+        const tl = { x: -zw / 2, y: -zh / 2 };
+        const br = { x: zw / 2, y: zh / 2 };
+        ctx.save();
+        ctx.translate(center.x, center.y);
+        ctx.rotate(-normalizeZoneYaw(zone.yaw) * Math.PI / 180);
 
         const isKeepOut = zone.type === 'KEEP_OUT';
         const isSpeed = zone.type === 'SPEED_ZONE';
@@ -1260,9 +1275,25 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           ctx.fillStyle = '#FFFFFF';
           [tl.x, br.x].forEach((hx) => {
             [tl.y, br.y].forEach((hy) => {
-              ctx.fillRect(hx - 3, hy - 3, 6, 6);
+              ctx.fillRect(hx - 5, hy - 5, 10, 10);
+              ctx.strokeStyle = '#22D3EE';
+              ctx.strokeRect(hx - 5, hy - 5, 10, 10);
             });
           });
+          ctx.beginPath();
+          ctx.moveTo(0, tl.y);
+          ctx.lineTo(0, tl.y - 28);
+          ctx.strokeStyle = '#22D3EE';
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(0, tl.y - 28, 9, 0, Math.PI * 2);
+          ctx.fillStyle = '#0891B2';
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText('↻', 0, tl.y - 23);
         }
 
         // Nhãn tên vùng nhỏ gọn tinh tế
@@ -1278,6 +1309,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         ctx.font = 'bold 9px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText(labelText.length > 20 ? labelText.slice(0, 18) + '...' : labelText, tl.x + 3 + textW / 2, tl.y + 13);
+        ctx.restore();
       }
     }
 
@@ -1607,7 +1639,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // ==========================================
   const handleCanvasMouseDown = (e) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || (e.button !== undefined && e.button !== 0)) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    zoneEditRef.current = null;
     const rect = canvas.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
@@ -1638,16 +1672,27 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
     // 0d. Vung dang chon: nhan trung o vuong o goc (<= 8px) => keo de doi kich thuoc
     if (showZones && selectedZone) {
+      const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, mapConfig);
+      const rotation = zoneRotationHandle(selectedZone, 28 / scale);
+      const handle = worldToCanvas(rotation.x, rotation.y, canvas.width, canvas.height);
+      if (Math.hypot(canvasX - handle.x, canvasY - handle.y) <= 12) {
+        clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
+        setDragState({ type: 'ZONE_ROTATE', id: selectedZone.id, orig: { ...selectedZone },
+          startPoint: { x: worldX, y: worldY } });
+        isDraggingRef.current = true;
+        return;
+      }
       const corners = zoneCorners(selectedZone);
-      const hit = Object.keys(corners).find((key) => {
+      const center = worldToCanvas(selectedZone.x, selectedZone.y, canvas.width, canvas.height);
+      const hit = Math.hypot(canvasX - center.x, canvasY - center.y) > 4 && Object.keys(corners).map((key) => {
         const c = worldToCanvas(corners[key].x, corners[key].y, canvas.width, canvas.height);
-        return Math.hypot(canvasX - c.x, canvasY - c.y) <= 8;
-      });
+        return { key, distance: Math.hypot(canvasX - c.x, canvasY - c.y) };
+      }).sort((a, b) => a.distance - b.distance).find((c) => c.distance <= 12)?.key;
       if (hit) {
         clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
         setDragState({
           type: 'ZONE_RESIZE', id: selectedZone.id, corner: hit,
-          orig: { x: selectedZone.x, y: selectedZone.y, width: selectedZone.width, height: selectedZone.height },
+          orig: { ...selectedZone },
         });
         isDraggingRef.current = true;
         return;
@@ -1688,12 +1733,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (showZones) {
       for (let i = zones.length - 1; i >= 0; i--) {
         const zone = zones[i];
-        const halfW = (Number(zone.width) || 1.0) / 2;
-        const halfH = (Number(zone.height) || 1.0) / 2;
-        const tl = worldToCanvas(zone.x - halfW, zone.y + halfH, canvas.width, canvas.height);
-        const br = worldToCanvas(zone.x + halfW, zone.y - halfH, canvas.width, canvas.height);
-
-        if (canvasX >= tl.x && canvasX <= br.x && canvasY >= tl.y && canvasY <= br.y) {
+        if (isPointInZone(worldX, worldY, zone)) {
           setSelectedZone(zone);
           setSelectedEndpoint(null);
           setActiveRightTab('ZONES');
@@ -1711,6 +1751,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             mouseStartY: canvasY,
             initX: zone.x,
             initY: zone.y,
+            orig: { ...zone },
           });
           isDraggingRef.current = true;
           return;
@@ -1730,6 +1771,19 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const rect = canvas.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+    if (!dragState && showZones && selectedZone) {
+      const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, mapConfig);
+      const rotation = zoneRotationHandle(selectedZone, 28 / scale);
+      const rh = worldToCanvas(rotation.x, rotation.y, canvas.width, canvas.height);
+      const corner = Object.values(zoneCorners(selectedZone)).some((p) => {
+        const c = worldToCanvas(p.x, p.y, canvas.width, canvas.height);
+        return Math.hypot(canvasX - c.x, canvasY - c.y) <= 12;
+      });
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      setZoneCursor(Math.hypot(canvasX - rh.x, canvasY - rh.y) <= 12 ? 'grab'
+        : corner ? 'crosshair' : isPointInZone(worldX, worldY, selectedZone) ? 'move' : null);
+    } else if (!dragState) setZoneCursor(null);
 
     // Kiem tra hover len Endpoint khi khong keo tha de tao con tro chuot pointer
     if (!dragState && showEndpoints) {
@@ -1763,15 +1817,20 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       return;
     }
 
-    if (dragState.type === 'ZONE_DRAW' || dragState.type === 'ZONE_RESIZE') {
+    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE'].includes(dragState.type) && !clickStartRef.current?.hasMoved) return;
+
+    if (['ZONE_DRAW', 'ZONE_RESIZE', 'ZONE_ROTATE'].includes(dragState.type)) {
       const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
       if (dragState.type === 'ZONE_DRAW') {
         setZoneDraft((prev) => (prev ? { ...prev, b: { x: worldX, y: worldY } } : prev));
-      } else if (selectedZone) {
+      } else {
         const updated = {
-          ...selectedZone,
-          ...resizeZoneFromCorner(selectedZone, dragState.corner, { x: worldX, y: worldY }),
+          ...dragState.orig,
+          ...(dragState.type === 'ZONE_ROTATE'
+            ? rotateZoneFromPointer(dragState.orig, dragState.startPoint, { x: worldX, y: worldY }, e.shiftKey)
+            : resizeZoneFromCorner(dragState.orig, dragState.corner, { x: worldX, y: worldY })),
         };
+        zoneEditRef.current = updated;
         setSelectedZone(updated);
         setZones((prev) => prev.map((z) => (z.id === dragState.id ? updated : z)));
       }
@@ -1792,7 +1851,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     } else if (dragState.type === 'ZONE') {
       const newX = Number((dragState.initX + dxMeters).toFixed(2));
       const newY = Number((dragState.initY + dyMeters).toFixed(2));
-      const updated = { ...selectedZone, x: newX, y: newY };
+      const updated = { ...dragState.orig, x: newX, y: newY };
+      zoneEditRef.current = updated;
       setSelectedZone(updated);
       setZones((prev) => prev.map((z) => (z.id === dragState.id ? updated : z)));
     }
@@ -1822,20 +1882,21 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
 
     // Keo/doi kich thuoc vung xong: de len endpoint => tra ve cho cu + bao; khong thi luu + cap nhat Nav2
-    if ((finishedDrag?.type === 'ZONE' || finishedDrag?.type === 'ZONE_RESIZE') && clickCandidate?.hasMoved) {
-      const zone = zones.find((z) => z.id === finishedDrag.id);
+    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE'].includes(finishedDrag?.type) && clickCandidate?.hasMoved) {
+      const zone = zoneEditRef.current || zones.find((z) => z.id === finishedDrag.id);
       const conflict = zone && zoneEndpointConflict(zone, endpoints);
       if (conflict) {
-        const orig = finishedDrag.type === 'ZONE'
-          ? { x: finishedDrag.initX, y: finishedDrag.initY }
-          : finishedDrag.orig;
+        const orig = finishedDrag.orig;
         const reverted = { ...zone, ...orig };
         setZones((prev) => prev.map((z) => (z.id === zone.id ? reverted : z)));
         setSelectedZone(reverted);
         rejectZoneRule(conflict.message);
       } else if (zone) {
-        persistZone(zone, zones, `Đã cập nhật vùng "${zone.name}" (${zone.width} x ${zone.height} m)`);
+        const nextList = zones.map((z) => z.id === zone.id ? zone : z);
+        setZones(nextList);
+        persistZone(zone, nextList, `Đã cập nhật vùng "${zone.name}" (${Number(zone.width).toFixed(2)} × ${Number(zone.height).toFixed(2)} m • ${normalizeZoneYaw(zone.yaw)}°)`);
       }
+      zoneEditRef.current = null;
     }
 
     // Keo endpoint vao vung cam dung/cam vao => tra ve cho cu + bao
@@ -1860,6 +1921,19 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (clickCandidate?.type === 'ENDPOINT' && !clickCandidate.hasMoved) {
       handleNavigateToEndpoint(clickCandidate.ep);
     }
+  };
+
+  const handleCanvasPointerCancel = () => {
+    if (dragState?.orig && dragState.type.startsWith('ZONE')) {
+      setZones((prev) => prev.map((z) => z.id === dragState.id ? dragState.orig : z));
+      setSelectedZone(dragState.orig);
+    }
+    zoneEditRef.current = null;
+    clickStartRef.current = null;
+    isDraggingRef.current = false;
+    setDragState(null);
+    setZoneDraft(null);
+    setPoseDraft(null);
   };
 
   // ==========================================
@@ -2344,10 +2418,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             ref={canvasRef}
             width={850}
             height={560}
-            onMouseDown={handleCanvasMouseDown}
-            onMouseMove={handleCanvasMouseMove}
-            onMouseUp={handleCanvasMouseUp}
-            onMouseLeave={() => setHoveredEndpointId(null)}
+            onPointerDown={handleCanvasMouseDown}
+            onPointerMove={handleCanvasMouseMove}
+            onPointerUp={handleCanvasMouseUp}
+            onPointerCancel={handleCanvasPointerCancel}
+            onPointerLeave={() => { setHoveredEndpointId(null); setZoneCursor(null); }}
+            style={{ touchAction: 'none', cursor: !zoneDrawType && !isPoseSetMode && !isAddEndpointMode
+              ? (dragState ? 'grabbing' : zoneCursor || undefined) : undefined }}
             className={`w-full h-full max-w-[960px] max-h-[640px] rounded-xl border border-slate-800 shadow-2xl bg-slate-900 object-contain ${
               zoneDrawType
                 ? 'cursor-crosshair'
@@ -2451,7 +2528,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
           {/* FLOATING ACTION BAR O DAY CANAS: CHINH SUA ZONE HOAC ENDPOINT Y CHANG GIA LAP */}
           {selectedZone && (
-            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center flex-nowrap whitespace-nowrap gap-2 px-3.5 py-2 rounded-xl border shadow-2xl backdrop-blur-md bg-slate-900/95 border-slate-700 text-xs text-slate-100 max-w-[95%] overflow-x-auto">
+            <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center flex-wrap justify-center gap-2 px-3.5 py-2 rounded-xl border shadow-2xl backdrop-blur-md bg-slate-900/95 border-slate-700 text-xs text-slate-100 w-max max-w-[95%]">
+              <p className="w-full text-center text-[10px] text-cyan-300">Kéo thân vùng để di chuyển • Kéo góc để đổi kích thước • Kéo nút ↻ để xoay (giữ Shift: mỗi 15°)</p>
               {/* Loai Vung Dropdown */}
               <div className="flex items-center gap-1.5 shrink-0">
                 <span
@@ -2513,8 +2591,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 <input
                   type="number"
                   step="0.1"
-                  min="0.3"
-                  max="5.0"
+                  min="0.2"
                   value={selectedZone.width || 1.0}
                   onChange={(e) => handleUpdateSelectedZone('width', Math.max(0.2, parseFloat(e.target.value) || 0.3))}
                   className="w-11 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-white focus:outline-none"
@@ -2524,8 +2601,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 <input
                   type="number"
                   step="0.1"
-                  min="0.3"
-                  max="5.0"
+                  min="0.2"
                   value={selectedZone.height || 1.0}
                   onChange={(e) => handleUpdateSelectedZone('height', Math.max(0.2, parseFloat(e.target.value) || 0.3))}
                   className="w-11 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-white focus:outline-none"
@@ -2533,6 +2609,25 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 />
                 <span>m</span>
               </div>
+              <label className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-800 border border-slate-700 shrink-0">
+                <span className="text-slate-400">Góc xoay:</span>
+                <input type="number" step="1" aria-label="Góc xoay vùng (độ)"
+                  value={zoneYawInput}
+                  onChange={(e) => {
+                    setZoneYawInput(e.target.value);
+                    if (e.target.value.trim() !== '' && Number.isFinite(e.target.valueAsNumber)) {
+                      handleUpdateSelectedZone('yaw', normalizeZoneYaw(e.target.valueAsNumber));
+                    }
+                  }}
+                  onBlur={() => {
+                    const yaw = normalizeZoneYaw(zoneYawInput);
+                    const accepted = handleUpdateSelectedZone('yaw', yaw);
+                    setZoneYawInput(String(accepted ? yaw : normalizeZoneYaw(selectedZone.yaw)));
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  className="w-14 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-cyan-300 focus:outline-none" />
+                <span>°</span>
+              </label>
 
               {/* Nut Luu Vung */}
               <button
@@ -3144,6 +3239,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                           <span className="text-xs font-semibold text-slate-200 block truncate">{zone.name}</span>
                           <span className="text-[10px] text-slate-400 font-mono block">
                             Tâm ({Number(zone.x).toFixed(2)}, {Number(zone.y).toFixed(2)}) • {Number(zone.width).toFixed(1)}m×{Number(zone.height).toFixed(1)}m
+                            {` • ${normalizeZoneYaw(zone.yaw)}°`}
                             {isSpeed && ` • ${zone.speed_limit}m/s`}
                           </span>
                         </div>

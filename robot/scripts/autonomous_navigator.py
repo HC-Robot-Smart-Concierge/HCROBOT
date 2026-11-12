@@ -168,19 +168,17 @@ class AutonomousNavigator(Node):
         self.get_logger().info("==========================================================")
 
     def is_inside_zone(self, x, y, zone):
-        half_w = float(zone.get('width', 2.0) or 2.0) / 2.0
-        half_h = float(zone.get('height', 2.0) or 2.0) / 2.0
-        zx = float(zone.get('x', 0.0) or 0.0)
-        zy = float(zone.get('y', 0.0) or 0.0)
-        return (zx - half_w) <= x <= (zx + half_w) and (zy - half_h) <= y <= (zy + half_h)
+        return self.get_zone_proximity(x, y, zone) <= 1e-9
 
     def get_zone_proximity(self, x, y, zone):
         half_w = float(zone.get('width', 2.0) or 2.0) / 2.0
         half_h = float(zone.get('height', 2.0) or 2.0) / 2.0
         zx = float(zone.get('x', 0.0) or 0.0)
         zy = float(zone.get('y', 0.0) or 0.0)
-        dx = max(0.0, abs(x - zx) - half_w)
-        dy = max(0.0, abs(y - zy) - half_h)
+        angle = math.radians(float(zone.get('yaw') or 0.0))
+        wx, wy = x - zx, y - zy
+        dx = max(0.0, abs(wx * math.cos(angle) + wy * math.sin(angle)) - half_w)
+        dy = max(0.0, abs(-wx * math.sin(angle) + wy * math.cos(angle)) - half_h)
         return math.hypot(dx, dy)
 
     def get_active_zone(self, x, y):
@@ -261,7 +259,9 @@ class AutonomousNavigator(Node):
             box.pose.position.x = zx
             box.pose.position.y = zy
             box.pose.position.z = 0.5
-            box.pose.orientation.w = 1.0
+            yaw = math.radians(float(z.get('yaw') or 0.0))
+            box.pose.orientation.z = math.sin(yaw / 2)
+            box.pose.orientation.w = math.cos(yaw / 2)
             box.scale.x = zw
             box.scale.y = zh
             box.scale.z = 1.0

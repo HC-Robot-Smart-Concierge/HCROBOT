@@ -29,6 +29,7 @@ class ZoneSchema(BaseModel):
     y: float = Field(0.0, description="Tọa độ Y tâm vùng")
     width: float = Field(2.0, description="Chiều rộng vùng (mét)")
     height: float = Field(2.0, description="Chiều cao vùng (mét)")
+    yaw: float = Field(0.0, allow_inf_nan=False, description="Góc xoay vùng, độ ngược chiều kim đồng hồ trong khung map")
     speed_limit: Optional[float] = Field(0.2, description="Tốc độ tối đa cho phép (m/s) nếu là SPEED_ZONE / SLOW_SPEED")
     floor: str = "Sảnh Tầng 1"
     description: Optional[str] = None
@@ -36,6 +37,9 @@ class ZoneSchema(BaseModel):
 
     @model_validator(mode='after')
     def validate_speed_zone(self):
+        if not all(math.isfinite(v) for v in (self.x, self.y, self.width, self.height)) or self.width <= 0 or self.height <= 0:
+            raise ValueError('Vùng phải có tọa độ hữu hạn và kích thước dương.')
+        self.yaw = (self.yaw + 180) % 360 - 180
         if self.type.upper() in ('SPEED_ZONE', 'SLOW_SPEED'):
             if self.speed_limit is None or not math.isfinite(self.speed_limit) or not 0.01 <= self.speed_limit <= 1.0:
                 raise ValueError('Giới hạn tốc độ phải từ 0.01 đến 1.00 m/s.')

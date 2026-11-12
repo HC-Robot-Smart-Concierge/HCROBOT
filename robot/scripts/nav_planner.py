@@ -21,12 +21,16 @@ PLAN_RESOLUTION_M = 0.05
 
 
 def point_in_zone(x: float, y: float, zone: Dict, margin: float = 0.0) -> bool:
-    """Zone hinh chu nhat theo truc: tam (x, y), kich thuoc width x height (met)."""
+    """Rectangle in map metres; yaw is CCW degrees, default zero for old zones."""
     half_w = float(zone.get("width") or 0.0) / 2.0 + margin
     half_h = float(zone.get("height") or 0.0) / 2.0 + margin
     zx = float(zone.get("x") or 0.0)
     zy = float(zone.get("y") or 0.0)
-    return (zx - half_w) <= x <= (zx + half_w) and (zy - half_h) <= y <= (zy + half_h)
+    angle = math.radians(float(zone.get("yaw") or 0.0))
+    dx, dy = x - zx, y - zy
+    local_x = dx * math.cos(angle) + dy * math.sin(angle)
+    local_y = -dx * math.sin(angle) + dy * math.cos(angle)
+    return abs(local_x) <= half_w + 1e-9 and abs(local_y) <= half_h + 1e-9
 
 
 def zones_of_type(zones: Iterable[Dict], *types: str) -> List[Dict]:
@@ -91,8 +95,11 @@ class PlanGrid:
             half_w = float(zone.get("width") or 0.0) / 2.0 + robot_radius
             half_h = float(zone.get("height") or 0.0) / 2.0 + robot_radius
             zx, zy = float(zone.get("x") or 0.0), float(zone.get("y") or 0.0)
-            x0, y0 = self.to_cell(zx - half_w, zy - half_h)
-            x1, y1 = self.to_cell(zx + half_w, zy + half_h)
+            angle = math.radians(float(zone.get("yaw") or 0.0))
+            extent_x = abs(math.cos(angle)) * half_w + abs(math.sin(angle)) * half_h
+            extent_y = abs(math.sin(angle)) * half_w + abs(math.cos(angle)) * half_h
+            x0, y0 = self.to_cell(zx - extent_x, zy - extent_y)
+            x1, y1 = self.to_cell(zx + extent_x, zy + extent_y)
             for cy in range(max(0, y0), min(self.h, y1 + 1)):
                 wy = self.cell_center_y(cy)
                 for cx in range(max(0, x0), min(self.w, x1 + 1)):

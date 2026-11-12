@@ -24,6 +24,7 @@ import {
   updateRos2KeepoutMask,
 } from '../../../services/workflowApi';
 import { buildCostmapImage, pathMsgToPoints } from './physicalMapCostmap';
+import { drawPolygonZone } from './physicalMapZoneDrawing';
 import {
   amclPoseIsReliable, composeMapPose, laserPointToMap, localizationFromManager, navigationBlockingReason,
   obstacleClearanceAt, sendNav2Endpoint, TURN_CLEARANCE_M,
@@ -40,6 +41,14 @@ import {
   zoneEndpointConflict,
   zoneCorners,
   zoneFromCorners,
+  isPolygonZone,
+  MAX_ZONE_VERTICES,
+  polygonValidationError,
+  zoneFromVertices,
+  translateZone,
+  removeZoneVertex,
+  insertZoneVertex,
+  polygonEdgeAtPoint,
 } from './physicalMapZones';
 import {
   OTTO_ENDPOINT_TEMPLATES,
@@ -340,6 +349,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Che do chon va sua Endpoint / Zone
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
+  const [selectedZoneVertex, setSelectedZoneVertex] = useState(null);
+  const [zoneEdgeHover, setZoneEdgeHover] = useState(null);
+  const deleteZoneVertexRef = useRef(null);
+  useEffect(() => { setSelectedZoneVertex(null); setZoneEdgeHover(null); }, [selectedZone?.id]);
   const [hasUnsavedEndpoints, setHasUnsavedEndpoints] = useState(false);
   const [hasUnsavedZones, setHasUnsavedZones] = useState(false);
   const [isSavingEndpoints, setIsSavingEndpoints] = useState(false);
@@ -382,6 +395,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
   // Ve vung bang chuot: chon loai vung roi keo hinh chu nhat tren map
   const [zoneDrawType, setZoneDrawType] = useState(null); // null | 'KEEP_OUT' | 'SPEED_ZONE' | 'NO_STOP'
+  const [zoneDrawShape, setZoneDrawShape] = useState('rectangle');
   const [zoneDraft, setZoneDraft] = useState(null); // { type, a: {x,y}, b: {x,y} } toa do the gioi
 
   // Ban do dang chon (thong so tu .yaml) va anh map (.pgm giai ma thanh canvas)
@@ -394,6 +408,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   viewConfigRef.current = viewConfig;
   useEffect(() => {
     setMapView(DEFAULT_VIEW);
+    setZoneDrawType(null);
+    setZoneDraft(null);
+    setDragState(null);
+    setSelectedZoneVertex(null);
+    setZoneEdgeHover(null);
+    zoneEditRef.current = null;
+    clickStartRef.current = null;
   }, [mapConfig.mapId]);
   useEffect(() => {
     setMapView((v) => clampView(v, canvasSize.width, canvasSize.height, mapConfig));
@@ -1066,7 +1087,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const conflict = zoneEndpointConflict(newZone, endpoints);
     if (conflict) {
       rejectZoneRule(conflict.message);
-      return;
+      return false;
     }
     const nextList = [...zones, newZone];
     setZones(nextList);
@@ -1074,7 +1095,41 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setSelectedEndpoint(null);
     openPanelSection('ZONES');
     persistZone(newZone, nextList, `Đã tạo vùng "${newZone.name}" (${newZone.width} x ${newZone.height} m)`);
+    return true;
   };
+
+  const finishPolygon = () => {
+    const vertices = zoneDraft?.vertices || [];
+    const error = polygonValidationError(vertices);
+    if (error) {
+      rejectZoneRule(error);
+      return;
+    }
+    if (handleAddZone(zoneDrawType, zoneFromVertices(vertices))) {
+      setZoneDraft(null);
+      setZoneDrawType(null);
+    }
+  };
+
+  const handleDeleteSelectedVertex = () => {
+    if (!isPolygonZone(selectedZone) || selectedZoneVertex === null || !showZones
+      || zoneDrawType || isPoseSetMode || isAddEndpointMode || dragState || isDraggingRef.current) return false;
+    const result = removeZoneVertex(selectedZone, selectedZoneVertex);
+    const conflict = result.zone && zoneEndpointConflict(result.zone, endpoints);
+    if (result.error || conflict) {
+      rejectZoneRule(result.error || conflict.message);
+      return true;
+    }
+    const updated = result.zone;
+    const nextList = zones.map((z) => z.id === updated.id ? updated : z);
+    setZones(nextList);
+    setSelectedZone(updated);
+    setSelectedZoneVertex(null);
+    persistZone(updated, nextList, `Đã xóa đỉnh ${selectedZoneVertex + 1} của vùng "${updated.name}" • Còn ${updated.vertices.length} đỉnh`);
+    return true;
+  };
+  // The keyboard listener is stable; keep its vertex action on the current selection.
+  deleteZoneVertexRef.current = handleDeleteSelectedVertex;
 
   const toggleZoneDraw = (type) => {
     setZoneDraft(null);
@@ -1258,6 +1313,19 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (showZones && zones.length > 0) {
       for (const zone of zones) {
         const isSelected = selectedZone?.id === zone.id;
+        if (isPolygonZone(zone)) {
+          drawPolygonZone(ctx, zone.vertices.map((p) => worldToCanvas(p.x, p.y, width, height)), {
+            color: zone.type === 'KEEP_OUT' ? '#EF4444' : zone.type === 'SPEED_ZONE' ? '#F59E0B' : '#FB7185',
+            label: zone.name, selected: isSelected,
+            selectedVertex: isSelected ? selectedZoneVertex : null,
+            edgeHover: isSelected && zoneEdgeHover?.zoneId === zone.id ? {
+              edgeIndex: zoneEdgeHover.edgeIndex,
+              point: worldToCanvas(zoneEdgeHover.point.x, zoneEdgeHover.point.y, width, height),
+            } : null,
+            active: zone.type === 'SPEED_ZONE' && isPointInZone(robotPose.x, robotPose.y, zone),
+          });
+          continue;
+        }
         const halfW = (Number(zone.width) || 1.0) / 2;
         const halfH = (Number(zone.height) || 1.0) / 2;
         const zx = Number(zone.x) || 0;
@@ -1366,7 +1434,12 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
 
     // 4b. Vung dang ve bang chuot (chua tha): khung net dut + kich thuoc
-    if (zoneDraft) {
+    if (zoneDraft?.vertices) {
+      drawPolygonZone(ctx, zoneDraft.vertices.map((p) => worldToCanvas(p.x, p.y, width, height)), {
+        color: ZONE_TEMPLATES.find((t) => t.type === zoneDraft.type)?.color || '#22D3EE', draft: true,
+        hover: zoneDraft.cursor && worldToCanvas(zoneDraft.cursor.x, zoneDraft.cursor.y, width, height),
+      });
+    } else if (zoneDraft) {
       const { a, b } = zoneDraft;
       const tl = worldToCanvas(Math.min(a.x, b.x), Math.max(a.y, b.y), width, height);
       const br = worldToCanvas(Math.max(a.x, b.x), Math.min(a.y, b.y), width, height);
@@ -1677,6 +1750,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     zones,
     selectedEndpoint,
     selectedZone,
+    selectedZoneVertex,
+    zoneEdgeHover,
     invertHeading,
     poseDraft,
     worldToCanvas,
@@ -1712,8 +1787,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const handleCanvasMouseDown = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    e.currentTarget.focus({ preventScroll: true });
     e.currentTarget.setPointerCapture?.(e.pointerId);
     zoneEditRef.current = null;
+    setZoneEdgeHover(null);
     const rect = canvas.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
@@ -1744,7 +1821,24 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
     // 0c. Che do Ve vung: nhan chuot = 1 goc, keo toi goc doi dien, tha chuot = tao vung
     if (zoneDrawType) {
-      const p = { x: worldX, y: worldY };
+      const p = { x: Number(worldX.toFixed(3)), y: Number(worldY.toFixed(3)) };
+      if (zoneDrawShape === 'polygon') {
+        const vertices = zoneDraft?.vertices || [];
+        if (vertices.length >= 3) {
+          const first = worldToCanvas(vertices[0].x, vertices[0].y, canvas.width, canvas.height);
+          if (Math.hypot(canvasX - first.x, canvasY - first.y) <= 12) {
+            finishPolygon();
+            return;
+          }
+        }
+        if (vertices.length >= MAX_ZONE_VERTICES) {
+          rejectZoneRule('Đa giác tối đa 64 đỉnh. Bấm Hoàn tất hoặc Bỏ đỉnh cuối để chỉnh lại.');
+          return;
+        }
+        if (vertices.some((v) => Math.hypot(v.x - p.x, v.y - p.y) < 0.005)) return;
+        setZoneDraft({ type: zoneDrawType, vertices: [...vertices, p], cursor: p });
+        return;
+      }
       setZoneDraft({ type: zoneDrawType, a: p, b: p });
       setDragState({ type: 'ZONE_DRAW' });
       isDraggingRef.current = true;
@@ -1752,7 +1846,37 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
 
     // 0d. Vung dang chon: nhan trung o vuong o goc (<= 8px) => keo de doi kich thuoc
-    if (showZones && selectedZone) {
+    if (showZones && isPolygonZone(selectedZone)) {
+      const vertex = selectedZone.vertices.findIndex((p) => {
+        const c = worldToCanvas(p.x, p.y, canvas.width, canvas.height);
+        return Math.hypot(canvasX - c.x, canvasY - c.y) <= 12;
+      });
+      if (vertex >= 0) {
+        setSelectedZoneVertex(vertex);
+        clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
+        setDragState({ type: 'ZONE_VERTEX', id: selectedZone.id, vertex, orig: selectedZone });
+        isDraggingRef.current = true;
+        return;
+      }
+      const edge = polygonEdgeAtPoint(
+        selectedZone.vertices.map((p) => worldToCanvas(p.x, p.y, canvas.width, canvas.height)),
+        { x: canvasX, y: canvasY }
+      );
+      if (edge) {
+        const result = insertZoneVertex(selectedZone, edge.edgeIndex, { x: worldX, y: worldY });
+        if (result.error) { rejectZoneRule(result.error); return; }
+        setSelectedZone(result.zone);
+        setSelectedZoneVertex(result.vertexIndex);
+        setZones((prev) => prev.map((z) => z.id === selectedZone.id ? result.zone : z));
+        zoneEditRef.current = result.zone;
+        clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
+        // Commit on release, so one press can insert and drag without saving an intermediate shape.
+        setDragState({ type: 'ZONE_VERTEX', id: selectedZone.id, vertex: result.vertexIndex,
+          orig: selectedZone, editBase: result.zone, inserted: true });
+        isDraggingRef.current = true;
+        return;
+      }
+    } else if (showZones && selectedZone) {
       const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, viewConfig);
       const rotation = zoneRotationHandle(selectedZone, 28 / scale);
       const handle = worldToCanvas(rotation.x, rotation.y, canvas.width, canvas.height);
@@ -1779,6 +1903,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         return;
       }
     }
+
+    setSelectedZoneVertex(null);
 
     // 1. Kiem tra click trúng Endpoint (r <= 18px)
     if (showEndpoints) {
@@ -1856,7 +1982,28 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
 
-    if (!dragState && showZones && selectedZone) {
+    if (zoneDrawType && zoneDrawShape === 'polygon' && zoneDraft?.vertices && !dragState) {
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      setZoneDraft((draft) => draft && { ...draft, cursor: { x: worldX, y: worldY } });
+    }
+    if (!dragState && showZones && isPolygonZone(selectedZone)) {
+      const vertex = selectedZone.vertices.some((p) => {
+        const c = worldToCanvas(p.x, p.y, canvas.width, canvas.height);
+        return Math.hypot(canvasX - c.x, canvasY - c.y) <= 12;
+      });
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      const edge = !vertex && polygonEdgeAtPoint(
+        selectedZone.vertices.map((p) => worldToCanvas(p.x, p.y, canvas.width, canvas.height)),
+        { x: canvasX, y: canvasY }
+      );
+      const canInsert = selectedZone.vertices.length < MAX_ZONE_VERTICES;
+      if (edge && canInsert) {
+        const p = canvasToWorld(edge.point.x, edge.point.y, canvas.width, canvas.height);
+        setZoneEdgeHover({ zoneId: selectedZone.id, edgeIndex: edge.edgeIndex, point: { x: p.worldX, y: p.worldY } });
+      } else setZoneEdgeHover(null);
+      setZoneCursor(vertex ? 'crosshair' : edge ? (canInsert ? 'copy' : 'not-allowed')
+        : isPointInZone(worldX, worldY, selectedZone) ? 'move' : null);
+    } else if (!dragState && showZones && selectedZone) {
       const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, viewConfig);
       const rotation = zoneRotationHandle(selectedZone, 28 / scale);
       const rh = worldToCanvas(rotation.x, rotation.y, canvas.width, canvas.height);
@@ -1919,7 +2066,19 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       return;
     }
 
-    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE'].includes(dragState.type) && !clickStartRef.current?.hasMoved) return;
+    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE', 'ZONE_VERTEX'].includes(dragState.type) && !clickStartRef.current?.hasMoved) return;
+
+    if (dragState.type === 'ZONE_VERTEX') {
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      const base = dragState.editBase || dragState.orig;
+      const vertices = base.vertices.map((p, i) => i === dragState.vertex
+        ? { x: Number(worldX.toFixed(3)), y: Number(worldY.toFixed(3)) } : p);
+      const updated = { ...base, ...zoneFromVertices(vertices) };
+      zoneEditRef.current = updated;
+      setSelectedZone(updated);
+      setZones((prev) => prev.map((z) => z.id === updated.id ? updated : z));
+      return;
+    }
 
     if (['ZONE_DRAW', 'ZONE_RESIZE', 'ZONE_ROTATE'].includes(dragState.type)) {
       const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
@@ -1953,7 +2112,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     } else if (dragState.type === 'ZONE') {
       const newX = Number((dragState.initX + dxMeters).toFixed(2));
       const newY = Number((dragState.initY + dyMeters).toFixed(2));
-      const updated = { ...dragState.orig, x: newX, y: newY };
+      const updated = translateZone(dragState.orig, newX - dragState.initX, newY - dragState.initY);
       zoneEditRef.current = updated;
       setSelectedZone(updated);
       setZones((prev) => prev.map((z) => (z.id === dragState.id ? updated : z)));
@@ -1987,19 +2146,23 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
 
     // Keo/doi kich thuoc vung xong: de len endpoint => tra ve cho cu + bao; khong thi luu + cap nhat Nav2
-    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE'].includes(finishedDrag?.type) && clickCandidate?.hasMoved) {
+    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE', 'ZONE_VERTEX'].includes(finishedDrag?.type) && (clickCandidate?.hasMoved || finishedDrag.inserted)) {
       const zone = zoneEditRef.current || zones.find((z) => z.id === finishedDrag.id);
       const conflict = zone && zoneEndpointConflict(zone, endpoints);
-      if (conflict) {
+      const geometryError = isPolygonZone(zone) && polygonValidationError(zone.vertices);
+      if (conflict || geometryError) {
         const orig = finishedDrag.orig;
         const reverted = { ...zone, ...orig };
         setZones((prev) => prev.map((z) => (z.id === zone.id ? reverted : z)));
         setSelectedZone(reverted);
-        rejectZoneRule(conflict.message);
+        if (finishedDrag.inserted) setSelectedZoneVertex(null);
+        rejectZoneRule(geometryError || conflict.message);
       } else if (zone) {
         const nextList = zones.map((z) => z.id === zone.id ? zone : z);
         setZones(nextList);
-        persistZone(zone, nextList, `Đã cập nhật vùng "${zone.name}" (${Number(zone.width).toFixed(2)} × ${Number(zone.height).toFixed(2)} m • ${normalizeZoneYaw(zone.yaw)}°)`);
+        persistZone(zone, nextList, finishedDrag.inserted
+          ? `Đã thêm đỉnh ${finishedDrag.vertex + 1} vào vùng "${zone.name}" • ${zone.vertices.length} đỉnh`
+          : `Đã cập nhật vùng "${zone.name}" (${Number(zone.width).toFixed(2)} × ${Number(zone.height).toFixed(2)} m • ${normalizeZoneYaw(zone.yaw)}°)`);
       }
       zoneEditRef.current = null;
     }
@@ -2033,6 +2196,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (dragState?.orig && dragState.type.startsWith('ZONE')) {
       setZones((prev) => prev.map((z) => z.id === dragState.id ? dragState.orig : z));
       setSelectedZone(dragState.orig);
+      if (dragState.inserted) setSelectedZoneVertex(null);
     }
     zoneEditRef.current = null;
     clickStartRef.current = null;
@@ -2232,6 +2396,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       if (e.defaultPrevented) return;
       const key = e.key.toLowerCase();
       if (key === 'escape') {
+        setSelectedZoneVertex(null);
         // Huy ve vung dang do dang
         setZoneDrawType(null);
         setZoneDraft(null);
@@ -2242,6 +2407,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         return;
       }
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (key === 'delete') {
+        if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.isContentEditable
+          && !e.target.closest?.('[role="dialog"], [role="textbox"]') && deleteZoneVertexRef.current?.()) {
+          e.preventDefault();
+        }
+        return;
+      }
       // Space activates focused popup buttons; it must not also send a motor command.
       if (e.target.closest?.('[role="dialog"]') && [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) return;
       if (key === 'w' || key === 'arrowup') {
@@ -2302,6 +2474,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               khi thu gon panel ben phai). Canvas absolute de kich thuoc canvas khong day khung ra. */}
           <div ref={canvasHostRef} className="relative w-full flex-1 min-h-0">
           <canvas
+            tabIndex={0}
+            aria-label="Bản đồ: bấm cạnh đa giác để thêm đỉnh, kéo đỉnh để sửa, nhấn Delete để xóa đỉnh đã chọn"
             ref={canvasRef}
             width={canvasSize.width}
             height={canvasSize.height}
@@ -2311,6 +2485,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             onPointerCancel={handleCanvasPointerCancel}
             onPointerLeave={() => {
               setHoveredEndpointId(null);
+              setZoneEdgeHover(null);
               if (dragState?.type === 'PAN') handleCanvasMouseUp();
             }}
             style={{ touchAction: 'none', cursor: !zoneDrawType && !isPoseSetMode && !isAddEndpointMode ? (dragState ? 'grabbing' : zoneCursor || undefined) : undefined }}
@@ -2444,8 +2619,18 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           )}
 
           {zoneDrawType && (
-            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-lg bg-amber-950/90 border border-amber-700 text-[11px] font-semibold text-amber-200 shadow-xl">
-              Vẽ vùng {ZONE_TEMPLATES.find((t) => t.type === zoneDrawType)?.badge}: nhấn giữ chuột ở 1 góc → kéo tới góc đối diện → thả chuột (Esc để hủy)
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-2 rounded-lg bg-amber-950/95 border border-amber-700 text-[11px] font-semibold text-amber-200 shadow-xl max-w-[90%]">
+              {zoneDrawShape === 'polygon' ? (
+                <>
+                  <p>Vẽ {ZONE_TEMPLATES.find((t) => t.type === zoneDrawType)?.badge}: chấm từng đỉnh theo thứ tự quanh vùng. Bấm đỉnh đầu hoặc Hoàn tất để đóng hình.</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span>{zoneDraft?.vertices?.length || 0}/64 đỉnh</span>
+                    <button type="button" disabled={(zoneDraft?.vertices?.length || 0) < 3} onClick={finishPolygon} className="rounded bg-emerald-700 px-2 py-1 text-white disabled:opacity-40 cursor-pointer">Hoàn tất</button>
+                    <button type="button" disabled={!zoneDraft?.vertices?.length} onClick={() => setZoneDraft((draft) => draft && { ...draft, vertices: draft.vertices.slice(0, -1) })} className="rounded bg-slate-700 px-2 py-1 text-white disabled:opacity-40 cursor-pointer">Bỏ đỉnh cuối</button>
+                    <button type="button" onClick={() => { setZoneDraft(null); setZoneDrawType(null); }} className="rounded border border-amber-700 px-2 py-1 cursor-pointer">Hủy (Esc)</button>
+                  </div>
+                </>
+              ) : <>Vẽ vùng {ZONE_TEMPLATES.find((t) => t.type === zoneDrawType)?.badge}: nhấn giữ chuột ở 1 góc → kéo tới góc đối diện → thả chuột (Esc để hủy)</>}
             </div>
           )}
 
@@ -2529,6 +2714,21 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 <span className="font-bold text-cyan-400">
                   ({Number(selectedZone.x).toFixed(2)}, {Number(selectedZone.y).toFixed(2)})
                 </span>
+                {isPolygonZone(selectedZone) ? (
+                  <>
+                    <span className="ml-2 text-cyan-300">Đa giác · {selectedZone.vertices.length} đỉnh</span>
+                    <span className={selectedZoneVertex === null ? 'text-slate-400' : 'text-amber-300'}>
+                      {selectedZoneVertex === null ? 'Chọn đỉnh để kéo hoặc xóa' : `Đã chọn đỉnh ${selectedZoneVertex + 1}`}
+                    </span>
+                    <span className="text-slate-400">· Bấm cạnh để thêm đỉnh</span>
+                    <button type="button" onClick={handleDeleteSelectedVertex}
+                      disabled={selectedZoneVertex === null || selectedZone.vertices.length <= 3 || !!dragState}
+                      title={selectedZone.vertices.length <= 3 ? 'Đa giác phải giữ ít nhất 3 đỉnh' : 'Xóa đỉnh đang chọn và nối hai đỉnh liền kề (Delete)'}
+                      className="ml-1 flex items-center gap-1 rounded border border-rose-800 bg-rose-950/60 px-2 py-1 text-rose-300 hover:bg-rose-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                      <Trash2 className="h-3 w-3" /> Xóa đỉnh (Delete)
+                    </button>
+                  </>
+                ) : <>
                 <span className="text-slate-400 ml-1">KT:</span>
                 <input
                   type="number"
@@ -2562,6 +2762,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                   title="Góc xoay vùng (độ)"
                 />
                 <span>°</span>
+                </>}
               </div>
 
               {/* Nut Luu Vung */}
@@ -3193,6 +3394,16 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           {/* NOI DUNG TAB 2: DANH SACH VUNG CHUC NANG (ZONES) */}
           {panel.section === 'ZONES' && (
             <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
+              <div className="flex items-center gap-2 text-[11px] text-slate-300">
+                <span>Hình vẽ:</span>
+                {[['rectangle', 'Chữ nhật'], ['polygon', 'Đa giác (Polygon)']].map(([shape, label]) => (
+                  <button key={shape} type="button" aria-pressed={zoneDrawShape === shape}
+                    onClick={() => { setZoneDrawShape(shape); setZoneDraft(null); setZoneDrawType(null); }}
+                    className={`rounded border px-2 py-1 cursor-pointer ${zoneDrawShape === shape ? 'border-cyan-500 bg-cyan-950 text-cyan-200' : 'border-slate-700 bg-slate-800'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
               {/* Toolbar them & luu zone */}
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
@@ -3201,7 +3412,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                     className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
                       zoneDrawType === 'KEEP_OUT' ? 'bg-rose-600 ring-2 ring-white/70' : 'bg-rose-600/80 hover:bg-rose-600'
                     }`}
-                    title="Vẽ khu vực cấm vào: kéo chuột trên bản đồ. Nav2 sẽ đi đường vòng, không nhận endpoint bên trong."
+                    title="Vẽ khu vực cấm vào theo hình đã chọn. Nav2 sẽ đi đường vòng, không nhận endpoint bên trong."
                   >
                     <Plus className="w-3 h-3" />
                     <span>{zoneDrawType === 'KEEP_OUT' ? 'Đang Vẽ...' : 'Cấm Vào'}</span>
@@ -3211,7 +3422,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                     className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
                       zoneDrawType === 'SPEED_ZONE' ? 'bg-amber-600 ring-2 ring-white/70' : 'bg-amber-600/80 hover:bg-amber-600'
                     }`}
-                    title="Vẽ vùng giới hạn tốc độ: kéo chuột trên bản đồ. Robot tự chạy chậm lại khi vào vùng."
+                    title="Vẽ vùng giới hạn tốc độ theo hình đã chọn. Robot tự chạy chậm lại khi vào vùng."
                   >
                     <Plus className="w-3 h-3" />
                     <span>{zoneDrawType === 'SPEED_ZONE' ? 'Đang Vẽ...' : 'Tốc Độ'}</span>
@@ -3221,7 +3432,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                     className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
                       zoneDrawType === 'NO_STOP' ? 'bg-pink-600 ring-2 ring-white/70' : 'bg-pink-600/80 hover:bg-pink-600'
                     }`}
-                    title="Vẽ vùng cấm dừng: kéo chuột trên bản đồ. Robot được đi ngang qua nhưng không nhận endpoint bên trong."
+                    title="Vẽ vùng cấm dừng theo hình đã chọn. Robot được đi ngang qua nhưng không nhận endpoint bên trong."
                   >
                     <Plus className="w-3 h-3" />
                     <span>{zoneDrawType === 'NO_STOP' ? 'Đang Vẽ...' : 'Cấm Dừng'}</span>
@@ -3256,6 +3467,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                       onClick={() => {
                         setSelectedZone(zone);
                         setSelectedEndpoint(null);
+                        setZoneDrawType(null);
+                        setZoneDraft(null);
                       }}
                       className={`p-2 rounded-lg border flex items-center justify-between transition-colors cursor-pointer ${
                         isSelected
@@ -3268,7 +3481,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                         <div className="truncate">
                           <span className="text-xs font-semibold text-slate-200 block truncate">{zone.name}</span>
                           <span className="text-[10px] text-slate-400 font-mono block">
-                            Tâm ({Number(zone.x).toFixed(2)}, {Number(zone.y).toFixed(2)}) • {Number(zone.width).toFixed(1)}m×{Number(zone.height).toFixed(1)}m
+                            {isPolygonZone(zone) ? `Đa giác · ${zone.vertices.length} đỉnh` : `${Number(zone.width).toFixed(1)}m×${Number(zone.height).toFixed(1)}m`}
+                            {' • '}Tâm ({Number(zone.x).toFixed(2)}, {Number(zone.y).toFixed(2)})
                             {isSpeed && ` • ${zone.speed_limit}m/s`}
                           </span>
                         </div>
@@ -3280,6 +3494,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                             e.stopPropagation();
                             setSelectedZone(zone);
                             setSelectedEndpoint(null);
+                            setZoneDrawType(null);
+                            setZoneDraft(null);
                           }}
                           className="p-1 rounded text-slate-400 hover:text-cyan-400 hover:bg-slate-800 cursor-pointer transition-colors"
                           title="Sửa vùng"

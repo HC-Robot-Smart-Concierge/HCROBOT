@@ -1335,42 +1335,51 @@ export const ConciergeDashboard = ({
         </div>
       )}
 
-      {/* INCOMING CALL RINGING MODAL FOR STAFF (FACE-TIME / MESSENGER STYLE) */}
+      {/* INCOMING CALL RINGING MODAL FOR STAFF (GOOGLE USER / MEET STYLE) */}
       {activeSession && activeSession.status === 'Pending' && !isVideoModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-neutral-900 border border-emerald-500/50 rounded-3xl p-6 max-w-sm w-full text-center space-y-5 shadow-2xl text-white">
-            <div className="relative mx-auto w-20 h-20 rounded-full bg-emerald-600/20 border-2 border-emerald-500 flex items-center justify-center animate-pulse">
-              <PhoneCall className="w-10 h-10 text-emerald-400 animate-bounce" />
+        <div className="fixed inset-0 z-50 bg-[#141413]/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white border border-[#E3DFD5] rounded-3xl p-6 sm:p-7 max-w-sm w-full text-center space-y-5 shadow-2xl text-[#1A1917] animate-in zoom-in-95 duration-200">
+            {/* Animated Call Ring Icon */}
+            <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+              <span className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping" />
+              <div className="relative w-20 h-20 rounded-full bg-emerald-50 border-2 border-emerald-500 flex items-center justify-center text-emerald-600 shadow-md">
+                <PhoneCall className="w-9 h-9 animate-pulse" />
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <span className="text-[10px] font-mono font-bold tracking-widest text-emerald-400 uppercase bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-800">
-                CUỘC GỌI ĐẾN TỪ ROBOT KIOSK
+            {/* Caller Information */}
+            <div className="space-y-1.5">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold tracking-wide uppercase">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Cuộc gọi đến từ Robot Kiosk
               </span>
-              <h3 className="text-lg font-black text-white pt-1">
+              <h3 className="text-xl font-bold text-[#1A1917] pt-1">
                 {activeSession.guest_name || 'Khách tại Sảnh'}
               </h3>
-              <p className="text-xs text-neutral-400 font-medium">
-                Vị trí: {activeSession.room_number || 'Main Lobby Kiosk'} • Mã: {activeSession.ticket_code}
+              <p className="text-xs text-[#8C857B] font-medium">
+                Vị trí: <span className="font-semibold text-[#1A1917]">{activeSession.room_number || 'Main Lobby Kiosk'}</span> • Mã: <span className="font-mono font-semibold">{activeSession.ticket_code}</span>
               </p>
             </div>
 
-            <p className="text-xs text-neutral-300 bg-neutral-800/80 p-3 rounded-2xl border border-neutral-700 italic">
+            {/* Call Reason / Description */}
+            <div className="text-xs text-[#8C857B] bg-[#F9F8F5] p-3.5 rounded-2xl border border-[#E3DFD5] italic leading-relaxed text-left">
               "{activeSession.description || 'Khách bấm gọi hỗ trợ trực tiếp từ màn hình Robot Concierge'}"
-            </p>
+            </div>
 
-            <div className="flex items-center gap-3 pt-2">
+            {/* Action Buttons (Google Phone Style) */}
+            <div className="flex items-center gap-3 pt-1">
               <button
                 type="button"
                 onClick={() => handleUpdateStatus('Closed')}
-                className="flex-1 py-3 rounded-2xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs transition-colors cursor-pointer"
+                className="flex-1 py-3 px-4 rounded-full bg-[#F5F2EB] hover:bg-red-50 text-[#1A1917] hover:text-red-700 font-semibold text-xs sm:text-sm border border-[#E3DFD5] hover:border-red-200 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95"
               >
-                Từ chối
+                <PhoneOff className="w-4 h-4 text-[#8C857B]" />
+                <span>Từ chối</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleAcceptCall(activeSession)}
-                className="flex-1 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 cursor-pointer active:scale-95 animate-pulse"
+                className="flex-1 py-3 px-4 rounded-full bg-[#059669] hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
               >
                 <PhoneCall className="w-4 h-4" />
                 <span>Trả Lời Ngay</span>

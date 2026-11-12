@@ -14,6 +14,8 @@ import {
   RefreshCw,
   Search,
   Cloud,
+  Copy,
+  Check,
 } from 'lucide-react';
 import {
   fetchHumanSupportSessions,
@@ -43,10 +45,16 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
     no_recordings: 0,
   });
 
-  // Video Player Modal
+  // Video Player Modal & Alternative / Exception Flow State
   const [playingVideo, setPlayingVideo] = useState(null);
   const [videoError, setVideoError] = useState(false);
+  const [videoErrorDetail, setVideoErrorDetail] = useState('');
+  const [isVideoLoading, setIsVideoLoading] = useState(false);
   const [useMp4Fallback, setUseMp4Fallback] = useState(false);
+  const [autoRetriedMp4, setAutoRetriedMp4] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+  const [detectedDuration, setDetectedDuration] = useState(null);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -66,7 +74,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
       }
     } catch (err) {
       console.error('[AdminVideoCalls] Error loading data:', err);
-      setError('Không thể tải danh sách cuộc gọi. Vui lòng thử lại sau.');
+      setError('Không thể tải danh sách cuộc gọi. Vui lòng kiểm tra kết nối máy chủ và thử lại.');
     } finally {
       setIsLoading(false);
     }
@@ -76,9 +84,19 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
     loadData();
   }, [startDate, endDate]);
 
-  // Client-side filtering across sessions based on date, search, and recording status
+  // Helper: xác định trạng thái bản ghi thực tế của từng phiên
+  const getEffectiveRecordingStatus = (session) => {
+    const rStat = (session?.recording_status || '').toLowerCase();
+    const hasUrl = Boolean(session?.recording_url && session.recording_url.trim());
+    if (rStat === 'saving') return 'saving';
+    if (rStat === 'failed') return 'failed';
+    if (hasUrl) return 'ready';
+    return 'none';
+  };
+
+  // Client-side filtering & smart sorting (ưu tiên các phiên có bản ghi video lên trang đầu)
   const filteredSessions = useMemo(() => {
-    return sessions.filter((session) => {
+    const matched = sessions.filter((session) => {
       // 1. Date Range Filter
       if (startDate && session.created_at) {
         const sDate = new Date(startDate);
@@ -93,17 +111,9 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
       }
 
       // 2. Recording Status Filter
-      const rStat = (session.recording_status || '').toLowerCase();
-      const hasUrl = Boolean(session.recording_url && session.recording_url.trim());
-
-      if (recordingStatusFilter === 'ready') {
-        if (!hasUrl && rStat !== 'ready') return false;
-      } else if (recordingStatusFilter === 'saving') {
-        if (rStat !== 'saving') return false;
-      } else if (recordingStatusFilter === 'failed') {
-        if (rStat !== 'failed') return false;
-      } else if (recordingStatusFilter === 'none') {
-        if (hasUrl || rStat === 'ready' || rStat === 'saving' || rStat === 'failed') return false;
+      const effectiveStatus = getEffectiveRecordingStatus(session);
+      if (recordingStatusFilter !== 'all' && effectiveStatus !== recordingStatusFilter) {
+        return false;
       }
 
       // 3. Search Term
@@ -116,6 +126,17 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
       }
 
       return true;
+    });
+
+    // Sắp xếp ưu tiên: Các phiên có bản ghi ('ready', 'saving', 'failed') hiển thị trước, sau đó theo thời gian mới nhất
+    const priorityWeight = { ready: 3, saving: 2, failed: 1, none: 0 };
+    return [...matched].sort((a, b) => {
+      const pA = priorityWeight[getEffectiveRecordingStatus(a)] ?? 0;
+      const pB = priorityWeight[getEffectiveRecordingStatus(b)] ?? 0;
+      if (pA !== pB) return pB - pA;
+      const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tB - tA;
     });
   }, [sessions, startDate, endDate, recordingStatusFilter, searchTerm]);
 
@@ -147,6 +168,78 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
     } finally {
       setIsSyncing(false);
       setTimeout(() => setSyncMessage(null), 6000);
+    }
+  };
+
+  // Mở trình phát video với cơ chế tự động chọn định dạng tối ưu
+  const handleOpenVideoPlayer = (session) => {
+    const rawUrl = (session?.recording_url || '').trim();
+    const isCloudinaryWebm = rawUrl.includes('res.cloudinary.com') && /\.webm(\?.*)?$/i.test(rawUrl);
+    setPlayingVideo(session);
+    setVideoError(false);
+    setVideoErrorDetail('');
+    setIsVideoLoading(true);
+    // Tự động ưu tiên luồng MP4 (H.264) cho video WebM trên Cloudinary để hỗ trợ tua (seeking) và tương thích mọi trình duyệt
+    setUseMp4Fallback(isCloudinaryWebm);
+    setAutoRetriedMp4(false);
+    setRetryCount(0);
+    setCopiedUrl(false);
+    setDetectedDuration(session?.recording_duration > 0 ? session.recording_duration : null);
+  };
+
+  // Tính toán URL phát thực tế (hỗ trợ chuyển đổi MP4 trên Cloudinary & retry cache-bust)
+  const getActivePlaybackUrl = () => {
+    if (!playingVideo || !playingVideo.recording_url) return '';
+    let url = playingVideo.recording_url.trim();
+    if (useMp4Fallback && url.includes('res.cloudinary.com') && /\.webm(\?.*)?$/i.test(url)) {
+      url = url.replace(/\.webm(\?.*)?$/i, '.mp4$1');
+    }
+    if (retryCount > 0) {
+      const sep = url.includes('?') ? '&' : '?';
+      url = `${url}${sep}_retry=${retryCount}`;
+    }
+    return url;
+  };
+
+  // Xử lý ngoại lệ khi thẻ <video> gặp lỗi giải mã hoặc lỗi mạng (Alternative Flow tự động)
+  const handleVideoElementError = (e) => {
+    const rawUrl = (playingVideo?.recording_url || '').trim();
+    const canSwitchFormat = rawUrl.includes('res.cloudinary.com') && /\.webm(\?.*)?$/i.test(rawUrl);
+
+    // Alternative Flow 1: Tự động chuyển đổi giữa MP4 và WebM gốc nếu lần thử đầu bị lỗi
+    if (canSwitchFormat && !autoRetriedMp4) {
+      setAutoRetriedMp4(true);
+      setUseMp4Fallback((prev) => !prev);
+      setIsVideoLoading(true);
+      setVideoError(false);
+      return;
+    }
+
+    // Alternative Flow 2: Hiển thị bảng chẩn đoán lỗi kèm các thao tác khôi phục
+    setIsVideoLoading(false);
+    setVideoError(true);
+    const mediaErrCode = e?.currentTarget?.error?.code;
+    if (mediaErrCode === 1) {
+      setVideoErrorDetail('Quá trình tải video bị hủy bởi người dùng.');
+    } else if (mediaErrCode === 2) {
+      setVideoErrorDetail('Lỗi kết nối mạng trong khi đang tải luồng video từ máy chủ lưu trữ.');
+    } else if (mediaErrCode === 3) {
+      setVideoErrorDetail('Lỗi giải mã khung hình (codec WebM/VP8 không tương thích với phần cứng trình duyệt).');
+    } else if (mediaErrCode === 4) {
+      setVideoErrorDetail('Không tìm thấy file bản ghi trên máy chủ (HTTP 404) hoặc định dạng nguồn không được hỗ trợ.');
+    } else {
+      setVideoErrorDetail('Không thể tải hoặc giải mã luồng video trực tiếp trên trình duyệt.');
+    }
+  };
+
+  const handleCopyVideoUrl = async () => {
+    if (!playingVideo?.recording_url) return;
+    try {
+      await navigator.clipboard.writeText(playingVideo.recording_url);
+      setCopiedUrl(true);
+      setTimeout(() => setCopiedUrl(false), 2500);
+    } catch {
+      setCopiedUrl(false);
     }
   };
 
@@ -208,10 +301,15 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
         </div>
       )}
 
-      {/* 2. Compact Metrics Bar (Google Cloud style) */}
+      {/* 2. Compact Interactive Metrics Bar (Click để lọc nhanh) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         {/* Total Calls */}
-        <div className="px-4 py-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-xs flex items-center justify-between">
+        <div
+          onClick={() => { setRecordingStatusFilter('all'); setCurrentPage(1); }}
+          className={`px-4 py-2.5 rounded-xl bg-white border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
+            recordingStatusFilter === 'all' ? 'border-neutral-400 ring-1 ring-neutral-300' : 'border-neutral-200/80 hover:border-neutral-300'
+          }`}
+        >
           <div>
             <div className="text-[11px] font-medium text-neutral-500">Tổng cuộc gọi</div>
             <div className="text-xl font-semibold text-neutral-900 mt-0.5">{metrics.total_calls}</div>
@@ -222,7 +320,12 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
         </div>
 
         {/* Ready Recordings */}
-        <div className="px-4 py-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-xs flex items-center justify-between">
+        <div
+          onClick={() => { setRecordingStatusFilter('ready'); setCurrentPage(1); }}
+          className={`px-4 py-2.5 rounded-xl bg-white border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
+            recordingStatusFilter === 'ready' ? 'border-emerald-500 ring-1 ring-emerald-200' : 'border-neutral-200/80 hover:border-emerald-300'
+          }`}
+        >
           <div>
             <div className="text-[11px] font-medium text-emerald-700">Có thể xem</div>
             <div className="text-xl font-semibold text-emerald-700 mt-0.5">{metrics.ready_recordings}</div>
@@ -234,7 +337,12 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
         </div>
 
         {/* Saving Recordings */}
-        <div className="px-4 py-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-xs flex items-center justify-between">
+        <div
+          onClick={() => { setRecordingStatusFilter('saving'); setCurrentPage(1); }}
+          className={`px-4 py-2.5 rounded-xl bg-white border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
+            recordingStatusFilter === 'saving' ? 'border-amber-500 ring-1 ring-amber-200' : 'border-neutral-200/80 hover:border-amber-300'
+          }`}
+        >
           <div>
             <div className="text-[11px] font-medium text-amber-700">Đang lưu ngầm</div>
             <div className="text-xl font-semibold text-amber-700 mt-0.5">{metrics.saving_recordings}</div>
@@ -246,7 +354,12 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
         </div>
 
         {/* Failed Recordings */}
-        <div className="px-4 py-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-xs flex items-center justify-between">
+        <div
+          onClick={() => { setRecordingStatusFilter('failed'); setCurrentPage(1); }}
+          className={`px-4 py-2.5 rounded-xl bg-white border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
+            recordingStatusFilter === 'failed' ? 'border-rose-500 ring-1 ring-rose-200' : 'border-neutral-200/80 hover:border-rose-300'
+          }`}
+        >
           <div>
             <div className="text-[11px] font-medium text-rose-700">Lưu thất bại</div>
             <div className="text-xl font-semibold text-rose-700 mt-0.5">{metrics.failed_recordings}</div>
@@ -267,7 +380,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
             type="text"
             value={searchTerm}
             onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-            placeholder="Tìm theo mã phiên, phòng, tên khách, ticket..."
+            placeholder="Tìm theo mã phiên, thiết bị robot, ticket..."
             className="w-full pl-8 pr-3 py-1.5 text-xs rounded-full bg-neutral-100/70 hover:bg-neutral-100 focus:bg-white border border-transparent focus:border-neutral-300 focus:outline-hidden transition-all text-neutral-800 placeholder:text-neutral-400"
           />
         </div>
@@ -330,9 +443,15 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
             <span>Đang tải danh sách lịch sử cuộc gọi...</span>
           </div>
         ) : error ? (
-          <div className="py-16 text-center text-xs text-rose-600 flex flex-col items-center justify-center gap-2">
+          <div className="py-16 text-center text-xs text-rose-600 flex flex-col items-center justify-center gap-3">
             <AlertCircle className="w-5 h-5" />
             <span>{error}</span>
+            <button
+              onClick={loadData}
+              className="px-3 py-1.5 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-700 font-medium text-xs transition-colors cursor-pointer"
+            >
+              Thử tải lại
+            </button>
           </div>
         ) : paginatedSessions.length === 0 ? (
           <div className="py-16 text-center text-xs text-neutral-500 flex flex-col items-center justify-center gap-2">
@@ -355,8 +474,8 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {paginatedSessions.map((session) => {
-                  const rStat = (session.recording_status || '').toLowerCase();
-                  const hasUrl = Boolean(session.recording_url && session.recording_url.trim());
+                  const effectiveStatus = getEffectiveRecordingStatus(session);
+                  const hasUrl = effectiveStatus === 'ready';
 
                   let statusBadge = (
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] text-neutral-500 bg-neutral-100">
@@ -364,21 +483,21 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
                     </span>
                   );
 
-                  if (rStat === 'saving') {
+                  if (effectiveStatus === 'saving') {
                     statusBadge = (
                       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700">
                         <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                         Đang lưu
                       </span>
                     );
-                  } else if (rStat === 'failed') {
+                  } else if (effectiveStatus === 'failed') {
                     statusBadge = (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700">
                         <AlertCircle className="w-3 h-3" />
                         Lưu thất bại
                       </span>
                     );
-                  } else if (hasUrl || rStat === 'ready') {
+                  } else if (effectiveStatus === 'ready') {
                     statusBadge = (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700">
                         <CheckCircle2 className="w-3 h-3" />
@@ -410,7 +529,9 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
                       <td className="py-2.5 px-3.5 font-medium text-neutral-800">
                         {typeof session.recording_duration === 'number' && session.recording_duration > 0
                           ? `${session.recording_duration}s`
-                          : '—'}
+                          : hasUrl
+                            ? 'Bản ghi Cloud'
+                            : '—'}
                       </td>
                       <td className="py-2.5 px-3.5">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-neutral-100 text-neutral-700">
@@ -425,11 +546,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
                           <div className="inline-flex items-center justify-end gap-1">
                             {/* Minimal Google-style Play Button */}
                             <button
-                              onClick={() => {
-                                setPlayingVideo(session);
-                                setVideoError(false);
-                                setUseMp4Fallback(false);
-                              }}
+                              onClick={() => handleOpenVideoPlayer(session)}
                               title="Xem video bản ghi"
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-neutral-800 bg-neutral-100 hover:bg-neutral-200 transition-colors cursor-pointer"
                             >
@@ -447,6 +564,16 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
                               <ExternalLink className="w-3.5 h-3.5" />
                             </a>
                           </div>
+                        ) : effectiveStatus === 'failed' ? (
+                          <button
+                            onClick={handleSyncCloudinary}
+                            disabled={isSyncing}
+                            title="Đồng bộ lại từ Cloudinary"
+                            className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors cursor-pointer"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Khôi phục</span>
+                          </button>
                         ) : (
                           <span className="text-neutral-300 text-xs">—</span>
                         )}
@@ -485,53 +612,107 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
         )}
       </div>
 
-      {/* 5. Maximized Video Player Modal (Google Meet / YouTube Theater style) */}
+      {/* 5. Maximized Video Player Modal with Automatic Fallback & Exception Recovery */}
       {playingVideo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 md:p-6 animate-fade-in">
           <div className="bg-neutral-900 text-white rounded-2xl max-w-4xl w-full max-h-[92vh] overflow-hidden shadow-2xl border border-neutral-800 flex flex-col">
             {/* Modal Header */}
-            <div className="px-4 py-3 bg-neutral-950/80 border-b border-neutral-800 flex items-center justify-between">
+            <div className="px-4 py-3 bg-neutral-950/80 border-b border-neutral-800 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 truncate pr-2">
                 <Play className="w-3.5 h-3.5 text-emerald-400 fill-current shrink-0" />
                 <span className="text-xs font-medium text-neutral-200 truncate">
                   {playingVideo.session_code || playingVideo.id} — Robot Kiosk ⇄ Nhân viên lễ tân
                 </span>
+                {detectedDuration ? (
+                  <span className="px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-300 text-[10px] font-mono shrink-0">
+                    {Math.round(detectedDuration)}s
+                  </span>
+                ) : null}
               </div>
-              <button
-                onClick={() => { setPlayingVideo(null); setVideoError(false); }}
-                title="Đóng xem video"
-                className="p-1 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Format Toggle Button for Cloudinary Videos */}
+                {(playingVideo.recording_url || '').includes('res.cloudinary.com') && (
+                  <button
+                    onClick={() => {
+                      setUseMp4Fallback((prev) => !prev);
+                      setVideoError(false);
+                      setIsVideoLoading(true);
+                    }}
+                    title="Chuyển đổi định dạng phát MP4 (H.264) / WebM gốc"
+                    className="px-2.5 py-1 rounded-full bg-neutral-800 hover:bg-neutral-700 text-[11px] text-neutral-200 transition-colors cursor-pointer"
+                  >
+                    {useMp4Fallback ? 'Định dạng: MP4 (Tương thích)' : 'Định dạng: WebM (Gốc)'}
+                  </button>
+                )}
+
+                <button
+                  onClick={() => {
+                    setPlayingVideo(null);
+                    setVideoError(false);
+                    setIsVideoLoading(false);
+                  }}
+                  title="Đóng xem video"
+                  className="p-1 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
             </div>
 
             {/* Maximized Video Display */}
             <div className="bg-black flex-1 flex items-center justify-center relative aspect-video max-h-[70vh]">
+              {isVideoLoading && !videoError && (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/50 pointer-events-none">
+                  <Loader2 className="w-6 h-6 animate-spin text-emerald-400" />
+                  <span className="text-xs text-neutral-300">Đang nạp luồng video...</span>
+                </div>
+              )}
+
               {videoError ? (
-                <div className="p-6 text-center text-xs text-neutral-300 flex flex-col items-center justify-center gap-3">
+                <div className="p-6 text-center text-xs text-neutral-300 flex flex-col items-center justify-center gap-3 max-w-lg">
                   <AlertCircle className="w-8 h-8 text-amber-400" />
                   <div>
-                    <p className="font-semibold text-white">Trình duyệt không thể giải mã trực tiếp định dạng video này</p>
-                    <p className="text-[11px] text-neutral-400 mt-1">Video có thể sử dụng codec WebM chưa tương thích với phần cứng/trình duyệt.</p>
+                    <p className="font-semibold text-white text-sm">
+                      Không thể phát trực tiếp bản ghi video này
+                    </p>
+                    <p className="text-[11px] text-neutral-400 mt-1">
+                      {videoErrorDetail || 'Video có thể sử dụng codec chưa tương thích hoặc đường truyền tới kho lưu trữ bị gián đoạn.'}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    {!useMp4Fallback && (playingVideo.recording_url || '').includes('.webm') && (
+
+                  {/* Alternative Flows Action Bar */}
+                  <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
+                    {(playingVideo.recording_url || '').includes('res.cloudinary.com') && (
                       <button
                         onClick={() => {
-                          setUseMp4Fallback(true);
+                          setUseMp4Fallback((prev) => !prev);
                           setVideoError(false);
+                          setIsVideoLoading(true);
                         }}
-                        className="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs cursor-pointer"
+                        className="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs cursor-pointer transition-colors"
                       >
-                        Thử phát dạng MP4
+                        {useMp4Fallback ? 'Thử phát luồng WebM gốc' : 'Chuyển sang định dạng MP4'}
                       </button>
                     )}
+
+                    <button
+                      onClick={() => {
+                        setRetryCount((c) => c + 1);
+                        setVideoError(false);
+                        setIsVideoLoading(true);
+                      }}
+                      className="px-3 py-1.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white font-medium text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Thử tải lại</span>
+                    </button>
+
                     <a
                       href={playingVideo.recording_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-3 py-1.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white font-medium text-xs inline-flex items-center gap-1.5"
+                      className="px-3 py-1.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white font-medium text-xs inline-flex items-center gap-1.5 transition-colors"
                     >
                       <span>Mở file gốc trên tab mới</span>
                       <ExternalLink className="w-3 h-3" />
@@ -540,37 +721,52 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
                 </div>
               ) : (
                 <video
-                  key={`${playingVideo.recording_url}-${useMp4Fallback}`}
-                  src={useMp4Fallback ? (playingVideo.recording_url || '').replace(/\.webm(\?.*)?$/i, '.mp4$1') : playingVideo.recording_url}
+                  key={`${playingVideo.recording_url}-${useMp4Fallback}-${retryCount}`}
+                  src={getActivePlaybackUrl()}
                   controls
                   autoPlay
                   playsInline
-                  onError={() => setVideoError(true)}
+                  preload="metadata"
+                  onLoadStart={() => setIsVideoLoading(true)}
+                  onLoadedMetadata={(e) => {
+                    const dur = e?.currentTarget?.duration;
+                    if (dur && Number.isFinite(dur) && dur > 0) {
+                      setDetectedDuration(Math.round(dur));
+                    }
+                  }}
+                  onCanPlay={() => setIsVideoLoading(false)}
+                  onPlaying={() => setIsVideoLoading(false)}
+                  onError={handleVideoElementError}
                   className="w-full h-full max-h-[70vh] object-contain"
                 >
-                  <source
-                    src={useMp4Fallback ? (playingVideo.recording_url || '').replace(/\.webm(\?.*)?$/i, '.mp4$1') : playingVideo.recording_url}
-                    type={useMp4Fallback ? 'video/mp4' : 'video/webm'}
-                  />
                   Trình duyệt không hỗ trợ phát video WebM/MP4.
                 </video>
               )}
             </div>
 
-            {/* Modal Footer with Direct Source */}
-            <div className="px-4 py-2.5 bg-neutral-950 border-t border-neutral-800 text-xs text-neutral-400 flex items-center justify-between">
-              <div className="truncate max-w-[70%] text-[11px]">
+            {/* Modal Footer with Direct Source & Copy Action */}
+            <div className="px-4 py-2.5 bg-neutral-950 border-t border-neutral-800 text-xs text-neutral-400 flex items-center justify-between gap-2">
+              <div className="truncate max-w-[65%] text-[11px]">
                 <span className="text-neutral-500">Nguồn:</span> {playingVideo.recording_url}
               </div>
-              <a
-                href={playingVideo.recording_url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-neutral-200 hover:text-white hover:underline transition-colors shrink-0"
-              >
-                <span>Mở file gốc</span>
-                <ExternalLink className="w-3 h-3 text-neutral-400" />
-              </a>
+              <div className="flex items-center gap-3 shrink-0">
+                <button
+                  onClick={handleCopyVideoUrl}
+                  className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-white transition-colors cursor-pointer"
+                >
+                  {copiedUrl ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3 text-neutral-400" />}
+                  <span>{copiedUrl ? 'Đã sao chép' : 'Sao chép link'}</span>
+                </button>
+                <a
+                  href={playingVideo.recording_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-neutral-200 hover:text-white hover:underline transition-colors"
+                >
+                  <span>Mở file gốc</span>
+                  <ExternalLink className="w-3 h-3 text-neutral-400" />
+                </a>
+              </div>
             </div>
           </div>
         </div>

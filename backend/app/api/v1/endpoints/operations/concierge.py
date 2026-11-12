@@ -59,12 +59,12 @@ class HumanSupportSessionItem(BaseModel):
     recording_url: Optional[str] = None
     recording_public_id: Optional[str] = None
     recording_duration: Optional[int] = None
-    recording_status: Optional[str] = "ready"
+    recording_status: Optional[str] = "none"
     thumbnail_url: Optional[str] = None
     call_started_at: Optional[datetime] = None
     call_ended_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -192,6 +192,7 @@ async def create_concierge_live_request(
         origin_robot_code="RC-001 (Main Lobby)",
         sentiment="Neutral",
         status="Active",
+        recording_status="none",
         linked_request_id=new_request.id,
         call_started_at=datetime.utcnow(),
         messages=request_in.transcript or [],
@@ -388,7 +389,7 @@ async def get_video_calls_metrics(
             saving_count += 1
         elif r_stat == "failed":
             failed_count += 1
-        elif has_url or r_stat == "ready":
+        elif has_url:
             ready_count += 1
         else:
             no_rec_count += 1
@@ -504,9 +505,16 @@ async def sync_cloudinary_recordings(
             "message": "Không tìm thấy video nào trên Cloudinary trong thư mục chỉ định.",
         }
 
-    # 2. Lấy danh sách session từ DB để đối soát
+    # 2. Lấy danh sách session từ DB để đối soát và chuẩn hóa các trạng thái lệch
     sessions = list(await session_repo.list_sessions(limit=500))
     synced_count = 0
+    normalized_count = 0
+
+    for s in sessions:
+        has_url = bool(s.recording_url and s.recording_url.strip())
+        if not has_url and (s.recording_status or "").lower() == "ready":
+            s.recording_status = "none"
+            normalized_count += 1
 
     for res in cloud_resources:
         pub_id = res.get("public_id", "")
@@ -582,6 +590,13 @@ async def sync_cloudinary_recordings(
     if os.path.exists(local_dir):
         for f in os.listdir(local_dir):
             if f.endswith((".webm", ".mp4")) and not f.startswith("temp_"):
+                full_f_path = os.path.join(local_dir, f)
+                # Bỏ qua các file rác/hỏng có kích thước < 1KB
+                try:
+                    if not os.path.isfile(full_f_path) or os.path.getsize(full_f_path) < 1024:
+                        continue
+                except OSError:
+                    continue
                 local_url = f"/api/v1/operations/concierge/recordings/local/{f}"
                 has_session = any(s.recording_url == local_url for s in sessions)
                 if not has_session:
@@ -604,7 +619,7 @@ async def sync_cloudinary_recordings(
                     sessions.append(new_local_session)
                     synced_count += 1
 
-    if synced_count > 0:
+    if synced_count > 0 or normalized_count > 0:
         await session_repo.commit()
 
     return {
@@ -734,10 +749,14 @@ async def upload_call_recording(
 )
 async def get_local_recording(filename: str):
     """Endpoint phục vụ stream lại video ghi hình local khi Cloudinary chạy chế độ offline fallback."""
-    local_path = os.path.join(os.getcwd(), "uploaded_recordings", filename)
-    if not os.path.exists(local_path):
-        raise HTTPException(status_code=404, detail="File video không tồn tại")
-    return FileResponse(local_path, media_type="video/webm")
+    safe_filename = os.path.basename(filename)
+    local_path = os.path.join(os.getcwd(), "uploaded_recordings", safe_filename)
+    if not os.path.exists(local_path) or not os.path.isfile(local_path):
+        raise HTTPException(status_code=404, detail="File video không tồn tại trên máy chủ")
+    if os.path.getsize(local_path) < 1024:
+        raise HTTPException(status_code=422, detail="File bản ghi bị hỏng hoặc không có dữ liệu video hợp lệ")
+    media_type = "video/mp4" if safe_filename.lower().endswith(".mp4") else "video/webm"
+    return FileResponse(local_path, media_type=media_type)
 
 
 @router.get("/concierge/ws/video-call/status")

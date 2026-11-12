@@ -51,4 +51,12 @@ describe('AdminVideoCallsTab (WF-04 Call Monitoring & Video Tab)', () => {
     expect(componentContent).toContain('syncCloudinaryRecordings');
     expect(componentContent).toContain('Đồng bộ Cloudinary');
   });
+
+  it('verifies exception handling and alternative playback flows (MP4 fallback, retry, copy URL)', () => {
+    expect(componentContent).toContain('handleVideoElementError');
+    expect(componentContent).toContain('getEffectiveRecordingStatus');
+    expect(componentContent).toContain('useMp4Fallback');
+    expect(componentContent).toContain('handleCopyVideoUrl');
+    expect(componentContent).toContain('Thử tải lại');
+  });
 });

@@ -149,6 +149,16 @@ class CloudinaryService:
                 for item in items:
                     pub_id = item.get("public_id", "")
                     sec_url = item.get("secure_url", "")
+                    file_bytes_len = int(item.get("bytes") or 0)
+                    # Loại bỏ video mẫu mặc định của Cloudinary, video quảng cáo và file lỗi rỗng (< 1KB)
+                    if (
+                        not pub_id
+                        or pub_id.startswith("samples/")
+                        or "/advertisements/" in pub_id
+                        or pub_id.startswith("advertisements/")
+                        or (0 < file_bytes_len < 1024)
+                    ):
+                        continue
                     base_name = pub_id.split("/")[-1] if "/" in pub_id else pub_id
                     result.append({
                         "public_id": pub_id,
@@ -156,7 +166,7 @@ class CloudinaryService:
                         "duration": int(item.get("duration") or 0),
                         "created_at": item.get("created_at"),
                         "format": item.get("format"),
-                        "bytes": item.get("bytes"),
+                        "bytes": file_bytes_len,
                         "filename": base_name,
                     })
                 return result

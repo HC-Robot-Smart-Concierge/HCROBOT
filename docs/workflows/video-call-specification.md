@@ -1,8 +1,8 @@
 # TÀI LIỆU KỸ THUẬT: VIDEO CALL (ROBOT-TO-HUMAN ESCALATION & AUTO-TRANSLATION)
 
 > **Mã quy trình (Workflow):** `WF-04` (Robot-to-Human Handoff & Remote Assistance)  
-> **Phiên bản:** v2.3.0  
-> **Cập nhật ngày:** 11/11/2026  
+> **Phiên bản:** v2.4.1  
+> **Cập nhật ngày:** 12/11/2026  
 > **Phân hệ phụ trách:** Frontend (Kiosk/Dashboard/Admin), Backend (FastAPI WebRTC Signaling, Cloudinary Storage & AI Auto-Translate)
 
 ---
@@ -14,16 +14,20 @@ Tính năng **Video Call** cung cấp kênh giao tiếp âm thanh và hình ản
 ### Luồng nghiệp vụ cốt lõi:
 1. **Kích hoạt (Trigger):**
    - Khách bấm nút *"Gọi nhân viên lễ tân"* trên màn hình Kiosk.
-   - Hoặc khách phát biểu bằng giọng nói: *"Gọi nhân viên giúp tôi"* / *"Please call staff"*. AI LangGraph (`concierge_graph.py`) nhận diện ý định và trả cờ `trigger_video_call: true`.
+   - Hoặc khách phát biểu bằng giọng nói: *"Gọi nhân viên giúp tôi"* / *"Please call staff"*. AI LangGraph (`concierge_graph.py`) nhận diện ý định và trả cờ `trigger_video_call: true`. Kiosk tự động dừng nhận diện giọng nói nền và Kiosk TTS để nhường micro/loa cho cuộc gọi.
 2. **Bắt tay & Kết nối (Signaling & WebRTC Peer Connection):**
    - Kiosk và Dashboard kết nối vào phòng gọi chung qua WebSocket Signaling Hub tại `/api/v1/operations/concierge/ws/video-call/{session_id}` (`video_call_manager.py`).
-   - Trao đổi SDP Offer, Answer và ICE Candidates (hỗ trợ cả P2P Direct trong mạng LAN và mDNS De-anonymization qua Server LAN IP).
+   - Trao đổi SDP Offer, Answer và ICE Candidates: Tự động phát hiện và chuyển tiếp cả IP Wi-Fi LAN và IP Tailscale (`100.x.x.x`) để de-anonymize mDNS `.local`, hỗ trợ kết nối P2P tức thì cả trong mạng nội bộ lẫn qua VPN Tailscale.
 3. **Phiên dịch Song ngữ Trực tiếp (Live Auto-Translation & TTS):**
    - Tự động nhận diện giọng nói (STT) và phân tách ngôn ngữ nguồn (Source Language) theo từng câu.
    - Phiên dịch 2 chiều Anh - Việt (`translation_service.py`):
-     - Khách nói tiếng Anh $\rightarrow$ Phụ đề tiếng Việt gửi tới Dashboard nhân viên.
-     - Nhân viên nói tiếng Việt $\rightarrow$ Dịch sang tiếng Anh, hiển thị phụ đề và loa Kiosk phát âm thanh đọc tiếng Anh bằng Edge TTS (`en-US-JennyNeural`).
-4. **Lưu trữ Bản ghi Cuộc gọi Bất đồng bộ (Async Cloudinary Recording):**
+     - Khách nói tiếng Anh $\rightarrow$ Phụ đề tiếng Việt gửi tới Dashboard nhân viên và phát âm thanh Hoài My (`vi-VN-HoaiMyNeural`).
+     - Nhân viên nói tiếng Việt $\rightarrow$ Web Speech API commit ngay tức thì (không bị hoãn 1250ms), dịch sang tiếng Anh, gửi phụ đề tới Kiosk và loa Kiosk phát âm thanh Edge TTS Jenny (`en-US-JennyNeural`).
+     - Dự phòng bên nhận (Robot): Nếu gói audio TTS từ Staff không tới trong 2.2s, Robot Kiosk tự động gọi TTS Jenny để phát loa cho khách.
+     - Dùng chung `AudioContext` đã mở khóa của trang Kiosk (`window._sharedAudioCtx`) để tránh bị Autoplay Policy của trình duyệt chặn âm thanh khi mở cuộc gọi bằng giọng nói.
+4. **Kết thúc cuộc gọi dứt điểm (Single-Click End Call):**
+   - Khi bấm *"Kết thúc cuộc gọi"* trong modal hoặc đối phương gập máy, `ConciergeDashboard` lập tức dọn dẹp state `activeSession` và gọi cập nhật `status: 'Closed'` cho phiên gọi bất kể trạng thái hiện tại (`Connected`, `Pending`, `In Progress`). Đảm bảo đóng dứt điểm 1 lần bấm, không bị kẹt card hoặc phải bấm lại lần 2.
+5. **Lưu trữ Bản ghi Cuộc gọi Bất đồng bộ (Async Cloudinary Recording):**
    - Ghi hình video bằng `MediaRecorder` với bitrate tối ưu `600 Kbps`.
    - Khi kết thúc cuộc gọi: Đóng giao diện tức thì, gửi file video và phụ đề về Backend tiếp nhận (`HTTP 202 Accepted`).
    - Tác vụ nền (`BackgroundTasks`) tải video lên **Cloudinary Cloud Storage** (tự động fallback sang **Local Storage** nếu mạng ngoài gặp sự cố).
@@ -92,6 +96,11 @@ cd backend && .venv\Scripts\python -m pytest tests/test_video_call.py tests/test
 | **TC-VC05** | Mã lạ hoặc transcript dính chữ tượng hình (`ja/zh/ko/es`, `こんにちは`) | Bị chặn bởi `FOREIGN_SCRIPT_REJECTED`, không sinh lỗi âm thanh hoặc dịch bừa bãi. |
 | **TC-VC06** | Kết thúc cuộc gọi khi mạng Cloudinary chậm | Modal đóng ngay lập tức, camera/mic tắt, video upload ngầm trong background task. |
 | **TC-VC07** | Mất kết nối Internet khi lưu video | Tự động lưu vào local `./uploaded_recordings/`, Dashboard xem lại bình thường. |
+| **TC-VC08** | Kết thúc cuộc gọi từ Concierge hoặc Kiosk | Modal đóng ngay lập tức, Dashboard đóng dứt điểm phiên gọi về Closed sau 1 lần bấm, không bị kẹt card hoặc phải bấm 2 lần. |
+| **TC-VC09** | Kiosk mở cuộc gọi rảnh tay bằng giọng nói | Dùng chung AudioContext đã mở khóa của màn hình Kiosk, phát âm thanh bản dịch Jenny bình thường, không bị chặn bởi Autoplay Policy. |
+| **TC-VC10** | Bấm "Trả Lời Ngay" trên Concierge Dashboard | Modal mở tức thì không bị nghẽn (non-blocking DB call); `activeCallSessionId` được ghim cố định không bị lệch room khi polling chạy ngầm. |
+| **TC-VC11** | Đối phương mất mạng/reconnect tạm thời (`peer_disconnected`) | Kiosk không bị văng ra màn hình chờ ngay; có thời gian ân hạn 12s chờ peer kết nối lại hoặc WebRTC P2P tiếp tục duy trì cuộc gọi. |
+| **TC-VC12** | Staff đàm thoại tiếng Việt và ngắt nghỉ tự nhiên | Chuẩn Conversational Endpointing 1.000ms: hấp thu khoảng nghỉ 800ms giữa vế câu, chốt dứt khoát 1 lần sau 1.0s, cắt lát chỉ mục chống cộng dồn câu cũ. Phân luồng khách Việt nghe âm thanh gốc, khách Anh nghe dịch + TTS. |
 
 ---
 

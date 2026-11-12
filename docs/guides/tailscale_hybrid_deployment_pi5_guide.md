@@ -1,284 +1,198 @@
-# HƯỚNG DẪN TRIỂN KHAI HYBRID BACKEND & KẾT NỐI P2P VỚI RASPBERRY PI 5 QUA TAILSCALE
+# HUONG DAN TRIEN KHAI HYBRID CLOUD & VAN HANH DEMO HC-ROBOT (TAILSCALE + CLOUDFLARE + PI 5)
 
-> **Tài liệu liên quan:**
->
-> - Kiến trúc ROS 2 phân tán: [[distributed_ros2|Hệ Thống ROS 2 Phân Tán (Pi 5 & Laptop)]]
-> - Đặc tả phần cứng & Edge Computing: [[hardware_architecture|Đặc Tả Phần Cứng & ROS 2 Edge]]
-> - Kiến trúc tổng thể hệ thống: [[../02-Architecture|02-Architecture (Kiến trúc tổng thể)]]
+> **Tai lieu lien quan:**
+> - Kien truc ROS 2 phan tan: [[distributed_ros2|He Thong ROS 2 Phan Tan (Pi 5 & Laptop)]]
+> - Dac ta phan cung & Edge Computing: [[hardware_architecture|Dac Ta Phan Cung & ROS 2 Edge]]
+> - Kien truc tong the he thong: [[../02-Architecture|02-Architecture (Kien truc tong the)]]
 
-Tài liệu này hướng dẫn chi tiết cách biến Laptop cá nhân thành Backend Server trung tâm, triển khai mô hình **Hybrid Network** kết hợp:
-
-1. **Private Tailnet (P2P Direct Connection):** Kết nối trực tiếp siêu tốc, độ trễ cực thấp (< 5ms) giữa Laptop Server và Raspberry Pi 5 trên thân Robot.
-2. **Tailscale Funnel (Public Internet HTTPS):** Cung cấp tên miền có chứng chỉ SSL/TLS tự động (Let's Encrypt) cho khách lưu trú dùng 4G quét mã QR xem sơ đồ tầng (Guest Map) và Admin quản trị từ xa.
-3. **Edge Static Hosting (Vercel / Cloudflare Pages):** Triển khai Frontend với mạng lưới CDN toàn cầu tải giao diện tức thì.
+Tai lieu tong hop toan dien kien truc **Hybrid Cloud & Edge Computing** cua du an HC-Robot, co che dinh tuyen mang P2P WireGuard, Funnel Ingress, Cloudflare Workers, cung **quy trinh khoi dong thuc chien khi di demo/bao ve do an**.
 
 ---
 
-## 1. Sơ Đồ Kiến Trúc Mạng Hybrid (Network Topology)
+## 1. Tong Quan Kien Truc Hybrid Cloud
+
+He thong phan chia trach nhiem ro rang giua 3 tang:
 
 ```
-                              [ INTERNET / MẠNG NGOÀI ]
-                     Khách dùng 4G quét QR • Admin truy cập từ xa
-                                        │
-                                        ▼
-                         [ CLOUDFLARE PAGES / VERCEL ]
-                           https://guest-map.hotel.com
-                         (Phục vụ HTML/JS/CSS tĩnh < 10ms)
-                                        │
-                                        │ Gọi REST API (HTTPS)
-                                        ▼
-                           [ TAILSCALE FUNNEL (HTTPS) ]
-                      https://laptop-server.tailnet.ts.net
-                                        │
-       ═════════════════════════════════╪═════════════════════════════════
-                                        │ Relay Ingress
-                                        ▼
-                        [ LAPTOP SERVER (WINDOWS / WSL2) ]
-                        • FastAPI Backend (:8000)
-                        • AI Core (Groq / Gemini / Ollama Qwen)
-                        • ROS 2 Navigation & Rosbridge (:9090)
-                        • Tailscale IP: 100.x.y.z
-                                        ▲
-                                        │
-               ĐƯỜNG TRUYỀN WIREGUARD P2P DIRECT (UDP NAT TRAVERSAL)
-                  Độ trễ: 1ms - 5ms | Băng thông: Tối đa card mạng
-                                        │
-                                        ▼
-                          [ RASPBERRY PI 5 TRÊN ROBOT ]
-                          • Tailscale IP: 100.99.72.51
-                          • RPLiDAR A1M8 (/scan, /tf)
-                          • Motor Controller (/cmd_vel)
-                          • Pi5 Camera Stream (MJPEG :8554)
-                          • Màn hình Kiosk cục bộ (:3000)
+[Dien thoai Admin / Khach hang quet QR] (Mang ngoai 4G / Internet)
+                  |
+                  | HTTPS / WSS
+                  v
+[Cloudflare Workers Edge Gateway] (https://hcrobot.dinhhoangkha107.workers.dev)
+  - Phuc vu Single Page Application (React Vite dist) < 15ms
+  - Reverse Proxy: /api/*, /static/*, va Upgrade: websocket
+                  |
+                  | Reverse Proxy Relay
+                  v
+[Tailscale Funnel Ingress] (https://yungwhore.taila9018b.ts.net)
+  - Tu dong quan ly chung chi SSL/TLS Let's Encrypt
+  - Forward cong 8000 ve may Laptop ca nhan
+                  |
+                  | Localhost Forward
+                  v
+[Laptop Server - Brain Node] (Windows / WSL2 - IP: 100.92.82.61)
+  - FastAPI Backend & WebSocket Notification Hub (Port 8000)
+  - ROS 2 SLAM Navigation & CycloneDDS Unicast Core
+  - AI Engine: LangGraph StateGraph, Fast-path, EdgeTTS, Faster Whisper
+                  |
+                  | Duong truyen WireGuard P2P Direct (UDP NAT Traversal < 5ms)
+                  +-----------------------------------+
+                  |                                   |
+                  v                                   v
+[Raspberry Pi 5 tren Robot]                 [Tablet Man hinh Robot]
+- IP Tailscale: 100.99.72.51                - URL: /robot-screen
+- Port 9999: UDP Motor Driver & Watchdog   - WebSocket lang nghe realtime
+- Port 8000: Hardware API, Sonar, Pin       - RobotAdPlayer phat quang cao
+- Port 8554: WebRTC FPV Camera Streamer     - AI Face Emotion & Kiosk Mode
+- RPLiDAR A1M8 (/scan, /tf)
 ```
 
 ---
 
-## 2. Thiết Lập Trên Laptop Server (Host Server)
+## 2. Co Che Hoat Dong Cac Tinh Nang Thoi Gian Thuc
 
-### 2.1. Cài đặt và cấu hình Tailscale
+### 2.1. Day quang cao thoi gian thuc (Real-time Ad Push)
+1. **Admin thao tac tren dien thoai:** Gui request `POST /api/v1/advertisements/{ad_id}/push`.
+2. **Cloudflare Worker chuyen tiep:** Request qua Funnel `yungwhore.taila9018b.ts.net` ve Laptop Backend `:8000`.
+3. **Backend Broadcast:** `notification_manager.broadcast_to_department("All", payload)` ban goi tin WebSocket JSON toi tat ca cac client dang ket noi.
+4. **Man hinh Robot nhan tin hieu:** Tablet tren nguc robot (`RobotScreenPage.jsx`) nhan event `ADVERTISEMENT_PUSH` qua WebSocket, tu dong chuyen sang trang thai Standby va bat component `RobotAdPlayer`.
+5. **Phat Fullscreen:** Video hoac Banner duoc tai truc tiep tu Cloudinary CDN toan cau voi bang thong toi da. Khi khach cham vao man hinh, quang cao tu dong tat de tro ve man hinh tiep don AI Concierge.
 
-1. Tải và cài đặt Tailscale client trên Windows từ trang chủ Tailscale.
-2. Đăng nhập tài khoản quản trị Tailscale.
-3. Kiểm tra địa chỉ IP Tailnet được cấp cho Laptop:
+### 2.2. Dieu khien xe khong do tre (Teleop UDP)
+- Dien thoai bam nut di chuyen / can gat Joystick $\rightarrow$ Backend tren Laptop nhan request va ban goi UDP Datagram (`drive:speed:turn` hoac `stop`) toi `100.99.72.51:9999` tren Pi 5.
+- Do tre phan hoi chi tu **30ms den 60ms**.
 
-   ```powershell
-   tailscale ip -4
-   # Ví dụ: 100.92.82.61
-   ```
+### 2.3. Camera FPV WebRTC P2P (Zero Latency)
+- Frontend gui SDP Offer qua Backend toi Pi 5 (`http://100.99.72.51:8554/offer`).
+- Streamer tren Pi 5 (`camera_stream.py`) thu thap day du ung vien mang (Vanilla ICE candidates) qua may chu STUN Google va tra ve SDP Answer.
+- Trinh duyet va Pi 5 bat tay truc tiep qua UDP P2P, giup luong video dat 15-30 fps cuc muot ma khong bi chan boi Cloudflare hay lam nghen server trung gian.
 
-### 2.2. Khởi chạy Backend FastAPI đa giao diện
+---
 
-File khởi chạy của dự án (`backend/run.py`) đã được bind vào địa chỉ `0.0.0.0:8000`:
+## 3. Cac Lenh Khoi Dong He Thong (Startup Commands)
 
-```python
-uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")
-```
+### 3.1. Khoi dong tren Laptop (Brain Node)
 
-*Lưu ý: Không đổi host thành `127.0.0.1` vì sẽ chặn toàn bộ kết nối đến từ card mạng Tailscale và Pi 5.*
-
-### 2.3. Mở cổng Windows Firewall
-
-Mặc định Windows Firewall chặn traffic từ mạng ảo Tailscale vào port 8000, 8554, 9090. Mở PowerShell với quyền Administrator:
+Moi lan bat may Laptop de demo, mo PowerShell va thuc hien:
 
 ```powershell
-New-NetFirewallRule -DisplayName "HCRobot Backend 8000" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow
-New-NetFirewallRule -DisplayName "HCRobot Rosbridge 9090" -Direction Inbound -LocalPort 9090 -Protocol TCP -Action Allow
-New-NetFirewallRule -DisplayName "HCRobot Camera 8554" -Direction Inbound -LocalPort 8554 -Protocol TCP -Action Allow
-```
-
-### 2.4. Ngăn chặn Laptop rơi vào trạng thái Sleep khi gập nắp
-
-Laptop làm server bắt buộc phải cắm sạc liên tục và không được tự ngắt kết nối:
-
-1. Mở **Control Panel** -> **Power Options** -> **Choose what closing the lid does**.
-2. Tại cột **Plugged in**:
-   - **When I close the lid:** Chọn **Do nothing**.
-3. Tại **Change when the computer sleeps**:
-   - **Put the computer to sleep:** Chọn **Never**.
-
-### 2.5. Kích hoạt Tailscale Funnel (Cổng HTTPS Công Cộng)
-
-Để khách ngoài internet (điện thoại 4G) có thể truy cập mà không cần cài Tailscale:
-
-```powershell
-# Chuyển tiếp cổng 8000 thành HTTPS công cộng (Tailscale v1.98+)
-tailscale funnel --bg 8000
-
-# Xem trạng thái và lấy URL Public được cấp:
-tailscale funnel status
-# Kết quả thực tế: https://yungwhore.taila9018b.ts.net (Funnel on)
-```
-
----
-
-## 3. Cấu Hình Kết Nối P2P Trực Tiếp Với Raspberry Pi 5
-
-Mục tiêu cốt lõi: Traffic giữa Pi 5 và Laptop **phải đi thẳng (Direct Connection - P2P)** qua giao thức WireGuard UDP, tuyệt đối không đi vòng qua máy chủ trung gian (DERP Relay) để đạt độ trễ nhỏ hơn 5ms.
-
-### 3.1. Cài đặt Tailscale trên Raspberry Pi 5 (Linux)
-
-SSH vào Pi 5 hoặc mở terminal trên Pi 5:
-
-```bash
-# 1. Cài đặt tự động Tailscale qua script chính thức
-curl -fsSL https://tailscale.com/install.sh | sh
-
-# 2. Bật dịch vụ Tailscale
-sudo systemctl enable --now tailscaled
-
-# 3. Đăng nhập và gia nhập cùng mạng Tailnet với Laptop
-sudo tailscale up --accept-routes
-```
-
-Mở đường link xác thực trên trình duyệt để duyệt Pi 5 vào cùng mạng Tailnet với Laptop.
-
-### 3.2. Kiểm tra trạng thái kết nối P2P (Direct vs Relay)
-
-Trên terminal Pi 5, kiểm tra tình trạng kết nối tới Laptop:
-
-```bash
+# 1. Kiem tra trang thai Tailscale va Funnel (da cau hinh thuong truc)
 tailscale status
+tailscale serve status
+# Neu Funnel chua bat, chay lenh:
+# tailscale funnel --bg 8000
+
+# 2. Khoi dong Backend FastAPI (lang nghe tat ca card mang port 8000)
+cd f:\DoAn\HC-Robot\backend
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Kết quả hiển thị tương tự:
+> **Luu y:** Khong doi host thanh `127.0.0.1` vi se chan ket noi tu Tailscale Funnel va Pi 5.
 
-```text
-100.99.72.51    pi5-robot            user@  linux   -
-100.92.82.61    laptop-server        user@  windows active; direct 192.168.1.15:41641, tx 45210 rx 58120
-```
+### 3.2. Khoi dong tren Raspberry Pi 5 (Robot Node)
 
-> **Dấu hiệu P2P thành công:** Xuất hiện chữ **`direct`** kèm địa chỉ IP nội mạng LAN hoặc địa chỉ WAN công cộng.
-> Nếu hiển thị **`relay "sin"`** hoặc **`relay "tyo"`**, kết nối đang bị nghẽn và phải đi vòng qua server DERP tại Singapore/Tokyo.
-
-Kiểm tra độ trễ thực tế:
+Khi cap nguon cho Pi 5 (qua pin hoac adapter), tu Laptop mo terminal SSH:
 
 ```bash
-tailscale ping 100.92.82.61
+# 1. SSH vao Pi 5 qua Tailscale IP
+ssh phuc@100.99.72.51
+
+# 2. Khoi dong tien trinh dieu khien phan cung xe (dong co, sonar, lidar)
+python3 ~/HCROBOT/robot/main.py --no-camera &
+
+# 3. Khoi dong WebRTC FPV Camera Streamer
+nohup /home/phuc/HCROBOT/robot/.venv/bin/python ~/HCROBOT/robot/scripts/camera_stream.py --port 8554 </dev/null >/tmp/camera_stream.log 2>&1 &
+
+# 4. Kiem tra 2 tien trinh da chay thanh cong:
+pgrep -fa "main.py|camera_stream.py"
 ```
 
-- Nếu đạt chuẩn P2P nội bộ: `pong from laptop-server (100.92.82.61) via 192.168.1.15:41641 in 1.4ms (direct)`
-- Độ trễ chuẩn phải nằm trong khoảng **1ms đến 5ms**.
+### 3.3. Mo giao dien nguoi dung (Clients)
 
-### 3.3. Tối ưu NAT Traversal để luôn đạt Direct P2P 100%
-
-Nếu hai máy nằm ở hai mạng khác nhau (ví dụ: Pi 5 dùng 4G phát từ điện thoại, Laptop nối mạng cáp quang gia đình):
-
-1. **Bật UPnP trên Router Wi-Fi nhà:** Cho phép Tailscale tự động mở cổng UDP ngẫu nhiên cho NAT Traversal.
-2. **Cố định cổng lắng nghe WireGuard trên Pi 5:**
-
-   ```bash
-   sudo tailscale up --port=41641 --accept-routes
-   ```
-
-3. Chạy kiểm tra chuẩn đoán mạng của Tailscale:
-
-   ```bash
-   tailscale netcheck 
-   ```
-
-   Đảm bảo trường `UDP: true` và `MappingVariesByDestIP: false` để Direct P2P hoạt động tối ưu.
-
-### 3.4. Cấu hình ROS 2 và Dịch Vụ trên Pi 5 gọi Backend Laptop
-
-Cấu hình địa chỉ IP Tailnet của Laptop (`100.92.82.61`) vào file môi trường trên Pi 5:
-
-1. **Cấu hình ROS 2 CycloneDDS (`cyclonedds.xml`):**
-   Khai báo IP Laptop vào danh sách Peers:
-
-   ```xml
-   <?xml version="1.0" encoding="UTF-8" ?>
-   <CycloneDDS>
-     <Domain>
-       <General>
-         <NetworkInterfaceAddress>tailscale0</NetworkInterfaceAddress>
-       </General>
-       <Discovery>
-         <Peers>
-           <Peer address="100.92.82.61"/>
-         </Peers>
-       </Discovery>
-     </Domain>
-   </CycloneDDS>
-   ```
-
-2. **Cấu hình MJPEG Camera Stream trỏ về Backend:**
-   Pi 5 stream video qua cổng 8554 nội bộ hoặc gửi frame trực tiếp lên Backend:
-
-   ```bash
-   # URL stream chuẩn cho backend laptop đọc:
-   http://100.99.72.51:8554/stream
-   ```
-
-3. **Cấu hình Rosbridge WebSocket Client:**
-   Web Kiosk trên Robot kết nối thẳng tới:
-
-   ```text
-   ws://100.92.82.61:9090
-   ```
+- **Tren Tablet gan tren nguc Robot:**
+  Mo trinh duyet Chrome o che do Toan man hinh (F11):
+  `https://hcrobot.dinhhoangkha107.workers.dev/robot-screen`
+- **Tren Dien thoai Admin / Ban giam khao:**
+  Mo trinh duyet bat ky:
+  `https://hcrobot.dinhhoangkha107.workers.dev/admin`
 
 ---
 
-## 4. Cấu Hình Triển Khai Frontend Hybrid
+## 4. Che Do Du Phong 100% Local (Khi khong co mang Internet)
 
-Để tránh lỗi **Mixed Content** (trình duyệt chặn request HTTP khi trang đang mở bằng HTTPS):
+Neu phong thi hoac hoi truong bi pha song 4G va khong co ket noi Internet:
 
-### 4.1. Cấu hình Dynamic API Client trong Frontend
+1. **Ket noi Wifi noi bo:**
+   - Laptop, Pi 5 va Tablet Robot ket noi chung vao mot Router Wifi di dong (khong can Internet).
+   - Lay IP LAN cua Laptop (vi du: `192.168.1.100` bang lenh `ipconfig`).
+2. **Chay Frontend truc tiep tren Laptop:**
+   ```powershell
+   cd f:\DoAn\HC-Robot\frontend
+   npm run dev -- --host
+   ```
+3. **Mo ung dung qua IP LAN noi bo:**
+   - **Tablet Robot:** Truy cap `http://192.168.1.100:3000/robot-screen`
+   - **Dien thoai Admin:** Truy cap `http://192.168.1.100:3000/admin`
+   - He thong van hoat dong day du 100% tinh nang (dieu khien, camera, day quang cao, video call).
 
-Tại file cấu hình API Frontend (`frontend/src/services/apiConfig.js` hoặc `aiApi.js`), sử dụng cơ chế phát hiện môi trường động:
+---
 
-```javascript
-/**
- * Dynamic API Base URL Resolver
- * - Môi trường Robot Kiosk / LAN nội bộ: Sử dụng IP Private Tailnet trực tiếp (độ trễ < 2ms).
- * - Môi trường Khách quét QR / Admin từ xa: Sử dụng Public HTTPS URL từ Tailscale Funnel.
- */
-export const getApiBaseUrl = () => {
-  if (typeof window === 'undefined') return 'http://127.0.0.1:8000';
+## 5. Cau Hinh Tu Dong Hoa tren Pi 5 (Systemd Services)
 
-  const host = window.location.hostname;
+De khi cam dien pin vao Pi 5 xe tu dong chay 100% ma khong can go lenh SSH, cai dat 2 service sau tren Pi 5:
 
-  // 1. Nếu đang mở trực tiếp trên Robot hoặc cùng mạng Tailnet
-  if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('100.')) {
-    return 'http://100.92.82.61:8000';
-  }
+### 5.1. Service dieu khien xe (`/etc/systemd/system/hcrobot-main.service`)
+```ini
+[Unit]
+Description=HC-Robot Main Hardware Controller
+After=network.target tailscaled.service
 
-  // 2. Nếu khách đang truy cập từ ngoài internet (Vercel / Cloudflare / 4G)
-  return 'https://laptop-server.tailnet-id.ts.net';
-};
+[Service]
+Type=simple
+User=phuc
+WorkingDirectory=/home/phuc/HCROBOT/robot
+ExecStart=/usr/bin/python3 /home/phuc/HCROBOT/robot/main.py --no-camera
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
 ```
 
-### 4.2. Triển khai Frontend lên Cloudflare Pages
+### 5.2. Service Camera WebRTC (`/etc/systemd/system/hcrobot-camera.service`)
+```ini
+[Unit]
+Description=HC-Robot WebRTC Camera Streamer
+After=network.target tailscaled.service
 
-Hệ thống đã được thiết lập sẵn 2 cơ chế tối ưu cho Cloudflare Pages:
-- `frontend/public/_redirects`: Hỗ trợ định tuyến Single Page Application (SPA), tránh lỗi 404 khi người dùng tải lại trang con.
-- `frontend/functions/api/[[path]].js`: Cloudflare Edge Function tự động Reverse Proxy toàn bộ `/api/*` về Backend Funnel `https://yungwhore.taila9018b.ts.net`, triệt tiêu lỗi CORS và Mixed Content.
+[Service]
+Type=simple
+User=phuc
+WorkingDirectory=/home/phuc/HCROBOT/robot
+ExecStart=/home/phuc/HCROBOT/robot/.venv/bin/python /home/phuc/HCROBOT/robot/scripts/camera_stream.py --port 8554
+Restart=always
+RestartSec=3
 
-#### Cách 1: Triển khai tự động qua Cloudflare Dashboard (Khuyên dùng)
-1. Đăng nhập vào [Cloudflare Dashboard](https://dash.cloudflare.com/) -> **Compute (Workers & Pages)** -> **Create application** -> **Pages** -> **Connect to Git**.
-2. Chọn repository `HC-Robot`.
-3. Thiết lập thông số Build:
-   - **Framework Preset:** `Vite`
-   - **Root directory:** `frontend`
-   - **Build command:** `npm run build`
-   - **Build output directory:** `dist`
-4. Nhấn **Save and Deploy**. Cloudflare sẽ tự động build và cấp tên miền miễn phí (ví dụ: `https://hc-robot.pages.dev`).
+[Install]
+WantedBy=multi-user.target
+```
 
-#### Cách 2: Triển khai trực tiếp bằng Wrangler CLI từ máy tính
-```powershell
-# Di chuyển vào thư mục frontend và deploy dist đã build
-cd f:\DoAn\HC-Robot\frontend
-npx wrangler pages deploy dist --project-name hc-robot
+### 5.3. Kich hoat service tren Pi 5:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now hcrobot-main.service
+sudo systemctl enable --now hcrobot-camera.service
 ```
 
 ---
 
-## 5. Bảng Tổng Hợp Kiểm Tra Định Kỳ (Verification Checklist)
+## 6. Bang Tra Cuu Xu Ly Su Co Nhanh (Troubleshooting)
 
-| Hạng mục kiểm tra | Lệnh thực hiện | Kết quả mong đợi |
+| Hien tuong | Nguyen nhan | Lenh khac phuc nhanh |
 | :--- | :--- | :--- |
-| **P2P Pi 5 <-> Laptop** | `tailscale ping 100.92.82.61` | Đạt `direct`, ping $< 5\text{ ms}$ |
-| **FastAPI Backend Port** | `curl http://100.92.82.61:8000/health` | HTTP 200 `{"status":"ok"}` |
-| **Funnel Public HTTPS** | `curl.exe -I https://yungwhore.taila9018b.ts.net/docs` | HTTP 200 với SSL hợp lệ |
-| **ROS 2 Topic Discovery** | `ros2 topic list` (trên Laptop) | Thấy topic `/scan` từ Pi 5 |
-| **Power Management** | Gập nắp Laptop thử nghiệm 5 phút | SSH và API vẫn phản hồi liên tục |
+| Camera den man hinh / Kernel bao loi `-71` | Chip USB Camera bi sut ap nguon khi dong co chay | Go tren SSH Pi 5: `sudo usbreset 4c4a:4a55` (hoac rut cam lai cap USB) |
+| Web bao "Pi5 Offline" | Timeout kiem tra qua ngan hoac chua bat camera_stream | Kiem tra: `curl http://100.99.72.51:8554/health` |
+| Web bao loi 502 Bad Gateway | Tailscale Funnel chua bat hoac Laptop chua chay Backend | Kiem tra: `tailscale serve status` va bat lai Uvicorn `:8000` |
+| Khong truyen duoc lenh lai xe | `main.py` tren Pi 5 bi crash hoac port 9999 bi chan | SSH Pi 5 go: `pgrep -fa main.py` |
+| Man hinh robot khong nhan quang cao | Ket noi WebSocket bi ngat | Tai lai trang `/robot-screen` tren Tablet |
+| Ping Pi 5 bi relay cham | Ket noi chua dat Direct P2P | Go tren Pi 5: `tailscale status`, kiem tra xem co chu `direct` chua |

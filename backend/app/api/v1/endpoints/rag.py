@@ -5,7 +5,7 @@ import shutil
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, status, UploadFile, File, Form, Query
 from app.schemas.rag import (
     RAGDocumentItem,
     RAGDocumentListResponse,
@@ -14,8 +14,10 @@ from app.schemas.rag import (
     RAGSourceFileItem,
     RAGSourceFilesResponse,
     RAGFileUploadResponse,
+    RAGFacilitiesResponse,
 )
 from app.services.rag.chroma import get_concierge_collection
+from app.services.rag.facilities_kb_service import get_facilities_from_kb
 from app.core.config import settings
 
 router = APIRouter()
@@ -34,6 +36,21 @@ def _trigger_background_room_sync():
         import logging
         logging.getLogger(__name__).warning(f"Không thể kích hoạt đồng bộ phòng từ RAG: {e}")
 
+
+
+@router.get("/facilities", response_model=RAGFacilitiesResponse, summary="Danh sách cơ sở vật chất & tiện ích trích xuất trực tiếp từ Knowledge Base")
+def get_rag_facilities(lang: str = Query("vi", description="Ngôn ngữ tài liệu: vi hoặc en")):
+    """
+    Đọc và bóc tách danh sách tiện ích, giờ hoạt động, chi phí và chỉ đường trực tiếp
+    từ file Markdown trong Knowledge Vault (hotel_facilities_floor_layout_*.md).
+    """
+    try:
+        return get_facilities_from_kb(lang=lang)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi đọc danh sách tiện ích từ Knowledge Base: {str(e)}",
+        )
 
 
 @router.get("/stats", response_model=RAGStatsResponse, summary="Thống kê tổng quan tri thức RAG")

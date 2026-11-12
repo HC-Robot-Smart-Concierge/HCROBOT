@@ -952,7 +952,8 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    fast_hit = ollama_service.check_fast_path_full(prompt, language)
+    has_explicit_kb_ctx = bool((state.get("rag_context") or "").strip())
+    fast_hit = None if has_explicit_kb_ctx else ollama_service.check_fast_path_full(prompt, language)
 
 
 
@@ -6924,7 +6925,7 @@ async def generator_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    rag_context = state.get("rag_context") or ""
+    rag_context = state.get("rag_context")
 
 
 

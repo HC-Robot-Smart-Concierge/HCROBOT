@@ -56,7 +56,7 @@ class TestMotorSpeedCap(unittest.TestCase):
         tree = ast.parse((CONFIG / 'lidar_ws_to_ros2.py').read_text(encoding='utf-8'))
         cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'LidarWsToRos2Bridge')
         cls.bases = []
-        methods = {'on_speed_limit', '_limit_zone_pwm', 'on_cmd_vel_received'}
+        methods = {'on_speed_limit', '_limit_zone_pwm', 'on_cmd_vel_received', '_apply_cmd_vel'}
         cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in methods]
         namespace = dict(math=math, os=os, time=time, Twist=object,
                          limit_wheel_pwm=limit_wheel_pwm, twist_to_straight_command=twist_to_straight_command,
@@ -65,6 +65,8 @@ class TestMotorSpeedCap(unittest.TestCase):
         node = namespace['LidarWsToRos2Bridge']()
         node.last_cmd_time = time.monotonic()
         node.current_vx = node.current_wz = 0
+        node.manual_active_until = 0
+        node.encoder_guard = SimpleNamespace(valid=True)
         node.cmd_vel_mode = 'straight'
         node.straight_cfg = StraightDriveConfig(min_pwm=35)
         node.diff_cfg = DiffDriveConfig()
@@ -82,7 +84,7 @@ class TestMotorSpeedCap(unittest.TestCase):
         node._send_udp_to_pi5.assert_called_with('drive:35:35')
         self.assertFalse(node.zone_speed_blocked)
         node.on_speed_limit(SimpleNamespace(speed_limit=50, percentage=True))
-        self.assertAlmostEqual(node.zone_speed_limit, 0.1)
+        self.assertAlmostEqual(node.zone_speed_limit, 0.075)
 
 
 class TestSpeedMaskGeometry(unittest.TestCase):

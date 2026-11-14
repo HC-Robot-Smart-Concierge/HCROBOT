@@ -22,8 +22,9 @@ import { WorkflowSimulatorStudio } from './workflow/WorkflowSimulatorStudio';
 
 import { useRobotControlText } from '../../../context/RobotControlLanguage';
 import { executionConfig, executionError, executionSummary } from '../../../utils/workflowExecution';
-import { expandWorkflowRoutes } from '../../../utils/physicalMapRoute';
+import { expandWorkflowRoutes, unconfiguredRouteSteps } from '../../../utils/physicalMapRoute';
 import { stepSetup } from '../../../utils/workflowStepSetup';
+import { WorkflowRunsPanel } from './workflow/WorkflowRunsPanel';
 
 export { OTTO_STEP_TYPES };
 
@@ -131,13 +132,27 @@ export const AdminWorkflowTab = () => {
     setIsEditorOpen(true);
   };
 
+  const handleCreateRouteWorkflow = () => {
+    setEditingWorkflow({
+      id: `wf-${Date.now().toString(36)}`, name: 'Chạy tuyến trên xe thật', description: '',
+      trigger_type: 'MANUAL', is_active: false,
+      execution_config: { ...executionConfig(), execution_mode: 'ROBOT' },
+      steps: [
+        { step_id: 'route', type: 'FOLLOW_ROUTE', title: 'Đi theo tuyến', params: { route_id: '', repeat_count: 1 } },
+        { step_id: 'wait', type: 'WAIT', title: 'Chờ tại điểm cuối', params: { duration_sec: 5 } },
+      ],
+    });
+    setIsEditorOpen(true);
+  };
+
   const handleSaveWorkflow = async () => {
+    const pendingRoutes = unconfiguredRouteSteps(editingWorkflow);
     for (const step of editingWorkflow.steps || []) {
       if (step.type !== 'FOLLOW_ROUTE') continue;
-      if (!routes.some((r) => r.id === step.params?.route_id)) { showNotification('Chọn tuyến hợp lệ cho mỗi bước Đi theo tuyến.'); return; }
+      if (step.params?.route_id && !routes.some((r) => r.id === step.params.route_id)) { showNotification('Tuyến đã chọn không còn khả dụng. Chọn lại hoặc để trống để cấu hình sau trên Map.'); return; }
       if (!Number.isInteger(step.params.repeat_count) || step.params.repeat_count < 1 || step.params.repeat_count > 100) { showNotification('Số vòng của bước Đi theo tuyến phải từ 1 đến 100.'); return; }
     }
-    const configError = executionError(editingWorkflow);
+    const configError = executionError(editingWorkflow, { allowDraft: pendingRoutes.length > 0 || !editingWorkflow.is_active });
     if (configError) {
       showNotification(configError);
       return;
@@ -148,8 +163,10 @@ export const AdminWorkflowTab = () => {
     }
     try {
       setIsLoading(true);
-      await saveWorkflow(editingWorkflow);
-      showNotification(`Đã lưu kịch bản "${editingWorkflow.name}" thành công!`);
+      await saveWorkflow(pendingRoutes.length ? { ...editingWorkflow, is_active: false } : editingWorkflow);
+      showNotification(pendingRoutes.length
+        ? `Đã lưu bản nháp "${editingWorkflow.name}". Sang Physical Map → Tuyến đường, chọn workflow và bước để gán tuyến.`
+        : `Đã lưu kịch bản "${editingWorkflow.name}" thành công!`);
       setIsEditorOpen(false);
       setEditingWorkflow(null);
       await loadData();
@@ -175,6 +192,10 @@ export const AdminWorkflowTab = () => {
   };
 
   const handleToggleActive = async (wf) => {
+    if (!wf.is_active && unconfiguredRouteSteps(wf).length) {
+      showNotification('Workflow còn bước chưa có tuyến. Sang Physical Map → Tuyến đường để cấu hình tham số trước khi bật.');
+      return;
+    }
     try {
       await saveWorkflow({ ...wf, is_active: !wf.is_active });
       await loadData();
@@ -184,6 +205,8 @@ export const AdminWorkflowTab = () => {
   };
 
   const hasRunConfiguration = (wf) => {
+    const error = executionError(wf);
+    if (error) { showNotification(error); return false; }
     if (!wf.steps?.length) { showNotification('Thêm ít nhất một bước trước khi chạy workflow.'); return false; }
     const index = wf.steps.findIndex((step) => !stepSetup(step, routes).ready);
     if (index >= 0) {
@@ -202,8 +225,8 @@ export const AdminWorkflowTab = () => {
   const handleDispatchToRobot = async (wf) => {
     if (!hasRunConfiguration(wf)) return;
     try {
-      await executeWorkflow(wf.id, { robot_id: 'RC-001' });
-      showNotification(`Đã phát lệnh kịch bản "${wf.name}" tới màn hình Robot!`);
+      const result = await executeWorkflow(wf.id, { robot_id: 'RC-001' });
+      showNotification(result.message || 'Đã gửi workflow.');
     } catch (err) {
       showNotification(`Không gửi được workflow: ${err.message}`);
     }
@@ -320,6 +343,8 @@ export const AdminWorkflowTab = () => {
         </div>
 
         {activeView === 'list' && (
+          <div className="flex items-center gap-2">
+          <button type="button" onClick={handleCreateRouteWorkflow} className="rounded-lg border border-cyan-800 px-3 py-1.5 text-xs font-bold text-cyan-900">Tạo workflow chạy tuyến</button>
           <button
             type="button"
             onClick={handleOpenCreate} title={rc('New workflow')} aria-label={rc('New workflow')}
@@ -329,6 +354,7 @@ export const AdminWorkflowTab = () => {
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{rc('New workflow')}</span>
           </button>
+          </div>
         )}
       </div>
 
@@ -353,6 +379,7 @@ export const AdminWorkflowTab = () => {
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 space-y-4" style={{ backgroundColor: '#F2EFE9' }}>
+        <WorkflowRunsPanel />
         {/* Workflow Cards Grid - 2 Cột rộng rãi, màu xám #E9E5DC đồng bộ */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {workflows.length === 0 ? (
@@ -401,6 +428,7 @@ export const AdminWorkflowTab = () => {
                       {wf.description || 'Chưa có mô tả chi tiết'}
                     </p>
                     <p className="mt-2 text-[11px] font-semibold text-stone-600">{executionSummary(wf)}</p>
+                    {unconfiguredRouteSteps(wf).length > 0 && <p className="mt-1 text-[11px] text-amber-800">Bản nháp · Chờ gán tuyến cho {unconfiguredRouteSteps(wf).length} bước tại Physical Map.</p>}
 
                     {/* Steps Pipeline Preview */}
                     <div className="mt-3 pt-2.5 border-t flex items-center justify-between text-xs" style={{ borderColor: '#BFBFBD' }}>
@@ -445,10 +473,10 @@ export const AdminWorkflowTab = () => {
                         onClick={() => handleDispatchToRobot(wf)}
                         className="px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer hover:bg-[#363636] transition-colors flex items-center gap-1.5 shadow-2xs"
                         style={{ backgroundColor: '#262626', borderColor: '#262626', color: '#FFFFFF' }}
-                        title="Phát lệnh điều khiển trực tiếp tới màn hình Robot"
+                        title={wf.execution_config?.execution_mode === 'ROBOT' ? 'Tạo lượt chạy trên xe thật' : 'Gửi kịch bản tới màn hình Robot'}
                       >
                         <Send className="w-3 h-3" />
-                        <span>Gửi Robot</span>
+                        <span>{wf.execution_config?.execution_mode === 'ROBOT' ? 'Chạy xe thật' : 'Gửi màn hình'}</span>
                       </button>
                     </div>
 

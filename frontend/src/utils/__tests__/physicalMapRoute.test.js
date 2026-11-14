@@ -1,7 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { moveRoutePoint, newMapRoute, routePoint, routeWorkflow, expandWorkflowRoutes } from '../physicalMapRoute';
+import { moveRoutePoint, newMapRoute, routePoint, routeWorkflow, expandWorkflowRoutes,
+  unconfiguredRouteSteps, workflowRouteTargets, routeStepOnMap } from '../physicalMapRoute';
 
 describe('Map routes with schedules', () => {
+  it('includes unconfigured inactive templates for setup from a map', () => {
+    const template = { id: 'flow', is_active: false, steps: [
+      { step_id: 'a', type: 'FOLLOW_ROUTE', title: 'A', params: {} },
+      { step_id: 'b', type: 'WAIT', params: { duration_sec: 5 } },
+    ] };
+    expect(unconfiguredRouteSteps(template).map((s) => s.step_id)).toEqual(['a']);
+    expect(workflowRouteTargets([template, newMapRoute('lab'), { steps: [{ type: 'GREET' }] }])).toEqual([template]);
+  });
+
+  it('loads only the chosen step route on the current map without mutating other steps', () => {
+    const a = { ...newMapRoute('map_a'), id: 'route-a' };
+    const b = { ...newMapRoute('map_b'), id: 'route-b' };
+    const flow = { steps: [
+      { step_id: 'out', type: 'FOLLOW_ROUTE', params: { route_id: 'route-a' } },
+      { step_id: 'back', type: 'FOLLOW_ROUTE', params: { route_id: 'route-b' } },
+    ] };
+    expect(routeStepOnMap(flow, 'out', [a, b], 'map_a').route).toBe(a);
+    expect(routeStepOnMap(flow, 'back', [a, b], 'map_a')).toMatchObject({ route: null, otherMap: 'map_b' });
+    expect(flow.steps[1].params.route_id).toBe('route-b');
+    expect(() => routeStepOnMap(flow, 'missing', [a, b], 'map_a')).toThrow('Chọn bước');
+  });
   it('resolves a reusable route step without repeating adjacent workflow actions', () => {
     const route = { ...newMapRoute('map_kho'), id: 'route-1' };
     route.execution_config.route.points = [routePoint(-1, 2), routePoint(3, 4)];

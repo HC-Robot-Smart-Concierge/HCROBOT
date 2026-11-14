@@ -2,7 +2,6 @@ import asyncio
 import io
 import json
 import logging
-import math
 import os
 import re
 import zipfile
@@ -15,6 +14,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, st
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from app.services.zone_geometry import point_in_zone
 from app.models.workflow import RobotWaypoint, RobotZone
 from app.repositories import MapRepository, get_map_repository
 from app.schemas.map import (
@@ -180,16 +180,7 @@ class Ros2ExploreRequest(BaseModel):
 
 
 def is_point_in_zone(px: float, py: float, z) -> bool:
-    """Kiểm tra một tọa độ (px, py) có nằm trong vùng hình chữ nhật z hay không."""
-    half_w = (getattr(z, "width", 2.0) or 2.0) / 2.0
-    half_h = (getattr(z, "height", 2.0) or 2.0) / 2.0
-    zx = getattr(z, "x", 0.0)
-    zy = getattr(z, "y", 0.0)
-    angle = math.radians(getattr(z, "yaw", 0.0) or 0.0)
-    dx, dy = px - zx, py - zy
-    local_x = dx * math.cos(angle) + dy * math.sin(angle)
-    local_y = -dx * math.sin(angle) + dy * math.cos(angle)
-    return abs(local_x) <= half_w + 1e-9 and abs(local_y) <= half_h + 1e-9
+    return point_in_zone(px, py, z)
 
 
 # Vung khong duoc co endpoint ben trong (cung luat voi Web: physicalMapZones.js).
@@ -290,6 +281,7 @@ async def get_current_map(repo: MapRepository = Depends(get_map_repository)):
             width=z.width,
             height=z.height,
             yaw=getattr(z, "yaw", 0.0) or 0.0,
+            vertices=getattr(z, "vertices", None),
             speed_limit=z.speed_limit,
             floor=z.floor,
             description=z.description
@@ -339,6 +331,7 @@ def _zone_out(z) -> ZoneSchema:
         width=z.width,
         height=z.height,
         yaw=getattr(z, "yaw", 0.0) or 0.0,
+        vertices=getattr(z, "vertices", None),
         speed_limit=z.speed_limit,
         floor=z.floor,
         description=z.description,
@@ -538,6 +531,7 @@ async def save_zone(zone: ZoneSchema, repo: MapRepository = Depends(get_map_repo
         width=zone.width,
         height=zone.height,
         yaw=zone.yaw,
+        vertices=[p.model_dump() for p in zone.vertices] if zone.vertices is not None else None,
         speed_limit=zone.speed_limit,
         floor=zone.floor,
         description=zone.description,
@@ -564,6 +558,7 @@ async def update_zone(zone_id: str, zone: ZoneSchema, repo: MapRepository = Depe
         width=zone.width,
         height=zone.height,
         yaw=zone.yaw,
+        vertices=[p.model_dump() for p in zone.vertices] if zone.vertices is not None else None,
         speed_limit=zone.speed_limit,
         floor=zone.floor,
         description=zone.description,

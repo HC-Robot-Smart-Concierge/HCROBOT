@@ -3,6 +3,11 @@ from copy import deepcopy
 from app.schemas.workflow import WorkflowRoute
 
 
+def unconfigured_route_steps(steps):
+    return [step for step in steps if step.get('type') == 'FOLLOW_ROUTE'
+            and not (step.get('params') or {}).get('route_id')]
+
+
 async def resolve_route_steps(steps, repo):
     result = []
     cache = {}

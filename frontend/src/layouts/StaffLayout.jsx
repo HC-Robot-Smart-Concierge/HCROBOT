@@ -2,10 +2,8 @@ import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
-import { useLanguage } from '../context/LanguageContext';
 
 import { AuroraSidebar } from '../components/dashboard/AuroraSidebar';
-import { AuroraHeader } from '../components/dashboard/AuroraHeader';
 import { RoomServiceFrame } from '../components/dashboard/RoomServiceFrame';
 import { MobileBottomNav } from '../components/common/MobileBottomNav';
 import { ToastNotification } from '../components/dashboard/ToastNotification';
@@ -37,7 +35,6 @@ export const StaffLayout = () => {
     feedbackSessionId,
   } = useNotifications();
 
-  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -64,20 +61,19 @@ export const StaffLayout = () => {
   else if (path === '/staff/notifications') activeMenu = 'Notifications';
   else if (path === '/staff/profile') activeMenu = 'Profile';
   else if (path === '/staff/settings') activeMenu = 'Settings';
-  else {
+  else if (activeView === 'concierge') {
     const searchParams = new URLSearchParams(location.search);
-    const tab = searchParams.get('tab');
-    if (activeView === 'concierge' && tab) {
-      if (tab === 'live_call') activeMenu = 'LiveCalls';
-      else if (tab === 'recordings') activeMenu = 'Recordings';
-      else if (tab === 'taxi') activeMenu = 'Taxi';
-      else if (tab === 'feedback') activeMenu = 'Feedback';
-    } else {
-      activeMenu = 'Dashboard';
-    }
+    const tab = searchParams.get('tab') || 'live_call';
+    if (tab === 'emotion_alerts') activeMenu = 'EmotionAlerts';
+    else if (tab === 'recordings') activeMenu = 'Recordings';
+    else if (tab === 'taxi') activeMenu = 'Taxi';
+    else if (tab === 'feedback') activeMenu = 'Feedback';
+    else activeMenu = 'LiveCalls';
+  } else {
+    activeMenu = 'Dashboard';
   }
 
-  const usesAdminStylePortal = ['room_service', 'reception', 'maintenance', 'bell_services'].includes(activeView);
+  const usesAdminStylePortal = ['room_service', 'reception', 'maintenance', 'bell_services', 'kitchen', 'concierge'].includes(activeView);
 
   // Handle sidebar navigation
   const handleSelectMenu = (menuId) => {
@@ -111,6 +107,9 @@ export const StaffLayout = () => {
         break;
       case 'LiveCalls':
         navigate('/staff/concierge?tab=live_call');
+        break;
+      case 'EmotionAlerts':
+        navigate('/staff/concierge?tab=emotion_alerts');
         break;
       case 'Recordings':
         navigate('/staff/concierge?tab=recordings');
@@ -158,21 +157,6 @@ export const StaffLayout = () => {
 
         {/* Center / Right Content Panel */}
         <main className="flex-1 flex flex-col overflow-hidden bg-[#FAF8F5] relative">
-          <AuroraHeader
-            referenceLayout={true}
-            hotelName={t('hotelName')}
-            systemName="HCROBOT"
-            subtitle={`${currentUser?.department || 'Staff'} ${t('portalSubtitle')}`}
-            notifications={notifications}
-            unreadCount={unreadNotifCount}
-            onOpenNotificationsPage={() => navigate('/staff/notifications')}
-            onToggleRead={handleToggleRead}
-            onMarkAllRead={handleMarkAllRead}
-            departmentName={currentUser?.department || 'Staff'}
-            currentUser={currentUser}
-            onOpenProfilePage={() => navigate('/staff/profile')}
-          />
-
           <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden pb-16 md:pb-0">
             <Outlet />
           </div>

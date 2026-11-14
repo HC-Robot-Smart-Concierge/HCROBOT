@@ -216,6 +216,39 @@ class ConciergeLiveRequestResponse(BaseModel):
 class ConciergeDashboardResponse(BaseModel):
     current_request: Optional[ConciergeLiveRequestResponse] = None
     active_sessions_count: int = 0
+    active_emotion_alerts_count: int = 0
+
+
+class ConciergeEmotionAlertCreate(BaseModel):
+    title: str = Field("Cảnh báo AI: Khách có biểu cảm khó chịu", description="Tiêu đề cảnh báo khách có biểu cảm khó chịu")
+    location: str = Field("Main Lobby Kiosk", description="Vị trí phát hiện khách (Kiosk Sảnh hoặc số phòng)")
+    guest_name: Optional[str] = Field(None, description="Tên khách hàng hoặc định danh")
+    reporter: Optional[str] = Field("HCRobot Emotion AI", description="Nguồn ghi nhận cảnh báo")
+    description: Optional[str] = Field(None, description="Mô tả biểu cảm và tình huống cần Concierge hỗ trợ")
+    emotion_type: Optional[str] = Field(None, description="Loại biểu cảm (VD: Khó chịu / Unhappy)")
+
+
+class ConciergeEmotionAlertUpdate(BaseModel):
+    status: Optional[str] = None
+    assigned_to: Optional[str] = None
+    assigned_staff: Optional[str] = None
+
+
+class ConciergeEmotionAlertResponse(BaseModel):
+    id: str
+    ticket_code: str
+    title: str
+    location: str
+    guest_name: Optional[str] = None
+    reporter: Optional[str] = None
+    description: Optional[str] = None
+    request_type: str = "emotion_alert"
+    status: str
+    assigned_to: Optional[str] = None
+    created_at: datetime
+    duplicate: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------------------------------------------------------

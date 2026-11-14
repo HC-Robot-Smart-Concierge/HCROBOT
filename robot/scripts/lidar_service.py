@@ -49,6 +49,7 @@ if ROBOT_DIR not in sys.path:
 
 from scripts.pi_battery_estimator import PiBatteryEstimator  # noqa: E402
 from scripts.pi_power_monitor import PiPowerMonitor  # noqa: E402
+from scripts.zone_geometry import polygon_geometry  # noqa: E402
 from scripts.nav_planner import PlanGrid, plan_path, point_in_zone, zones_of_type  # noqa: E402
 from scripts.ros_map_io import load_ros_map_yaml, read_ros_map_info  # noqa: E402
 
@@ -114,8 +115,11 @@ class RPLidarSLAMCore:
         self.known_cells: Dict[int, int] = {}
         self._ws_cycle = 0
         self._encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
-        self._wheel_radius = 0.033
-        self._wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.22"))
+        # Same measured diameter / optional calibration as the ROS odom bridge.
+        self._wheel_radius = float(os.getenv("HCROBOT_WHEEL_RADIUS", "0.0325"))
+        if not math.isfinite(self._wheel_radius) or self._wheel_radius <= 0:
+            raise ValueError("HCROBOT_WHEEL_RADIUS must be a positive radius in meters")
+        self._wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.17"))
         self._encoder_signs = {
             "m1": float(os.getenv("HCROBOT_ENCODER_M1_SIGN", "1")),
             "m2": float(os.getenv("HCROBOT_ENCODER_M2_SIGN", "1")),
@@ -1462,7 +1466,7 @@ free_thresh: 0.196
         clean = []
         for z in zones or []:
             try:
-                clean.append({
+                candidate = {
                     "id": str(z.get("id", "")),
                     "name": str(z.get("name", "")),
                     "type": str(z.get("type", "KEEP_OUT")).upper(),
@@ -1472,7 +1476,10 @@ free_thresh: 0.196
                     "height": float(z.get("height", 0.0)),
                     "yaw": float(z.get("yaw") or 0.0),
                     "speed_limit": z.get("speed_limit"),
-                })
+                }
+                if z.get("vertices") is not None:
+                    candidate.update(polygon_geometry(z["vertices"]))
+                clean.append(candidate)
             except (TypeError, ValueError):
                 continue
         with self._lock:

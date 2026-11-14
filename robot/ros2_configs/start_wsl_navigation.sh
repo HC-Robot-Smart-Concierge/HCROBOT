@@ -77,15 +77,13 @@ echo "=== [4/6] LIDAR + ENCODER/IMU ODOM BRIDGE ==="
 # lan) -> doi lenh Nav2 thanh xoay/di thang, giong che do tu quet (xem diff_drive.py).
 # Scan khong deskew tung tia: cat xung xoay de AMCL/costmap co vong quet dung yen,
 # bo cac vong thu trong luc gyro quay nhanh (giong mapping).
-# Toc do: do encoder 08/11 thay 1% PWM ~ 0.0035 m/s (khong phai 0.0048 mac dinh) => truoc day
-# Nav2 xin 0.2 m/s ma xe chi chay ~0.14, chi cao hon san (35% ~ 0.12 m/s) chut it => vung giam toc
-# gan nhu khong thay khac. Hieu chinh + tran PWM 72% + Nav2 max_vel_x 0.25
-# (physical_navigation_overrides.yaml): binh thuong ~0.25 m/s, vung giam toc ~0.12 (= mot nua).
-# Muon cham lai: HCROBOT_DIFF_MAX_PWM=57 (~0.20 m/s). Chi ap cho Navigation; quet map giu toc do cu.
+# Toc do trong phong: Nav2 toi da 0.15 m/s, bridge tran PWM 43%.
+# He so PWM->m/s 0.0035 duoc giu tu cau hinh cu; day la gioi han lenh,
+# khong phai cam ket toc do do thuc te. Can do lai sau khi odom on dinh.
 HCROBOT_MODE=NAVIGATION \
 HCROBOT_DIFF_MPS_PER_PCT="${HCROBOT_DIFF_MPS_PER_PCT:-0.0035}" \
-HCROBOT_DIFF_MAX_PWM="${HCROBOT_DIFF_MAX_PWM:-72}" \
-HCROBOT_NAV_MAX_LINEAR_SPEED="${HCROBOT_NAV_MAX_LINEAR_SPEED:-0.25}" \
+HCROBOT_DIFF_MAX_PWM="${HCROBOT_DIFF_MAX_PWM:-43}" \
+HCROBOT_NAV_MAX_LINEAR_SPEED="${HCROBOT_NAV_MAX_LINEAR_SPEED:-0.15}" \
 HCROBOT_CMD_VEL_MODE="${HCROBOT_CMD_VEL_MODE:-straight}" \
 HCROBOT_TURN_PULSE_ON_SEC="${HCROBOT_TURN_PULSE_ON_SEC:-0.20}" \
 HCROBOT_TURN_PULSE_OFF_SEC="${HCROBOT_TURN_PULSE_OFF_SEC:-0.50}" \

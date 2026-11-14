@@ -19,6 +19,26 @@ def set_cell(grid, x, y, value):
 
 
 class TestRecoveryCostmap(unittest.TestCase):
+    def test_padding_intrusion_can_escape_straight_away_but_not_toward_or_rotate(self):
+        point = [(0.19, 0.0)]  # 2.5 cm in front of body, inside the 4 cm padding
+        self.assertFalse(scan_sweep_clear(point, True, -.12, 0, .6))
+        self.assertTrue(scan_sweep_clear(point, True, -.12, 0, .6, allow_margin_escape=True))
+        self.assertFalse(scan_sweep_clear(point, True, .12, 0, .6, allow_margin_escape=True))
+        self.assertFalse(scan_sweep_clear(point, True, 0, .5, .6, allow_margin_escape=True))
+        self.assertFalse(scan_sweep_clear([(0.16, 0)], True, -.12, 0, .6, allow_margin_escape=True))
+        self.assertFalse(scan_sweep_clear(point + [(-.24, 0)], True, -.12, 0, .6, allow_margin_escape=True))
+
+    def test_escape_costmap_retains_clearance_and_never_ignores_unknown(self):
+        grid = CostmapGrid(200, 200, .01, (-1, -1, 0), [0] * 40000)
+        set_cell(grid, .19, 0, 100)
+        self.assertTrue(grid_sweep_clear(grid, (0, 0, 0), -.12, 0, .6, allow_margin_escape=True))
+        self.assertFalse(grid_sweep_clear(grid, (0, 0, 0), .12, 0, .6, allow_margin_escape=True))
+        set_cell(grid, -.24, 0, 100)
+        self.assertFalse(grid_sweep_clear(grid, (0, 0, 0), -.12, 0, .6, allow_margin_escape=True))
+        grid.data[:] = [0] * len(grid.data)
+        set_cell(grid, .19, 0, -1)
+        self.assertFalse(grid_sweep_clear(grid, (0, 0, 0), -.12, 0, .6, allow_margin_escape=True))
+
     def test_new_33_by_17_cm_edges_are_included_in_collision_checks(self):
         # The former 32 x 16 cm body with 4 cm margin missed these contacts.
         for point in ((0.2025, 0), (-0.2025, 0), (0, 0.1225), (0, -0.1225)):

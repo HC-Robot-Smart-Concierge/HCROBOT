@@ -225,7 +225,9 @@ class TestUnstick(unittest.TestCase):
     def test_goes_to_the_open_end(self):
         self.assertEqual(choose_unstick_direction(88.0, 1.0), "forward")   # duoi xe sat vat (log 14:12)
         self.assertEqual(choose_unstick_direction(20.0, 47.0), "backward")
-        self.assertEqual(choose_unstick_direction(None, 10.0), "forward")  # khong thay gi phia truoc
+        self.assertIsNone(choose_unstick_direction(None, 10.0))  # unknown is not free
+        self.assertIsNone(choose_unstick_direction(float('nan'), None))
+        self.assertEqual(choose_unstick_direction(None, 47.0), 'backward')
 
     def test_boxed_in_returns_none(self):
         self.assertIsNone(choose_unstick_direction(20.0, 12.0))

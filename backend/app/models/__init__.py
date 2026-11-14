@@ -18,6 +18,7 @@ from app.models.map import Zone, Endpoint, EndpointGroup, EndpointGroupMember
 from app.models.menu import Menu, MenuItem, FoodItem
 from app.models.feedback import Feedback
 from app.models.schedule import Schedule
+from app.models.workflow_run import WorkflowRun
 from app.models.workflow import RobotWaypoint, RobotWorkflow, RobotZone, RobotWorkflow as Workflow
 from app.models.scenario import DialogueScenario
 from app.models.advertisement import Advertisement
@@ -68,6 +69,7 @@ __all__ = [
     "FoodItem",
     "Feedback",
     "Schedule",
+    "WorkflowRun",
     "Workflow",
     "RobotWaypoint",
     "RobotWorkflow",

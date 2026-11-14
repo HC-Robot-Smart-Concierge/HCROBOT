@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { isPointInZone as containsZonePoint, isPolygonZone } from './physicalMapZones';
 import { LidarCanvas } from '../../../components/admin/LidarCanvas';
 import {
   fetchWaypoints,
@@ -20,6 +21,7 @@ import {
   createZoneSyncMsg,
 } from '../../../services/rosbridgeService';
 import { OTTO_STEP_TYPES } from './AdminWorkflowTab';
+import { unconfiguredRouteSteps } from '../../../utils/physicalMapRoute';
 import { Trash2, RotateCw, Compass, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 /**
@@ -27,11 +29,7 @@ import { Trash2, RotateCw, Compass, ChevronUp, ChevronDown, ChevronLeft, Chevron
  */
 export const isPointInZone = (px, py, zone) => {
   if (!zone) return false;
-  const halfW = (Number(zone.width) || 2.0) / 2;
-  const halfH = (Number(zone.height) || 2.0) / 2;
-  const zx = Number(zone.x) || 0;
-  const zy = Number(zone.y) || 0;
-  return px >= (zx - halfW) && px <= (zx + halfW) && py >= (zy - halfH) && py <= (zy + halfH);
+  return containsZonePoint(px, py, zone);
 };
 
 // Hotel Concierge Standard: Zone Templates (Bao gồm Keep-Out, Speed Zone, No-Stop Zone)
@@ -544,6 +542,9 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
       y: zone.y ?? 0,
       width: zone.width ?? 2.0,
       height: zone.height ?? 2.0,
+      vertices: zone.vertices ?? null,
+      yaw: zone.yaw ?? 0,
+      map_id: zone.map_id,
       speed_limit: zone.speed_limit ?? 0.3,
       floor: zone.floor || 'Sảnh Tầng 1',
       description: zone.description || '',
@@ -571,6 +572,9 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
         id: zoneFormData.id,
         name: zoneFormData.name.trim(),
         type: zoneFormData.type || 'KEEP_OUT',
+        vertices: zoneFormData.vertices ?? null,
+        yaw: zoneFormData.yaw ?? 0,
+        map_id: zoneFormData.map_id,
         x: Number(zoneFormData.x),
         y: Number(zoneFormData.y),
         width: Number(zoneFormData.width || 2.0),
@@ -681,8 +685,9 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
   const handleSaveCurrentWorkflow = async () => {
     if (!activeWf) return;
     try {
-      await saveWorkflow(activeWf);
-      showNotification(`Đã lưu kịch bản "${activeWf.name}" thành công!`);
+      const pending = unconfiguredRouteSteps(activeWf).length > 0;
+      await saveWorkflow(pending ? { ...activeWf, is_active: false } : activeWf);
+      showNotification(pending ? 'Đã lưu bản nháp. Sang Physical Map → Tuyến đường để gán tuyến cho bước workflow.' : `Đã lưu kịch bản "${activeWf.name}" thành công!`);
       await loadAll();
     } catch (err) {
       showNotification('Lỗi khi lưu kịch bản: ' + err.message);
@@ -702,6 +707,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
       return;
     }
     const updatedWf = { ...activeWf, name: newWfName.trim() };
+    if (unconfiguredRouteSteps(updatedWf).length) updatedWf.is_active = false;
     try {
       await saveWorkflow(updatedWf);
       setActiveWf(updatedWf);
@@ -2133,6 +2139,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                     type="number"
                     step="0.05"
                     required
+                    disabled={isPolygonZone(zoneFormData)}
                     value={zoneFormData.x}
                     onChange={(e) => setZoneFormData({ ...zoneFormData, x: parseFloat(e.target.value) || 0 })}
                     className="w-full px-2.5 py-1.5 rounded-lg text-xs border focus:outline-none font-mono"
@@ -2148,6 +2155,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                     type="number"
                     step="0.05"
                     required
+                    disabled={isPolygonZone(zoneFormData)}
                     value={zoneFormData.y}
                     onChange={(e) => setZoneFormData({ ...zoneFormData, y: parseFloat(e.target.value) || 0 })}
                     className="w-full px-2.5 py-1.5 rounded-lg text-xs border focus:outline-none font-mono"
@@ -2164,6 +2172,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                     step="0.1"
                     min="0.5"
                     required
+                    disabled={isPolygonZone(zoneFormData)}
                     value={zoneFormData.width}
                     onChange={(e) => setZoneFormData({ ...zoneFormData, width: parseFloat(e.target.value) || 1.0 })}
                     className="w-full px-2.5 py-1.5 rounded-lg text-xs border focus:outline-none font-mono"
@@ -2180,6 +2189,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                     step="0.1"
                     min="0.5"
                     required
+                    disabled={isPolygonZone(zoneFormData)}
                     value={zoneFormData.height}
                     onChange={(e) => setZoneFormData({ ...zoneFormData, height: parseFloat(e.target.value) || 1.0 })}
                     className="w-full px-2.5 py-1.5 rounded-lg text-xs border focus:outline-none font-mono"

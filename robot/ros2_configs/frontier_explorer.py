@@ -84,7 +84,7 @@ class FrontierExplorer(Node):
         self.reach_radius_m = float(p("reach_radius_m", 0.30).value)
         # Toi noi: dung yen cho LiDAR/SLAM cap nhat roi moi xet frontier con hay khong.
         self.settle_sec = float(p("settle_sec", 2.0).value)
-        self.stuck_timeout_sec = float(p("stuck_timeout_sec", 8.0).value)
+        self.stuck_timeout_sec = float(p("stuck_timeout_sec", 3.0).value)
         self.unstick_dist_m = float(p("unstick_dist_m", 0.15).value)
         self.unstick_speed = float(p("unstick_speed", 0.12).value)
         self.retreat_speed = float(p("retreat_speed", 0.08).value)
@@ -217,8 +217,8 @@ class FrontierExplorer(Node):
         else:
             check_vx, check_wz = 0.0, math.copysign(0.8, wz)
             duration = max(0.5, (abs(rotation or 0.0) + 0.18) / 0.8)
-        return (scan_sweep_clear(points, coverage, check_vx, check_wz, duration)
-                and grid_sweep_clear(grid, pose, check_vx, check_wz, duration))
+        return (scan_sweep_clear(points, coverage, check_vx, check_wz, duration, allow_margin_escape=True)
+                and grid_sweep_clear(grid, pose, check_vx, check_wz, duration, allow_margin_escape=True))
 
     def _on_stop(self, _msg):
         self.finished = True
@@ -575,7 +575,7 @@ class FrontierExplorer(Node):
             return True
         c = self._clearances()
         direction = choose_unstick_direction(c.get("front"), c.get("rear"),
-                                             min_front_cm=24.0, min_rear_cm=20.0)
+                                             min_front_cm=30.0, min_rear_cm=25.0)
         if direction is None or start is None:
             self.get_logger().warn(
                 f"Kẹt cả trước (≈{self._cm(c.get('front'))} cm) lẫn sau (≈{self._cm(c.get('rear'))} cm): "
@@ -687,7 +687,15 @@ class FrontierExplorer(Node):
                             m["align_logged"] = True
                         self._publish_motion(vx_try, wz_try)
                         return
-                self._wait_recovery(now, "Vùng quay/rẽ đang vướng vật cản; thử đường khác")
+                # Padding can prohibit rotation beside a wall even though
+                # moving straight back increases clearance. Use a bounded
+                # short reverse, then hand back to Nav2 for a fresh heading.
+                if self._motion_allowed(-self.unstick_speed, 0.0, points, coverage, snapshot):
+                    self.maneuver = {"dir": "backward", "start": pose, "until": now + 4.0}
+                    self._publish_vx(0.0)
+                    self.get_logger().info("↩️ Chưa đủ chỗ quay: lùi thẳng có kiểm tra rồi tính lại hướng")
+                    return
+                self._wait_recovery(now, "Vùng quay/rẽ và đường lùi đều vướng; thử đường khác")
                 return
             m["turn_watchdog"].reset(now, pose)
             m.pop("align_logged", None)
@@ -707,7 +715,7 @@ class FrontierExplorer(Node):
         moved = 0.0 if pose is None else math.hypot(pose[0] - m["start"][0], pose[1] - m["start"][1])
         side = "front" if m["dir"] == "forward" else "rear"
         gap = self._clearances().get(side)
-        too_close = gap is not None and gap < (22.0 if side == "front" else 16.0)
+        too_close = gap is not None and gap < (28.0 if side == "front" else 23.0)
         if moved >= self.unstick_dist_m or now > m["until"] or too_close:
             for _ in range(3):
                 self._publish_vx(0.0)

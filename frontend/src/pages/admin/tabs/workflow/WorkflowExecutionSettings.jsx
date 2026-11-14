@@ -38,8 +38,17 @@ export function WorkflowExecutionSettings({ workflow, onChange, compact = false 
           <p className="text-xs text-stone-500 mt-1">{compact ? 'Đặt thời gian bắt đầu và cách lặp lại toàn bộ tuyến đường.' : 'Lịch kích hoạt workflow; các bước bên dưới mô tả robot làm gì trong mỗi vòng.'}</p>
         </div>
       </div>
+      <label className="block text-xs font-semibold text-stone-700 space-y-1">
+        <span>Chế độ thực thi</span>
+        <select aria-label="Chế độ thực thi workflow" className={inputClass} value={config.execution_mode} onChange={(e) => update({ execution_mode: e.target.value })}>
+          <option value="SCREEN">Màn hình Robot (kiosk)</option>
+          <option value="ROBOT">Điều khiển xe thật · RC-001</option>
+        </select>
+      </label>
       <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-900">
-        Bản thử: lưu cấu hình và xem lịch dự kiến. Chưa tự phát lệnh theo giờ; số vòng chưa được áp dụng khi bấm gửi robot.
+        {config.execution_mode === 'ROBOT'
+          ? 'Xe thật: hỗ trợ Đi theo tuyến, MOVE trên map và Chờ. Đến giờ, backend kiểm tra Nav2, đúng map, định vị và encoder rồi mới chạy. Robot bận sẽ bỏ qua lịch; lỗi sẽ dừng lượt chạy. Vận tốc theo cấu hình Nav2 và vùng giảm tốc.'
+          : 'Chế độ màn hình không điều khiển xe; lịch chỉ để xem dự kiến và số vòng chưa áp dụng. Chọn Điều khiển xe thật để chạy tuyến theo lịch.'}
       </div>
       <div className={`grid grid-cols-1 ${compact ? '' : 'sm:grid-cols-3'} gap-3`}>
         <label className="text-xs font-semibold text-stone-700 space-y-1">

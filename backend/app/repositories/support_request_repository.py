@@ -30,6 +30,9 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
             .replace("REC-", "")
             .replace("HK-", "")
             .replace("BELL-", "")
+            .replace("BS-", "")
+            .replace("CCG-", "")
+            .replace("EA-", "")
             .replace("MNT-", "")
             .replace("TX-", "")
             .replace("ORD-", "")
@@ -42,6 +45,9 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
             f"REC-{clean}",
             f"HK-{clean}",
             f"BELL-{clean}",
+            f"BS-{clean}",
+            f"CCG-{clean}",
+            f"EA-{clean}",
             f"MNT-{clean}",
             f"TX-{clean}",
             f"ORD-{clean}",
@@ -136,6 +142,18 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         res = await self.db.execute(stmt)
         return res.scalar() or 0
 
+    def _emotion_alert_cond(self):
+        return or_(
+            func.coalesce(SupportRequest.ticket_code, "").like("EA-%"),
+            func.coalesce(SupportRequest.source, "") == "HCRobot Emotion AI",
+        )
+
+    def _not_emotion_alert_cond(self):
+        return and_(
+            ~func.coalesce(SupportRequest.ticket_code, "").like("EA-%"),
+            func.coalesce(SupportRequest.source, "") != "HCRobot Emotion AI",
+        )
+
     async def close_expired_pending(
         self,
         department_ids: List[str],
@@ -143,7 +161,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         cutoff_time: datetime,
         new_status: str = "Missed",
     ) -> int:
-        """Closes pending requests older than cutoff_time."""
+        """Closes pending live-call requests older than cutoff_time (excludes emotion alerts)."""
         from sqlalchemy import update
         now = datetime.utcnow()
         dept_cond = (
@@ -162,6 +180,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
             update(SupportRequest)
             .where(
                 dept_cond,
+                self._not_emotion_alert_cond(),
                 SupportRequest.status == "Pending",
                 SupportRequest.created_at < cutoff_time,
             )
@@ -169,7 +188,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         )
         res = await self.db.execute(stmt)
         await self.db.commit()
-        return res.rowcount or 0
+        return int(getattr(res, "rowcount", 0) or 0)
 
     async def close_stale_active_calls(
         self,
@@ -178,7 +197,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         cutoff_time: datetime,
         new_status: str = "Closed",
     ) -> int:
-        """Closes stuck in-progress/connected calls older than cutoff_time."""
+        """Closes stuck in-progress/connected live calls older than cutoff_time (excludes emotion alerts)."""
         from sqlalchemy import update
         now = datetime.utcnow()
         dept_cond = (
@@ -197,6 +216,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
             update(SupportRequest)
             .where(
                 dept_cond,
+                self._not_emotion_alert_cond(),
                 SupportRequest.status.in_(["In Progress", "Connected"]),
                 SupportRequest.created_at < cutoff_time,
             )
@@ -204,7 +224,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         )
         res = await self.db.execute(stmt)
         await self.db.commit()
-        return res.rowcount or 0
+        return int(getattr(res, "rowcount", 0) or 0)
 
     async def get_active_live_call(
         self,
@@ -230,6 +250,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
             select(SupportRequest)
             .where(
                 dept_cond,
+                self._not_emotion_alert_cond(),
                 SupportRequest.status.in_(statuses),
             )
             .order_by(desc(SupportRequest.created_at))
@@ -244,7 +265,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         service_type_ids: List[str],
         active_statuses: Optional[List[str]] = None,
     ) -> int:
-        """Counts active calls."""
+        """Counts active live calls."""
         statuses = active_statuses or ["Pending", "In Progress", "Connected"]
         dept_cond = (
             and_(
@@ -262,6 +283,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
             select(func.count(SupportRequest.id))
             .where(
                 dept_cond,
+                self._not_emotion_alert_cond(),
                 SupportRequest.status.in_(statuses),
             )
         )
@@ -273,6 +295,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         department_ids: List[str],
         service_type_ids: List[str],
         status: Optional[str] = None,
+        exclude_emotion_alerts: bool = False,
     ) -> Sequence[SupportRequest]:
         """List requests by department and optional status."""
         stmt = (
@@ -285,10 +308,76 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
             )
             .order_by(desc(SupportRequest.created_at))
         )
+        if exclude_emotion_alerts:
+            stmt = stmt.where(self._not_emotion_alert_cond())
         if status and status not in ("All", ""):
             stmt = stmt.where(SupportRequest.status == status)
         res = await self.db.execute(stmt)
         return res.scalars().all()
+
+    async def list_concierge_emotion_alerts(
+        self,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> Sequence[SupportRequest]:
+        """List unhappy/frustrated guest alerts routed to Concierge, newest first."""
+        stmt = (
+            select(SupportRequest)
+            .where(
+                or_(
+                    SupportRequest.department_id == "DEP-CONCIERGE",
+                    SupportRequest.service_type_id == "ST-CONCIERGE",
+                ),
+                self._emotion_alert_cond(),
+            )
+            .order_by(desc(SupportRequest.created_at))
+            .limit(limit)
+        )
+        if status and status not in ("All", ""):
+            stmt = stmt.where(SupportRequest.status == status)
+        res = await self.db.execute(stmt)
+        return res.scalars().all()
+
+    async def count_active_emotion_alerts(self) -> int:
+        """Counts active Concierge emotion alerts."""
+        stmt = (
+            select(func.count(SupportRequest.id))
+            .where(
+                or_(
+                    SupportRequest.department_id == "DEP-CONCIERGE",
+                    SupportRequest.service_type_id == "ST-CONCIERGE",
+                ),
+                self._emotion_alert_cond(),
+                SupportRequest.status.in_(["Pending", "Unassigned", "In Progress"]),
+            )
+        )
+        res = await self.db.execute(stmt)
+        return res.scalar() or 0
+
+    async def find_recent_emotion_alert(
+        self,
+        location: str,
+        since: datetime,
+    ) -> Optional[SupportRequest]:
+        """Find an open emotion alert at the same location created at or after `since`."""
+        clean_loc = (location or "").strip().lower()
+        stmt = (
+            select(SupportRequest)
+            .where(
+                or_(
+                    SupportRequest.department_id == "DEP-CONCIERGE",
+                    SupportRequest.service_type_id == "ST-CONCIERGE",
+                ),
+                self._emotion_alert_cond(),
+                SupportRequest.status.in_(["Pending", "Unassigned", "In Progress"]),
+                func.lower(func.trim(func.coalesce(SupportRequest.room_number, ""))) == clean_loc,
+                SupportRequest.created_at >= since,
+            )
+            .order_by(desc(SupportRequest.created_at))
+            .limit(1)
+        )
+        res = await self.db.execute(stmt)
+        return res.scalar_one_or_none()
 
     async def list_all_with_relations(self) -> Sequence[Tuple[SupportRequest, Optional[ServiceType], Optional[Department]]]:
         """

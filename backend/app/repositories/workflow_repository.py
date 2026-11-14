@@ -33,6 +33,11 @@ class WorkflowRepository(BaseRepository[RobotWorkflow]):
         res = await self.db.execute(stmt)
         return res.scalar_one_or_none() is not None
 
+    async def get_for_update(self, workflow_id: str) -> Optional[RobotWorkflow]:
+        result = await self.db.execute(select(RobotWorkflow).where(
+            RobotWorkflow.id == workflow_id).with_for_update())
+        return result.scalar_one_or_none()
+
     async def seed_defaults(self, core_workflows: List[Dict[str, Any]]) -> None:
         """Seeds default workflows if not already present."""
         for wf_data in core_workflows:

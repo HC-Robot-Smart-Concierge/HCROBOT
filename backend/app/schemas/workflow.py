@@ -71,6 +71,8 @@ class WorkflowRoute(BaseModel):
 
 
 class WorkflowExecutionConfig(BaseModel):
+    execution_mode: Literal["SCREEN", "ROBOT"] = "SCREEN"
+    robot_id: Literal["RC-001"] = "RC-001"
     repeat_mode: Literal["COUNT", "CONTINUOUS"] = "COUNT"
     repeat_count: int = Field(default=1, ge=1, le=1000, strict=True)
     interval_seconds: int = Field(default=0, ge=0, le=86400, strict=True)
@@ -108,7 +110,7 @@ class WorkflowCreate(WorkflowBase):
 
     @model_validator(mode="after")
     def require_schedule(self):
-        if self.trigger_type == "SCHEDULE" and not any(s.enabled for s in self.execution_config.schedules):
+        if self.is_active and self.trigger_type == "SCHEDULE" and not any(s.enabled for s in self.execution_config.schedules):
             raise ValueError("Workflow theo lịch cần ít nhất một lịch đang bật")
         return self
 
@@ -135,9 +137,16 @@ class WorkflowExecuteRequest(BaseModel):
     speed_factor: Optional[float] = 1.0
 
 
+class WorkflowRouteBindingRequest(BaseModel):
+    route_id: str = Field(min_length=1, max_length=100)
+    map_id: str = Field(min_length=1, max_length=100)
+    expected_route_id: Optional[str] = None
+
+
 class WorkflowExecuteResponse(BaseModel):
     status: str
     message: str
     workflow_id: str
     executed_steps: int
     logs: List[str]
+    run_id: Optional[str] = None

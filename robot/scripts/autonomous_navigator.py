@@ -16,6 +16,11 @@ import heapq
 import subprocess
 import urllib.request
 import threading
+try:
+    from .zone_geometry import distance_to_zone, zone_points
+except ImportError:
+    from zone_geometry import distance_to_zone, zone_points
+
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -171,15 +176,7 @@ class AutonomousNavigator(Node):
         return self.get_zone_proximity(x, y, zone) <= 1e-9
 
     def get_zone_proximity(self, x, y, zone):
-        half_w = float(zone.get('width', 2.0) or 2.0) / 2.0
-        half_h = float(zone.get('height', 2.0) or 2.0) / 2.0
-        zx = float(zone.get('x', 0.0) or 0.0)
-        zy = float(zone.get('y', 0.0) or 0.0)
-        angle = math.radians(float(zone.get('yaw') or 0.0))
-        wx, wy = x - zx, y - zy
-        dx = max(0.0, abs(wx * math.cos(angle) + wy * math.sin(angle)) - half_w)
-        dy = max(0.0, abs(-wx * math.sin(angle) + wy * math.cos(angle)) - half_h)
-        return math.hypot(dx, dy)
+        return distance_to_zone(x, y, zone)
 
     def get_active_zone(self, x, y):
         priority = {'KEEP_OUT': 3, 'NO_STOP': 2, 'SPEED_ZONE': 1, 'SLOW_SPEED': 1}
@@ -274,6 +271,15 @@ class AutonomousNavigator(Node):
                 box.color.r, box.color.g, box.color.b, box.color.a = 0.88, 0.12, 0.45, 0.35
             else:
                 box.color.r, box.color.g, box.color.b, box.color.a = 0.30, 0.45, 0.90, 0.25
+            if z.get('vertices') is not None:
+                box.type = Marker.LINE_STRIP
+                box.pose.position.x = box.pose.position.y = 0.0
+                box.pose.position.z = 0.04
+                box.pose.orientation.z, box.pose.orientation.w = 0.0, 1.0
+                box.scale.x = 0.04
+                box.color.a = 0.9
+                points = zone_points(z)
+                box.points = [Point(x=x, y=y, z=0.0) for x, y in points + points[:1]]
             ma.markers.append(box)
 
             txt = Marker()

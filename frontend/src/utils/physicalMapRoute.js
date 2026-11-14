@@ -1,5 +1,22 @@
 import { executionConfig, executionError } from './workflowExecution';
 
+export function unconfiguredRouteSteps(workflow) {
+  return (workflow.steps || []).filter((step) => step.type === 'FOLLOW_ROUTE' && !step.params?.route_id);
+}
+
+export function workflowRouteTargets(workflows) {
+  return workflows.filter((workflow) => !workflow.execution_config?.route
+    && (workflow.steps || []).some((step) => step.type === 'FOLLOW_ROUTE'));
+}
+
+export function routeStepOnMap(workflow, stepId, routes, mapId) {
+  const step = workflow?.steps?.find((s) => s.step_id === stepId && s.type === 'FOLLOW_ROUTE');
+  if (!step) throw new Error('Chọn bước Đi theo tuyến cần cấu hình.');
+  const bound = routes.find((route) => route.id === step.params?.route_id);
+  return { step, route: bound?.execution_config?.route?.map_id === mapId ? bound : null,
+    otherMap: bound && bound.execution_config?.route?.map_id !== mapId ? bound.execution_config.route.map_id : null };
+}
+
 export function newMapRoute(mapId) {
   return {
     name: 'Tuyến di chuyển mới', description: '', trigger_type: 'MANUAL', is_active: true,

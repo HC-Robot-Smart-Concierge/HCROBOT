@@ -37,6 +37,8 @@ import {
   removeKitchenMenuItem,
 } from '../../services/operationsApi';
 import { handleNumberInputBlockExponent } from '../../utils/numberInputHelper';
+import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
+import { Pagination } from '../../components/common/Pagination';
 
 export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, onNavigate = () => {} }) => {
   const staffName = currentUser?.full_name || currentUser?.name || 'Đầu Bếp Trực Ca';
@@ -200,6 +202,56 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
       );
     });
   }, [menuItems, searchQuery]);
+
+  // Pagination states matching Admin portal standard
+  const gridPageSize = 9;
+  const listPageSize = 10;
+  const [foodsPage, setFoodsPage] = useState(1);
+  const [menusPage, setMenusPage] = useState(1);
+  const [menuItemsPage, setMenuItemsPage] = useState(1);
+
+  const totalFoodsPages = Math.max(1, Math.ceil(filteredFoods.length / listPageSize));
+  const totalMenusPages = Math.max(1, Math.ceil(filteredMenus.length / gridPageSize));
+  const totalMenuItemsPages = Math.max(1, Math.ceil(filteredMenuItems.length / listPageSize));
+
+  useEffect(() => {
+    setFoodsPage(1);
+  }, [searchQuery, selectedCategory]);
+
+  useEffect(() => {
+    setMenusPage(1);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setMenuItemsPage(1);
+  }, [searchQuery, selectedMenuId]);
+
+  useEffect(() => {
+    if (foodsPage > totalFoodsPages) setFoodsPage(totalFoodsPages);
+  }, [foodsPage, totalFoodsPages]);
+
+  useEffect(() => {
+    if (menusPage > totalMenusPages) setMenusPage(totalMenusPages);
+  }, [menusPage, totalMenusPages]);
+
+  useEffect(() => {
+    if (menuItemsPage > totalMenuItemsPages) setMenuItemsPage(totalMenuItemsPages);
+  }, [menuItemsPage, totalMenuItemsPages]);
+
+  const paginatedFoods = useMemo(() => {
+    const start = (foodsPage - 1) * listPageSize;
+    return filteredFoods.slice(start, start + listPageSize);
+  }, [filteredFoods, foodsPage]);
+
+  const paginatedMenus = useMemo(() => {
+    const start = (menusPage - 1) * gridPageSize;
+    return filteredMenus.slice(start, start + gridPageSize);
+  }, [filteredMenus, menusPage]);
+
+  const paginatedMenuItems = useMemo(() => {
+    const start = (menuItemsPage - 1) * listPageSize;
+    return filteredMenuItems.slice(start, start + listPageSize);
+  }, [filteredMenuItems, menuItemsPage]);
 
   // -------------------------------------------------------------
   // ACTIONS: Food Items (Master Catalog)
@@ -461,188 +513,159 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
   };
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-[#FAF8F5] font-sans">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar font-sans">
+      <div className="staff-page-container space-y-5">
         {/* Top Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-900 flex items-center justify-center shadow-xs">
-                <UtensilsCrossed className="w-5 h-5 text-amber-800" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-bold text-[#1A1917]">
-                    Quản Lý Thực Đơn & Danh Mục Món Ăn
-                  </h2>
-                  <span className="px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-xs font-bold text-amber-800">
-                    Bếp & Ẩm Thực
-                  </span>
-                </div>
-                <p className="text-xs text-[#78716C] mt-0.5">
-                  Quản lý kho món ăn gốc, các bộ thực đơn và phân bổ món ăn vào menu phục vụ khách.
-                </p>
-              </div>
-            </div>
+        <StaffPageHeader className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <h1>Quản Lý Thực Đơn &amp; Danh Mục Món Ăn</h1>
+            <p>
+              Quản lý kho món ăn gốc, các bộ thực đơn và phân bổ món ăn vào menu phục vụ khách.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={loadData}
+              disabled={isLoading}
               title="Làm mới dữ liệu"
-              className="p-2.5 rounded-xl bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 transition-all cursor-pointer shadow-xs"
+              className="inline-flex items-center gap-1.5 rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#403D39] hover:bg-[#F0EFEC] cursor-pointer"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>Làm mới</span>
             </button>
 
             {activeTab === 'food_items' && (
               <button
+                type="button"
                 onClick={() => handleOpenFoodModal()}
-                className="px-4 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer active:scale-95"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#262626] hover:bg-[#404040] px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 <span>Thêm Món Gốc Mới</span>
               </button>
             )}
 
             {activeTab === 'menus' && (
               <button
+                type="button"
                 onClick={() => handleOpenMenuModal()}
-                className="px-4 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer active:scale-95"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#262626] hover:bg-[#404040] px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 <span>Tạo Thực Đơn Mới</span>
               </button>
             )}
 
             {activeTab === 'menu_items' && (
               <button
+                type="button"
                 onClick={handleOpenAssignModal}
-                className="px-4 py-2.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer active:scale-95"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#262626] hover:bg-[#404040] px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 <span>Gán Món Vào Thực Đơn</span>
               </button>
             )}
           </div>
-        </div>
+        </StaffPageHeader>
 
         {/* KPI Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-          <div className="bg-white p-4 rounded-2xl border border-[#E5E1D8] shadow-xs flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-stone-500 uppercase">Kho Món Ăn Gốc</p>
-              <div className="flex items-baseline gap-1 mt-0.5">
-                <h3 className="text-2xl font-black text-stone-900">{totalFoods}</h3>
-                <span className="text-xs font-bold text-stone-400">món</span>
-              </div>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-700 flex items-center justify-center font-bold">
-              <ChefHat className="w-5 h-5 text-orange-600" />
-            </div>
-          </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <article className="bg-white px-5 py-4 rounded-xl border border-[#BFBFBD]">
+            <p className="text-[11px] font-semibold uppercase text-[#8C8C8C]">Kho Món Ăn Gốc</p>
+            <p className="text-[22px] font-bold text-[#262626] mt-2">
+              {totalFoods} <span className="text-[11px] font-medium text-[#777]">món</span>
+            </p>
+          </article>
 
-          <div className="bg-white p-4 rounded-2xl border border-[#E5E1D8] shadow-xs flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-stone-500 uppercase">Bộ Thực Đơn</p>
-              <div className="flex items-baseline gap-1 mt-0.5">
-                <h3 className="text-2xl font-black text-indigo-700">{totalMenus}</h3>
-                <span className="text-xs font-bold text-stone-400">menu</span>
-              </div>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center font-bold">
-              <BookOpen className="w-5 h-5 text-indigo-600" />
-            </div>
-          </div>
+          <article className="bg-white px-5 py-4 rounded-xl border border-[#BFBFBD]">
+            <p className="text-[11px] font-semibold uppercase text-[#8C8C8C]">Bộ Thực Đơn</p>
+            <p className="text-[22px] font-bold text-[#262626] mt-2">
+              {totalMenus} <span className="text-[11px] font-medium text-[#777]">menu</span>
+            </p>
+          </article>
 
-          <div className="bg-white p-4 rounded-2xl border border-[#E5E1D8] shadow-xs flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-stone-500 uppercase">Menu Đang Áp Dụng</p>
-              <div className="flex items-baseline gap-1 mt-0.5">
-                <h3 className="text-2xl font-black text-emerald-700">{activeMenus}</h3>
-                <span className="text-xs font-bold text-stone-400">/{totalMenus}</span>
-              </div>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-            </div>
-          </div>
+          <article className="bg-white px-5 py-4 rounded-xl border border-[#BFBFBD]">
+            <p className="text-[11px] font-semibold uppercase text-[#8C8C8C]">Menu Đang Áp Dụng</p>
+            <p className="text-[22px] font-bold text-emerald-700 mt-2">
+              {activeMenus} <span className="text-[11px] font-medium text-[#777]">/{totalMenus}</span>
+            </p>
+          </article>
 
-          <div className="bg-white p-4 rounded-2xl border border-[#E5E1D8] shadow-xs flex items-center justify-between">
-            <div>
-              <p className="text-[11px] font-bold text-stone-500 uppercase">Món Sẵn Sàng</p>
-              <div className="flex items-baseline gap-1 mt-0.5">
-                <h3 className="text-2xl font-black text-amber-700">{availableFoods}</h3>
-                <span className="text-xs font-bold text-stone-400">/{totalFoods}</span>
-              </div>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
-              <Sparkles className="w-5 h-5 text-amber-600" />
-            </div>
-          </div>
+          <article className="bg-white px-5 py-4 rounded-xl border border-[#BFBFBD]">
+            <p className="text-[11px] font-semibold uppercase text-[#8C8C8C]">Món Sẵn Sàng</p>
+            <p className="text-[22px] font-bold text-[#262626] mt-2">
+              {availableFoods} <span className="text-[11px] font-medium text-[#777]">/{totalFoods}</span>
+            </p>
+          </article>
         </div>
 
         {/* Tab Selector Bar */}
-        <div className="bg-white rounded-2xl border border-[#E5E1D8] p-1.5 shadow-xs flex items-center gap-1.5">
+        <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar border-b border-[#E8E5E0] pb-3">
           <button
+            type="button"
             onClick={() => {
               setActiveTab('food_items');
               setSearchQuery('');
             }}
-            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            className={`py-2 px-3.5 rounded-xl text-[12px] font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer border ${
               activeTab === 'food_items'
-                ? 'bg-[#18181B] text-white shadow-xs'
-                : 'text-stone-600 hover:bg-[#FAF8F5] hover:text-black'
+                ? 'bg-[#262626] text-white border-[#262626]'
+                : 'bg-white text-[#494540] border-[#E8E5E0] hover:bg-[#F4F2EE]'
             }`}
           >
             <ChefHat className="w-4 h-4" />
             <span>1. Kho Món Ăn Gốc</span>
-            <span className={`text-[10px] px-2 py-0.2 rounded-full font-extrabold ${activeTab === 'food_items' ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-600'}`}>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeTab === 'food_items' ? 'bg-white/20 text-white' : 'bg-[#F0EEEB] text-[#494540]'}`}>
               {totalFoods}
             </span>
           </button>
 
           <button
+            type="button"
             onClick={() => {
               setActiveTab('menus');
               setSearchQuery('');
             }}
-            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            className={`py-2 px-3.5 rounded-xl text-[12px] font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer border ${
               activeTab === 'menus'
-                ? 'bg-[#18181B] text-white shadow-xs'
-                : 'text-stone-600 hover:bg-[#FAF8F5] hover:text-black'
+                ? 'bg-[#262626] text-white border-[#262626]'
+                : 'bg-white text-[#494540] border-[#E8E5E0] hover:bg-[#F4F2EE]'
             }`}
           >
             <BookOpen className="w-4 h-4" />
             <span>2. Danh Sách Thực Đơn</span>
-            <span className={`text-[10px] px-2 py-0.2 rounded-full font-extrabold ${activeTab === 'menus' ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-600'}`}>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeTab === 'menus' ? 'bg-white/20 text-white' : 'bg-[#F0EEEB] text-[#494540]'}`}>
               {totalMenus}
             </span>
           </button>
 
           <button
+            type="button"
             onClick={() => {
               setActiveTab('menu_items');
               setSearchQuery('');
             }}
-            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            className={`py-2 px-3.5 rounded-xl text-[12px] font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer border ${
               activeTab === 'menu_items'
-                ? 'bg-[#18181B] text-white shadow-xs'
-                : 'text-stone-600 hover:bg-[#FAF8F5] hover:text-black'
+                ? 'bg-[#262626] text-white border-[#262626]'
+                : 'bg-white text-[#494540] border-[#E8E5E0] hover:bg-[#F4F2EE]'
             }`}
           >
             <Layers className="w-4 h-4" />
             <span>3. Món Ăn Trong Thực Đơn</span>
-            <span className={`text-[10px] px-2 py-0.2 rounded-full font-extrabold ${activeTab === 'menu_items' ? 'bg-white/20 text-white' : 'bg-stone-100 text-stone-600'}`}>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeTab === 'menu_items' ? 'bg-white/20 text-white' : 'bg-[#F0EEEB] text-[#494540]'}`}>
               {menuItems.length}
             </span>
           </button>
         </div>
 
         {/* Filter & Search Bar */}
-        <div className="p-4 rounded-2xl bg-white border border-[#E5E1D8] shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="p-3.5 rounded-xl bg-white border border-[#BFBFBD] flex flex-col md:flex-row items-center justify-between gap-3">
           <div className="relative w-full md:w-80">
-            <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-[#777] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               placeholder={
@@ -654,22 +677,18 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
               }
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-medium text-stone-900 outline-none focus:border-stone-400"
+              className="w-full pl-9 pr-4 py-1.5 rounded-lg bg-[#FAF9F6] border border-[#DDD8CE] text-xs font-medium text-[#262626] outline-none focus:border-[#262626]"
             />
           </div>
 
           {activeTab === 'food_items' && (
-            <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
-              <span className="text-[11px] font-bold text-stone-500 uppercase mr-1">Phân loại:</span>
+            <div className="staff-request-filters w-full md:w-auto">
               {FOOD_CATEGORIES.map((cat) => (
                 <button
                   key={cat}
+                  type="button"
+                  aria-pressed={selectedCategory === cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                    selectedCategory === cat
-                      ? 'bg-[#18181B] text-white shadow-xs'
-                      : 'bg-[#FAF8F5] text-stone-600 border border-[#E0DCD3] hover:bg-[#EFECE6]'
-                  }`}
                 >
                   {cat}
                 </button>
@@ -679,11 +698,11 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
 
           {activeTab === 'menu_items' && (
             <div className="flex items-center gap-2 w-full md:w-auto">
-              <label className="text-xs font-bold text-stone-600 shrink-0">Chọn thực đơn:</label>
+              <label className="text-xs font-semibold text-[#403D39] shrink-0">Chọn thực đơn:</label>
               <select
                 value={selectedMenuId}
                 onChange={(e) => setSelectedMenuId(e.target.value)}
-                className="w-full md:w-64 px-3.5 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-bold text-stone-900 outline-none cursor-pointer focus:border-stone-400"
+                className="w-full md:w-64 px-3 py-1.5 rounded-lg bg-[#FAF9F6] border border-[#DDD8CE] text-xs font-semibold text-[#262626] outline-none cursor-pointer focus:border-[#262626]"
               >
                 {menus.map((m) => (
                   <option key={m.id} value={m.id}>
@@ -701,110 +720,113 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
         {activeTab === 'food_items' && (
           <div className="space-y-4">
             {filteredFoods.length === 0 ? (
-              <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E1D8] text-xs text-stone-500 space-y-2">
+              <div className="p-12 text-center bg-white rounded-xl border border-[#BFBFBD] text-xs text-stone-500 space-y-2">
                 <ChefHat className="w-8 h-8 text-stone-300 mx-auto" />
                 <p>Không tìm thấy món ăn nào phù hợp trong danh mục gốc.</p>
                 <button
                   onClick={() => handleOpenFoodModal()}
-                  className="mt-2 px-4 py-1.5 rounded-full bg-stone-900 text-white text-xs font-bold"
+                  className="mt-2 px-4 py-1.5 rounded-lg bg-[#262626] text-white text-xs font-bold"
                 >
                   Thêm món ăn đầu tiên
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredFoods.map((food) => (
-                  <div
-                    key={food.id}
-                    className="bg-white rounded-2xl border border-[#E5E1D8] overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      {/* Image Thumbnail Preview */}
-                      <div className="h-40 w-full bg-stone-100 relative overflow-hidden">
-                        {food.image_url ? (
-                          <img
-                            src={food.image_url}
-                            alt={food.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.target.style.display = 'none';
-                            }}
-                          />
-                        ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center text-stone-300">
-                            <UtensilsCrossed className="w-10 h-10 mb-1" />
-                            <span className="text-[10px] font-semibold text-stone-400">Chưa có ảnh</span>
+              <div className="bg-white rounded-xl border border-[#BFBFBD] overflow-hidden">
+                <div className="divide-y divide-stone-100">
+                  {paginatedFoods.map((food) => (
+                    <div
+                      key={food.id}
+                      className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#FAF9F6] transition-all"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {/* Thumbnail */}
+                        <div className="w-14 h-14 rounded-xl bg-stone-100 overflow-hidden shrink-0 border border-stone-200 relative">
+                          {food.image_url ? (
+                            <img
+                              src={food.image_url}
+                              alt={food.name}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-stone-300">
+                              <UtensilsCrossed className="w-5 h-5" />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="space-y-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-bold text-stone-900">{food.name}</h4>
+                            <span className="px-2 py-0.2 rounded-md bg-stone-100 text-stone-600 text-[10px] font-semibold">
+                              {food.category || 'Món chính'}
+                            </span>
+                            <span
+                              className={`px-2 py-0.2 rounded-md text-[10px] font-bold border ${
+                                food.is_available
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : 'bg-rose-50 text-rose-800 border-rose-200'
+                              }`}
+                            >
+                              {food.is_available ? 'Còn phục vụ' : 'Tạm ngưng'}
+                            </span>
                           </div>
-                        )}
 
-                        <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-full bg-black/75 backdrop-blur-xs text-white text-[10px] font-bold">
-                          {food.category || 'Món chính'}
-                        </span>
+                          <div className="flex items-center gap-3 text-xs text-stone-500 flex-wrap">
+                            <span className="inline-flex items-center gap-1 font-semibold text-[#262626]">
+                              <Clock className="w-3.5 h-3.5 text-stone-400" />
+                              <span>{food.prep_time_minutes || 15} phút</span>
+                            </span>
+                            <span className="font-mono text-[11px] text-stone-400">• #{food.id}</span>
+                            {food.description && (
+                              <span className="text-stone-600 line-clamp-1">{food.description}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
 
-                        <span
-                          className={`absolute top-2.5 right-2.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border backdrop-blur-xs ${
+                      {/* Actions */}
+                      <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                        <button
+                          onClick={() => handleToggleFoodAvailability(food)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                             food.is_available
-                              ? 'bg-emerald-500/90 text-white border-emerald-400'
-                              : 'bg-rose-500/90 text-white border-rose-400'
+                              ? 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                              : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900'
                           }`}
                         >
-                          {food.is_available ? 'Còn phục vụ' : 'Tạm ngưng'}
-                        </span>
-                      </div>
+                          {food.is_available ? 'Tạm Ngưng' : 'Mở Lại'}
+                        </button>
 
-                      {/* Content */}
-                      <div className="p-4 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <h4 className="text-sm font-bold text-stone-900 leading-snug">{food.name}</h4>
-                          <span className="font-mono text-[10px] text-stone-400 shrink-0">#{food.id}</span>
-                        </div>
-
-                        {food.description && (
-                          <p className="text-xs text-stone-600 line-clamp-2">{food.description}</p>
-                        )}
-
-                        <div className="flex items-center gap-3 text-[11px] text-stone-500 pt-1">
-                          <div className="flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-stone-400" />
-                            <span>{food.prep_time_minutes || 15} phút</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Actions Bar */}
-                    <div className="p-3 bg-stone-50 border-t border-stone-100 flex items-center justify-between gap-2">
-                      <button
-                        onClick={() => handleToggleFoodAvailability(food)}
-                        className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                          food.is_available
-                            ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300'
-                            : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300'
-                        }`}
-                      >
-                        {food.is_available ? 'Tạm Ngưng' : 'Mở Lại'}
-                      </button>
-
-                      <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => handleOpenFoodModal(food)}
                           title="Chỉnh sửa món"
-                          className="p-1.5 rounded-xl bg-white hover:bg-stone-200 border border-stone-200 text-stone-700 transition-all cursor-pointer"
+                          className="px-3 py-1.5 rounded-lg bg-white hover:bg-stone-100 border border-[#BFBFBD] text-stone-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
+                          <span>Chỉnh Sửa</span>
                         </button>
 
                         <button
                           onClick={() => setDeleteConfirm({ type: 'food', id: food.id, name: food.name })}
                           title="Xóa món khỏi kho"
-                          className="p-1.5 rounded-xl bg-white hover:bg-rose-50 border border-stone-200 text-rose-600 transition-all cursor-pointer"
+                          className="p-1.5 rounded-lg bg-white hover:bg-rose-50 border border-[#BFBFBD] text-rose-600 transition-all cursor-pointer"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                <Pagination
+                  currentPage={foodsPage}
+                  totalItems={filteredFoods.length}
+                  pageSize={listPageSize}
+                  onPageChange={setFoodsPage}
+                  itemName="món"
+                />
               </div>
             )}
           </div>
@@ -816,23 +838,24 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
         {activeTab === 'menus' && (
           <div className="space-y-4">
             {filteredMenus.length === 0 ? (
-              <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E1D8] text-xs text-stone-500 space-y-2">
+              <div className="p-12 text-center bg-white rounded-xl border border-[#BFBFBD] text-xs text-stone-500 space-y-2">
                 <BookOpen className="w-8 h-8 text-stone-300 mx-auto" />
                 <p>Chưa có thực đơn nào được tạo.</p>
                 <button
                   onClick={() => handleOpenMenuModal()}
-                  className="mt-2 px-4 py-1.5 rounded-full bg-stone-900 text-white text-xs font-bold"
+                  className="mt-2 px-4 py-1.5 rounded-lg bg-[#262626] text-white text-xs font-bold"
                 >
                   Tạo thực đơn đầu tiên
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredMenus.map((menu) => (
-                  <div
-                    key={menu.id}
-                    className="bg-white rounded-2xl border border-[#E5E1D8] p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-4"
-                  >
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {paginatedMenus.map((menu) => (
+                    <div
+                      key={menu.id}
+                      className="bg-white rounded-xl border border-[#BFBFBD] p-5 transition-all flex flex-col justify-between space-y-4"
+                    >
                     <div className="space-y-2.5">
                       <div className="flex items-center justify-between gap-2">
                         <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-900 text-[10px] font-bold">
@@ -905,7 +928,16 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
                     </div>
                   </div>
                 ))}
-              </div>
+                </div>
+                <Pagination
+                  currentPage={menusPage}
+                  totalItems={filteredMenus.length}
+                  pageSize={gridPageSize}
+                  onPageChange={setMenusPage}
+                  itemName="thực đơn"
+                  className="rounded-xl border overflow-hidden"
+                />
+              </>
             )}
           </div>
         )}
@@ -915,135 +947,116 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
             ------------------------------------------------------------- */}
         {activeTab === 'menu_items' && (
           <div className="space-y-4">
-            {/* Current Menu Banner */}
-            {currentMenu && (
-              <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center font-bold">
-                    <BookOpen className="w-5 h-5 text-amber-800" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-stone-900">{currentMenu.name}</h4>
-                    <p className="text-xs text-stone-600">{currentMenu.description || 'Thực đơn phục vụ của khách sạn'}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-stone-700 bg-white px-3 py-1 rounded-full border border-amber-200 shadow-2xs">
-                    Tổng: {filteredMenuItems.length} món
-                  </span>
-                  <button
-                    onClick={handleOpenAssignModal}
-                    className="px-3.5 py-1.5 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Gán Món Mới</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
             {filteredMenuItems.length === 0 ? (
-              <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E1D8] text-xs text-stone-500 space-y-2">
+              <div className="p-12 text-center bg-white rounded-xl border border-[#BFBFBD] text-xs text-stone-500 space-y-2">
                 <UtensilsCrossed className="w-8 h-8 text-stone-300 mx-auto" />
                 <p>Thực đơn này hiện chưa có món ăn nào.</p>
                 <button
                   onClick={handleOpenAssignModal}
-                  className="mt-2 px-4 py-1.5 rounded-full bg-stone-900 text-white text-xs font-bold"
+                  className="mt-2 px-4 py-1.5 rounded-lg bg-[#262626] text-white text-xs font-bold"
                 >
                   Gán món từ kho gốc vào thực đơn này
                 </button>
               </div>
             ) : (
-              <div className="bg-white rounded-2xl border border-[#E5E1D8] overflow-hidden shadow-xs divide-y divide-stone-100">
-                {filteredMenuItems.map((item, idx) => {
-                  const name = item.name || item.food_item?.name || 'Món ăn';
-                  const category = item.category || item.food_item?.category || 'Món chính';
-                  const img = item.image_url || item.food_item?.image_url;
+              <div className="bg-white rounded-xl border border-[#BFBFBD] overflow-hidden">
+                <div className="divide-y divide-stone-100">
+                  {paginatedMenuItems.map((item, idx) => {
+                    const name = item.name || item.food_item?.name || 'Món ăn';
+                    const category = item.category || item.food_item?.category || 'Món chính';
+                    const img = item.image_url || item.food_item?.image_url;
 
-                  return (
-                    <div
-                      key={item.id}
-                      className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#FAF8F5] transition-all"
-                    >
-                      <div className="flex items-center gap-3">
-                        {/* Thumbnail */}
-                        <div className="w-14 h-14 rounded-xl bg-stone-100 overflow-hidden shrink-0 border border-stone-200 relative">
-                          {img ? (
-                            <img src={img} alt={name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-stone-300">
-                              <UtensilsCrossed className="w-5 h-5" />
+                    return (
+                      <div
+                        key={item.id}
+                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[#FAF9F6] transition-all"
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Thumbnail */}
+                          <div className="w-14 h-14 rounded-xl bg-stone-100 overflow-hidden shrink-0 border border-stone-200 relative">
+                            {img ? (
+                              <img src={img} alt={name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-stone-300">
+                                <UtensilsCrossed className="w-5 h-5" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="text-sm font-bold text-stone-900">{name}</h4>
+                              <span className="px-2 py-0.2 rounded-md bg-stone-100 text-stone-600 text-[10px] font-semibold">
+                                {category}
+                              </span>
+                              <span
+                                className={`px-2 py-0.2 rounded-md text-[10px] font-bold border ${
+                                  item.is_available
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : 'bg-rose-50 text-rose-800 border-rose-200'
+                                }`}
+                              >
+                                {item.is_available ? 'Đang phục vụ' : 'Tạm ngưng'}
+                              </span>
                             </div>
-                          )}
-                        </div>
 
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="text-sm font-bold text-stone-900">{name}</h4>
-                            <span className="px-2 py-0.2 rounded-md bg-stone-100 text-stone-600 text-[10px] font-semibold">
-                              {category}
-                            </span>
-                            <span
-                              className={`px-2 py-0.2 rounded-md text-[10px] font-bold border ${
-                                item.is_available
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                  : 'bg-rose-50 text-rose-800 border-rose-200'
-                              }`}
-                            >
-                              {item.is_available ? 'Đang phục vụ' : 'Tạm ngưng'}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-3 text-xs text-stone-500">
-                            <span className="font-bold text-amber-900 text-sm">
-                              {Number(item.price || 0).toLocaleString('vi-VN')} ₫
-                            </span>
-                            <span>• Thứ tự: #{item.display_order || idx + 1}</span>
+                            <div className="flex items-center gap-3 text-xs text-stone-500">
+                              <span className="font-bold text-[#262626] text-sm">
+                                {Number(item.price || 0).toLocaleString('vi-VN')} ₫
+                              </span>
+                              <span>• Thứ tự: #{item.display_order || (menuItemsPage - 1) * listPageSize + idx + 1}</span>
+                            </div>
                           </div>
                         </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center gap-2 self-end sm:self-auto">
+                          <button
+                            onClick={() => handleToggleMenuItemAvailability(item)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              item.is_available
+                                ? 'bg-stone-100 hover:bg-stone-200 text-stone-700'
+                                : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900'
+                            }`}
+                          >
+                            {item.is_available ? 'Tạm Dừng' : 'Mở Lại'}
+                          </button>
+
+                          <button
+                            onClick={() => handleOpenEditItemModal(item)}
+                            title="Đổi giá / Thứ tự"
+                            className="px-3 py-1.5 rounded-lg bg-white hover:bg-stone-100 border border-[#BFBFBD] text-stone-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>Đổi Giá</span>
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              setDeleteConfirm({
+                                type: 'menu_item',
+                                id: item.id,
+                                name,
+                                menuId: selectedMenuId,
+                              })
+                            }
+                            title="Gỡ khỏi thực đơn này (không xóa món gốc)"
+                            className="p-1.5 rounded-lg bg-white hover:bg-rose-50 border border-[#BFBFBD] text-rose-600 transition-all cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-2 self-end sm:self-auto">
-                        <button
-                          onClick={() => handleToggleMenuItemAvailability(item)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                            item.is_available
-                              ? 'bg-stone-100 hover:bg-stone-200 text-stone-700'
-                              : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-900'
-                          }`}
-                        >
-                          {item.is_available ? 'Tạm Dừng' : 'Mở Lại'}
-                        </button>
-
-                        <button
-                          onClick={() => handleOpenEditItemModal(item)}
-                          title="Đổi giá / Thứ tự"
-                          className="px-3 py-1.5 rounded-xl bg-white hover:bg-stone-100 border border-stone-200 text-stone-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          <span>Đổi Giá</span>
-                        </button>
-
-                        <button
-                          onClick={() =>
-                            setDeleteConfirm({
-                              type: 'menu_item',
-                              id: item.id,
-                              name,
-                              menuId: selectedMenuId,
-                            })
-                          }
-                          title="Gỡ khỏi thực đơn này (không xóa món gốc)"
-                          className="p-1.5 rounded-xl bg-white hover:bg-rose-50 border border-stone-200 text-rose-600 transition-all cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+                <Pagination
+                  currentPage={menuItemsPage}
+                  totalItems={filteredMenuItems.length}
+                  pageSize={listPageSize}
+                  onPageChange={setMenuItemsPage}
+                  itemName="món"
+                />
               </div>
             )}
           </div>

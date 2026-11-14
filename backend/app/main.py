@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.services.workflow_runtime import workflow_runtime
+    workflow_worker_started = False
     rplidar_service = None
     try:
         from app.services.hardware.rplidar_service import rplidar_service as _rplidar_service
@@ -30,6 +32,8 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         logger.info("[OK] Database connection & schema verified.")
+        workflow_runtime.start()
+        workflow_worker_started = True
         from app.core.database import AsyncSessionLocal
         from app.services.ai.scenario_service import scenario_service
         from app.services.ai.tts_service import tts_service
@@ -50,6 +54,8 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
 
     yield
+    if workflow_worker_started:
+        await workflow_runtime.close()
     try:
         from app.services.cache.redis_service import redis_service
         await redis_service.close()

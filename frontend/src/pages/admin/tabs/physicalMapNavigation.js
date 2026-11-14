@@ -97,6 +97,7 @@ export function navigationBlockingReason({ connected, runtime, mapId, physical, 
   if (!connected) return 'Chưa kết nối Nav2 trên laptop. Bấm “Bật Nav2 với map này”.';
   if (runtime.mode !== 'NAVIGATION') return `Nav2 chưa sẵn sàng (${runtime.mode}). Bật Navigation với map đang chọn trước.`;
   if (runtime.activeMap !== mapId) return 'Map Nav2 chưa khớp map đang chọn. Bật Nav2 với map này.';
+  if (physical && health?.encoder_valid === false) return `Encoder chưa hợp lệ: ${health.encoder_fault || 'đang chờ dữ liệu sạch'}. Kiểm tra encoder trước khi chạy tới endpoint.`;
   if (physical && !localized) {
     return localizationReason
       || 'Hãy đặt vị trí ban đầu bằng “Chọn trên map” hoặc “Đặt tại Dock”, rồi đợi AMCL xác nhận.';

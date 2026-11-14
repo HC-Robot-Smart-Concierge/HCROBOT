@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.models.workflow import RobotWorkflow
-from app.repositories import RobotRepository, WorkflowRepository, get_robot_repository, get_workflow_repository
+from app.repositories import WorkflowRepository, get_workflow_repository
 from app.schemas.workflow import (
     WorkflowResponse,
     WorkflowCreate,
@@ -14,6 +14,7 @@ from app.schemas.workflow import (
     WorkflowExecuteResponse,
     WorkflowSchedulePreviewRequest,
     WorkflowExecutionConfig,
+    WorkflowRouteBindingRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -32,10 +33,33 @@ async def validated_route_steps(steps, repo):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+async def validate_physical_settings(steps, config, repo):
+    if config.execution_mode != 'ROBOT':
+        return
+    from types import SimpleNamespace
+    from app.services.workflow_plan import physical_plan
+    try:
+        await physical_plan(SimpleNamespace(is_active=True, steps=steps, execution_config=config.model_dump()), repo)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+async def validate_saved_steps(steps, config, is_active, repo):
+    from app.services.workflow_routes import unconfigured_route_steps
+    pending = unconfigured_route_steps(steps)
+    if pending and is_active:
+        raise HTTPException(status_code=422, detail="Workflow còn bước Đi theo tuyến chưa cấu hình. Lưu bản nháp tạm tắt rồi gán tuyến ở Physical Map.")
+    # Templates can be saved before map parameters exist, but cannot be activated.
+    await validated_route_steps([s for s in steps if s not in pending], repo)
+    if not pending and (steps or is_active):
+        await validate_physical_settings(steps, config, repo)
+
+
 @router.post("/schedule-preview", summary="Xem lịch dự kiến, không phát lệnh robot")
 async def preview_workflow_schedule(payload: WorkflowSchedulePreviewRequest):
     from app.services.workflow_schedule import preview_schedule
-    return {"occurrences": preview_schedule(payload.execution_config), "dispatch_enabled": False}
+    return {"occurrences": preview_schedule(payload.execution_config),
+            "dispatch_enabled": payload.execution_config.execution_mode == 'ROBOT'}
 
 
 async def ensure_default_workflow(repo: WorkflowRepository):
@@ -78,7 +102,7 @@ async def create_or_save_workflow(
 
     # Convert steps models to plain dicts for JSON column
     steps_data = [s.model_dump() if hasattr(s, "model_dump") else s for s in payload.steps]
-    await validated_route_steps(steps_data, repo)
+    await validate_saved_steps(steps_data, payload.execution_config, payload.is_active, repo)
 
     if existing:
         existing.name = payload.name
@@ -117,10 +141,12 @@ async def update_workflow(
 
     effective_trigger = payload.trigger_type if payload.trigger_type is not None else existing.trigger_type
     effective_config = payload.execution_config or WorkflowExecutionConfig.model_validate(existing.execution_config or {})
-    if effective_trigger == "SCHEDULE" and not any(s.enabled for s in effective_config.schedules):
+    effective_active = payload.is_active if payload.is_active is not None else existing.is_active
+    if effective_active and effective_trigger == "SCHEDULE" and not any(s.enabled for s in effective_config.schedules):
         raise HTTPException(status_code=422, detail="Workflow theo lịch cần ít nhất một lịch đang bật")
-    await validated_route_steps(
-        [step.model_dump() for step in payload.steps] if payload.steps is not None else existing.steps or [], repo
+    await validate_saved_steps(
+        [s.model_dump() for s in payload.steps] if payload.steps is not None else existing.steps or [],
+        effective_config, effective_active, repo,
     )
 
     if payload.name is not None:
@@ -140,6 +166,40 @@ async def update_workflow(
     await repo.commit()
     await repo.refresh(existing)
     return existing
+
+
+@router.put("/{workflow_id}/steps/{step_id}/route", response_model=WorkflowResponse,
+            summary="Gán tuyến trên map cho một bước workflow")
+async def bind_step_route(workflow_id: str, step_id: str, payload: WorkflowRouteBindingRequest,
+                          repo: WorkflowRepository = Depends(get_workflow_repository)):
+    from copy import deepcopy
+    from app.schemas.workflow import WorkflowRoute
+    # Lock the target workflow and update only this parameter, preserving other steps/settings.
+    workflow = await repo.get_for_update(workflow_id)
+    if not workflow or (workflow.execution_config or {}).get('route'):
+        raise HTTPException(status_code=404, detail="Không tìm thấy workflow cần gán tuyến")
+    steps = deepcopy(workflow.steps or [])
+    matches = [s for s in steps if s.get('step_id') == step_id]
+    if len(matches) != 1 or matches[0].get('type') != 'FOLLOW_ROUTE':
+        raise HTTPException(status_code=422, detail="Chọn đúng bước Đi theo tuyến của workflow")
+    step = matches[0]
+    previous = (step.get('params') or {}).get('route_id') or None
+    if 'expected_route_id' in payload.model_fields_set and previous != (payload.expected_route_id or None):
+        raise HTTPException(status_code=409, detail="Tuyến của bước đã được thay đổi. Tải lại workflow trước khi gán.")
+    template = await repo.get_by_id(payload.route_id)
+    if not template or not template.is_active or not (template.execution_config or {}).get('route'):
+        raise HTTPException(status_code=422, detail="Tuyến không còn khả dụng")
+    route = WorkflowRoute.model_validate(template.execution_config['route'])
+    if route.map_id != payload.map_id:
+        raise HTTPException(status_code=422, detail="Tuyến không thuộc map đang cấu hình")
+    step['params'] = {**(step.get('params') or {}), 'route_id': template.id, 'map_id': route.map_id}
+    config = WorkflowExecutionConfig.model_validate(workflow.execution_config or {})
+    await validate_saved_steps(steps, config, workflow.is_active, repo)
+    workflow.steps = steps
+    workflow.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    await repo.commit()
+    await repo.refresh(workflow)
+    return workflow
 
 
 @router.delete("/{workflow_id}", summary="Xóa Workflow")
@@ -164,119 +224,51 @@ async def delete_workflow(
 from app.services.notification_manager import notification_manager
 
 
-@router.post("/{workflow_id}/execute", response_model=WorkflowExecuteResponse, summary="Chạy thử kịch bản Workflow trên Robot")
+@router.get("/runs/recent", summary="Lịch sử lượt chạy xe thật")
+async def recent_workflow_runs(workflow_id: str = None):
+    from app.services.workflow_runtime import workflow_runtime
+    return await workflow_runtime.list_runs(workflow_id)
+
+
+@router.post("/runs/{run_id}/cancel", summary="Dừng lượt chạy xe thật")
+async def cancel_workflow_run(run_id: str):
+    from app.services.workflow_runtime import workflow_runtime
+    run = await workflow_runtime.cancel(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Không tìm thấy lượt chạy")
+    return run
+
+
+@router.post("/{workflow_id}/execute", response_model=WorkflowExecuteResponse, summary="Gửi workflow hoặc tạo lượt chạy xe thật")
 async def execute_workflow(
     workflow_id: str,
     payload: WorkflowExecuteRequest = WorkflowExecuteRequest(),
     repo: WorkflowRepository = Depends(get_workflow_repository),
-    robot_repo: RobotRepository = Depends(get_robot_repository),
 ):
     wf = await repo.get_by_id(workflow_id)
     if not wf:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Workflow")
-
-    logs = []
+        raise HTTPException(status_code=404, detail="Không tìm thấy Workflow")
+    if not wf.is_active:
+        raise HTTPException(status_code=409, detail="Workflow đang tắt")
+    config = WorkflowExecutionConfig.model_validate(wf.execution_config or {})
+    if config.execution_mode == "ROBOT":
+        if payload.speed_factor != 1.0:
+            raise HTTPException(status_code=422, detail="Xe thật sử dụng vận tốc cấu hình trong Nav2 và vùng giảm tốc.")
+        from app.services.workflow_runtime import workflow_runtime
+        try:
+            run = await workflow_runtime.enqueue(wf, repo, payload.robot_id or config.robot_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return WorkflowExecuteResponse(status=run["status"], message="Đã tạo lượt chạy; chờ kiểm tra Nav2 và định vị.",
+                                       workflow_id=wf.id, executed_steps=0, logs=[], run_id=run["id"])
     steps = await validated_route_steps(wf.steps or [], repo)
-    robot_code = payload.robot_id or "RC-001"
-    logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Kích hoạt kịch bản '{wf.name}' trên {robot_code}")
-
-    # Broadcast to Robot screens connected via WebSocket
-    try:
-        await notification_manager.broadcast_to_department(
-            None,
-            {
-                "type": "WORKFLOW_DISPATCH",
-                "workflow": {
-                    "id": wf.id,
-                    "name": wf.name,
-                    "steps": steps,
-                },
-                "robot_id": robot_code,
-            }
-        )
-    except Exception as e:
-        logger.warning(f"Could not broadcast workflow dispatch: {e}")
-
-    for idx, step in enumerate(steps, start=1):
-        step_type = step.get("type", "UNKNOWN")
-        step_title = step.get("title", f"Step {idx}")
-        params = step.get("params", {})
-        
-        if step_type == "MOVE":
-            wp = params.get("waypoint_name", params.get("target_waypoint_id", params.get("target_value", "Tọa độ")))
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [MOVE] Robot đang di chuyển đến điểm mốc '{wp}' (X:{params.get('target_x', 0)}, Y:{params.get('target_y', 0)}, Vận tốc:{params.get('speed', 0.4)}m/s)")
-        elif step_type == "GREET":
-            greeting = params.get("greeting_text") or params.get("text", "Xin chào")
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [GREET] Phát lời chào: \"{greeting}\" - Biểu cảm: {params.get('face_expression', params.get('expression', 'SMILE'))}")
-        elif step_type == "COMMUNICATE":
-            timeout = params.get("silence_timeout_sec", params.get("timeout", 30))
-            prompt = params.get("initial_prompt") or params.get("speech_text") or params.get("text") or "Đối thoại thông minh hai chiều"
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [COMMUNICATE] Đối thoại thông minh hai chiều: \"{prompt[:60]}...\" (Silence Timeout: {timeout}s)")
-        elif step_type == "SPEAK":
-            speech = params.get("speech_text") or params.get("text", "")
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [SPEAK] Đọc TTS ra loa: \"{speech[:50]}...\"")
-        elif step_type == "SHOW":
-            mode = params.get("screen_mode") or params.get("content_id") or params.get("screen_type", "SERVICES")
-            banner = params.get("display_banner") or params.get("content_id", "Giao diện khách sạn")
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [SHOW] Hiển thị màn hình: {mode} (Banner: {banner})")
-        elif step_type == "LISTEN":
-            timeout = params.get("timeout") or params.get("timeout_sec", 15)
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [LISTEN] Chờ khách chọn hoặc phát biểu (Timeout: {timeout}s)")
-        elif step_type == "RECOMMEND":
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [RECOMMEND] AI gợi ý món ăn/tiện ích: {params.get('highlight_item', 'Menu nhà hàng')}")
-        elif step_type == "CREATE_REQUEST":
-            dept = params.get("target_department") or ("Reception" if params.get("service_type") == "CALL_STAFF" else "Housekeeping")
-            room = params.get("room_number", "LOBBY")
-            note = params.get("note", "")
-            urgency = params.get("urgency") or params.get("ticket_priority", "NORMAL")
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [CREATE_REQUEST] Đóng gói phiếu dịch vụ [{urgency}] gửi {dept} (Phòng: {room}, Ghi chú: {note})")
-        elif step_type == "FEEDBACK":
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [FEEDBACK] Mở màn hình khảo sát 1-5 sao. Ghi nhận đánh giá thành công!")
-        elif step_type == "CHOICE":
-            options = [o for o in params.get("options", []) if isinstance(o, dict)]
-            labels = " / ".join(str(o.get("label") or o.get("id")) for o in options)
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [CHOICE] Chờ khách chọn: {labels} (Timeout: {params.get('timeout_sec', 30)}s)")
-        else:
-            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [{step_type}] Thực thi {step_title}")
-
-    logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] Hoàn thành toàn bộ {len(steps)} bước kịch bản thành công!")
-
-    # Ghi nhận lịch sử thực thi Job thực tế vào DB cho Robot RC-001
-    try:
-        job_events = [
-            {
-                "event_type": "STEP_COMPLETED" if idx < len(steps) else "JOB_COMPLETED",
-                "message": log_line,
-                "severity": "INFO",
-            }
-            for idx, log_line in enumerate(logs)
-        ]
-        await robot_repo.create_job_record(
-            robot_id=robot_code,
-            title=wf.name,
-            workflow_id=wf.id,
-            trigger_type=wf.trigger_type or "MANUAL",
-            status="COMPLETED",
-            current_step_index=len(steps),
-            total_steps=len(steps),
-            steps=[
-                {
-                    "type": s.get("type", "STEP"),
-                    "params": s.get("params", {}),
-                    "status": "COMPLETED",
-                }
-                for s in steps
-                if isinstance(s, dict)
-            ],
-            events=job_events,
-        )
-    except Exception as e_job:
-        logger.warning(f"Could not persist workflow job record: {e_job}")
-
-    return WorkflowExecuteResponse(
-        status="SUCCESS",
-        message=f"Đã hoàn thành chạy thử kịch bản '{wf.name}'",
-        workflow_id=workflow_id,
-        executed_steps=len(steps),
-        logs=logs
-    )
+    if not steps:
+        raise HTTPException(status_code=422, detail="Workflow chưa có bước")
+    await notification_manager.broadcast_to_department(None, {
+        "type": "WORKFLOW_DISPATCH", "robot_id": payload.robot_id or "RC-001",
+        "workflow": {"id": wf.id, "name": wf.name, "steps": steps},
+    })
+    # A broadcast is not a completion acknowledgment from the kiosk or vehicle.
+    return WorkflowExecuteResponse(status="DISPATCHED", message="Đã gửi tới màn hình Robot; chưa xác nhận hoàn thành.",
+                                   workflow_id=wf.id, executed_steps=0,
+                                   logs=["Đã phát workflow tới màn hình; bước MOVE ở chế độ màn hình không điều khiển xe."])

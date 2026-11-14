@@ -24,6 +24,7 @@ import {
   updateRos2KeepoutMask,
 } from '../../../services/workflowApi';
 import { buildCostmapImage, pathMsgToPoints } from './physicalMapCostmap';
+import { drawPolygonZone } from './physicalMapZoneDrawing';
 import {
   amclPoseIsReliable, composeMapPose, laserPointToMap, localizationFromManager, navigationBlockingReason,
   obstacleClearanceAt, sendNav2Endpoint, TURN_CLEARANCE_M,
@@ -40,6 +41,14 @@ import {
   zoneEndpointConflict,
   zoneCorners,
   zoneFromCorners,
+  isPolygonZone,
+  MAX_ZONE_VERTICES,
+  polygonValidationError,
+  zoneFromVertices,
+  translateZone,
+  removeZoneVertex,
+  insertZoneVertex,
+  polygonEdgeAtPoint,
 } from './physicalMapZones';
 import {
   OTTO_ENDPOINT_TEMPLATES,
@@ -333,6 +342,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
   const [endpoints, setEndpoints] = useState(DEFAULT_LAB_WAYPOINTS);
   const [zones, setZones] = useState(DEFAULT_LAB_ZONES);
   const [routeDraft, setRouteDraft] = useState(() => initialRoute ? JSON.parse(JSON.stringify(initialRoute)) : null);
+  const [routeBinding, setRouteBinding] = useState(null);
   const [isPickingRoute, setIsPickingRoute] = useState(false);
 
   // Che do Ghim nhieu Endpoint truc tiep tren ban do (Click de them)
@@ -345,6 +355,10 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
   // Che do chon va sua Endpoint / Zone
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
   const [selectedZone, setSelectedZone] = useState(null);
+  const [selectedZoneVertex, setSelectedZoneVertex] = useState(null);
+  const [zoneEdgeHover, setZoneEdgeHover] = useState(null);
+  const deleteZoneVertexRef = useRef(null);
+  useEffect(() => { setSelectedZoneVertex(null); setZoneEdgeHover(null); }, [selectedZone?.id]);
   const [hasUnsavedEndpoints, setHasUnsavedEndpoints] = useState(false);
   const [hasUnsavedZones, setHasUnsavedZones] = useState(false);
   const [isSavingEndpoints, setIsSavingEndpoints] = useState(false);
@@ -390,6 +404,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
 
   // Ve vung bang chuot: chon loai vung roi keo hinh chu nhat tren map
   const [zoneDrawType, setZoneDrawType] = useState(null); // null | 'KEEP_OUT' | 'SPEED_ZONE' | 'NO_STOP'
+  const [zoneDrawShape, setZoneDrawShape] = useState('rectangle');
   const [zoneDraft, setZoneDraft] = useState(null); // { type, a: {x,y}, b: {x,y} } toa do the gioi
 
   // Ban do dang chon (thong so tu .yaml) va anh map (.pgm giai ma thanh canvas)
@@ -402,6 +417,13 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
   viewConfigRef.current = viewConfig;
   useEffect(() => {
     setMapView(DEFAULT_VIEW);
+    setZoneDrawType(null);
+    setZoneDraft(null);
+    setDragState(null);
+    setSelectedZoneVertex(null);
+    setZoneEdgeHover(null);
+    zoneEditRef.current = null;
+    clickStartRef.current = null;
   }, [mapConfig.mapId]);
   useEffect(() => {
     setMapView((v) => clampView(v, canvasSize.width, canvasSize.height, mapConfig));
@@ -669,8 +691,10 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
           if (stripSlash(t?.header?.frame_id) !== 'map' || stripSlash(t?.child_frame_id) !== 'odom') continue;
           const tr = t.transform?.translation;
           const rot = t.transform?.rotation;
-          mapToOdom = { x: tr?.x ?? 0, y: tr?.y ?? 0,
-            yaw: quaternionToYaw(rot?.z ?? 0, rot?.w ?? 1), receivedAt: Date.now() };
+          mapToOdom = {
+            x: tr?.x ?? 0, y: tr?.y ?? 0,
+            yaw: quaternionToYaw(rot?.z ?? 0, rot?.w ?? 1), receivedAt: Date.now()
+          };
           updateMapPose();
         }
       }
@@ -687,9 +711,11 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
         // Toc do do bang encoder, lam muot (EMA) cho dong ho toc do khoi nhay so
         const rawSpeed = msg?.twist?.twist?.linear?.x || 0;
         speedEmaRef.current = 0.7 * speedEmaRef.current + 0.3 * rawSpeed;
-        odom = { x: pos.x, y: pos.y, yaw: quaternionToYaw(ori?.z ?? 0, ori?.w ?? 1),
+        odom = {
+          x: pos.x, y: pos.y, yaw: quaternionToYaw(ori?.z ?? 0, ori?.w ?? 1),
           receivedAt: Date.now(),
-          linearVelocity: speedEmaRef.current, angularVelocity: msg?.twist?.twist?.angular?.z || 0 };
+          linearVelocity: speedEmaRef.current, angularVelocity: msg?.twist?.twist?.angular?.z || 0
+        };
         updateMapPose();
       },
       { throttleRate: 50 }
@@ -731,7 +757,11 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
         setHealthState(navigationRef.current.health);
         // Xe ket (bridge: dung yen >= 2 s du co lenh chay) -> khung do + ly do. Giu them 15 s sau
         // khi het ket (luc Nav2 dang Wait/lui khong ra lenh) de nguoi dung kip doc.
-        const block = navigationRef.current.health.drive_block;
+        const sensorFault = navigationRef.current.health.encoder_fault;
+        const block = sensorFault ? {
+          code: 'ENCODER_INVALID', message: `Encoder lỗi: ${sensorFault}. Không dùng dữ liệu này để tính vị trí.`,
+          hint: 'Kiểm tra encoder và dây A/B, sau đó định vị lại trước khi chạy tới endpoint.',
+        } : navigationRef.current.health.drive_block;
         const now = Date.now();
         setDriveBlock((prev) => {
           if (block) {
@@ -742,7 +772,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
           }
           return prev && now - prev.at > 15000 ? null : prev;
         });
-        if (!navigationRef.current.health.pi_ws_connected || !navigationRef.current.health.lidar_live) {
+        if (!navigationRef.current.health.pi_ws_connected || !navigationRef.current.health.lidar_live || navigationRef.current.health.encoder_valid === false) {
           localizationRef.current.confirmed = false;
           setLocalizationReady(false);
         }
@@ -1078,7 +1108,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     const conflict = zoneEndpointConflict(newZone, endpoints);
     if (conflict) {
       rejectZoneRule(conflict.message);
-      return;
+      return false;
     }
     const nextList = [...zones, newZone];
     setZones(nextList);
@@ -1086,7 +1116,41 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     setSelectedEndpoint(null);
     openPanelSection('ZONES');
     persistZone(newZone, nextList, `Đã tạo vùng "${newZone.name}" (${newZone.width} x ${newZone.height} m)`);
+    return true;
   };
+
+  const finishPolygon = () => {
+    const vertices = zoneDraft?.vertices || [];
+    const error = polygonValidationError(vertices);
+    if (error) {
+      rejectZoneRule(error);
+      return;
+    }
+    if (handleAddZone(zoneDrawType, zoneFromVertices(vertices))) {
+      setZoneDraft(null);
+      setZoneDrawType(null);
+    }
+  };
+
+  const handleDeleteSelectedVertex = () => {
+    if (!isPolygonZone(selectedZone) || selectedZoneVertex === null || !showZones
+      || zoneDrawType || isPoseSetMode || isAddEndpointMode || dragState || isDraggingRef.current) return false;
+    const result = removeZoneVertex(selectedZone, selectedZoneVertex);
+    const conflict = result.zone && zoneEndpointConflict(result.zone, endpoints);
+    if (result.error || conflict) {
+      rejectZoneRule(result.error || conflict.message);
+      return true;
+    }
+    const updated = result.zone;
+    const nextList = zones.map((z) => z.id === updated.id ? updated : z);
+    setZones(nextList);
+    setSelectedZone(updated);
+    setSelectedZoneVertex(null);
+    persistZone(updated, nextList, `Đã xóa đỉnh ${selectedZoneVertex + 1} của vùng "${updated.name}" • Còn ${updated.vertices.length} đỉnh`);
+    return true;
+  };
+  // The keyboard listener is stable; keep its vertex action on the current selection.
+  deleteZoneVertexRef.current = handleDeleteSelectedVertex;
 
   const toggleZoneDraw = (type) => {
     setZoneDraft(null);
@@ -1143,8 +1207,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     updateRos2KeepoutMask(mapConfig.mapId)
       .then((res) =>
         setNavStatus(
-          `${prefix} • Nav2: ${res?.keepout_zones ?? 0} vùng cấm, ${res?.speed_zones ?? 0} vùng giới hạn tốc độ ${
-            res?.reloaded ? 'đã nạp lại ngay' : 'sẽ áp dụng khi bật Navigation'
+          `${prefix} • Nav2: ${res?.keepout_zones ?? 0} vùng cấm, ${res?.speed_zones ?? 0} vùng giới hạn tốc độ ${res?.reloaded ? 'đã nạp lại ngay' : 'sẽ áp dụng khi bật Navigation'
           }`
         )
       )
@@ -1270,6 +1333,19 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     if (showZones && zones.length > 0) {
       for (const zone of zones) {
         const isSelected = selectedZone?.id === zone.id;
+        if (isPolygonZone(zone)) {
+          drawPolygonZone(ctx, zone.vertices.map((p) => worldToCanvas(p.x, p.y, width, height)), {
+            color: zone.type === 'KEEP_OUT' ? '#EF4444' : zone.type === 'SPEED_ZONE' ? '#F59E0B' : '#FB7185',
+            label: zone.name, selected: isSelected,
+            selectedVertex: isSelected ? selectedZoneVertex : null,
+            edgeHover: isSelected && zoneEdgeHover?.zoneId === zone.id ? {
+              edgeIndex: zoneEdgeHover.edgeIndex,
+              point: worldToCanvas(zoneEdgeHover.point.x, zoneEdgeHover.point.y, width, height),
+            } : null,
+            active: zone.type === 'SPEED_ZONE' && isPointInZone(robotPose.x, robotPose.y, zone),
+          });
+          continue;
+        }
         const halfW = (Number(zone.width) || 1.0) / 2;
         const halfH = (Number(zone.height) || 1.0) / 2;
         const zx = Number(zone.x) || 0;
@@ -1290,8 +1366,8 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
         const fill = isKeepOut
           ? 'rgba(239, 68, 68, 0.16)'
           : isSpeed
-          ? 'rgba(245, 158, 11, 0.16)'
-          : 'rgba(244, 63, 94, 0.16)';
+            ? 'rgba(245, 158, 11, 0.16)'
+            : 'rgba(244, 63, 94, 0.16)';
 
         // Nen vung. Xe dang trong vung giam toc => sang len + vien phat sang (de khan gia thay)
         const robotInsideSpeedZone = isSpeed && isPointInZone(robotPose.x, robotPose.y, zone);
@@ -1315,8 +1391,8 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
         ctx.strokeStyle = isKeepOut
           ? 'rgba(239, 68, 68, 0.28)'
           : isSpeed
-          ? 'rgba(245, 158, 11, 0.28)'
-          : 'rgba(244, 63, 94, 0.28)';
+            ? 'rgba(245, 158, 11, 0.28)'
+            : 'rgba(244, 63, 94, 0.28)';
         ctx.lineWidth = 1.2;
         for (let i = -zh; i <= zw; i += 12) {
           ctx.beginPath();
@@ -1378,7 +1454,12 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     }
 
     // 4b. Vung dang ve bang chuot (chua tha): khung net dut + kich thuoc
-    if (zoneDraft) {
+    if (zoneDraft?.vertices) {
+      drawPolygonZone(ctx, zoneDraft.vertices.map((p) => worldToCanvas(p.x, p.y, width, height)), {
+        color: ZONE_TEMPLATES.find((t) => t.type === zoneDraft.type)?.color || '#22D3EE', draft: true,
+        hover: zoneDraft.cursor && worldToCanvas(zoneDraft.cursor.x, zoneDraft.cursor.y, width, height),
+      });
+    } else if (zoneDraft) {
       const { a, b } = zoneDraft;
       const tl = worldToCanvas(Math.min(a.x, b.x), Math.max(a.y, b.y), width, height);
       const br = worldToCanvas(Math.max(a.x, b.x), Math.min(a.y, b.y), width, height);
@@ -1714,6 +1795,8 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     zones,
     selectedEndpoint,
     selectedZone,
+    selectedZoneVertex,
+    zoneEdgeHover,
     invertHeading,
     poseDraft,
     worldToCanvas,
@@ -1756,8 +1839,10 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
   const handleCanvasMouseDown = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    e.currentTarget.focus({ preventScroll: true });
     e.currentTarget.setPointerCapture?.(e.pointerId);
     zoneEditRef.current = null;
+    setZoneEdgeHover(null);
     const rect = canvas.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
@@ -1805,7 +1890,24 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
 
     // 0c. Che do Ve vung: nhan chuot = 1 goc, keo toi goc doi dien, tha chuot = tao vung
     if (zoneDrawType) {
-      const p = { x: worldX, y: worldY };
+      const p = { x: Number(worldX.toFixed(3)), y: Number(worldY.toFixed(3)) };
+      if (zoneDrawShape === 'polygon') {
+        const vertices = zoneDraft?.vertices || [];
+        if (vertices.length >= 3) {
+          const first = worldToCanvas(vertices[0].x, vertices[0].y, canvas.width, canvas.height);
+          if (Math.hypot(canvasX - first.x, canvasY - first.y) <= 12) {
+            finishPolygon();
+            return;
+          }
+        }
+        if (vertices.length >= MAX_ZONE_VERTICES) {
+          rejectZoneRule('Đa giác tối đa 64 đỉnh. Bấm Hoàn tất hoặc Bỏ đỉnh cuối để chỉnh lại.');
+          return;
+        }
+        if (vertices.some((v) => Math.hypot(v.x - p.x, v.y - p.y) < 0.005)) return;
+        setZoneDraft({ type: zoneDrawType, vertices: [...vertices, p], cursor: p });
+        return;
+      }
       setZoneDraft({ type: zoneDrawType, a: p, b: p });
       setDragState({ type: 'ZONE_DRAW' });
       isDraggingRef.current = true;
@@ -1813,14 +1915,48 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     }
 
     // 0d. Vung dang chon: nhan trung o vuong o goc (<= 8px) => keo de doi kich thuoc
-    if (showZones && selectedZone) {
+    if (showZones && isPolygonZone(selectedZone)) {
+      const vertex = selectedZone.vertices.findIndex((p) => {
+        const c = worldToCanvas(p.x, p.y, canvas.width, canvas.height);
+        return Math.hypot(canvasX - c.x, canvasY - c.y) <= 12;
+      });
+      if (vertex >= 0) {
+        setSelectedZoneVertex(vertex);
+        clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
+        setDragState({ type: 'ZONE_VERTEX', id: selectedZone.id, vertex, orig: selectedZone });
+        isDraggingRef.current = true;
+        return;
+      }
+      const edge = polygonEdgeAtPoint(
+        selectedZone.vertices.map((p) => worldToCanvas(p.x, p.y, canvas.width, canvas.height)),
+        { x: canvasX, y: canvasY }
+      );
+      if (edge) {
+        const result = insertZoneVertex(selectedZone, edge.edgeIndex, { x: worldX, y: worldY });
+        if (result.error) { rejectZoneRule(result.error); return; }
+        setSelectedZone(result.zone);
+        setSelectedZoneVertex(result.vertexIndex);
+        setZones((prev) => prev.map((z) => z.id === selectedZone.id ? result.zone : z));
+        zoneEditRef.current = result.zone;
+        clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
+        // Commit on release, so one press can insert and drag without saving an intermediate shape.
+        setDragState({
+          type: 'ZONE_VERTEX', id: selectedZone.id, vertex: result.vertexIndex,
+          orig: selectedZone, editBase: result.zone, inserted: true
+        });
+        isDraggingRef.current = true;
+        return;
+      }
+    } else if (showZones && selectedZone) {
       const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, viewConfig);
       const rotation = zoneRotationHandle(selectedZone, 28 / scale);
       const handle = worldToCanvas(rotation.x, rotation.y, canvas.width, canvas.height);
       if (Math.hypot(canvasX - handle.x, canvasY - handle.y) <= 12) {
         clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
-        setDragState({ type: 'ZONE_ROTATE', id: selectedZone.id, orig: { ...selectedZone },
-          startPoint: { x: worldX, y: worldY } });
+        setDragState({
+          type: 'ZONE_ROTATE', id: selectedZone.id, orig: { ...selectedZone },
+          startPoint: { x: worldX, y: worldY }
+        });
         isDraggingRef.current = true;
         return;
       }
@@ -1840,6 +1976,8 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
         return;
       }
     }
+
+    setSelectedZoneVertex(null);
 
     // 1. Kiem tra click trúng Endpoint (r <= 18px)
     if (showEndpoints) {
@@ -1917,7 +2055,28 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
 
-    if (!dragState && showZones && selectedZone) {
+    if (zoneDrawType && zoneDrawShape === 'polygon' && zoneDraft?.vertices && !dragState) {
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      setZoneDraft((draft) => draft && { ...draft, cursor: { x: worldX, y: worldY } });
+    }
+    if (!dragState && showZones && isPolygonZone(selectedZone)) {
+      const vertex = selectedZone.vertices.some((p) => {
+        const c = worldToCanvas(p.x, p.y, canvas.width, canvas.height);
+        return Math.hypot(canvasX - c.x, canvasY - c.y) <= 12;
+      });
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      const edge = !vertex && polygonEdgeAtPoint(
+        selectedZone.vertices.map((p) => worldToCanvas(p.x, p.y, canvas.width, canvas.height)),
+        { x: canvasX, y: canvasY }
+      );
+      const canInsert = selectedZone.vertices.length < MAX_ZONE_VERTICES;
+      if (edge && canInsert) {
+        const p = canvasToWorld(edge.point.x, edge.point.y, canvas.width, canvas.height);
+        setZoneEdgeHover({ zoneId: selectedZone.id, edgeIndex: edge.edgeIndex, point: { x: p.worldX, y: p.worldY } });
+      } else setZoneEdgeHover(null);
+      setZoneCursor(vertex ? 'crosshair' : edge ? (canInsert ? 'copy' : 'not-allowed')
+        : isPointInZone(worldX, worldY, selectedZone) ? 'move' : null);
+    } else if (!dragState && showZones && selectedZone) {
       const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, viewConfig);
       const rotation = zoneRotationHandle(selectedZone, 28 / scale);
       const rh = worldToCanvas(rotation.x, rotation.y, canvas.width, canvas.height);
@@ -1980,7 +2139,19 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
       return;
     }
 
-    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE'].includes(dragState.type) && !clickStartRef.current?.hasMoved) return;
+    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE', 'ZONE_VERTEX'].includes(dragState.type) && !clickStartRef.current?.hasMoved) return;
+
+    if (dragState.type === 'ZONE_VERTEX') {
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      const base = dragState.editBase || dragState.orig;
+      const vertices = base.vertices.map((p, i) => i === dragState.vertex
+        ? { x: Number(worldX.toFixed(3)), y: Number(worldY.toFixed(3)) } : p);
+      const updated = { ...base, ...zoneFromVertices(vertices) };
+      zoneEditRef.current = updated;
+      setSelectedZone(updated);
+      setZones((prev) => prev.map((z) => z.id === updated.id ? updated : z));
+      return;
+    }
 
     if (['ZONE_DRAW', 'ZONE_RESIZE', 'ZONE_ROTATE'].includes(dragState.type)) {
       const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
@@ -2014,7 +2185,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     } else if (dragState.type === 'ZONE') {
       const newX = Number((dragState.initX + dxMeters).toFixed(2));
       const newY = Number((dragState.initY + dyMeters).toFixed(2));
-      const updated = { ...dragState.orig, x: newX, y: newY };
+      const updated = translateZone(dragState.orig, newX - dragState.initX, newY - dragState.initY);
       zoneEditRef.current = updated;
       setSelectedZone(updated);
       setZones((prev) => prev.map((z) => (z.id === dragState.id ? updated : z)));
@@ -2048,19 +2219,23 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     }
 
     // Keo/doi kich thuoc vung xong: de len endpoint => tra ve cho cu + bao; khong thi luu + cap nhat Nav2
-    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE'].includes(finishedDrag?.type) && clickCandidate?.hasMoved) {
+    if (['ZONE', 'ZONE_RESIZE', 'ZONE_ROTATE', 'ZONE_VERTEX'].includes(finishedDrag?.type) && (clickCandidate?.hasMoved || finishedDrag.inserted)) {
       const zone = zoneEditRef.current || zones.find((z) => z.id === finishedDrag.id);
       const conflict = zone && zoneEndpointConflict(zone, endpoints);
-      if (conflict) {
+      const geometryError = isPolygonZone(zone) && polygonValidationError(zone.vertices);
+      if (conflict || geometryError) {
         const orig = finishedDrag.orig;
         const reverted = { ...zone, ...orig };
         setZones((prev) => prev.map((z) => (z.id === zone.id ? reverted : z)));
         setSelectedZone(reverted);
-        rejectZoneRule(conflict.message);
+        if (finishedDrag.inserted) setSelectedZoneVertex(null);
+        rejectZoneRule(geometryError || conflict.message);
       } else if (zone) {
         const nextList = zones.map((z) => z.id === zone.id ? zone : z);
         setZones(nextList);
-        persistZone(zone, nextList, `Đã cập nhật vùng "${zone.name}" (${Number(zone.width).toFixed(2)} × ${Number(zone.height).toFixed(2)} m • ${normalizeZoneYaw(zone.yaw)}°)`);
+        persistZone(zone, nextList, finishedDrag.inserted
+          ? `Đã thêm đỉnh ${finishedDrag.vertex + 1} vào vùng "${zone.name}" • ${zone.vertices.length} đỉnh`
+          : `Đã cập nhật vùng "${zone.name}" (${Number(zone.width).toFixed(2)} × ${Number(zone.height).toFixed(2)} m • ${normalizeZoneYaw(zone.yaw)}°)`);
       }
       zoneEditRef.current = null;
     }
@@ -2094,6 +2269,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     if (dragState?.orig && dragState.type.startsWith('ZONE')) {
       setZones((prev) => prev.map((z) => z.id === dragState.id ? dragState.orig : z));
       setSelectedZone(dragState.orig);
+      if (dragState.inserted) setSelectedZoneVertex(null);
     }
     zoneEditRef.current = null;
     clickStartRef.current = null;
@@ -2121,10 +2297,10 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
       localizationRef.current = { mapId: mapConfig.mapId, requestedAt: Date.now(), confirmed: false };
       setLocalizationReady(false);
       const sent = rosClientRef.current.publish(
-          ROS_TOPICS.INITIAL_POSE,
-          ROS_MSG_TYPES.POSE_WITH_COVARIANCE,
-          createInitialPoseMsg(px, py, pyawRad)
-        );
+        ROS_TOPICS.INITIAL_POSE,
+        ROS_MSG_TYPES.POSE_WITH_COVARIANCE,
+        createInitialPoseMsg(px, py, pyawRad)
+      );
       if (!sent) throw new Error('Không gửi được vị trí tới AMCL.');
       setNavStatus(`Đã gửi vị trí (${px.toFixed(2)}, ${py.toFixed(2)}); chờ AMCL khớp LiDAR với map.`);
       setIsNavigating(false);
@@ -2296,6 +2472,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
       const key = e.key.toLowerCase();
       if (key === 'escape') {
         setIsPickingRoute(false);
+        setSelectedZoneVertex(null);
         // Huy ve vung dang do dang
         setZoneDrawType(null);
         setZoneDraft(null);
@@ -2306,6 +2483,13 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
         return;
       }
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (key === 'delete') {
+        if (!e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey && !e.target.isContentEditable
+          && !e.target.closest?.('[role="dialog"], [role="textbox"]') && deleteZoneVertexRef.current?.()) {
+          e.preventDefault();
+        }
+        return;
+      }
       // Space activates focused popup buttons; it must not also send a motor command.
       if (e.target.closest?.('[role="dialog"]') && [' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) return;
       if (key === 'w' || key === 'arrowup') {
@@ -2365,109 +2549,109 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
           {/* Khung chua canvas: kich thuoc do bang ResizeObserver -> canvas dung bang khung (map to ra
               khi thu gon panel ben phai). Canvas absolute de kich thuoc canvas khong day khung ra. */}
           <div ref={canvasHostRef} className="relative w-full flex-1 min-h-0">
-          <div className="absolute top-3 left-3 z-30 flex items-center gap-2 rounded-lg border border-cyan-800 bg-slate-950/95 p-2 shadow-lg text-xs">
-            {routeLibraryMode && <select aria-label="Bản đồ của tuyến" value={mapConfig.mapId} onChange={(e) => handleSelectMap(e.target.value)} className="max-w-40 p-1 rounded bg-slate-800">{mapLayouts.length ? mapLayouts.map((map) => <option key={map.map_id} value={map.map_id}>{map.name}</option>) : <option value={mapConfig.mapId}>{mapConfig.mapId}</option>}</select>}
-            <button type="button" onClick={() => { setIsPickingRoute(false); openPanelSection('ROUTES'); }} className="flex items-center gap-2 font-bold text-cyan-300"><Navigation className="w-4 h-4" />Thư viện tuyến</button>
-            {isPickingRoute && <><span className="text-slate-300">{routeDraft?.execution_config?.route?.points.length || 0} điểm</span><button type="button" onClick={() => { setIsPickingRoute(false); openPanelSection('ROUTES'); }} className="px-3 py-1 rounded bg-cyan-700 font-bold">Xong</button></>}
-          </div>
-          <canvas
-            ref={canvasRef}
-            width={canvasSize.width}
-            height={canvasSize.height}
-            onPointerDown={handleCanvasMouseDown}
-            onPointerMove={handleCanvasMouseMove}
-            onPointerUp={handleCanvasMouseUp}
-            onPointerCancel={handleCanvasPointerCancel}
-            onPointerLeave={() => {
-              setHoveredEndpointId(null);
-              if (dragState?.type === 'PAN') handleCanvasMouseUp();
-            }}
-            style={{ touchAction: 'none', cursor: !zoneDrawType && !isPoseSetMode && !isAddEndpointMode ? (dragState ? 'grabbing' : zoneCursor || undefined) : undefined }}
-            onContextMenu={(e) => e.preventDefault()}
-            className={`absolute inset-0 w-full h-full rounded-xl border border-slate-800 shadow-2xl bg-slate-900 ${
-              dragState?.type === 'PAN'
+            <div className="absolute top-3 left-3 z-30 flex items-center gap-2 rounded-lg border border-cyan-800 bg-slate-950/95 p-2 shadow-lg text-xs">
+              {routeLibraryMode && <select aria-label="Bản đồ của tuyến" value={mapConfig.mapId} onChange={(e) => handleSelectMap(e.target.value)} className="max-w-40 p-1 rounded bg-slate-800">{mapLayouts.length ? mapLayouts.map((map) => <option key={map.map_id} value={map.map_id}>{map.name}</option>) : <option value={mapConfig.mapId}>{mapConfig.mapId}</option>}</select>}
+              <button type="button" onClick={() => { setIsPickingRoute(false); openPanelSection('ROUTES'); }} className="flex items-center gap-2 font-bold text-cyan-300"><Navigation className="w-4 h-4" />Thư viện tuyến</button>
+              {isPickingRoute && <><span className="text-slate-300">{routeDraft?.execution_config?.route?.points.length || 0} điểm</span><button type="button" onClick={() => { setIsPickingRoute(false); openPanelSection('ROUTES'); }} className="px-3 py-1 rounded bg-cyan-700 font-bold">Xong</button></>}
+            </div>
+            <canvas
+              tabIndex={0}
+              aria-label="Bản đồ: bấm cạnh đa giác để thêm đỉnh, kéo đỉnh để sửa, nhấn Delete để xóa đỉnh đã chọn"
+              ref={canvasRef}
+              width={canvasSize.width}
+              height={canvasSize.height}
+              onPointerDown={handleCanvasMouseDown}
+              onPointerMove={handleCanvasMouseMove}
+              onPointerUp={handleCanvasMouseUp}
+              onPointerCancel={handleCanvasPointerCancel}
+              onPointerLeave={() => {
+                setHoveredEndpointId(null);
+                setZoneEdgeHover(null);
+                if (dragState?.type === 'PAN') handleCanvasMouseUp();
+              }}
+              style={{ touchAction: 'none', cursor: !zoneDrawType && !isPoseSetMode && !isAddEndpointMode ? (dragState ? 'grabbing' : zoneCursor || undefined) : undefined }}
+              onContextMenu={(e) => e.preventDefault()}
+              className={`absolute inset-0 w-full h-full rounded-xl border border-slate-800 shadow-2xl bg-slate-900 ${dragState?.type === 'PAN'
                 ? 'cursor-grabbing'
                 : isPickingRoute || zoneDrawType
-                ? 'cursor-crosshair'
-                : dragState
-                ? 'cursor-grabbing'
-                : isPoseSetMode
-                ? 'cursor-crosshair'
-                : isAddEndpointMode
-                ? 'cursor-copy'
-                : hoveredEndpointId
-                ? 'cursor-pointer'
-                : 'cursor-grab'
-            } ${
-              zoneDrawType
-                ? 'ring-2 ring-amber-500/70'
-                : isPoseSetMode
-                ? 'ring-2 ring-emerald-500/70'
-                : isAddEndpointMode
-                ? 'ring-2 ring-blue-500/70'
-                : ''
-            }`}
-          />
-          {/* Zoom map: lan chuot = zoom quanh con tro; keo vung trong / chuot phai = di chuyen map */}
-          <div
-            role="group"
-            aria-label="Thu phóng bản đồ"
-            className="absolute bottom-3 right-3 z-20 flex flex-col items-stretch gap-1 p-1 rounded-lg bg-slate-950/90 border border-slate-700 shadow-xl text-slate-200"
-          >
-            <button
-              type="button"
-              onClick={() => zoomMapBy(1.25)}
-              disabled={mapView.zoom >= MAX_ZOOM - 1e-6}
-              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              title="Phóng to (hoặc lăn chuột lên trên map)"
-              aria-label="Phóng to"
+                  ? 'cursor-crosshair'
+                  : dragState
+                    ? 'cursor-grabbing'
+                    : isPoseSetMode
+                      ? 'cursor-crosshair'
+                      : isAddEndpointMode
+                        ? 'cursor-copy'
+                        : hoveredEndpointId
+                          ? 'cursor-pointer'
+                          : 'cursor-grab'
+                } ${zoneDrawType
+                  ? 'ring-2 ring-amber-500/70'
+                  : isPoseSetMode
+                    ? 'ring-2 ring-emerald-500/70'
+                    : isAddEndpointMode
+                      ? 'ring-2 ring-blue-500/70'
+                      : ''
+                }`}
+            />
+            {/* Zoom map: lan chuot = zoom quanh con tro; keo vung trong / chuot phai = di chuyen map */}
+            <div
+              role="group"
+              aria-label="Thu phóng bản đồ"
+              className="absolute bottom-3 right-3 z-20 flex flex-col items-stretch gap-1 p-1 rounded-lg bg-slate-950/90 border border-slate-700 shadow-xl text-slate-200"
             >
-              <ZoomIn className="w-4 h-4" />
-            </button>
-            <div className="text-center text-[10px] font-mono text-slate-400 select-none" aria-live="polite">
-              {Math.round(mapView.zoom * 100)}%
+              <button
+                type="button"
+                onClick={() => zoomMapBy(1.25)}
+                disabled={mapView.zoom >= MAX_ZOOM - 1e-6}
+                className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                title="Phóng to (hoặc lăn chuột lên trên map)"
+                aria-label="Phóng to"
+              >
+                <ZoomIn className="w-4 h-4" />
+              </button>
+              <div className="text-center text-[10px] font-mono text-slate-400 select-none" aria-live="polite">
+                {Math.round(mapView.zoom * 100)}%
+              </div>
+              <button
+                type="button"
+                onClick={() => zoomMapBy(0.8)}
+                disabled={mapView.zoom <= 1 + 1e-6}
+                className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                title="Thu nhỏ (hoặc lăn chuột xuống)"
+                aria-label="Thu nhỏ"
+              >
+                <ZoomOut className="w-4 h-4" />
+              </button>
+              <div className="h-px bg-slate-700 my-0.5" />
+              <button
+                type="button"
+                onClick={() => setMapView(fitWidthView(canvasSize.width, canvasSize.height, mapConfig))}
+                className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 cursor-pointer"
+                title="Vừa chiều ngang: map dọc phủ kín bề ngang, kéo lên/xuống để xem phần còn lại"
+                aria-label="Vừa chiều ngang"
+              >
+                <MoveHorizontal className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapView(DEFAULT_VIEW)}
+                disabled={isDefaultView(mapView)}
+                className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                title="Xem toàn bộ map (vừa khung)"
+                aria-label="Xem toàn bộ map"
+              >
+                <Maximize2 className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => zoomMapBy(0.8)}
-              disabled={mapView.zoom <= 1 + 1e-6}
-              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              title="Thu nhỏ (hoặc lăn chuột xuống)"
-              aria-label="Thu nhỏ"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </button>
-            <div className="h-px bg-slate-700 my-0.5" />
-            <button
-              type="button"
-              onClick={() => setMapView(fitWidthView(canvasSize.width, canvasSize.height, mapConfig))}
-              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 cursor-pointer"
-              title="Vừa chiều ngang: map dọc phủ kín bề ngang, kéo lên/xuống để xem phần còn lại"
-              aria-label="Vừa chiều ngang"
-            >
-              <MoveHorizontal className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setMapView(DEFAULT_VIEW)}
-              disabled={isDefaultView(mapView)}
-              className="w-8 h-8 rounded-md flex items-center justify-center hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              title="Xem toàn bộ map (vừa khung)"
-              aria-label="Xem toàn bộ map"
-            >
-              <Maximize2 className="w-4 h-4" />
-            </button>
-          </div>
           </div>
 
           {/* Dong ho toc do (encoder) + huy hieu vung giam toc - de demo thay xe cham lai */}
           {isRosConnected && (
             <div
-              className={`absolute top-3 right-3 z-20 px-3 py-2 rounded-lg border shadow-xl text-right transition-colors duration-300 ${
-                speedStatus.active
-                  ? 'bg-amber-950/95 border-amber-500 text-amber-100'
-                  : 'bg-slate-950/90 border-slate-700 text-slate-100'
-              }`}
+              className={`absolute top-3 right-3 z-20 px-3 py-2 rounded-lg border shadow-xl text-right transition-colors duration-300 ${speedStatus.active
+                ? 'bg-amber-950/95 border-amber-500 text-amber-100'
+                : 'bg-slate-950/90 border-slate-700 text-slate-100'
+                }`}
               style={{ minWidth: 150 }}
             >
               <div className="text-[10px] uppercase tracking-wide opacity-70">Tốc độ xe</div>
@@ -2513,8 +2697,18 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
           )}
 
           {zoneDrawType && (
-            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-lg bg-amber-950/90 border border-amber-700 text-[11px] font-semibold text-amber-200 shadow-xl">
-              Vẽ vùng {ZONE_TEMPLATES.find((t) => t.type === zoneDrawType)?.badge}: nhấn giữ chuột ở 1 góc → kéo tới góc đối diện → thả chuột (Esc để hủy)
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-2 rounded-lg bg-amber-950/95 border border-amber-700 text-[11px] font-semibold text-amber-200 shadow-xl max-w-[90%]">
+              {zoneDrawShape === 'polygon' ? (
+                <>
+                  <p>Vẽ {ZONE_TEMPLATES.find((t) => t.type === zoneDrawType)?.badge}: chấm từng đỉnh theo thứ tự quanh vùng. Bấm đỉnh đầu hoặc Hoàn tất để đóng hình.</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span>{zoneDraft?.vertices?.length || 0}/64 đỉnh</span>
+                    <button type="button" disabled={(zoneDraft?.vertices?.length || 0) < 3} onClick={finishPolygon} className="rounded bg-emerald-700 px-2 py-1 text-white disabled:opacity-40 cursor-pointer">Hoàn tất</button>
+                    <button type="button" disabled={!zoneDraft?.vertices?.length} onClick={() => setZoneDraft((draft) => draft && { ...draft, vertices: draft.vertices.slice(0, -1) })} className="rounded bg-slate-700 px-2 py-1 text-white disabled:opacity-40 cursor-pointer">Bỏ đỉnh cuối</button>
+                    <button type="button" onClick={() => { setZoneDraft(null); setZoneDrawType(null); }} className="rounded border border-amber-700 px-2 py-1 cursor-pointer">Hủy (Esc)</button>
+                  </div>
+                </>
+              ) : <>Vẽ vùng {ZONE_TEMPLATES.find((t) => t.type === zoneDrawType)?.badge}: nhấn giữ chuột ở 1 góc → kéo tới góc đối diện → thả chuột (Esc để hủy)</>}
             </div>
           )}
 
@@ -2550,8 +2744,8 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
                       selectedZone.type === 'KEEP_OUT'
                         ? '#EF4444'
                         : selectedZone.type === 'SPEED_ZONE'
-                        ? '#F59E0B'
-                        : '#FB7185',
+                          ? '#F59E0B'
+                          : '#FB7185',
                   }}
                 />
                 <select
@@ -2598,39 +2792,55 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
                 <span className="font-bold text-cyan-400">
                   ({Number(selectedZone.x).toFixed(2)}, {Number(selectedZone.y).toFixed(2)})
                 </span>
-                <span className="text-slate-400 ml-1">KT:</span>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.3"
-                  max="5.0"
-                  value={selectedZone.width || 1.0}
-                  onChange={(e) => handleUpdateSelectedZone('width', Math.max(0.2, parseFloat(e.target.value) || 0.3))}
-                  className="w-11 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-white focus:outline-none"
-                  title="Chiều rộng (m)"
-                />
-                <span>×</span>
-                <input
-                  type="number"
-                  step="0.1"
-                  min="0.3"
-                  max="5.0"
-                  value={selectedZone.height || 1.0}
-                  onChange={(e) => handleUpdateSelectedZone('height', Math.max(0.2, parseFloat(e.target.value) || 0.3))}
-                  className="w-11 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-white focus:outline-none"
-                  title="Chiều dài (m)"
-                />
-                <span>m</span>
-                <input
-                  type="number"
-                  step="15"
-                  value={normalizeZoneYaw(selectedZone.yaw)}
-                  onChange={(e) => handleUpdateSelectedZone('yaw', normalizeZoneYaw(e.target.value))}
-                  className="w-12 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-white focus:outline-none"
-                  aria-label="Góc xoay vùng (độ)"
-                  title="Góc xoay vùng (độ)"
-                />
-                <span>°</span>
+                {isPolygonZone(selectedZone) ? (
+                  <>
+                    <span className="ml-2 text-cyan-300">Đa giác · {selectedZone.vertices.length} đỉnh</span>
+                    <span className={selectedZoneVertex === null ? 'text-slate-400' : 'text-amber-300'}>
+                      {selectedZoneVertex === null ? 'Chọn đỉnh để kéo hoặc xóa' : `Đã chọn đỉnh ${selectedZoneVertex + 1}`}
+                    </span>
+                    <span className="text-slate-400">· Bấm cạnh để thêm đỉnh</span>
+                    <button type="button" onClick={handleDeleteSelectedVertex}
+                      disabled={selectedZoneVertex === null || selectedZone.vertices.length <= 3 || !!dragState}
+                      title={selectedZone.vertices.length <= 3 ? 'Đa giác phải giữ ít nhất 3 đỉnh' : 'Xóa đỉnh đang chọn và nối hai đỉnh liền kề (Delete)'}
+                      className="ml-1 flex items-center gap-1 rounded border border-rose-800 bg-rose-950/60 px-2 py-1 text-rose-300 hover:bg-rose-900 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">
+                      <Trash2 className="h-3 w-3" /> Xóa đỉnh (Delete)
+                    </button>
+                  </>
+                ) : <>
+                  <span className="text-slate-400 ml-1">KT:</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.3"
+                    max="5.0"
+                    value={selectedZone.width || 1.0}
+                    onChange={(e) => handleUpdateSelectedZone('width', Math.max(0.2, parseFloat(e.target.value) || 0.3))}
+                    className="w-11 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-white focus:outline-none"
+                    title="Chiều rộng (m)"
+                  />
+                  <span>×</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0.3"
+                    max="5.0"
+                    value={selectedZone.height || 1.0}
+                    onChange={(e) => handleUpdateSelectedZone('height', Math.max(0.2, parseFloat(e.target.value) || 0.3))}
+                    className="w-11 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-white focus:outline-none"
+                    title="Chiều dài (m)"
+                  />
+                  <span>m</span>
+                  <input
+                    type="number"
+                    step="15"
+                    value={normalizeZoneYaw(selectedZone.yaw)}
+                    onChange={(e) => handleUpdateSelectedZone('yaw', normalizeZoneYaw(e.target.value))}
+                    className="w-12 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-white focus:outline-none"
+                    aria-label="Góc xoay vùng (độ)"
+                    title="Góc xoay vùng (độ)"
+                  />
+                  <span>°</span>
+                </>}
               </div>
 
               {/* Nut Luu Vung */}
@@ -2638,11 +2848,10 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
                 type="button"
                 onClick={handleSaveZones}
                 disabled={isSavingZones || !hasUnsavedZones}
-                className={`p-1.5 rounded-lg border cursor-pointer transition-colors shrink-0 flex items-center justify-center ${
-                  hasUnsavedZones
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 animate-pulse'
-                    : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
-                }`}
+                className={`p-1.5 rounded-lg border cursor-pointer transition-colors shrink-0 flex items-center justify-center ${hasUnsavedZones
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 animate-pulse'
+                  : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
+                  }`}
                 title={isSavingZones ? 'Đang lưu...' : 'Lưu vùng vào CSDL'}
               >
                 <Save className={`w-3.5 h-3.5 ${isSavingZones ? 'animate-spin' : ''}`} />
@@ -2763,11 +2972,10 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
                 type="button"
                 onClick={handleSaveEndpoints}
                 disabled={isSavingEndpoints || !hasUnsavedEndpoints}
-                className={`p-1.5 rounded-lg border cursor-pointer transition-colors shrink-0 flex items-center justify-center ${
-                  hasUnsavedEndpoints
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 animate-pulse'
-                    : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
-                }`}
+                className={`p-1.5 rounded-lg border cursor-pointer transition-colors shrink-0 flex items-center justify-center ${hasUnsavedEndpoints
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 animate-pulse'
+                  : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
+                  }`}
                 title={isSavingEndpoints ? 'Đang lưu...' : 'Lưu điểm mốc vào CSDL'}
               >
                 <Save className={`w-3.5 h-3.5 ${isSavingEndpoints ? 'animate-spin' : ''}`} />
@@ -2814,693 +3022,695 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
 
         {/* Chi hien phan duoc chon tu thanh icon ben phai. */}
         {panel.open && (
-        <PhysicalMapPopup key={panel.section} title={popupTitle} onClose={closePopup}>
-          {panel.section === 'ROUTES' && <PhysicalMapRoutePlanner
-            key={mapConfig.mapId}
-            mapId={mapConfig.mapId} endpoints={endpoints} draft={routeDraft}
-            onDraftChange={setRouteDraft} validatePoint={validateRoutePoint}
-            onRouteSaved={onRouteSaved}
-            onPickPoints={() => {
-              setIsPickingRoute(true); setShowEndpoints(true); setIsAddEndpointMode(false);
-              setIsPoseSetMode(false); setPoseDraft(null); setZoneDrawType(null); setZoneDraft(null);
-              setSelectedEndpoint(null); setSelectedZone(null); closePopup();
-              setNavStatus('Đang vẽ tuyến: bấm các điểm trên map theo thứ tự, rồi bấm Xong để lưu tuyến.');
-            }}
-          />}
-          {panel.section === 'ADD' && (
-            <div className="space-y-4">
-              <p className="text-xs leading-relaxed text-slate-400">Chọn loại cần thêm, sau đó đặt trực tiếp trên bản đồ.</p>
-              <div className="space-y-2">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Điểm mốc / Point</h3>
+          <PhysicalMapPopup key={panel.section} title={popupTitle} onClose={closePopup}>
+            {panel.section === 'ROUTES' && <PhysicalMapRoutePlanner
+              key={mapConfig.mapId}
+              mapId={mapConfig.mapId} endpoints={endpoints} draft={routeDraft}
+              onDraftChange={setRouteDraft} validatePoint={validateRoutePoint}
+              onRouteSaved={onRouteSaved}
+              binding={routeBinding?.mapId === mapConfig.mapId ? routeBinding : null}
+              onBindingChange={(selection) => setRouteBinding({ ...selection, mapId: mapConfig.mapId })}
+              onPickPoints={() => {
+                setIsPickingRoute(true); setShowEndpoints(true); setIsAddEndpointMode(false);
+                setIsPoseSetMode(false); setPoseDraft(null); setZoneDrawType(null); setZoneDraft(null);
+                setSelectedEndpoint(null); setSelectedZone(null); closePopup();
+                setNavStatus('Đang vẽ tuyến: bấm các điểm trên map theo thứ tự, rồi bấm Xong để lưu tuyến.');
+              }}
+            />}
+            {panel.section === 'ADD' && (
+              <div className="space-y-4">
+                <p className="text-xs leading-relaxed text-slate-400">Chọn loại cần thêm, sau đó đặt trực tiếp trên bản đồ.</p>
+                <div className="space-y-2">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Điểm mốc / Point</h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { type: 'CHARGER', label: 'Trạm sạc', Icon: Battery },
+                      { type: 'PARK', label: 'Điểm đỗ', Icon: Home },
+                    ].map(({ type, label, Icon }) => (
+                      <button key={type} type="button" onClick={() => startPointPlacement(type)} className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/60 px-2 py-3 text-xs font-semibold text-blue-200 transition-colors hover:border-blue-500 hover:bg-blue-950/60">
+                        <Icon className="h-5 w-5" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-slate-500">Click trên map để đặt điểm. Nhấn Esc để hủy.</p>
+                </div>
+                <div className="space-y-2 border-t border-slate-800 pt-3">
+                  <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Vùng / Zone</h3>
+                  {ZONE_TEMPLATES.map((template) => (
+                    <button key={template.type} type="button" onClick={() => toggleZoneDraw(template.type)} className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/60 p-3 text-left transition-colors hover:border-slate-500 hover:bg-slate-800">
+                      <ShieldBan className="h-5 w-5 shrink-0" style={{ color: template.color }} />
+                      <span>
+                        <span className="block text-xs font-bold" style={{ color: template.color }}>{template.badge}</span>
+                        <span className="mt-1 block text-[11px] leading-relaxed text-slate-400">{template.description}</span>
+                      </span>
+                    </button>
+                  ))}
+                  <p className="text-[11px] text-slate-500">Nhấn giữ và kéo trên map để vẽ vùng. Nhấn Esc để hủy.</p>
+                </div>
+              </div>
+            )}
+            {popupAction && (
+              <div className="space-y-4">
+                <p className="text-xs leading-relaxed text-slate-400">{popupAction.description}</p>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={popupAction.active}
+                  aria-label={popupAction.title}
+                  onClick={popupAction.onClick}
+                  className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950/70 p-3 text-xs font-semibold hover:border-cyan-700"
+                >
+                  <span>{popupAction.key === 'heading' ? popupAction.label : 'Hiển thị trên bản đồ'}</span>
+                  <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${popupAction.active ? 'bg-cyan-500' : 'bg-slate-700'}`}>
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${popupAction.active ? 'translate-x-[18px] left-0' : 'left-0.5'}`} />
+                  </span>
+                </button>
+              </div>
+            )}
+            {panel.section === 'trail' && (
+              <div className="space-y-3">
+                <p className="text-xs leading-relaxed text-slate-400">Xóa đường vệt đã di chuyển đang hiển thị trên bản đồ.</p>
+                <button type="button" onClick={() => { setTrail([]); closePopup(); }} className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold hover:bg-slate-600">
+                  <RotateCcw className="h-4 w-4" />
+                  Xóa vệt di chuyển
+                </button>
+              </div>
+            )}
+            {/* Card 1: Telemetry Realtime & Hardware */}
+            {panel.section === 'telemetry' && (
+              <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 scroll-mt-3">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-2">
+                  <span className="flex items-center gap-1.5">
+                    <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                    Dữ Liệu Telemetry Thực Tế
+                  </span>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono ${isNavigating ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-slate-800 text-slate-400'
+                      }`}
+                  >
+                    {isNavigating ? 'Đang Di Chuyển' : navigationMapReady && isLocalized ? 'Đã Định Vị' : 'Chưa Sẵn Sàng Đi'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="p-2 rounded bg-slate-900 border border-slate-800/80">
+                    <span className="text-[10px] text-slate-500 block">TỌA ĐỘ X</span>
+                    <span className="text-cyan-400 font-bold text-sm">{robotPose.x.toFixed(2)}m</span>
+                  </div>
+                  <div className="p-2 rounded bg-slate-900 border border-slate-800/80">
+                    <span className="text-[10px] text-slate-500 block">TỌA ĐỘ Y</span>
+                    <span className="text-cyan-400 font-bold text-sm">{robotPose.y.toFixed(2)}m</span>
+                  </div>
+                  <div className="p-2 rounded bg-slate-900 border border-slate-800/80">
+                    <span className="text-[10px] text-slate-500 block">GÓC YAW</span>
+                    <span className="text-amber-400 font-bold text-sm">
+                      {((robotPose.yaw * 180) / Math.PI).toFixed(0)}°
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
+                  <span className="flex items-center gap-1 text-slate-400">
+                    <Cpu className="w-3 h-3 text-cyan-400" />
+                    {hardwareInfo.model}
+                  </span>
+                  <span className="flex items-center gap-1 text-emerald-400 font-mono">
+                    <Battery className="w-3 h-3" />
+                    {hardwareInfo.battery}%
+                  </span>
+                </div>
+              </div>
+
+            )}
+
+            {/* Card Nav2 (che do ROS 2): bat map_server + AMCL + Nav2 voi map dang chon */}
+            {panel.section === 'nav2' && (
+              <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2 scroll-mt-3">
+                <label
+                  className="flex items-center w-full bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-xs"
+                  title={`${mapConfig.widthMeters}m × ${mapConfig.heightMeters}m • ${mapConfig.resolution}m/ô • gốc (${mapConfig.originX}, ${mapConfig.originY})`}
+                >
+                  <Layers className="w-3.5 h-3.5 text-cyan-400 mr-1.5 shrink-0" />
+                  <span className="text-[11px] font-semibold text-slate-400 mr-1.5">Bản đồ:</span>
+                  <select
+                    value={mapConfig.mapId}
+                    onChange={(e) => handleSelectMap(e.target.value)}
+                    disabled={mapLayouts.length === 0}
+                    className="bg-slate-900 text-[11px] font-semibold text-slate-200 outline-none cursor-pointer disabled:cursor-not-allowed flex-1 min-w-0"
+                  >
+                    {mapLayouts.length === 0 && (
+                      <option value={mapConfig.mapId}>{mapConfig.mapId}{isLegacyMap ? ' (gốc Lab)' : ''}</option>
+                    )}
+                    {mapLayouts.map((m) => (
+                      <option key={m.map_id} value={m.map_id}>
+                        {m.name}
+                        {m.map_id === LAYOUT2_CONFIG.mapId ? ' (gốc Lab)' : ''} • {m.width_m}×{m.height_m}m
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Toggle Target */}
+                  <div className="flex items-center bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs">
+                    <button
+                      onClick={() => setConnectionMode('pi5')}
+                      className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${connectionMode === 'pi5'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                    >
+                      <Cpu className="w-3 h-3" />
+                      <span>Xe Thật Pi 5</span>
+                    </button>
+                    <button
+                      onClick={() => setConnectionMode('ros2')}
+                      className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${connectionMode === 'ros2'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                    >
+                      <Activity className="w-3 h-3" />
+                      <span>ROS 2</span>
+                    </button>
+                  </div>
+
+                  {/* Connection status badge */}
+                  <div
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 border ${isWsConnected
+                      ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800/80'
+                      : 'bg-rose-950/80 text-rose-400 border-rose-800/80'
+                      }`}
+                  >
+                    {isWsConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+                    <span>
+                      {isWsConnected
+                        ? connectionMode === 'pi5'
+                          ? `Pi 5 (${pi5Ip})`
+                          : 'ROS 2 Live'
+                        : 'Mất kết nối'}
+                    </span>
+                  </div>
+                </div>
+                <div className="h-px bg-slate-800 my-3" />
+                <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <Navigation className="w-3.5 h-3.5 text-orange-400" />
+                    {connectionMode === 'pi5' ? 'Xe thật • Nav2 + tránh vật cản' : 'Nav2'}
+                  </span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${nav2Runtime.mode === 'NAVIGATION'
+                      ? 'bg-emerald-900/60 text-emerald-300'
+                      : 'bg-slate-800 text-slate-400'
+                      }`}
+                  >
+                    {nav2Runtime.mode}
+                    {nav2Runtime.activeMap ? ` • ${nav2Runtime.activeMap}` : ''}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStartNav2}
+                  disabled={isStartingNav2}
+                  className="w-full px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border bg-orange-600/90 text-white border-orange-500 hover:bg-orange-500 disabled:opacity-60"
+                  title="Nạp map đang chọn vào map_server, bật AMCL + Nav2 và vùng cấm (KEEP_OUT)"
+                >
+                  {isStartingNav2 ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
+                  {nav2Runtime.mode === 'NAVIGATION' && nav2Runtime.activeMap === mapConfig.mapId
+                    ? 'Khởi động lại Nav2'
+                    : `Bật Nav2 với map "${mapConfig.mapId}"`}
+                </button>
+                <p className="text-[10px] leading-snug text-slate-500">
+                  1. Bật Navigation → 2. Chọn đúng chỗ xe đang đứng và kéo theo hướng mũi xe → 3. Đợi AMCL xác nhận rồi bấm Tới.
+                </p>
+                <p role="status" aria-live="polite" className="text-[11px] leading-relaxed text-cyan-200 bg-slate-900 rounded px-2 py-1.5 break-words">
+                  {navStatus}
+                </p>
+              </div>
+            )}
+
+            {/* Card 2: Dat vi tri ban dau (Initial Pose / 2D Pose Estimate) */}
+            {panel.section === 'pose' && (
+              <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2 scroll-mt-3">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <Crosshair className="w-3.5 h-3.5 text-emerald-400" />
+                    2. Vị Trí Ban Đầu Robot
+                  </span>
+                  {isSettingPose && <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />}
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { type: 'CHARGER', label: 'Trạm sạc', Icon: Battery },
-                    { type: 'PARK', label: 'Điểm đỗ', Icon: Home },
-                  ].map(({ type, label, Icon }) => (
-                    <button key={type} type="button" onClick={() => startPointPlacement(type)} className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/60 px-2 py-3 text-xs font-semibold text-blue-200 transition-colors hover:border-blue-500 hover:bg-blue-950/60">
-                      <Icon className="h-5 w-5" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPoseSetMode((prev) => !prev);
+                      setPoseDraft(null);
+                      setSelectedEndpoint(null);
+                      setSelectedZone(null);
+                      setIsAddEndpointMode(false);
+                      setZoneDrawType(null);
+                      setZoneDraft(null);
+                      closePopup();
+                    }}
+                    disabled={isSettingPose || !navigationMapReady}
+                    className={`px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border ${isPoseSetMode
+                      ? 'bg-emerald-600 text-white border-emerald-500 animate-pulse'
+                      : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+                      }`}
+                    title="Click vào vị trí robot trên bản đồ, giữ chuột kéo theo hướng mũi xe rồi thả"
+                  >
+                    <Crosshair className="w-3 h-3" />
+                    {isPoseSetMode ? 'Hủy chọn' : 'Chọn trên map'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSetPoseAtDock}
+                    disabled={isSettingPose || !navigationMapReady || !dockEndpoint}
+                    className="px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
+                    title="Robot đang đứng tại Trạm Sạc (Home), mũi xe theo hướng yaw của điểm dock"
+                  >
+                    <Home className="w-3 h-3" />
+                    Đặt tại Dock
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-2">
+                  <span
+                    className={`flex items-center gap-1.5 text-[11px] ${isLocalized
+                      ? 'text-emerald-400'
+                      : managerLoc.tone === 'busy'
+                        ? 'text-amber-400'
+                        : managerLoc.tone === 'bad'
+                          ? 'text-rose-400'
+                          : 'text-slate-400'
+                      }`}
+                    title={managerLoc.fresh ? managerLoc.reason : undefined}
+                  >
+                    <ShieldCheck className="w-3 h-3" />
+                    {managerLoc.fresh
+                      ? managerLoc.label
+                      : localizationReady
+                        ? 'AMCL đã định vị bằng LiDAR'
+                        : 'Chưa xác nhận vị trí trên map'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRelocalize}
+                    disabled={isSettingPose || !navigationMapReady}
+                    className="px-2 py-1 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-colors border bg-slate-900 text-cyan-300 border-slate-700 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Khớp lại tia LiDAR với bản đồ quanh vị trí hiện tại để sửa trôi odometry"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Định vị lại
+                  </button>
+                </div>
+
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  {!navigationMapReady
+                    ? 'Hiện chưa có Navigation đúng map. Bật Nav2 ở bước 1 trước; chế độ MAPPING chỉ dùng để quét.'
+                    : !dockEndpoint
+                      ? 'Map chưa có Dock. Gốc (0,0) không phải vị trí mặc định của xe; hãy dùng Chọn trên map.'
+                      : 'Chỉ dùng Đặt tại Dock khi xe thật đang đứng đúng điểm Dock đã lưu.'}
+                </p>
+                {isPoseSetMode && (
+                  <p className="text-[10px] text-emerald-300/90 leading-snug">
+                    Click vào chỗ robot đang đứng, giữ chuột và kéo theo hướng mũi xe, rồi thả chuột.
+                  </p>
+                )}
+              </div>
+
+            )}
+
+            {/* NOI DUNG TAB 1: DANH SACH DIEM MOC (WAYPOINTS) */}
+            {panel.section === 'WAYPOINTS' && (
+              <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
+                {/* Toolbar them & luu endpoint */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleAddEndpoint('CHARGER')}
+                      className="px-2 py-1 rounded bg-emerald-600/80 hover:bg-emerald-600 text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
+                      title="Thêm trạm sạc pin"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Trạm Sạc</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddEndpoint('PARK')}
+                      className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
+                      title="Thêm điểm đỗ chờ"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Điểm Đỗ</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveEndpoints}
+                    disabled={isSavingEndpoints || !hasUnsavedEndpoints}
+                    className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all ${hasUnsavedEndpoints
+                      ? 'bg-emerald-600 text-white shadow-sm animate-pulse'
+                      : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                      }`}
+                    title="Lưu tất cả điểm mốc vào CSDL"
+                  >
+                    <Save className="w-3 h-3" />
+                    <span>{isSavingEndpoints ? 'Lưu...' : 'Lưu'}</span>
+                  </button>
+                </div>
+
+                {isAddEndpointMode && (
+                  <label className="flex items-center gap-2 rounded-lg border border-blue-500/50 bg-blue-950/40 p-2 text-[11px] text-blue-200">
+                    <Crosshair className="w-3.5 h-3.5 shrink-0" />
+                    <span>Ghim trên map:</span>
+                    <select
+                      aria-label="Loại điểm mốc cần ghim"
+                      value={addEndpointType}
+                      onChange={(e) => setAddEndpointType(e.target.value)}
+                      className="min-w-0 flex-1 rounded bg-slate-900 p-1 text-slate-100 outline-none"
+                    >
+                      <option value="CHARGER">Trạm Sạc</option>
+                      <option value="PARK">Điểm Đỗ</option>
+                    </select>
+                  </label>
+                )}
+
+                {/* Danh sach Waypoints */}
+                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                  {endpoints.map((ep) => {
+                    const tmpl = getEndpointTemplateInfo(ep.type);
+                    const isSelected = selectedEndpoint?.id === ep.id;
+                    const isNavTarget = isNavigating && navigatingEndpointId === ep.id;
+                    return (
+                      <div
+                        key={ep.id}
+                        onClick={() => handleNavigateToEndpoint(ep)}
+                        className={`p-2 rounded-lg border flex items-center justify-between transition-colors cursor-pointer ${isNavTarget
+                          ? 'bg-cyan-950/80 border-cyan-500 shadow-md ring-1 ring-cyan-400'
+                          : isSelected
+                            ? 'bg-blue-950/60 border-blue-500 shadow-sm'
+                            : 'bg-slate-900 hover:bg-slate-850 border-slate-800'
+                          }`}
+                      >
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: tmpl.color || ep.color }}
+                          />
+                          <div className="truncate">
+                            <span className="text-xs font-semibold text-slate-200 block truncate flex items-center gap-1.5">
+                              <span>{ep.name}</span>
+                              {isNavTarget && (
+                                <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[9px] font-bold border border-cyan-500/40">
+                                  Đang tới...
+                                </span>
+                              )}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono block">
+                              ({Number(ep.x).toFixed(2)}m, {Number(ep.y).toFixed(2)}m) • {tmpl.type}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0 ml-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleNavigateToEndpoint(ep);
+                            }}
+                            className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${isNavTarget
+                              ? 'bg-cyan-600 text-white shadow-sm'
+                              : 'bg-slate-800 hover:bg-cyan-600 text-slate-300 hover:text-white'
+                              }`}
+                            title="Bấm để robot di chuyển tới điểm này"
+                          >
+                            <Navigation className="w-3 h-3" />
+                            <span>Tới</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteEndpoint(ep.id);
+                            }}
+                            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer transition-colors"
+                            title="Xóa điểm"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* NOI DUNG TAB 2: DANH SACH VUNG CHUC NANG (ZONES) */}
+            {panel.section === 'ZONES' && (
+              <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
+                <div className="flex items-center gap-2 text-[11px] text-slate-300">
+                  <span>Hình vẽ:</span>
+                  {[['rectangle', 'Chữ nhật'], ['polygon', 'Đa giác (Polygon)']].map(([shape, label]) => (
+                    <button key={shape} type="button" aria-pressed={zoneDrawShape === shape}
+                      onClick={() => { setZoneDrawShape(shape); setZoneDraft(null); setZoneDrawType(null); }}
+                      className={`rounded border px-2 py-1 cursor-pointer ${zoneDrawShape === shape ? 'border-cyan-500 bg-cyan-950 text-cyan-200' : 'border-slate-700 bg-slate-800'}`}>
                       {label}
                     </button>
                   ))}
                 </div>
-                <p className="text-[11px] text-slate-500">Click trên map để đặt điểm. Nhấn Esc để hủy.</p>
-              </div>
-              <div className="space-y-2 border-t border-slate-800 pt-3">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Vùng / Zone</h3>
-                {ZONE_TEMPLATES.map((template) => (
-                  <button key={template.type} type="button" onClick={() => toggleZoneDraw(template.type)} className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/60 p-3 text-left transition-colors hover:border-slate-500 hover:bg-slate-800">
-                    <ShieldBan className="h-5 w-5 shrink-0" style={{ color: template.color }} />
-                    <span>
-                      <span className="block text-xs font-bold" style={{ color: template.color }}>{template.badge}</span>
-                      <span className="mt-1 block text-[11px] leading-relaxed text-slate-400">{template.description}</span>
-                    </span>
-                  </button>
-                ))}
-                <p className="text-[11px] text-slate-500">Nhấn giữ và kéo trên map để vẽ vùng. Nhấn Esc để hủy.</p>
-              </div>
-            </div>
-          )}
-          {popupAction && (
-            <div className="space-y-4">
-              <p className="text-xs leading-relaxed text-slate-400">{popupAction.description}</p>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={popupAction.active}
-                aria-label={popupAction.title}
-                onClick={popupAction.onClick}
-                className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-700 bg-slate-950/70 p-3 text-xs font-semibold hover:border-cyan-700"
-              >
-                <span>{popupAction.key === 'heading' ? popupAction.label : 'Hiển thị trên bản đồ'}</span>
-                <span aria-hidden="true" className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${popupAction.active ? 'bg-cyan-500' : 'bg-slate-700'}`}>
-                  <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${popupAction.active ? 'translate-x-[18px] left-0' : 'left-0.5'}`} />
-                </span>
-              </button>
-            </div>
-          )}
-          {panel.section === 'trail' && (
-            <div className="space-y-3">
-              <p className="text-xs leading-relaxed text-slate-400">Xóa đường vệt đã di chuyển đang hiển thị trên bản đồ.</p>
-              <button type="button" onClick={() => { setTrail([]); closePopup(); }} className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg bg-slate-700 px-3 py-2 text-xs font-semibold hover:bg-slate-600">
-                <RotateCcw className="h-4 w-4" />
-                Xóa vệt di chuyển
-              </button>
-            </div>
-          )}
-          {/* Card 1: Telemetry Realtime & Hardware */}
-          {panel.section === 'telemetry' && (
-          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 scroll-mt-3">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-2">
-              <span className="flex items-center gap-1.5">
-                <Activity className="w-3.5 h-3.5 text-cyan-400" />
-                Dữ Liệu Telemetry Thực Tế
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded text-[10px] font-mono ${
-                  isNavigating ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-slate-800 text-slate-400'
-                }`}
-              >
-                {isNavigating ? 'Đang Di Chuyển' : navigationMapReady && isLocalized ? 'Đã Định Vị' : 'Chưa Sẵn Sàng Đi'}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="p-2 rounded bg-slate-900 border border-slate-800/80">
-                <span className="text-[10px] text-slate-500 block">TỌA ĐỘ X</span>
-                <span className="text-cyan-400 font-bold text-sm">{robotPose.x.toFixed(2)}m</span>
-              </div>
-              <div className="p-2 rounded bg-slate-900 border border-slate-800/80">
-                <span className="text-[10px] text-slate-500 block">TỌA ĐỘ Y</span>
-                <span className="text-cyan-400 font-bold text-sm">{robotPose.y.toFixed(2)}m</span>
-              </div>
-              <div className="p-2 rounded bg-slate-900 border border-slate-800/80">
-                <span className="text-[10px] text-slate-500 block">GÓC YAW</span>
-                <span className="text-amber-400 font-bold text-sm">
-                  {((robotPose.yaw * 180) / Math.PI).toFixed(0)}°
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-2 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
-              <span className="flex items-center gap-1 text-slate-400">
-                <Cpu className="w-3 h-3 text-cyan-400" />
-                {hardwareInfo.model}
-              </span>
-              <span className="flex items-center gap-1 text-emerald-400 font-mono">
-                <Battery className="w-3 h-3" />
-                {hardwareInfo.battery}%
-              </span>
-            </div>
-          </div>
-
-          )}
-
-          {/* Card Nav2 (che do ROS 2): bat map_server + AMCL + Nav2 voi map dang chon */}
-          {panel.section === 'nav2' && (
-            <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2 scroll-mt-3">
-              <label
-          className="flex items-center w-full bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-xs"
-          title={`${mapConfig.widthMeters}m × ${mapConfig.heightMeters}m • ${mapConfig.resolution}m/ô • gốc (${mapConfig.originX}, ${mapConfig.originY})`}
-        >
-          <Layers className="w-3.5 h-3.5 text-cyan-400 mr-1.5 shrink-0" />
-          <span className="text-[11px] font-semibold text-slate-400 mr-1.5">Bản đồ:</span>
-          <select
-            value={mapConfig.mapId}
-            onChange={(e) => handleSelectMap(e.target.value)}
-            disabled={mapLayouts.length === 0}
-            className="bg-slate-900 text-[11px] font-semibold text-slate-200 outline-none cursor-pointer disabled:cursor-not-allowed flex-1 min-w-0"
-          >
-            {mapLayouts.length === 0 && (
-              <option value={mapConfig.mapId}>{mapConfig.mapId}{isLegacyMap ? ' (gốc Lab)' : ''}</option>
-            )}
-            {mapLayouts.map((m) => (
-              <option key={m.map_id} value={m.map_id}>
-                {m.name}
-                {m.map_id === LAYOUT2_CONFIG.mapId ? ' (gốc Lab)' : ''} • {m.width_m}×{m.height_m}m
-              </option>
-            ))}
-          </select>
-        </label>
-              <div className="flex flex-wrap items-center gap-2">
-          {/* Toggle Target */}
-          <div className="flex items-center bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs">
-            <button
-              onClick={() => setConnectionMode('pi5')}
-              className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
-                connectionMode === 'pi5'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Cpu className="w-3 h-3" />
-              <span>Xe Thật Pi 5</span>
-            </button>
-            <button
-              onClick={() => setConnectionMode('ros2')}
-              className={`px-2.5 py-1 rounded text-[11px] font-semibold cursor-pointer transition-all flex items-center gap-1.5 ${
-                connectionMode === 'ros2'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Activity className="w-3 h-3" />
-              <span>ROS 2</span>
-            </button>
-          </div>
-
-          {/* Connection status badge */}
-          <div
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 border ${
-              isWsConnected
-                ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800/80'
-                : 'bg-rose-950/80 text-rose-400 border-rose-800/80'
-            }`}
-          >
-            {isWsConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-            <span>
-              {isWsConnected
-                ? connectionMode === 'pi5'
-                  ? `Pi 5 (${pi5Ip})`
-                  : 'ROS 2 Live'
-                : 'Mất kết nối'}
-            </span>
-          </div>
-        </div>
-              <div className="h-px bg-slate-800 my-3" />
-              <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-                <span className="flex items-center gap-1.5">
-                  <Navigation className="w-3.5 h-3.5 text-orange-400" />
-                  {connectionMode === 'pi5' ? 'Xe thật • Nav2 + tránh vật cản' : 'Nav2'}
-                </span>
-                <span
-                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
-                    nav2Runtime.mode === 'NAVIGATION'
-                      ? 'bg-emerald-900/60 text-emerald-300'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}
-                >
-                  {nav2Runtime.mode}
-                  {nav2Runtime.activeMap ? ` • ${nav2Runtime.activeMap}` : ''}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={handleStartNav2}
-                disabled={isStartingNav2}
-                className="w-full px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border bg-orange-600/90 text-white border-orange-500 hover:bg-orange-500 disabled:opacity-60"
-                title="Nạp map đang chọn vào map_server, bật AMCL + Nav2 và vùng cấm (KEEP_OUT)"
-              >
-                {isStartingNav2 ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
-                {nav2Runtime.mode === 'NAVIGATION' && nav2Runtime.activeMap === mapConfig.mapId
-                  ? 'Khởi động lại Nav2'
-                  : `Bật Nav2 với map "${mapConfig.mapId}"`}
-              </button>
-              <p className="text-[10px] leading-snug text-slate-500">
-                1. Bật Navigation → 2. Chọn đúng chỗ xe đang đứng và kéo theo hướng mũi xe → 3. Đợi AMCL xác nhận rồi bấm Tới.
-              </p>
-              <p role="status" aria-live="polite" className="text-[11px] leading-relaxed text-cyan-200 bg-slate-900 rounded px-2 py-1.5 break-words">
-                {navStatus}
-              </p>
-            </div>
-          )}
-
-          {/* Card 2: Dat vi tri ban dau (Initial Pose / 2D Pose Estimate) */}
-          {panel.section === 'pose' && (
-          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2 scroll-mt-3">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-              <span className="flex items-center gap-1.5">
-                <Crosshair className="w-3.5 h-3.5 text-emerald-400" />
-                2. Vị Trí Ban Đầu Robot
-              </span>
-              {isSettingPose && <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsPoseSetMode((prev) => !prev);
-                  setPoseDraft(null);
-                  setSelectedEndpoint(null);
-                  setSelectedZone(null);
-                  setIsAddEndpointMode(false);
-                  setZoneDrawType(null);
-                  setZoneDraft(null);
-                  closePopup();
-                }}
-                disabled={isSettingPose || !navigationMapReady}
-                className={`px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border ${
-                  isPoseSetMode
-                    ? 'bg-emerald-600 text-white border-emerald-500 animate-pulse'
-                    : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
-                }`}
-                title="Click vào vị trí robot trên bản đồ, giữ chuột kéo theo hướng mũi xe rồi thả"
-              >
-                <Crosshair className="w-3 h-3" />
-                {isPoseSetMode ? 'Hủy chọn' : 'Chọn trên map'}
-              </button>
-              <button
-                type="button"
-                onClick={handleSetPoseAtDock}
-                disabled={isSettingPose || !navigationMapReady || !dockEndpoint}
-                className="px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
-                title="Robot đang đứng tại Trạm Sạc (Home), mũi xe theo hướng yaw của điểm dock"
-              >
-                <Home className="w-3 h-3" />
-                Đặt tại Dock
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between gap-2">
-              <span
-                className={`flex items-center gap-1.5 text-[11px] ${
-                  isLocalized
-                    ? 'text-emerald-400'
-                    : managerLoc.tone === 'busy'
-                    ? 'text-amber-400'
-                    : managerLoc.tone === 'bad'
-                    ? 'text-rose-400'
-                    : 'text-slate-400'
-                }`}
-                title={managerLoc.fresh ? managerLoc.reason : undefined}
-              >
-                <ShieldCheck className="w-3 h-3" />
-                {managerLoc.fresh
-                  ? managerLoc.label
-                  : localizationReady
-                  ? 'AMCL đã định vị bằng LiDAR'
-                  : 'Chưa xác nhận vị trí trên map'}
-              </span>
-              <button
-                type="button"
-                onClick={handleRelocalize}
-                disabled={isSettingPose || !navigationMapReady}
-                className="px-2 py-1 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-colors border bg-slate-900 text-cyan-300 border-slate-700 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Khớp lại tia LiDAR với bản đồ quanh vị trí hiện tại để sửa trôi odometry"
-              >
-                <RefreshCw className="w-3 h-3" />
-                Định vị lại
-              </button>
-            </div>
-
-            <p className="text-[10px] text-slate-400 leading-relaxed">
-              {!navigationMapReady
-                ? 'Hiện chưa có Navigation đúng map. Bật Nav2 ở bước 1 trước; chế độ MAPPING chỉ dùng để quét.'
-                : !dockEndpoint
-                  ? 'Map chưa có Dock. Gốc (0,0) không phải vị trí mặc định của xe; hãy dùng Chọn trên map.'
-                  : 'Chỉ dùng Đặt tại Dock khi xe thật đang đứng đúng điểm Dock đã lưu.'}
-            </p>
-            {isPoseSetMode && (
-              <p className="text-[10px] text-emerald-300/90 leading-snug">
-                Click vào chỗ robot đang đứng, giữ chuột và kéo theo hướng mũi xe, rồi thả chuột.
-              </p>
-            )}
-          </div>
-
-          )}
-
-          {/* NOI DUNG TAB 1: DANH SACH DIEM MOC (WAYPOINTS) */}
-          {panel.section === 'WAYPOINTS' && (
-            <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
-              {/* Toolbar them & luu endpoint */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => handleAddEndpoint('CHARGER')}
-                    className="px-2 py-1 rounded bg-emerald-600/80 hover:bg-emerald-600 text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
-                    title="Thêm trạm sạc pin"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Trạm Sạc</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleAddEndpoint('PARK')}
-                    className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
-                    title="Thêm điểm đỗ chờ"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Điểm Đỗ</span>
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleSaveEndpoints}
-                  disabled={isSavingEndpoints || !hasUnsavedEndpoints}
-                  className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all ${
-                    hasUnsavedEndpoints
-                      ? 'bg-emerald-600 text-white shadow-sm animate-pulse'
-                      : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                  }`}
-                  title="Lưu tất cả điểm mốc vào CSDL"
-                >
-                  <Save className="w-3 h-3" />
-                  <span>{isSavingEndpoints ? 'Lưu...' : 'Lưu'}</span>
-                </button>
-              </div>
-
-              {isAddEndpointMode && (
-                <label className="flex items-center gap-2 rounded-lg border border-blue-500/50 bg-blue-950/40 p-2 text-[11px] text-blue-200">
-                  <Crosshair className="w-3.5 h-3.5 shrink-0" />
-                  <span>Ghim trên map:</span>
-                  <select
-                    aria-label="Loại điểm mốc cần ghim"
-                    value={addEndpointType}
-                    onChange={(e) => setAddEndpointType(e.target.value)}
-                    className="min-w-0 flex-1 rounded bg-slate-900 p-1 text-slate-100 outline-none"
-                  >
-                    <option value="CHARGER">Trạm Sạc</option>
-                    <option value="PARK">Điểm Đỗ</option>
-                  </select>
-                </label>
-              )}
-
-              {/* Danh sach Waypoints */}
-              <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                {endpoints.map((ep) => {
-                  const tmpl = getEndpointTemplateInfo(ep.type);
-                  const isSelected = selectedEndpoint?.id === ep.id;
-                  const isNavTarget = isNavigating && navigatingEndpointId === ep.id;
-                  return (
-                    <div
-                      key={ep.id}
-                      onClick={() => handleNavigateToEndpoint(ep)}
-                      className={`p-2 rounded-lg border flex items-center justify-between transition-colors cursor-pointer ${
-                        isNavTarget
-                          ? 'bg-cyan-950/80 border-cyan-500 shadow-md ring-1 ring-cyan-400'
-                          : isSelected
-                          ? 'bg-blue-950/60 border-blue-500 shadow-sm'
-                          : 'bg-slate-900 hover:bg-slate-850 border-slate-800'
-                      }`}
+                {/* Toolbar them & luu zone */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => toggleZoneDraw('KEEP_OUT')}
+                      className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${zoneDrawType === 'KEEP_OUT' ? 'bg-rose-600 ring-2 ring-white/70' : 'bg-rose-600/80 hover:bg-rose-600'
+                        }`}
+                      title="Vẽ khu vực cấm vào theo hình đã chọn. Nav2 sẽ đi đường vòng, không nhận endpoint bên trong."
                     >
-                      <div className="flex items-center gap-2 overflow-hidden">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0"
-                          style={{ backgroundColor: tmpl.color || ep.color }}
-                        />
-                        <div className="truncate">
-                          <span className="text-xs font-semibold text-slate-200 block truncate flex items-center gap-1.5">
-                            <span>{ep.name}</span>
-                            {isNavTarget && (
-                              <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[9px] font-bold border border-cyan-500/40">
-                                Đang tới...
-                              </span>
-                            )}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-mono block">
-                            ({Number(ep.x).toFixed(2)}m, {Number(ep.y).toFixed(2)}m) • {tmpl.type}
-                          </span>
-                        </div>
-                      </div>
+                      <Plus className="w-3 h-3" />
+                      <span>{zoneDrawType === 'KEEP_OUT' ? 'Đang Vẽ...' : 'Cấm Vào'}</span>
+                    </button>
+                    <button
+                      onClick={() => toggleZoneDraw('SPEED_ZONE')}
+                      className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${zoneDrawType === 'SPEED_ZONE' ? 'bg-amber-600 ring-2 ring-white/70' : 'bg-amber-600/80 hover:bg-amber-600'
+                        }`}
+                      title="Vẽ vùng giới hạn tốc độ theo hình đã chọn. Robot tự chạy chậm lại khi vào vùng."
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{zoneDrawType === 'SPEED_ZONE' ? 'Đang Vẽ...' : 'Tốc Độ'}</span>
+                    </button>
+                    <button
+                      onClick={() => toggleZoneDraw('NO_STOP')}
+                      className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${zoneDrawType === 'NO_STOP' ? 'bg-pink-600 ring-2 ring-white/70' : 'bg-pink-600/80 hover:bg-pink-600'
+                        }`}
+                      title="Vẽ vùng cấm dừng theo hình đã chọn. Robot được đi ngang qua nhưng không nhận endpoint bên trong."
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{zoneDrawType === 'NO_STOP' ? 'Đang Vẽ...' : 'Cấm Dừng'}</span>
+                    </button>
+                  </div>
 
-                      <div className="flex items-center gap-1 shrink-0 ml-1">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleNavigateToEndpoint(ep);
-                          }}
-                          className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
-                            isNavTarget
-                              ? 'bg-cyan-600 text-white shadow-sm'
-                              : 'bg-slate-800 hover:bg-cyan-600 text-slate-300 hover:text-white'
-                          }`}
-                          title="Bấm để robot di chuyển tới điểm này"
-                        >
-                          <Navigation className="w-3 h-3" />
-                          <span>Tới</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteEndpoint(ep.id);
-                          }}
-                          className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer transition-colors"
-                          title="Xóa điểm"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* NOI DUNG TAB 2: DANH SACH VUNG CHUC NANG (ZONES) */}
-          {panel.section === 'ZONES' && (
-            <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
-              {/* Toolbar them & luu zone */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1">
                   <button
-                    onClick={() => toggleZoneDraw('KEEP_OUT')}
-                    className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
-                      zoneDrawType === 'KEEP_OUT' ? 'bg-rose-600 ring-2 ring-white/70' : 'bg-rose-600/80 hover:bg-rose-600'
-                    }`}
-                    title="Vẽ khu vực cấm vào: kéo chuột trên bản đồ. Nav2 sẽ đi đường vòng, không nhận endpoint bên trong."
+                    onClick={handleSaveZones}
+                    disabled={isSavingZones || !hasUnsavedZones}
+                    className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all ${hasUnsavedZones
+                      ? 'bg-emerald-600 text-white shadow-sm animate-pulse'
+                      : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                      }`}
+                    title="Lưu tất cả vùng vào CSDL"
                   >
-                    <Plus className="w-3 h-3" />
-                    <span>{zoneDrawType === 'KEEP_OUT' ? 'Đang Vẽ...' : 'Cấm Vào'}</span>
-                  </button>
-                  <button
-                    onClick={() => toggleZoneDraw('SPEED_ZONE')}
-                    className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
-                      zoneDrawType === 'SPEED_ZONE' ? 'bg-amber-600 ring-2 ring-white/70' : 'bg-amber-600/80 hover:bg-amber-600'
-                    }`}
-                    title="Vẽ vùng giới hạn tốc độ: kéo chuột trên bản đồ. Robot tự chạy chậm lại khi vào vùng."
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>{zoneDrawType === 'SPEED_ZONE' ? 'Đang Vẽ...' : 'Tốc Độ'}</span>
-                  </button>
-                  <button
-                    onClick={() => toggleZoneDraw('NO_STOP')}
-                    className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
-                      zoneDrawType === 'NO_STOP' ? 'bg-pink-600 ring-2 ring-white/70' : 'bg-pink-600/80 hover:bg-pink-600'
-                    }`}
-                    title="Vẽ vùng cấm dừng: kéo chuột trên bản đồ. Robot được đi ngang qua nhưng không nhận endpoint bên trong."
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>{zoneDrawType === 'NO_STOP' ? 'Đang Vẽ...' : 'Cấm Dừng'}</span>
+                    <Save className="w-3 h-3" />
+                    <span>{isSavingZones ? 'Lưu...' : 'Lưu'}</span>
                   </button>
                 </div>
 
-                <button
-                  onClick={handleSaveZones}
-                  disabled={isSavingZones || !hasUnsavedZones}
-                  className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all ${
-                    hasUnsavedZones
-                      ? 'bg-emerald-600 text-white shadow-sm animate-pulse'
-                      : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                  }`}
-                  title="Lưu tất cả vùng vào CSDL"
-                >
-                  <Save className="w-3 h-3" />
-                  <span>{isSavingZones ? 'Lưu...' : 'Lưu'}</span>
-                </button>
-              </div>
-
-              {/* Danh sach Zones */}
-              <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
-                {zones.map((zone) => {
-                  const isSelected = selectedZone?.id === zone.id;
-                  const isKeepOut = zone.type === 'KEEP_OUT';
-                  const isSpeed = zone.type === 'SPEED_ZONE';
-                  const color = isKeepOut ? '#EF4444' : isSpeed ? '#F59E0B' : '#FB7185';
-                  return (
-                    <div
-                      key={zone.id}
-                      onClick={() => {
-                        setSelectedZone(zone);
-                        setSelectedEndpoint(null);
-                      }}
-                      className={`p-2 rounded-lg border flex items-center justify-between transition-colors cursor-pointer ${
-                        isSelected
+                {/* Danh sach Zones */}
+                <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                  {zones.map((zone) => {
+                    const isSelected = selectedZone?.id === zone.id;
+                    const isKeepOut = zone.type === 'KEEP_OUT';
+                    const isSpeed = zone.type === 'SPEED_ZONE';
+                    const color = isKeepOut ? '#EF4444' : isSpeed ? '#F59E0B' : '#FB7185';
+                    return (
+                      <div
+                        key={zone.id}
+                        onClick={() => {
+                          setSelectedZone(zone);
+                          setSelectedEndpoint(null);
+                          setZoneDrawType(null);
+                          setZoneDraft(null);
+                        }}
+                        className={`p-2 rounded-lg border flex items-center justify-between transition-colors cursor-pointer ${isSelected
                           ? 'bg-indigo-950/60 border-indigo-500 shadow-sm'
                           : 'bg-slate-900 hover:bg-slate-850 border-slate-800'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 overflow-hidden">
-                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-                        <div className="truncate">
-                          <span className="text-xs font-semibold text-slate-200 block truncate">{zone.name}</span>
-                          <span className="text-[10px] text-slate-400 font-mono block">
-                            Tâm ({Number(zone.x).toFixed(2)}, {Number(zone.y).toFixed(2)}) • {Number(zone.width).toFixed(1)}m×{Number(zone.height).toFixed(1)}m
-                            {isSpeed && ` • ${zone.speed_limit}m/s`}
-                          </span>
+                          }`}
+                      >
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                          <div className="truncate">
+                            <span className="text-xs font-semibold text-slate-200 block truncate">{zone.name}</span>
+                            <span className="text-[10px] text-slate-400 font-mono block">
+                              {isPolygonZone(zone) ? `Đa giác · ${zone.vertices.length} đỉnh` : `${Number(zone.width).toFixed(1)}m×${Number(zone.height).toFixed(1)}m`}
+                              {' • '}Tâm ({Number(zone.x).toFixed(2)}, {Number(zone.y).toFixed(2)})
+                              {isSpeed && ` • ${zone.speed_limit}m/s`}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0 ml-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedZone(zone);
+                              setSelectedEndpoint(null);
+                              setZoneDrawType(null);
+                              setZoneDraft(null);
+                            }}
+                            className="p-1 rounded text-slate-400 hover:text-cyan-400 hover:bg-slate-800 cursor-pointer transition-colors"
+                            title="Sửa vùng"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteZone(zone.id);
+                            }}
+                            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer transition-colors"
+                            title="Xóa vùng"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-1 shrink-0 ml-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedZone(zone);
-                            setSelectedEndpoint(null);
-                          }}
-                          className="p-1 rounded text-slate-400 hover:text-cyan-400 hover:bg-slate-800 cursor-pointer transition-colors"
-                          title="Sửa vùng"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteZone(zone.id);
-                          }}
-                          className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 cursor-pointer transition-colors"
-                          title="Xóa vùng"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* NOI DUNG TAB 3: TELEOP DIEU KHIEN THU CONG */}
-          {panel.section === 'TELEOP' && (
-            <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-3">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-300">
-                <span className="flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-amber-400" />
-                  Điều Khiển Thủ Công (D-Pad & Phím WASD)
-                </span>
-                <span className="text-[10px] text-amber-400 font-mono">
-                  {speedPercent}% ({maxLinearSpeed.toFixed(2)}m/s)
-                </span>
-              </div>
-
-              {/* D-Pad Buttons */}
-              <div className="flex flex-col items-center justify-center gap-2 my-2">
-                <button
-                  onMouseDown={() => sendTeleopCommand('forward', maxLinearSpeed, 0.0)}
-                  onMouseUp={() => sendTeleopCommand('stop', 0.0, 0.0)}
-                  onTouchStart={() => sendTeleopCommand('forward', maxLinearSpeed, 0.0)}
-                  onTouchEnd={() => sendTeleopCommand('stop', 0.0, 0.0)}
-                  className="w-12 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-white active:bg-amber-600 cursor-pointer transition-colors"
-                  title="Tiến lên (W / Up)"
-                >
-                  <ChevronUp className="w-5 h-5" />
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onMouseDown={() => sendTeleopCommand('left', 0.0, 0.5)}
-                    onMouseUp={() => sendTeleopCommand('stop', 0.0, 0.0)}
-                    onTouchStart={() => sendTeleopCommand('left', 0.0, 0.5)}
-                    onTouchEnd={() => sendTeleopCommand('stop', 0.0, 0.0)}
-                    className="w-12 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-white active:bg-amber-600 cursor-pointer transition-colors"
-                    title="Quay trái (A / Left)"
-                  >
-                    <ChevronLeft className="w-5 h-5" />
-                  </button>
-
-                  <button
-                    onClick={handleStop}
-                    className="w-12 h-10 rounded-lg bg-rose-700 hover:bg-rose-600 border border-rose-500 flex items-center justify-center text-white font-bold text-xs cursor-pointer active:scale-95 transition-all shadow-md"
-                    title="Dừng khẩn cấp (Space)"
-                  >
-                    STOP
-                  </button>
-
-                  <button
-                    onMouseDown={() => sendTeleopCommand('right', 0.0, -0.5)}
-                    onMouseUp={() => sendTeleopCommand('stop', 0.0, 0.0)}
-                    onTouchStart={() => sendTeleopCommand('right', 0.0, -0.5)}
-                    onTouchEnd={() => sendTeleopCommand('stop', 0.0, 0.0)}
-                    className="w-12 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-white active:bg-amber-600 cursor-pointer transition-colors"
-                    title="Quay phải (D / Right)"
-                  >
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
+                    );
+                  })}
                 </div>
-
-                <button
-                  onMouseDown={() => sendTeleopCommand('backward', -maxLinearSpeed, 0.0)}
-                  onMouseUp={() => sendTeleopCommand('stop', 0.0, 0.0)}
-                  onTouchStart={() => sendTeleopCommand('backward', -maxLinearSpeed, 0.0)}
-                  onTouchEnd={() => sendTeleopCommand('stop', 0.0, 0.0)}
-                  className="w-12 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-white active:bg-amber-600 cursor-pointer transition-colors"
-                  title="Lùi lại (S / Down)"
-                >
-                  <ChevronDown className="w-5 h-5" />
-                </button>
               </div>
+            )}
 
-              {/* Speed slider toi uu cho LiDAR A1M8 quet tron ven */}
-              <div className="mt-2 text-xs">
-                <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                  <span className="font-semibold text-amber-400">
-                    Tốc độ quét an toàn: {speedPercent}% ({maxLinearSpeed.toFixed(2)} m/s)
+            {/* NOI DUNG TAB 3: TELEOP DIEU KHIEN THU CONG */}
+            {panel.section === 'TELEOP' && (
+              <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                  <span className="flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                    Điều Khiển Thủ Công (D-Pad & Phím WASD)
                   </span>
-                  <span>Max an toàn: 50%</span>
+                  <span className="text-[10px] text-amber-400 font-mono">
+                    {speedPercent}% ({maxLinearSpeed.toFixed(2)}m/s)
+                  </span>
                 </div>
-                <input
-                  type="range"
-                  min="15"
-                  max="50"
-                  step="5"
-                  value={speedPercent}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    setSpeedPercent(val);
-                    setMaxLinearSpeed(Number((val * 0.0048).toFixed(2)));
-                  }}
-                  className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                />
-                <p className="mt-1 text-[9px] text-slate-400 italic">
-                  * Giảm tốc độ giúp RPLiDAR A1M8 (5.5Hz) quét đủ mật độ điểm, chống trượt bánh và chống méo bản đồ.
-                </p>
-              </div>            </div>
-          )}
 
-          {/* Hardware connection info */}
-          {panel.section === 'telemetry' && (
-          <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
-            <span className="font-bold text-slate-300 block">Thông Tin Kết Nối Thực Tế:</span>
-            <div className="flex justify-between text-[10px]">
-              <span>Cổng Serial RPLiDAR:</span>
-              <span className="text-cyan-400 font-mono">{hardwareInfo.port}</span>
-            </div>
-            <div className="flex justify-between text-[10px]">
-              <span>Địa chỉ IP Pi 5:</span>
-              <span className="text-emerald-400 font-mono">{pi5Ip}</span>
-            </div>
-            <div className="flex justify-between text-[10px]">
-              <span>Tia quét nhận diện:</span>
-              <span className="text-amber-400 font-mono">{scanPoints.length} điểm</span>
-            </div>
-          </div>
-          )}
-        </PhysicalMapPopup>
+                {/* D-Pad Buttons */}
+                <div className="flex flex-col items-center justify-center gap-2 my-2">
+                  <button
+                    onMouseDown={() => sendTeleopCommand('forward', maxLinearSpeed, 0.0)}
+                    onMouseUp={() => sendTeleopCommand('stop', 0.0, 0.0)}
+                    onTouchStart={() => sendTeleopCommand('forward', maxLinearSpeed, 0.0)}
+                    onTouchEnd={() => sendTeleopCommand('stop', 0.0, 0.0)}
+                    className="w-12 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-white active:bg-amber-600 cursor-pointer transition-colors"
+                    title="Tiến lên (W / Up)"
+                  >
+                    <ChevronUp className="w-5 h-5" />
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onMouseDown={() => sendTeleopCommand('left', 0.0, 0.5)}
+                      onMouseUp={() => sendTeleopCommand('stop', 0.0, 0.0)}
+                      onTouchStart={() => sendTeleopCommand('left', 0.0, 0.5)}
+                      onTouchEnd={() => sendTeleopCommand('stop', 0.0, 0.0)}
+                      className="w-12 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-white active:bg-amber-600 cursor-pointer transition-colors"
+                      title="Quay trái (A / Left)"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+
+                    <button
+                      onClick={handleStop}
+                      className="w-12 h-10 rounded-lg bg-rose-700 hover:bg-rose-600 border border-rose-500 flex items-center justify-center text-white font-bold text-xs cursor-pointer active:scale-95 transition-all shadow-md"
+                      title="Dừng khẩn cấp (Space)"
+                    >
+                      STOP
+                    </button>
+
+                    <button
+                      onMouseDown={() => sendTeleopCommand('right', 0.0, -0.5)}
+                      onMouseUp={() => sendTeleopCommand('stop', 0.0, 0.0)}
+                      onTouchStart={() => sendTeleopCommand('right', 0.0, -0.5)}
+                      onTouchEnd={() => sendTeleopCommand('stop', 0.0, 0.0)}
+                      className="w-12 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-white active:bg-amber-600 cursor-pointer transition-colors"
+                      title="Quay phải (D / Right)"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <button
+                    onMouseDown={() => sendTeleopCommand('backward', -maxLinearSpeed, 0.0)}
+                    onMouseUp={() => sendTeleopCommand('stop', 0.0, 0.0)}
+                    onTouchStart={() => sendTeleopCommand('backward', -maxLinearSpeed, 0.0)}
+                    onTouchEnd={() => sendTeleopCommand('stop', 0.0, 0.0)}
+                    className="w-12 h-10 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center text-white active:bg-amber-600 cursor-pointer transition-colors"
+                    title="Lùi lại (S / Down)"
+                  >
+                    <ChevronDown className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Speed slider toi uu cho LiDAR A1M8 quet tron ven */}
+                <div className="mt-2 text-xs">
+                  <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+                    <span className="font-semibold text-amber-400">
+                      Tốc độ quét an toàn: {speedPercent}% ({maxLinearSpeed.toFixed(2)} m/s)
+                    </span>
+                    <span>Max an toàn: 50%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="15"
+                    max="50"
+                    step="5"
+                    value={speedPercent}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      setSpeedPercent(val);
+                      setMaxLinearSpeed(Number((val * 0.0048).toFixed(2)));
+                    }}
+                    className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                  />
+                  <p className="mt-1 text-[9px] text-slate-400 italic">
+                    * Giảm tốc độ giúp RPLiDAR A1M8 (5.5Hz) quét đủ mật độ điểm, chống trượt bánh và chống méo bản đồ.
+                  </p>
+                </div>            </div>
+            )}
+
+            {/* Hardware connection info */}
+            {panel.section === 'telemetry' && (
+              <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
+                <span className="font-bold text-slate-300 block">Thông Tin Kết Nối Thực Tế:</span>
+                <div className="flex justify-between text-[10px]">
+                  <span>Cổng Serial RPLiDAR:</span>
+                  <span className="text-cyan-400 font-mono">{hardwareInfo.port}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span>Địa chỉ IP Pi 5:</span>
+                  <span className="text-emerald-400 font-mono">{pi5Ip}</span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span>Tia quét nhận diện:</span>
+                  <span className="text-amber-400 font-mono">{scanPoints.length} điểm</span>
+                </div>
+              </div>
+            )}
+          </PhysicalMapPopup>
         )}
 
         {/* Thanh icon: luon hien; bam icon mo dung phan, bam lai icon dang mo de thu gon */}
@@ -3537,11 +3747,10 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
                 aria-haspopup="dialog"
                 aria-expanded={active}
                 aria-controls="physical-map-panel"
-                className={`w-9 h-9 rounded-lg flex items-center justify-center border cursor-pointer transition-colors ${
-                  active
-                    ? 'bg-[#262626] text-white border-[#262626]'
-                    : 'bg-transparent text-[#8C8C8C] border-[#BFBFBD] hover:bg-[#BFBFBD] hover:text-[#262626]'
-                }`}
+                className={`w-9 h-9 rounded-lg flex items-center justify-center border cursor-pointer transition-colors ${active
+                  ? 'bg-[#262626] text-white border-[#262626]'
+                  : 'bg-transparent text-[#8C8C8C] border-[#BFBFBD] hover:bg-[#BFBFBD] hover:text-[#262626]'
+                  }`}
               >
                 <Icon className="w-[18px] h-[18px]" />
               </button>
@@ -3556,9 +3765,8 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
             aria-haspopup="dialog"
             aria-expanded={panel.open && panel.section === 'ADD'}
             aria-controls="physical-map-panel"
-            className={`w-9 h-9 rounded-lg flex items-center justify-center border transition-colors cursor-pointer ${
-              panel.open && panel.section === 'ADD' ? 'bg-[#262626] text-white border-[#262626]' : 'bg-transparent text-[#8C8C8C] border-[#BFBFBD] hover:text-[#262626] hover:bg-[#BFBFBD]'
-            }`}
+            className={`w-9 h-9 rounded-lg flex items-center justify-center border transition-colors cursor-pointer ${panel.open && panel.section === 'ADD' ? 'bg-[#262626] text-white border-[#262626]' : 'bg-transparent text-[#8C8C8C] border-[#BFBFBD] hover:text-[#262626] hover:bg-[#BFBFBD]'
+              }`}
           >
             <Plus className="w-[18px] h-[18px]" />
           </button>
@@ -3572,9 +3780,8 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
               aria-haspopup="dialog"
               aria-expanded={panel.open && panel.section === key}
               aria-controls="physical-map-panel"
-              className={`w-9 h-9 rounded-lg flex items-center justify-center border transition-colors cursor-pointer ${
-                active ? 'bg-[#262626] text-white border-[#262626]' : 'bg-transparent text-[#8C8C8C] border-[#BFBFBD] hover:text-[#262626] hover:bg-[#BFBFBD]'
-              }`}
+              className={`w-9 h-9 rounded-lg flex items-center justify-center border transition-colors cursor-pointer ${active ? 'bg-[#262626] text-white border-[#262626]' : 'bg-transparent text-[#8C8C8C] border-[#BFBFBD] hover:text-[#262626] hover:bg-[#BFBFBD]'
+                }`}
             >
               <Icon className="w-[18px] h-[18px]" />
             </button>

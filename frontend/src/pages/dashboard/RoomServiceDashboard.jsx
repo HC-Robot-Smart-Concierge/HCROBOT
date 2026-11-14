@@ -1,7 +1,7 @@
 import { useStaffText } from '../../context/StaffLanguage';
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { RefreshCw, UtensilsCrossed, CheckCircle2, Clock, Phone, User } from 'lucide-react';
+import { RefreshCw, CheckCircle2, Clock, Phone, User, ConciergeBell, MapPin, Bot } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
 import { RejectReasonModal } from '../../components/dashboard/RejectReasonModal';
 import { INITIAL_ROOM_SERVICE_DATA } from '../../data/mockHotelData';
@@ -52,13 +52,22 @@ const normalizeFleet = (unit) => ({
 
 const matchesOrder = (order, orderId) => order.id === orderId || order.rawId === orderId;
 
-const KpiCard = ({ label, value, detail }) => {
+const KpiCard = ({ label, value, detail, active = false, onClick }) => {
   return (
-    <article className="rounded-xl bg-white p-4 border border-[#E8E5E0]">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-[#777]">{label}</span>
+    <article
+      onClick={onClick}
+      className={`rounded-xl bg-white px-5 py-4 border transition-all ${
+        onClick ? 'cursor-pointer' : ''
+      } ${
+        active
+          ? '!border-[#1A1917] ring-1 ring-[#1A1917]/20'
+          : 'border-[#BFBFBD] hover:border-[#8C8C8C]'
+      }`}
+    >
+      <p className="text-[11px] font-semibold uppercase text-[#8C8C8C]">{label}</p>
       <div className="mt-2 flex items-baseline gap-2">
-        <span className="text-[18px] font-bold text-[#222]">{value}</span>
-        {detail && <span className="text-[10px] text-[#777]">{detail}</span>}
+        <span className="text-[22px] font-bold text-[#262626]">{value}</span>
+        {detail && <span className="text-[11px] text-[#77736E]">{detail}</span>}
       </div>
     </article>
   );
@@ -66,7 +75,7 @@ const KpiCard = ({ label, value, detail }) => {
 
 export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
   const st = useStaffText();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const staffName = currentUser?.full_name || currentUser?.name || 'Elena Rossi';
   const [data, setData] = useState({
     ...INITIAL_ROOM_SERVICE_DATA,
@@ -339,87 +348,90 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
   const kpis = data.kpis || INITIAL_ROOM_SERVICE_DATA.kpis;
 
   return (
-    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] font-sans">
-      <div className="staff-page-container w-full max-w-[1180px] mx-auto px-4 md:px-8 pt-3 pb-8">
-        <StaffPageHeader className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-[15px] font-semibold text-[#2C2926]">{t('rsTitle')}</h2>
-            <p className="mt-0.5 text-[12px] text-[#77726D]">
-              {t('rsSubtitle')}
+    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar font-sans">
+      <div className="staff-page-container space-y-5">
+        <StaffPageHeader className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <h1>{language === 'EN' ? 'Room Service Operations' : 'Dịch Vụ Buồng Phòng (Room Service)'}</h1>
+            <p>
+              {language === 'EN'
+                ? 'Coordinate guest room amenity requests, preparation queues and room delivery.'
+                : 'Tiếp nhận yêu cầu tiện nghi buồng phòng, chuẩn bị và giao phục vụ kịp thời cho khách.'}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => loadData(true)}
-            disabled={isRefreshing}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#D4D0CB] bg-white hover:bg-[#F7F5F2] text-[11px] font-semibold text-[#444] transition-colors cursor-pointer shadow-xs active:scale-95"
-            title={st("Refresh room service orders")}
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-600' : 'text-stone-500'}`} />
-            <span>{isRefreshing ? st("Loading...") : st("Refresh")}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="staff-header-details rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[10px] font-semibold text-[#77736E]">
+              {language === 'EN' ? 'Live Service Queue' : 'Điều phối trực tiếp'}
+            </span>
+            <button
+              type="button"
+              onClick={() => loadData(true)}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-1.5 rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#403D39] hover:bg-[#F0EFEC] cursor-pointer"
+              title={st("Refresh room service orders")}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>{isRefreshing ? st("Loading...") : st("Refresh")}</span>
+            </button>
+          </div>
         </StaffPageHeader>
 
-        <section className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {/* KPI Cards */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
             label={st("Pending Orders") || "Chờ tiếp nhận"}
             value={tabCounts.Pending}
+            active={filter === 'Pending'}
+            onClick={() => setFilter('Pending')}
           />
           <KpiCard
             label={st("In Progress") || "Đang xử lý"}
             value={tabCounts.InProgress}
-            detail="avg 10m"
+            active={filter === 'InProgress'}
+            onClick={() => setFilter('InProgress')}
           />
           <KpiCard
             label={st("Completed Today") || "Hoàn thành hôm nay"}
             value={tabCounts.Completed}
+            active={filter === 'Completed'}
+            onClick={() => setFilter('Completed')}
           />
           <KpiCard
             label={st("Total Requests") || "Tổng yêu cầu"}
             value={tabCounts.All}
+            active={filter === 'All'}
+            onClick={() => setFilter('All')}
           />
         </section>
 
-        <section className="mt-4">
+        {/* 2-Column Layout matching Bellman & Maintenance */}
+        <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-4">
           <div className="min-w-0">
-            <div className="mb-3 flex items-center justify-between gap-4">
-              <h3 className="text-[13px] font-semibold text-[#36322F]">{t('activeOrders')}</h3>
-              <div className="flex items-center gap-1 flex-wrap">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-[13px] font-semibold text-[#403D39]">
+                  {language === 'EN' ? 'Active Room Service Requests' : 'Danh sách Yêu cầu Dịch vụ Phòng'}
+                </h3>
+                <p className="text-[11px] text-[#77736E]">
+                  {st('Open requests first, oldest first. Updates every 15 seconds.')}
+                </p>
+              </div>
+              <div className="staff-request-filters" role="group" aria-label={t('activeOrders')}>
                 {[
-                  { key: 'All', label: st("All") || "Tất cả" },
-                  { key: 'Pending', label: st("Pending") || "Chờ tiếp nhận" },
-                  { key: 'InProgress', label: st("In Progress") || "Đang xử lý" },
-                  { key: 'Completed', label: st("Completed") || "Hoàn tất" },
+                  { key: 'All', label: st("All") || t('all') },
+                  { key: 'Pending', label: st("Pending") || t('pending') },
+                  { key: 'InProgress', label: st("In Progress") || t('inProgress') },
+                  { key: 'Completed', label: st("Completed") || t('completed') },
                 ].map(({ key, label }) => {
                   const count = tabCounts[key] || 0;
-                  const isPendingTab = key === 'Pending';
-
                   return (
                     <button
                       key={key}
                       type="button"
                       onClick={() => setFilter(key)}
-                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${filter === key
-                          ? 'bg-[#EAE8E4] text-[#2C2926] shadow-xs'
-                          : 'text-[#77726D] hover:bg-[#F0EEEA]'
-                        }`}
+                      aria-pressed={filter === key}
                     >
-                      <span>{label}</span>
-                      {count > 0 && (
-                        <span
-                          className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
-                            isPendingTab
-                              ? 'bg-amber-600 text-white'
-                              : key === 'InProgress'
-                              ? 'bg-indigo-600 text-white'
-                              : key === 'Completed'
-                              ? 'bg-emerald-600 text-white'
-                              : 'bg-stone-200 text-stone-700'
-                          }`}
-                        >
-                          {count}
-                        </span>
-                      )}
+                      {label} ({count})
                     </button>
                   );
                 })}
@@ -428,7 +440,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
 
             <div className="space-y-3">
               {filteredOrders.length === 0 ? (
-                <div className="rounded-xl bg-white px-5 py-10 text-center text-[12px] text-[#777] border border-[#E8E5E0]">
+                <div className="rounded-xl bg-white px-6 py-10 text-center text-[12px] text-[#777] border border-[#BFBFBD]">
                   {t('noDataMatch')}
                 </div>
               ) : (
@@ -446,29 +458,112 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                     normalizedStatus === 'đã giao';
                   const isInProgress = !isPending && !isCompleted;
 
+                  const rawItems = Array.isArray(order.items) && order.items.length > 0 ? order.items : [];
+                  const groupedMap = new Map();
+                  for (const it of rawItems) {
+                    const itemName = it.name || it.item_name || (typeof it === 'string' ? it : null);
+                    if (!itemName) continue;
+                    const q = Number(it.qty || it.quantity || 1);
+                    groupedMap.set(itemName, (groupedMap.get(itemName) || 0) + q);
+                  }
+                  const displayItems = Array.from(groupedMap.entries());
+                  const totalQty = displayItems.reduce((acc, [, q]) => acc + q, 0) || order.qty || 1;
+
                   return (
                     <article
                       key={order.id}
-                      className="rounded-xl bg-white p-4 border border-[#E8E5E0] space-y-3"
+                      className="rounded-xl bg-white px-5 py-4 border border-[#BFBFBD] transition-all"
                     >
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 text-[11px] font-bold text-[#3A3530]">
-                          <span>#{order.id}</span>
-                          <span className="rounded bg-[#E3E0DB] px-1.5 py-0.5 text-[10px] text-[#69645E]">{st("Room")} {order.room}
-                          </span>
-                          {((order.note || '').includes('Gộp thêm') || order.is_merged) && (
-                            <span className="rounded bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 text-[9px] font-bold">
-                              Đơn gộp
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                            <span className="font-mono text-[11px] font-bold text-[#1A1917] bg-[#F4F3F0] px-2 py-0.5 rounded border border-[#E2DFD9]">
+                              #{order.id}
                             </span>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
+                              <ConciergeBell className="w-3 h-3" />
+                              <span>{language === 'EN' ? 'Room Service' : 'Phục vụ buồng phòng'}</span>
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#555]">
+                              <MapPin className="w-3 h-3 text-[#888]" />
+                              <span>{st("Room")} {order.room}</span>
+                            </span>
+                            {((order.note || '').includes('Gộp thêm') || order.is_merged) && (
+                              <span className="rounded bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold">
+                                Đơn gộp
+                              </span>
+                            )}
+                          </div>
+
+                          {displayItems.length > 0 ? (
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex flex-wrap gap-1.5 items-center">
+                                {displayItems.map(([name, q], idx) => (
+                                  <span
+                                    key={idx}
+                                    className="inline-flex items-center gap-1.5 bg-[#FAF9F6] text-[#2B2927] border border-[#E2DFD9] px-2.5 py-1 rounded-lg text-[12px] font-bold"
+                                  >
+                                    <span className="font-mono text-[11px] font-bold text-amber-800 bg-amber-100/80 px-1.5 py-0.2 rounded">
+                                      {q}x
+                                    </span>
+                                    <span>{name}</span>
+                                  </span>
+                                ))}
+                              </div>
+                              <span className="text-[11px] font-mono font-bold text-[#555]">x{totalQty}</span>
+                            </div>
+                          ) : (
+                            <h4 className="text-[14px] font-bold text-[#2B2927] break-words">
+                              {order.name || st("Room Service request")}
+                            </h4>
                           )}
+
+                          <div className="mt-2 text-[12px] text-[#666] flex flex-wrap items-center gap-2 break-words">
+                            <span className="inline-flex items-center gap-1 font-medium text-[#3F3B38]">
+                              <User className="w-3.5 h-3.5 text-[#777]" />
+                              <span>{order.guest_name || order.guestName || st("Hotel guest")}</span>
+                            </span>
+                            <span
+                              className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-medium"
+                              title={st("Room extension")}
+                            >
+                              <Phone className="w-3 h-3 text-amber-600" />
+                              <span>{order.room_phone || order.roomPhone || `Ext ${order.room}`}</span>
+                            </span>
+                            {(order.guest_phone || order.guestPhone) && (
+                              <a
+                                href={`tel:${order.guest_phone || order.guestPhone}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-colors cursor-pointer"
+                                title={st("Call the guest to confirm the order")}
+                              >
+                                <Phone className="w-3 h-3 text-emerald-600" />
+                                <span>{order.guest_phone || order.guestPhone}</span>
+                              </a>
+                            )}
+                            {order.assignedTo && (
+                              <span className="text-emerald-700 font-semibold">
+                                • {st("Assigned:")} {order.assignedTo}
+                              </span>
+                            )}
+                            <span className="text-[11px] text-[#888]">
+                              • {formatTimeAgo(order.created_at || order.orderedAt, st('Just now'), language)}
+                            </span>
+                          </div>
+
+                          <p className="mt-2 text-[12px] leading-relaxed text-[#444] bg-[#FAF9F6] p-2.5 rounded-lg border border-[#EFECE6] break-words">
+                            {order.notes || st("No special notes")}
+                          </p>
                         </div>
+
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isPending
-                              ? 'bg-amber-100 text-amber-800 border-amber-200'
+                          className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                            isCompleted
+                              ? 'bg-emerald-100 text-emerald-800'
                               : isInProgress
-                                ? 'bg-sky-100 text-sky-800 border-sky-200'
-                                : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                            }`}
+                              ? 'bg-sky-100 text-sky-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
                         >
                           {isPending
                             ? (st("Pending") || "Chờ tiếp nhận")
@@ -478,122 +573,51 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-stone-100/80 text-[11px]">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-stone-900 flex items-center gap-1">
-                            <User className="w-3 h-3 text-stone-500" />
-                            <span>{order.guest_name || order.guestName || st("Hotel guest")}</span>
+                      <div className="mt-4 pt-3 border-t border-[#E9E5DC] flex flex-wrap items-center justify-between gap-3">
+                        <span className="text-[11px] text-[#777] flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 shrink-0" />
+                          <span>
+                            {isPending
+                              ? (st("Awaiting acceptance") || "Chờ nhân viên tiếp nhận")
+                              : isInProgress
+                              ? (st("In progress") || "Đang xử lý yêu cầu")
+                              : (st("Completed") || "Đã hoàn thành")}
                           </span>
-                          {(order.guest_phone || order.guestPhone) && (
-                            <a
-                              href={`tel:${order.guest_phone || order.guestPhone}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-colors cursor-pointer shadow-2xs"
-                              title={st("Call the guest to confirm the order")}
-                            >
-                              <Phone className="w-3 h-3 text-emerald-600" />
-                              <span>{st("Phone:")} {order.guest_phone || order.guestPhone}</span>
-                            </a>
-                          )}
-                          <span
-                            className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-medium shadow-2xs"
-                            title={st("Room extension")}
-                          >
-                            <Phone className="w-3 h-3 text-amber-600" />
-                            <span>{order.room_phone || order.roomPhone || `Ext ${order.room}`}</span>
-                          </span>
-                        </div>
-                        <span className="text-[10px] text-[#888]">{formatTimeAgo(order.created_at || order.orderedAt, st('Just now'), 'vi')}</span>
-                      </div>
-
-                      {(() => {
-                        const rawItems = Array.isArray(order.items) && order.items.length > 0 ? order.items : [];
-                        const groupedMap = new Map();
-                        for (const it of rawItems) {
-                          const itemName = it.name || it.item_name || (typeof it === 'string' ? it : null);
-                          if (!itemName) continue;
-                          const q = Number(it.qty || it.quantity || 1);
-                          groupedMap.set(itemName, (groupedMap.get(itemName) || 0) + q);
-                        }
-                        const displayItems = Array.from(groupedMap.entries());
-                        const totalQty = displayItems.reduce((acc, [, q]) => acc + q, 0) || order.qty || 1;
-
-                        return (
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="space-y-1.5 flex-1 min-w-0">
-                              {displayItems.length > 0 ? (
-                                <div className="flex flex-wrap gap-1.5 items-center">
-                                  {displayItems.map(([name, q], idx) => (
-                                    <span
-                                      key={idx}
-                                      className="inline-flex items-center gap-1.5 bg-[#F7F5F0] text-[#322F2C] border border-[#E8E5E0] px-2 py-0.5 rounded-md text-[11px] font-medium"
-                                    >
-                                      <span className="font-bold text-amber-800 bg-amber-100/80 px-1 py-0.2 rounded text-[10px]">
-                                        {q}x
-                                      </span>
-                                      <span>{name}</span>
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : (
-                                <h4 className="text-[12px] font-semibold text-[#322F2C]">
-                                  {order.name || st("Room Service request")}
-                                </h4>
-                              )}
-                              <p className="text-[11px] text-[#746F69]">
-                                {order.notes || st("No special notes")}
-                              </p>
-                            </div>
-                            <span className="text-[11px] font-bold text-[#444] shrink-0 pt-0.5">x{totalQty}</span>
-                          </div>
-                        );
-                      })()}
-
-                      <div className="pt-3 border-t border-[#F0ECE6] flex items-center justify-between gap-2">
-                        <span className="text-[10px] text-stone-500 font-medium">
-                          {isPending
-                            ? (st("Awaiting acceptance") || "Chờ nhân viên tiếp nhận")
-                            : isInProgress
-                            ? (st("In progress") || "Đang xử lý yêu cầu")
-                            : (st("Completed") || "Đã hoàn thành")}
                         </span>
 
                         <div className="flex items-center gap-2">
-                          {/* 1. Pending: Từ chối hoặc Tiếp nhận xử lý */}
                           {isPending && (
                             <>
                               <button
                                 type="button"
                                 onClick={() => handleOpenRejectModal(order)}
-                                className="rounded-lg border border-[#D4D0CB] bg-white px-3 py-1.5 text-[11px] text-[#444] hover:bg-[#F7F5F2] cursor-pointer"
+                                className="rounded-lg border border-[#DDD] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#555] hover:bg-[#F7F5F2] cursor-pointer"
                               >
                                 {t('reject') || st("Reject") || "Từ chối"}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleAcceptServiceRequest(order)}
-                                className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
+                                className="rounded-lg bg-[#262626] hover:bg-[#404040] px-4 py-1.5 text-[11px] font-bold text-white cursor-pointer"
                               >
                                 {st("Accept request") || "Tiếp nhận"}
                               </button>
                             </>
                           )}
 
-                          {/* 2. In Progress: Đang xử lý -> Hoàn thành */}
                           {isInProgress && (
                             <button
                               type="button"
                               onClick={() => handleCompleteOrder(order)}
-                              className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs flex items-center gap-1.5"
+                              className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-4 py-1.5 text-[11px] font-bold text-white cursor-pointer inline-flex items-center gap-1.5"
                             >
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>{st("Complete") || "Hoàn thành"}</span>
                             </button>
                           )}
 
-                          {/* 3. Completed: Đã hoàn tất */}
                           {isCompleted && (
-                            <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">
+                            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded border border-emerald-200 inline-flex items-center gap-1">
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>{st("Completed") || "Đã hoàn tất"}</span>
                             </span>
@@ -613,12 +637,83 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                 totalItems={filteredOrders.length}
                 pageSize={pageSize}
                 onPageChange={setCurrentPage}
-                itemName={st("orders")}
-                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+                itemName={st("requests")}
+                className="mt-3 rounded-xl border border-[#BFBFBD]"
               />
             )}
           </div>
 
+          <aside className="min-w-0 space-y-4">
+            <section className="rounded-xl bg-white p-4 border border-[#BFBFBD]">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#403D39] flex items-center gap-1.5">
+                  <Bot className="w-3.5 h-3.5 text-[#555]" />
+                  <span>{language === 'EN' ? 'Delivery Robot Units' : 'Đội Robot Giao Phòng'}</span>
+                </h3>
+                <span className="text-[10px] text-[#777] font-semibold">
+                  {(data.deliveryFleet || []).length} {language === 'EN' ? 'units' : 'thiết bị'}
+                </span>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {(data.deliveryFleet || []).map((unit) => {
+                  const statusLower = String(unit.status || '').toLowerCase();
+                  const dotClass =
+                    statusLower === 'available'
+                      ? 'bg-emerald-500'
+                      : statusLower === 'delivering'
+                      ? 'bg-sky-500'
+                      : 'bg-amber-500';
+
+                  return (
+                    <div
+                      key={unit.id || unit.name}
+                      className="flex items-center justify-between text-[11px] py-1.5 border-b border-[#E1DEDA] last:border-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-[#333] break-words">{unit.name}</p>
+                        <p className="text-[10px] text-[#777]">
+                          {unit.location} {unit.battery != null ? `• ${unit.battery}%` : ''}
+                        </p>
+                      </div>
+                      <span className="ml-3 inline-flex shrink-0 items-center gap-1.5 text-[10px] font-semibold text-[#666]">
+                        <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${dotClass}`} />
+                        {st(unit.status)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="rounded-xl bg-white p-4 border border-[#BFBFBD] space-y-3">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#403D39]">
+                {language === 'EN' ? 'Room Service Workflow' : 'Quy Chuẩn Phục Vụ Buồng Phòng'}
+              </h3>
+              <div className="space-y-2.5 text-[11px] text-[#555]">
+                <div className="p-2.5 rounded-lg bg-sky-50/60 border border-sky-100">
+                  <p className="font-bold text-sky-900">
+                    {language === 'EN' ? '1. Accept Room Request' : '1. Tiếp nhận yêu cầu phòng'}
+                  </p>
+                  <p className="mt-0.5 text-sky-800/90">
+                    {language === 'EN'
+                      ? 'Receive room amenity or housekeeping requests from Kiosk -> Prepare items at pantry.'
+                      : 'Nhận yêu cầu khăn, gối, dọn phòng từ Kiosk -> Chuẩn bị vật dụng đúng tiêu chuẩn.'}
+                  </p>
+                </div>
+                <div className="p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-100">
+                  <p className="font-bold text-emerald-900">
+                    {language === 'EN' ? '2. Deliver & Complete' : '2. Giao phòng & Hoàn tất'}
+                  </p>
+                  <p className="mt-0.5 text-emerald-800/90">
+                    {language === 'EN'
+                      ? 'Coordinate delivery to the guest room (direct staff or HCRobot) -> Mark completed.'
+                      : 'Giao vật dụng lên đúng số phòng khách (nhân viên hoặc Robot) -> Xác nhận hoàn thành.'}
+                  </p>
+                </div>
+              </div>
+            </section>
+          </aside>
         </section>
       </div>
 

@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 import unittest
+from unittest.mock import Mock
 
 CONFIG = Path(__file__).resolve().parents[1] / 'ros2_configs'
 sys.path.insert(0, str(CONFIG))
@@ -31,6 +32,34 @@ class TestSensorFreshness(unittest.TestCase):
         namespace['publish_scan'](node, [{'angle': 0, 'distance': 1}], 3, 0.1)
         self.assertEqual(node.dropped_stale_scans, 1)
         self.assertEqual(node.last_scan_time, 10)
+
+    def test_sparse_scan_does_not_invent_clear_rays_and_keeps_close_wall(self):
+        import os
+        import time
+        tree = ast.parse((CONFIG / 'lidar_ws_to_ros2.py').read_text(encoding='utf-8'))
+        cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'LidarWsToRos2Bridge')
+        method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'publish_scan')
+        class Clock:
+            def __sub__(self, other): return self
+            def to_msg(self): return SimpleNamespace(sec=10, nanosec=0)
+        namespace = dict(sensor_frame_is_fresh=sensor_frame_is_fresh, time=time, math=math,
+                         os=SimpleNamespace(getenv=lambda key, default: default),
+                         lidar_clearances=lambda points: {}, LaserScan=SimpleNamespace,
+                         Duration=lambda **kwargs: 0)
+        # LaserScan has a header in ROS, unlike a bare SimpleNamespace.
+        namespace['LaserScan'] = lambda: SimpleNamespace(header=SimpleNamespace())
+        exec(compile(ast.Module(body=[method], type_ignores=[]), 'bridge', 'exec'), namespace)
+        node = SimpleNamespace(dropped_stale_scans=0, scan_count=0, scan_max_turn_dps=0,
+                               scan_period_sec=.125, dropped_turn_scans=0, get_logger=lambda: Mock(),
+                               _scan_lag_sec=lambda *args: .05,
+                               get_clock=lambda: SimpleNamespace(now=lambda: Clock()),
+                               current_pose={'x': 0, 'y': 0, 'yaw': 0}, publisher_=SimpleNamespace(publish=Mock()))
+        namespace['publish_scan'](node, [{'angle': 0, 'distance': .19}, {'angle': .2, 'distance': .18}])
+        scan = node.publisher_.publish.call_args.args[0]
+        self.assertEqual(scan.range_min, .15)
+        self.assertEqual(scan.ranges[0], .18)
+        self.assertTrue(math.isnan(scan.ranges[90]))
+        self.assertFalse(any(math.isinf(value) for value in scan.ranges))
 
 
 class TestLocalizationWarmup(unittest.TestCase):

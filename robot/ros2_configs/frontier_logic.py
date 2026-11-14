@@ -325,11 +325,11 @@ def choose_unstick_direction(
 ) -> Optional[str]:
     """Thoát kẹt: chạy THẲNG ra phía thoáng hơn (tiến/lùi không cần hông trống như xoay).
 
-    Khoảng hở tính từ mép xe (None = LiDAR không thấy gì phía đó => coi là rất thoáng).
+    Khoảng hở tính từ mép xe. None/NaN là chưa biết, không phải khoảng trống.
     Trả về "forward" / "backward" / None (kẹt cả hai đầu: để Nav2/người xử lý).
     """
-    front = 999.0 if front_cm is None else front_cm
-    rear = 999.0 if rear_cm is None else rear_cm
+    front = front_cm if front_cm is not None and math.isfinite(front_cm) else 0.0
+    rear = rear_cm if rear_cm is not None and math.isfinite(rear_cm) else 0.0
     if front >= min_front_cm and front >= rear:
         return "forward"
     if rear >= min_rear_cm:

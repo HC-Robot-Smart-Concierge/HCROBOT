@@ -178,6 +178,8 @@ export function useWorkflowRunner({
 
       // Không dùng timer tĩnh durationMs vì các bước này được điều khiển bởi đếm ngược
       durationMs = null;
+    } else if (activeStep.type === 'WAIT') {
+      durationMs = Math.max(1, Number(activeStep.params?.duration_sec) || 5) * 1000;
     } else if (activeStep.type === 'MOVE') {
       const moveTimeout = activeStep.params?.timeout || activeStep.params?.timeout_sec || 6;
       durationMs = Math.max(4000, moveTimeout * 1000);

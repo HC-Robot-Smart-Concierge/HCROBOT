@@ -176,6 +176,43 @@ class TestStateMachine(unittest.TestCase):
         self.sm.on_initial_pose(3.0, "web")
         self.assertEqual(self.sm.state, LOCALIZING)
 
+    def test_missing_scan_or_tf_eventually_blocks_navigation(self):
+        for inputs_ok in (True, False):
+            with self.subTest(inputs_ok=inputs_ok):
+                self.setUp()
+                self.sm.on_initial_pose(0.0, "web")
+                self.step(0.1, 0.8)
+                self.step(2.2, 0.8)
+                self.step(3.0, None, inputs_ok=inputs_ok)
+                self.step(5.0, None, inputs_ok=inputs_ok)
+                self.assertEqual(self.sm.state, LOCALIZED)
+                self.step(6.1, None, inputs_ok=inputs_ok)
+                self.assertEqual(self.sm.state, LOST)
+                self.assertTrue(self.sm.should_cancel_goals())
+                self.step(7.0, 0.8)
+                self.step(9.1, 0.8)
+                self.assertEqual(self.sm.state, LOCALIZED)
+
+    def test_brief_tf_gap_does_not_cause_false_loss(self):
+        self.sm.on_initial_pose(0.0, "web")
+        self.step(0.1, 0.8)
+        self.step(2.2, 0.8)
+        self.step(3.0, None)
+        self.step(4.0, 0.8)
+        self.step(5.0, None)
+        self.step(7.5, None)
+        self.assertEqual(self.sm.state, LOCALIZED)
+
+    def test_good_score_with_missing_inputs_cannot_localize_or_recover(self):
+        self.sm.on_initial_pose(0.0, "web")
+        self.step(0.1, 0.9, inputs_ok=False)
+        self.step(2.2, 0.9, inputs_ok=False)
+        self.assertEqual(self.sm.state, LOCALIZING)
+        self.sm.state = LOST
+        self.step(3.0, 0.9, inputs_ok=False)
+        self.step(5.1, 0.9, inputs_ok=False)
+        self.assertEqual(self.sm.state, LOST)
+
 
 class TestLastPoseFile(unittest.TestCase):
     def test_roundtrip_and_map_mismatch(self):

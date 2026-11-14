@@ -130,11 +130,15 @@ export const WorkflowStepBlock = ({
 
         {/* Inline Parameter Inputs */}
         <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-stone-600 leading-relaxed">
+          {step.type === 'WAIT' && <label className="space-y-1"><span className="block font-bold">Thời gian chờ (giây)</span><input aria-label="Thời gian chờ" type="number" min="1" max="3600" value={params.duration_sec ?? 5} onChange={(e) => handleFieldChange('duration_sec', Number(e.target.value))} className={FLOW_INPUT_CLASS} /></label>}
           {step.type === 'FOLLOW_ROUTE' && <div className="w-full space-y-3">
             <div className="flex flex-wrap gap-2 items-center">
               <label className="space-y-1"><span className="block font-bold">Tuyến đường</span>
-                <select aria-label="Tuyến đường của bước" value={params.route_id || ''} onChange={(e) => handleFieldChange('route_id', e.target.value)} className={FLOW_SELECT_CLASS}>
-                  <option value="">Chọn tuyến đã lưu…</option>
+                <select aria-label="Tuyến đường của bước" value={params.route_id || ''} onChange={(e) => {
+                  handleFieldChange('route_id', e.target.value);
+                  handleFieldChange('map_id', routes.find((route) => route.id === e.target.value)?.execution_config?.route?.map_id || '');
+                }} className={FLOW_SELECT_CLASS}>
+                  <option value="">Để trống · cấu hình sau trên Map</option>
                   {routes.map((route) => <option key={route.id} value={route.id}>{route.name} · {route.execution_config.route.map_id}</option>)}
                   {params.route_id && !routes.some((r) => r.id === params.route_id) && <option value={params.route_id}>Tuyến không còn khả dụng — chọn lại</option>}
                 </select>
@@ -143,6 +147,7 @@ export const WorkflowStepBlock = ({
               <button type="button" onClick={() => onConfigureRoute?.(index)} className="self-end px-3 py-2 rounded-lg bg-cyan-800 text-white font-bold">Cấu hình tuyến trên map</button>
             </div>
             {routes.find((route) => route.id === params.route_id) && <p className="text-stone-500">{routes.find((route) => route.id === params.route_id).execution_config.route.points.map((point) => point.name).join(' → ')}</p>}
+            <p className="text-stone-500">Có thể lưu workflow trước, rồi sang Physical Map chọn workflow và bước này để gán tuyến như một tham số. Chưa có tuyến thì workflow được lưu dưới dạng bản nháp tạm tắt.</p>
             <p className="text-stone-500">Số vòng ở đây chỉ lặp bước này. Lịch và số vòng của cả workflow được đặt ở cấu hình chạy.</p>
           </div>}
           {step.type === 'MOVE' && (

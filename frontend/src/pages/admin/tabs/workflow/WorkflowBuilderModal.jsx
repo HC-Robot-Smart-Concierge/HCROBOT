@@ -43,6 +43,7 @@ export const WorkflowBuilderModal = ({
   if (!isOpen || !workflow) return null;
   const activeIndex = selectedStepIndex(steps, selectedId);
   const statuses = steps.map((step) => stepSetup(step, routes));
+  const pendingRoute = steps.some((step) => step.type === 'FOLLOW_ROUTE' && !step.params?.route_id);
 
   const handleAddSelectedStep = () => {
     if (selectedStepType) {
@@ -73,6 +74,7 @@ export const WorkflowBuilderModal = ({
             <p className="text-[11px] sm:text-xs mt-0.5" style={{ color: '#8C8C8C' }}>
               Chọn bước bên trái để cấu hình. Rà chuột lên bước để xem mô tả ngắn.
             </p>
+            {pendingRoute && <p className="mt-1 text-xs text-amber-800">Có thể lưu bản nháp trước, rồi sang Physical Map → Tuyến đường chọn workflow và bước để gán tuyến.</p>}
             {onSelectWorkflow && <select aria-label="Chọn workflow để cấu hình" value={workflow.id || ''} onChange={(e) => {
               const id = e.target.value;
               if (id === workflow.id) return;
@@ -244,7 +246,10 @@ export const WorkflowBuilderModal = ({
             initialRoute={routes.find((r) => r.id === workflow.steps.find((s) => s.step_id === routeStepId)?.params?.route_id)}
             onRouteSaved={(route) => {
               const index = workflow.steps.findIndex((s) => s.step_id === routeStepId);
-              if (index >= 0) onStepParamChange(index, 'route_id', route.id);
+              if (index >= 0) {
+                onStepParamChange(index, 'route_id', route.id);
+                onStepParamChange(index, 'map_id', route.execution_config.route.map_id);
+              }
               onRouteSaved?.(route); setRouteStepId(null);
             }}
           /></div>
@@ -270,7 +275,7 @@ export const WorkflowBuilderModal = ({
             className="px-5 py-2 rounded-lg text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 transition-colors hover:bg-[#363636]"
             style={{ backgroundColor: '#262626', borderColor: '#262626', color: '#FFFFFF' }}
           >
-            {isLoading ? 'Đang lưu...' : 'Lưu Kịch Bản Vào Database'}
+            {isLoading ? 'Đang lưu...' : pendingRoute ? 'Lưu bản nháp · cấu hình tuyến sau' : 'Lưu workflow'}
           </button>
         </div>
       </div>

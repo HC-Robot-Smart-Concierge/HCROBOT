@@ -6,6 +6,10 @@ export function stepSetup(step, routes = []) {
   const issues = [];
   let summary = step.title || step.type;
   switch (step.type) {
+    case 'WAIT':
+      if (!finite(p.duration_sec) || Number(p.duration_sec) <= 0 || Number(p.duration_sec) > 3600) issues.push('Thời gian chờ phải lớn hơn 0 và không quá 3600 giây.');
+      summary = `Chờ ${p.duration_sec ?? 5} giây`;
+      break;
     case 'FOLLOW_ROUTE': {
       const route = routes.find((r) => r.id === p.route_id && r.is_active);
       if (!route?.execution_config?.route) issues.push('Chọn tuyến đường còn khả dụng.');

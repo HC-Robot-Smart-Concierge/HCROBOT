@@ -129,6 +129,28 @@ export async function executeWorkflow(workflowId, payload = {}) {
   return res.json();
 }
 
+export async function fetchWorkflowRuns(signal) {
+  const res = await fetch(`${API_BASE}/workflows/runs/recent`, { signal });
+  if (!res.ok) throw await errorFromResponse(res, 'Không tải được lịch sử chạy workflow');
+  return res.json();
+}
+
+export async function cancelWorkflowRun(runId) {
+  const res = await fetch(`${API_BASE}/workflows/runs/${encodeURIComponent(runId)}/cancel`, { method: 'POST' });
+  if (!res.ok) throw await errorFromResponse(res, 'Không dừng được lượt chạy');
+  return res.json();
+}
+
+export async function bindWorkflowRoute(workflowId, stepId, route, expectedRouteId) {
+  const res = await fetch(`${API_BASE}/workflows/${encodeURIComponent(workflowId)}/steps/${encodeURIComponent(stepId)}/route`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ route_id: route.id, map_id: route.execution_config.route.map_id,
+      expected_route_id: expectedRouteId || null }),
+  });
+  if (!res.ok) throw await errorFromResponse(res, 'Không gán được tuyến vào bước workflow');
+  return res.json();
+}
+
 /**
  * Fetch all persistent functional zones from database
  */

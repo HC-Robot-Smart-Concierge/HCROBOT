@@ -6,7 +6,7 @@ import {
   getDetectorStatus,
 } from '../../services/personDetector';
 
-const PI5_STREAM_DEFAULT_URL = 'http://localhost:8554/stream';
+const PI5_STREAM_DEFAULT_URL = '/api/v1/operations/robot/camera/stream';
 
 const EMOTIONS = [
   { id: 'happy', label: 'Vui vẻ' },

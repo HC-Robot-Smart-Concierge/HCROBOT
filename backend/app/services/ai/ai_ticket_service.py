@@ -397,7 +397,7 @@ async def auto_create_ticket(
 
         elif action == "emotion_alert":
             loc = rm if (rm and rm != "General") else "Main Lobby Kiosk"
-            ticket_code = f"BS-{random.randint(1000, 99999)}"
+            ticket_code = f"EA-{random.randint(1000, 99999)}"
             req = SupportRequest(
                 ticket_code=ticket_code,
                 source="HCRobot Emotion AI",
@@ -405,19 +405,20 @@ async def auto_create_ticket(
                 room_number=loc,
                 guest_name=f"Guest ({loc})" if rm else "Khách tại Sảnh Kiosk",
                 description=items or "Camera AI phát hiện khách có biểu cảm khó chịu trong khi giao tiếp với Robot Kiosk.",
-                department_id="DEP-BELL",
-                service_type_id="ST-BELL",
+                department_id="DEP-CONCIERGE",
+                service_type_id="ST-CONCIERGE",
                 status="Pending",
+                priority="High",
                 request_type="emotion_alert",
             )
             db.add(req)
             await create_department_notification(
                 db=db,
-                department="Bell Services",
+                department="Concierge",
                 title=f"Cảnh báo Khẩn #{ticket_code}: Khách có biểu cảm khó chịu",
                 description=f"Vị trí {loc}: {items}",
                 request_id=req.id,
-                request_type="bell_service",
+                request_type="concierge",
                 type="Alert",
             )
             await db.commit()

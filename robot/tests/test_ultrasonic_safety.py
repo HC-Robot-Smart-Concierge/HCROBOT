@@ -236,7 +236,7 @@ class TestObstacleSafety(unittest.TestCase):
         )
         self.assertFalse(self.safety.command("right"))
 
-    def test_null_side_sensor_does_not_block_arc_or_turn(self):
+    def test_one_recent_null_side_can_be_held_but_repeated_missing_side_blocks_turn(self):
         # Ban đầu có đọc được 1 lần:
         self.reader.snapshot = snapshot(sequence=1, front=100.0, rear=100.0, left=90.0, right=90.0)
         self.safety.update()
@@ -249,6 +249,30 @@ class TestObstacleSafety(unittest.TestCase):
         # Có thể quay trái bình thường:
         self.assertTrue(self.safety.command("left"))
         self.assertEqual(self.motor.motion, "left")
+        self.reader.snapshot = snapshot(sequence=3, left=None)
+        self.assertFalse(self.safety.command('left'))
+        self.assertNotIn('left', self.safety.ignored_sensors)
+
+    def test_missing_sensor_at_start_is_not_automatically_ignored(self):
+        self.reader.snapshot = snapshot(front=None, rear=100.0)
+        self.assertFalse(self.safety.command('forward'))
+        self.assertNotIn('front', self.safety.ignored_sensors)
+        # The independent clear rear direction can still be used to escape.
+        self.assertTrue(self.safety.command('backward'))
+
+    def test_long_sensor_outage_does_not_turn_into_permission_to_drive(self):
+        self.reader.snapshot = snapshot(received_at=time.monotonic() - 5, front=100.0)
+        self.safety.update()
+        for sequence in range(2, 8):
+            self.reader.snapshot = snapshot(sequence=sequence, front=None)
+            self.assertFalse(self.safety.command('forward'))
+        self.assertNotIn('front', self.safety.ignored_sensors)
+
+    def test_repeated_command_rechecks_new_obstacle_without_waiting_for_enforce(self):
+        self.assertTrue(self.safety.command('forward'))
+        self.reader.snapshot = snapshot(sequence=2, front=10)
+        self.assertFalse(self.safety.command('forward'))
+        self.assertEqual(self.motor.motion, 'stop')
 
     def test_ignored_rear_sensor_allows_backward(self):
         self.safety.ignored_sensors.add("rear")

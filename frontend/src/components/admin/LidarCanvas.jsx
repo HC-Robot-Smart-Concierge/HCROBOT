@@ -1,4 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { isPointInZone, isPolygonZone } from '../../pages/admin/tabs/physicalMapZones';
+import { drawPolygonZone } from '../../pages/admin/tabs/physicalMapZoneDrawing';
 import { ZoomIn, ZoomOut, RotateCcw, Crosshair, Trash2, RotateCw } from 'lucide-react';
 
 export const LidarCanvas = ({
@@ -110,10 +112,7 @@ export const LidarCanvas = ({
     // 2. Check if clicking inside a Zone bounding box
     if (!isPinMode && keepOutZones && keepOutZones.length > 0 && onSelectZone) {
       for (const zone of keepOutZones) {
-        const topLeft = worldToCanvas(zone.x - zone.width / 2, zone.y + zone.height / 2, canvasRef.current.width, canvasRef.current.height);
-        const wPx = zone.width * scale;
-        const hPx = zone.height * scale;
-        if (px >= topLeft.px && px <= topLeft.px + wPx && py >= topLeft.py && py <= topLeft.py + hPx) {
+        if (isPointInZone(goalPos.x, goalPos.y, zone)) {
           onSelectZone(zone);
           return;
         }
@@ -329,6 +328,13 @@ export const LidarCanvas = ({
           const style = getZoneStyle(zone.type);
           const isSelected = zone.id === selectedZoneId;
 
+          if (isPolygonZone(zone)) {
+            drawPolygonZone(ctx, zone.vertices.map((p) => {
+              const c = worldToCanvas(p.x, p.y, width, height);
+              return { x: c.px, y: c.py };
+            }), { color: style.stroke, label: zone.name, selected: isSelected });
+            return;
+          }
           // Background Fill
           ctx.fillStyle = style.fill;
           ctx.fillRect(topLeft.px, topLeft.py, wPx, hPx);

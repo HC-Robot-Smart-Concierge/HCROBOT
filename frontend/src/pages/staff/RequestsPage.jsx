@@ -1304,16 +1304,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         {isMultiStep && stage.nextStatus && (
                           canUserActOnStage(stage.step, req, isDirectSvc) ? (
                             <div className="flex items-center gap-1.5">
-                              {/* Tùy chọn Hoàn Tất Nhanh cho Direct Service nếu nhân viên muốn kết thúc đơn ngay */}
-                              {isDirectSvc && (
-                                <button
-                                  type="button"
-                                  onClick={() => handleUpdateTaskStatus(req.id, 'Completed')}
-                                  className="px-3 py-1.5 rounded-full text-xs font-semibold text-stone-600 bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-stone-200 transition-all cursor-pointer shadow-2xs"
-                                  title={st("Mark as completed and delivered to the guest")}
-                                >{st("Quick complete")} </button>
-                              )}
-
                               <button
                                 onClick={() => {
                                   if (stage.step === 1 && isTaskLimitReached) {
@@ -1781,20 +1771,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                   {isModalMultiStep && modalStage.nextStatus && (
                     canUserActOnStage(modalStage.step, selectedDetailReq, isModalDirectSvc) ? (
                       <div className="flex items-center gap-2">
-                        {isModalDirectSvc && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await handleUpdateTaskStatus(selectedDetailReq.id, 'Completed');
-                              setSelectedDetailReq((prev) => ({
-                                ...prev,
-                                status: 'Completed',
-                                assignedTo: prev.assignedTo || staffName,
-                              }));
-                            }}
-                            className="px-4 py-2 rounded-xl text-xs font-bold bg-white border border-stone-300 text-stone-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition-all cursor-pointer shadow-xs"
-                          >{st("Quick complete")} </button>
-                        )}
                         <button
                           type="button"
                           onClick={async () => {

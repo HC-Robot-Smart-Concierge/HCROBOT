@@ -6,8 +6,19 @@ describe('Workflow execution settings', () => {
     const first = executionConfig();
     first.schedules.push({ time: '08:00' });
     expect(executionConfig().schedules).toEqual([]);
-    expect(executionSummary({ trigger_type: 'MANUAL' })).toBe('1 vòng / lượt');
+    expect(executionSummary({ trigger_type: 'MANUAL' })).toBe('Màn hình · 1 vòng / lượt');
     expect(executionError({ trigger_type: 'MANUAL' })).toBe('');
+  });
+
+  it('requires physical map moves and keeps kiosk interactions separate', () => {
+    const workflow = { execution_config: { execution_mode: 'ROBOT' }, steps: [
+      { type: 'MOVE', params: { target_x: 1, target_y: 2 } },
+    ] };
+    expect(executionError(workflow)).toContain('gắn map');
+    workflow.steps[0].params.map_id = 'room';
+    expect(executionError(workflow)).toBe('');
+    workflow.steps.push({ type: 'GREET', params: {} });
+    expect(executionError(workflow)).toContain('giao tiếp');
   });
 
   it('requires an enabled schedule for scheduled workflows', () => {
@@ -15,6 +26,13 @@ describe('Workflow execution settings', () => {
     expect(executionError({ trigger_type: 'SCHEDULE', execution_config: { schedules: [
       { time: '08:00', days: [0], timezone: 'UTC', enabled: false },
     ] } })).toContain('ít nhất');
+  });
+
+  it('allows saving a draft before configuring schedules without enabling execution', () => {
+    const flow = { trigger_type: 'SCHEDULE', is_active: false, execution_config: { execution_mode: 'ROBOT' },
+      steps: [{ type: 'FOLLOW_ROUTE', params: { route_id: '', repeat_count: 1 } }] };
+    expect(executionError(flow, { allowDraft: true })).toBe('');
+    expect(executionError(flow)).toContain('lịch');
   });
 
   it('rejects overlapping days at the same time but allows separate weekdays', () => {

@@ -24,6 +24,8 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
     reception: { brand: 'RECEPTION PORTAL', staff: 'Reception staff', navigation: 'Reception navigation', department: 'Reception' },
     maintenance: { brand: 'MAINTENANCE PORTAL', staff: 'Maintenance staff', navigation: 'Maintenance navigation', department: 'Maintenance' },
     bell_services: { brand: 'BELL SERVICES PORTAL', staff: 'Bell Services staff', navigation: 'Bell Services navigation', department: 'Bell Services' },
+    kitchen: { brand: 'KITCHEN PORTAL', staff: 'Kitchen staff', navigation: 'Kitchen navigation', department: 'Kitchen' },
+    concierge: { brand: 'CONCIERGE PORTAL', staff: 'Concierge staff', navigation: 'Concierge navigation', department: 'Concierge' },
   }[portal] || { brand: 'ROOM SERVICE PORTAL', staff: 'Room Service staff', navigation: 'Room Service navigation', department: 'Room Service' };
   const name = currentUser?.full_name || currentUser?.name || st(portalLabels.staff);
   const operationsActive = ['Requests', 'MyTasks'].includes(activeMenu);
@@ -59,14 +61,33 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
         </div>
 
         <nav id="room-service-navigation" className="room-service-navigation" hidden={collapsed} aria-label={st(portalLabels.navigation)}>
-          {navButton('Dashboard', t('menuDashboard'))}
-          <button type="button" className="room-service-nav-item" data-active={operationsActive}
-            aria-expanded={operationsActive} onClick={() => select('Requests')}>{t('adminOperations')}</button>
-          {operationsActive && <div className="room-service-subnav">
-            {navButton('Requests', t('menuRequests'))}
-            {navButton('MyTasks', t('menuMyTasks'))}
-          </div>}
-          {portal === 'room_service' && navButton('RoomServiceMenu', t('menuRoomServiceMenu'))}
+          {portal === 'concierge' ? (
+            <>
+              {navButton('LiveCalls', 'Live Call Center')}
+              {navButton('Recordings', 'Call Recordings')}
+              {navButton('Taxi', 'Taxi Dispatch')}
+              {navButton('Feedback', 'Guest Feedback')}
+              {navButton('EmotionAlerts', 'Unhappy Guests')}
+              <button type="button" className="room-service-nav-item" data-active={operationsActive}
+                aria-expanded={operationsActive} onClick={() => select('Requests')}>{t('adminOperations')}</button>
+              {operationsActive && <div className="room-service-subnav">
+                {navButton('Requests', t('menuRequests'))}
+                {navButton('MyTasks', t('menuMyTasks'))}
+              </div>}
+            </>
+          ) : (
+            <>
+              {navButton('Dashboard', t('menuDashboard'))}
+              <button type="button" className="room-service-nav-item" data-active={operationsActive}
+                aria-expanded={operationsActive} onClick={() => select('Requests')}>{t('adminOperations')}</button>
+              {operationsActive && <div className="room-service-subnav">
+                {navButton('Requests', t('menuRequests'))}
+                {navButton('MyTasks', t('menuMyTasks'))}
+              </div>}
+              {portal === 'room_service' && navButton('RoomServiceMenu', t('menuRoomServiceMenu'))}
+              {portal === 'kitchen' && navButton('KitchenMenu', t('menuKitchenMenu'))}
+            </>
+          )}
         </nav>
 
         <div id="room-service-sidebar-actions" className="room-service-sidebar-actions" hidden={collapsed}>

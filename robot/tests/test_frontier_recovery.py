@@ -61,6 +61,8 @@ class TestFrontierRecovery(unittest.TestCase):
         n.visited = 0
         n.trail = RetreatTrail()
         n.retreat_speed = 0.08
+        n.unstick_speed = 0.12
+        n.unstick_dist_m = 0.15
         n.turn_radius_m = 0.40
         n.scan_timeout_sec = 0.8
         n.scan_msg = None
@@ -269,6 +271,21 @@ class TestFrontierRecovery(unittest.TestCase):
         n._maneuver_step()
         self.assertIsNone(n.maneuver)
         self.assertFalse(n.recovery_blocked)
+
+    def test_blocked_rotation_can_switch_to_bounded_straight_reverse(self):
+        n = self.alignment()
+        n._motion_allowed = Mock(side_effect=lambda vx, wz, *args, **kwargs: vx < 0 and wz == 0)
+        n._maneuver_step()
+        self.assertEqual(n.maneuver['dir'], 'backward')
+        self.assertEqual(n.maneuver['until'], 14.0)
+        n._publish_motion.assert_called_with(0.0, 0.0)
+        n._clearances = Mock(return_value={'rear': 100.0})
+        n._maneuver_step()
+        n._publish_motion.assert_called_with(-.12, 0.0)
+        n._odom_pose.return_value = (.84, 0, 0)
+        n._maneuver_step()
+        n._publish_motion.assert_called_with(0.0, 0.0)
+        self.assertIsNone(n.maneuver)
 
     def test_stale_costmap_holds_motion_and_cannot_be_bypassed(self):
         n = self.alignment()

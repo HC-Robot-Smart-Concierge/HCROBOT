@@ -186,17 +186,21 @@ class SupportRequest(Base):
             return self._request_type
         if isinstance(self.extra_data, dict) and self.extra_data.get("request_type"):
             return str(self.extra_data["request_type"])
+        if str(self.ticket_code or "").upper().startswith("EA-"):
+            return "emotion_alert"
         st = str(self.service_type_id or "").upper()
         dep = str(self.department_id or "").upper()
+        text_blob = f"{self.title or ''} {self.description or ''}".lower()
         if "BELL" in st or "LUGGAGE" in st or "BELL" in dep:
-            text_blob = f"{self.title or ''} {self.description or ''}".lower()
             if any(k in text_blob for k in ["thất lạc", "quên đồ", "mất đồ", "rơi đồ", "lost", "missing", "forgot"]):
                 return "lost_found"
-            if any(k in text_blob for k in ["khó chịu", "biểu cảm", "bực", "tức giận", "unhappy", "frustrated", "emotion"]):
-                return "emotion_alert"
             if any(k in text_blob for k in ["đổi phòng", "chuyển phòng", "room move"]):
                 return "room_move"
             return "luggage"
+        if "CONCIERGE" in st or "CONCIERGE" in dep:
+            if any(k in text_blob for k in ["khó chịu", "biểu cảm", "bực", "tức giận", "unhappy", "frustrated", "emotion"]):
+                return "emotion_alert"
+            return "concierge"
         if self.service_type_id:
             if "HOUSEKEEPING" in st:
                 return "cleaning"
@@ -204,8 +208,6 @@ class SupportRequest(Base):
                 return "taxi"
             elif "MAINTENANCE" in st:
                 return "repair"
-            elif "CONCIERGE" in st:
-                return "concierge"
             elif "RECEPTION" in st:
                 return "booking"
             elif "ROOM" in st or "FB" in st:

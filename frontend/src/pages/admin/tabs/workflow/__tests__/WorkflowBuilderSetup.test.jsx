@@ -17,6 +17,8 @@ describe('Workflow builder selected-step layout', () => {
     expect(html).not.toContain('value="SECOND_STEP_TEXT"');
     expect(html).toContain('Cần hoàn thiện');
     expect(html).toContain('aria-pressed="true"');
+    expect(html).toContain('Lưu bản nháp · cấu hình tuyến sau');
+    expect(html).toContain('sang Physical Map');
   });
   it('renders the empty state without accessing a missing step', () => {
     const html = renderToStaticMarkup(<WorkflowBuilderModal isOpen workflow={{ id: 'new', name: 'New', steps: [] }} />);

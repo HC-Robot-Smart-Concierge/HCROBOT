@@ -11,21 +11,12 @@ import {
   Activity,
   Sparkles,
   VideoOff,
-  Eye,
-  Sliders,
   CheckCircle,
 } from 'lucide-react';
 import { getCallSignalingWsUrl } from '../../../services/conciergeApi';
+import { WEBRTC_ICE_SERVERS } from '../../../hooks/useKioskStreamBroadcaster';
 
 const DEFAULT_SESSION_ID = 'kiosk-live-feed';
-const ICE_SERVERS = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
-  ],
-  iceCandidatePoolSize: 5,
-};
 
 export const AdminPhoneCameraTab = ({ currentUser }) => {
   // Connection States
@@ -68,6 +59,8 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const landmarkerRef = useRef(null);
   const noFaceCountRef = useRef(0);
   const localStreamRef = useRef(null);
+  const remoteStreamRef = useRef(null);
+  const iceCandidateQueueRef = useRef([]);
   const containerRef = useRef(null);
 
   // 1. Khoi tao Google MediaPipe Face Landmarker
@@ -136,6 +129,8 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       } catch {}
       localStreamRef.current = null;
     }
+    remoteStreamRef.current = null;
+    iceCandidateQueueRef.current = [];
     setHasRemoteVideo(false);
     setConnectionStatus('disconnected');
 
@@ -151,16 +146,54 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     setConnectionStatus('connecting');
 
     try {
-      const pc = new RTCPeerConnection(ICE_SERVERS);
+      const pc = new RTCPeerConnection(WEBRTC_ICE_SERVERS);
       pcRef.current = pc;
 
       // Nhan media stream tu robot phone kiosk
       pc.ontrack = (event) => {
-        if (videoRef.current && event.streams && event.streams[0]) {
-          videoRef.current.srcObject = event.streams[0];
+        event.track.enabled = true;
+
+        let incomingStream = event.streams && event.streams[0];
+        if (!incomingStream) {
+          if (!remoteStreamRef.current) {
+            remoteStreamRef.current = new MediaStream();
+          }
+          if (!remoteStreamRef.current.getTracks().some((t) => t.id === event.track.id)) {
+            remoteStreamRef.current.addTrack(event.track);
+          }
+          incomingStream = remoteStreamRef.current;
+        } else {
+          remoteStreamRef.current = incomingStream;
+        }
+
+        const videoEl = videoRef.current;
+        if (videoEl) {
+          if (videoEl.srcObject !== incomingStream) {
+            videoEl.srcObject = incomingStream;
+          }
+          videoEl.muted = true;
+          videoEl.playsInline = true;
+
+          const playPromise = videoEl.play();
+          if (playPromise !== undefined) {
+            playPromise.catch(() => {});
+          }
+
+          videoEl.onloadedmetadata = () => {
+            videoEl.play().catch(() => {});
+          };
+        }
+
+        event.track.onunmute = () => {
+          if (videoRef.current) {
+            videoRef.current.play().catch(() => {});
+          }
           setHasRemoteVideo(true);
           setConnectionStatus('connected');
-        }
+        };
+
+        setHasRemoteVideo(true);
+        setConnectionStatus('connected');
       };
 
       pc.onicecandidate = (event) => {
@@ -177,6 +210,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'connected') {
           setConnectionStatus('connected');
+          setHasRemoteVideo(true);
         } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
           setConnectionStatus('disconnected');
           setHasRemoteVideo(false);
@@ -188,30 +222,42 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'check_peer' }));
+        // Bao cho Phone biet Admin da vao phong va san sang nhan Offer
+        ws.send(JSON.stringify({ type: 'ready_for_offer' }));
       };
 
       ws.onmessage = async (msgEvent) => {
         try {
           const data = JSON.parse(msgEvent.data);
-          if (data.type === 'peer_joined' || data.type === 'peer_present') {
-            // Khi co robot phone trong phong, tao Offer de ket noi
-            const offer = await pc.createOffer({
-              offerToReceiveVideo: true,
-              offerToReceiveAudio: true,
-            });
-            await pc.setLocalDescription(offer);
-            ws.send(JSON.stringify({ type: 'offer', offer }));
+
+          if (data.type === 'peer_joined' && data.role === 'guest') {
+            // Khi Phone Kiosk vua vao, Admin nhac Phone gui Offer
+            ws.send(JSON.stringify({ type: 'ready_for_offer' }));
+          } else if (data.type === 'kiosk_ready') {
+            // Phone da san sang, Admin nhac Phone gui Offer
+            ws.send(JSON.stringify({ type: 'ready_for_offer' }));
           } else if (data.type === 'offer') {
+            // Nhan Offer tu Phone Kiosk -> Set Remote Description -> Tao Answer gui lai Phone
             await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+            // Xu ly hang doi candidate da nhan truoc khi setRemoteDescription
+            while (iceCandidateQueueRef.current.length > 0) {
+              const cand = iceCandidateQueueRef.current.shift();
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(cand));
+              } catch (e) {}
+            }
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             ws.send(JSON.stringify({ type: 'answer', answer }));
-          } else if (data.type === 'answer') {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
           } else if (data.type === 'candidate') {
             if (data.candidate) {
-              await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+              if (pc.remoteDescription) {
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+              } else {
+                iceCandidateQueueRef.current.push(data.candidate);
+              }
             }
           } else if (data.type === 'peer_disconnected') {
             setConnectionStatus('disconnected');
@@ -246,6 +292,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       localStreamRef.current = mediaStream;
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        videoRef.current.muted = true;
+        videoRef.current.playsInline = true;
+        videoRef.current.play().catch(() => {});
       }
       setHasRemoteVideo(true);
       setConnectionStatus('connected');
@@ -354,7 +403,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             const drawingUtils = new DrawingUtils(ctx);
 
             // Mau sac dong theo bieu cam de nhan biet ngay lap tuc
-            let tesselationColor = 'rgba(56, 189, 248, 0.22)'; // Neutral Sky Blue
+            let tesselationColor = 'rgba(56, 189, 248, 0.22)';
             let eyebrowsColor = '#38BDF8';
             let lipsColor = '#E2E8F0';
             let eyesColor = '#0EA5E9';
@@ -362,7 +411,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             let landmarkColor = '#BAE6FD';
 
             if (currentDetected === 'happy') {
-              // Vui ve: Mau xanh luc bao ruc sang
               tesselationColor = 'rgba(16, 185, 129, 0.25)';
               eyebrowsColor = '#6EE7B7';
               lipsColor = '#10B981';
@@ -370,7 +418,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               ovalColor = '#059669';
               landmarkColor = '#A7F3D0';
             } else if (currentDetected === 'unhappy') {
-              // Kho chiu: Mau do hong canh bao
               tesselationColor = 'rgba(244, 63, 94, 0.28)';
               eyebrowsColor = '#F43F5E';
               lipsColor = '#FB7185';
@@ -484,7 +531,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      // Chup kem ca lop mesh neu dang co
       if (canvasRef.current) {
         ctx.drawImage(canvasRef.current, 0, 0, canvas.width, canvas.height);
       }
@@ -522,7 +568,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               </h1>
               <span
                 className={`w-2 h-2 rounded-full ${
-                  connectionStatus === 'connected'
+                  connectionStatus === 'connected' && hasRemoteVideo
                     ? 'bg-emerald-400 animate-pulse'
                     : connectionStatus === 'connecting'
                     ? 'bg-amber-400 animate-pulse'
@@ -603,7 +649,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               autoPlay
               playsInline
               muted
-              webkit-playsinline="true"
               className={`w-full h-full object-contain ${!hasRemoteVideo && 'hidden'}`}
             />
 
@@ -696,7 +741,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           </div>
         </div>
 
-        {/* Right Column: AI Emotion Analytics & Facial Mesh Diagnostics (No Log) */}
+        {/* Right Column: AI Emotion Analytics & Facial Mesh Diagnostics */}
         <div className="flex flex-col gap-4">
           {/* Main Emotion Analytics Card */}
           <div className="bg-[#18181B] border border-white/10 rounded-2xl p-4 shadow-lg flex flex-col gap-3">
@@ -799,7 +844,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </div>
           </div>
 
-          {/* Facial Landmark Mesh & Blendshapes Diagnostic Panel (Thay the cho Log da xoa) */}
+          {/* Facial Landmark Mesh & Blendshapes Diagnostic Panel */}
           <div className="bg-[#18181B] border border-white/10 rounded-2xl p-4 shadow-lg flex-1 flex flex-col gap-3 font-mono">
             <div className="flex items-center justify-between border-b border-white/10 pb-2">
               <div className="flex items-center gap-2">

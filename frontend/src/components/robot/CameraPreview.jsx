@@ -211,9 +211,10 @@ export const CameraPreview = ({
     }
   }, [externalStream]);
 
-  // Tự động bật camera nếu autoStart = true, tắt camera giải phóng phần cứng khi autoStart = false
+  // Tự động bật camera nếu autoStart = true (chỉ khi không có externalStream)
   useEffect(() => {
     if (externalStream) return undefined;
+
     if (autoStart) {
       startCamera();
     } else {
@@ -221,11 +222,12 @@ export const CameraPreview = ({
     }
 
     return () => {
-      if (stream) {
+      // Chỉ cleanup stream do chính component tự tạo, không stop externalStream
+      if (!externalStream && stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [autoStart, startCamera, stopCamera]);
+  }, [autoStart, externalStream, startCamera, stopCamera]);
 
   // Gán stream cho các thẻ video và bắt buộc gọi play()
   useEffect(() => {

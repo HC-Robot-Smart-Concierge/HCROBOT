@@ -2776,7 +2776,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
       {/* Camera AI (Chạy ngầm nhận diện khách/cảm xúc và stream WebRTC về Admin) */}
       <CameraPreview
-        autoStart={true}
+        autoStart={false}
         externalStream={kioskCameraStream}
         controlsClassName="robot-camera-control"
         onGuestApproached={handleGuestApproached}
@@ -2791,6 +2791,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       <MobileRobotScreen
         isKioskCameraActive={isKioskCameraActive}
         onStartKioskCamera={startKioskCamera}
+        kioskCameraStream={kioskCameraStream}
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
         eyeExpression={activeEyeExpression}

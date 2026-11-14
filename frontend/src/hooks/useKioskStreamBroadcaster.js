@@ -16,8 +16,8 @@ export const WEBRTC_ICE_SERVERS = {
 
 /**
  * useKioskStreamBroadcaster
- * Hook quan ly Camera truoc tren Dien thoai (Robot Kiosk) va tu dong stream WebRTC ve Admin.
- * Ho tro co che User Gesture bat buoc tren iOS Safari / PWA Standalone.
+ * Hook quan ly Camera truoc tren Dien thoai (Robot Kiosk) va stream WebRTC ve Admin.
+ * Phone dong vai tro la BROADCASTER (Offerer) duy nhat de tranh xung dot SDP Offer.
  */
 export const useKioskStreamBroadcaster = ({
   enabled = true,
@@ -36,6 +36,7 @@ export const useKioskStreamBroadcaster = ({
   const streamRef = useRef(null);
   const hasRequestedRef = useRef(false);
   const reconnectTimeoutRef = useRef(null);
+  const iceCandidateQueueRef = useRef([]);
 
   // 1. Khoi tao va xin quyen Camera truoc tren Dien thoai
   const startCamera = useCallback(async () => {
@@ -69,7 +70,6 @@ export const useKioskStreamBroadcaster = ({
       setNeedsUserGesture(false);
       return mediaStream;
     } catch (err) {
-      // Neu iOS yeu cau tuong tac nguoi dung hoac tu choi
       if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
         setNeedsUserGesture(true);
         setIsCameraActive(false);
@@ -113,7 +113,6 @@ export const useKioskStreamBroadcaster = ({
       startCamera();
     }
 
-    // Lang nghe cu chi cham / click dau tien tren man hinh neu iOS chan autoStart ngam
     const handleUserGesture = () => {
       if (!streamRef.current || !streamRef.current.active) {
         startCamera();
@@ -131,7 +130,7 @@ export const useKioskStreamBroadcaster = ({
     };
   }, [enabled, isPaused, startCamera]);
 
-  // 3. WebRTC Broadcaster: Gui luong video ve phong signaling tren Laptop
+  // 3. WebRTC Broadcaster: Phone lam Offerer gui video ve Admin
   const cleanupSignaling = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -149,7 +148,23 @@ export const useKioskStreamBroadcaster = ({
       } catch {}
       pcRef.current = null;
     }
+    iceCandidateQueueRef.current = [];
     setIsBroadcasting(false);
+  }, []);
+
+  const sendOffer = useCallback(async (pc, ws) => {
+    if (!pc || !ws || ws.readyState !== WebSocket.OPEN) return;
+    try {
+      if (pc.signalingState !== 'stable') return;
+      const offer = await pc.createOffer({
+        offerToReceiveVideo: false,
+        offerToReceiveAudio: false,
+      });
+      await pc.setLocalDescription(offer);
+      ws.send(JSON.stringify({ type: 'offer', offer }));
+    } catch (e) {
+      // ignore
+    }
   }, []);
 
   const connectSignaling = useCallback(
@@ -163,6 +178,7 @@ export const useKioskStreamBroadcaster = ({
 
         // Add cac track video tu camera truoc vao PeerConnection
         currentStream.getVideoTracks().forEach((track) => {
+          track.enabled = true;
           pc.addTrack(track, currentStream);
         });
 
@@ -190,35 +206,41 @@ export const useKioskStreamBroadcaster = ({
         wsRef.current = ws;
 
         ws.onopen = () => {
-          ws.send(JSON.stringify({ type: 'check_peer' }));
+          // Bao hieu vao phong
+          ws.send(JSON.stringify({ type: 'kiosk_ready' }));
         };
 
         ws.onmessage = async (msgEvent) => {
           try {
             const data = JSON.parse(msgEvent.data);
 
-            if (data.type === 'offer') {
-              // Admin (Staff) gui Offer -> Phone phan hoi Answer
-              await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-              const answer = await pc.createAnswer();
-              await pc.setLocalDescription(answer);
-              ws.send(JSON.stringify({ type: 'answer', answer }));
+            if (data.type === 'peer_joined' && data.role === 'staff') {
+              // Khi Admin (Staff) vua vao phong -> Phone tao Offer gui cho Admin
+              await sendOffer(pc, ws);
+            } else if (data.type === 'ready_for_offer') {
+              // Admin bao san sang nhan Offer
+              await sendOffer(pc, ws);
             } else if (data.type === 'answer') {
+              // Admin gui Answer lai
               await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+              // Xu ly hang doi candidate da luu
+              while (iceCandidateQueueRef.current.length > 0) {
+                const cand = iceCandidateQueueRef.current.shift();
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(cand));
+                } catch (e) {}
+              }
             } else if (data.type === 'candidate') {
               if (data.candidate) {
-                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-              }
-            } else if (data.type === 'peer_joined' && data.role === 'staff') {
-              // Khi Admin vua vao phong, neu chua bat dau, tao Offer
-              if (pc.signalingState === 'stable') {
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-                ws.send(JSON.stringify({ type: 'offer', offer }));
+                if (pc.remoteDescription) {
+                  await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                } else {
+                  iceCandidateQueueRef.current.push(data.candidate);
+                }
               }
             }
           } catch (e) {
-            // ignore parse error
+            // ignore
           }
         };
 
@@ -237,7 +259,7 @@ export const useKioskStreamBroadcaster = ({
         setIsBroadcasting(false);
       }
     },
-    [cleanupSignaling, enabled, isPaused, sessionId]
+    [cleanupSignaling, enabled, isPaused, sessionId, sendOffer]
   );
 
   // Khi stream camera san sang -> ket noi WebRTC

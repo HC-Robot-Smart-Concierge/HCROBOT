@@ -38,8 +38,24 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [snapshotUrl, setSnapshotUrl] = useState(null);
 
-  // Huong xoay video: Mac dinh 90 do (vi dien thoai Kiosk duoc gan xoay ngang)
-  const [videoRotation, setVideoRotation] = useState(90);
+  // Huong xoay video: Doc tu localStorage hoac mac dinh 90 do cho dien thoai nam ngang
+  const [videoRotation, setVideoRotationState] = useState(() => {
+    try {
+      const saved = localStorage.getItem('kiosk_video_rotation');
+      if (saved !== null) return parseInt(saved, 10);
+    } catch {}
+    return 90;
+  });
+
+  const setVideoRotation = useCallback((valOrFn) => {
+    setVideoRotationState((prev) => {
+      const nextVal = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
+      try {
+        localStorage.setItem('kiosk_video_rotation', String(nextVal));
+      } catch {}
+      return nextVal;
+    });
+  }, []);
 
   // AI Emotion Recognition States
   const [isAiEmotionActive, setIsAiEmotionActive] = useState(true);
@@ -632,16 +648,32 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </button>
           </div>
 
-          {/* Nut Xoay Video (Rotate 90 do cho dien thoai nam ngang) */}
-          <button
-            type="button"
-            onClick={() => setVideoRotation((prev) => (prev + 90) % 360)}
-            className="px-2.5 py-1.5 rounded-lg bg-stone-900 border border-white/10 hover:bg-stone-800 text-stone-300 hover:text-white transition-all cursor-pointer flex items-center gap-1.5 text-xs font-mono"
-            title="Xoay video 90 độ (0°, 90°, 180°, 270°)"
-          >
-            <RotateCw className="w-3.5 h-3.5 text-sky-400" />
-            <span>{videoRotation}°</span>
-          </button>
+          {/* Bo Chon Nhanh Huong Xoay Video (0°, 90°, 180°, 270°) */}
+          <div className="flex items-center rounded-lg bg-stone-900 border border-white/10 p-0.5 text-xs font-mono">
+            <span className="px-2 text-stone-400 text-[11px] uppercase font-bold flex items-center gap-1">
+              <RotateCw className="w-3.5 h-3.5 text-sky-400" /> Xoay:
+            </span>
+            {[
+              { deg: 0, label: '0°' },
+              { deg: 90, label: '90°' },
+              { deg: 180, label: '180°' },
+              { deg: 270, label: '270°' },
+            ].map((item) => (
+              <button
+                key={item.deg}
+                type="button"
+                onClick={() => setVideoRotation(item.deg)}
+                className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                  videoRotation === item.deg
+                    ? 'bg-stone-200 text-stone-900 shadow-xs'
+                    : 'text-stone-400 hover:text-stone-200'
+                }`}
+                title={`Xoay video ${item.deg} độ`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
 
           <button
             type="button"
@@ -679,9 +711,12 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           <div className="flex-1 relative flex items-center justify-center bg-black min-h-[420px] overflow-hidden p-2">
             {/* Container chua Video va Canvas duoc Xoay dong bo */}
             <div
-              className="relative flex items-center justify-center transition-transform duration-300 max-w-full max-h-full"
+              className="relative flex items-center justify-center transition-all duration-300"
               style={{
                 transform: `rotate(${videoRotation}deg)`,
+                width: videoRotation % 180 !== 0 ? '420px' : '100%',
+                height: videoRotation % 180 !== 0 ? '100%' : '100%',
+                maxHeight: videoRotation % 180 !== 0 ? '560px' : '440px',
               }}
             >
               <video
@@ -689,7 +724,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 autoPlay
                 playsInline
                 muted
-                className={`max-h-[430px] max-w-full object-contain ${!hasRemoteVideo && 'hidden'}`}
+                className={`w-full h-full object-contain ${!hasRemoteVideo && 'hidden'}`}
               />
 
               <canvas

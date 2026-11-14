@@ -54,14 +54,15 @@ describe('AdminPhoneCameraTab Component & Minimal Expression Anchors & Rotation'
     expect(sourceCode).toContain('Jaw Open');
   });
 
-  it('complies with minimal light theme, black buttons, and no emojis', () => {
+  it('complies with admin system palette, black buttons, and no emojis', () => {
     const filePath = path.resolve(__dirname, '../AdminPhoneCameraTab.jsx');
     const sourceCode = fs.readFileSync(filePath, 'utf-8');
 
-    // Theme xam trang va nut den
-    expect(sourceCode).toContain('#F4F4F6');
-    expect(sourceCode).toContain('bg-black');
-    expect(sourceCode).toContain('text-white');
+    // Theme mau beige he thong va nut den
+    expect(sourceCode).toContain('#F2EFE9');
+    expect(sourceCode).toContain('#FAF8F5');
+    expect(sourceCode).toContain('#262626');
+    expect(sourceCode).toContain('#BFBFBD');
 
     // Khong su dung bat ky emoji nao
     const emojiRegex = /[\uD83C-\uDBFF\uDC00-\uDFFF]/;

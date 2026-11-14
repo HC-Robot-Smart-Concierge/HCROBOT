@@ -590,18 +590,27 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full flex flex-col p-4 overflow-y-auto custom-scrollbar gap-4 text-stone-900 bg-[#F4F4F6]"
-      style={{ background: '#F4F4F6' }}
+      className="w-full h-full flex flex-col p-4 overflow-y-auto custom-scrollbar gap-4 text-[#262626] font-sans select-none"
+      style={{ background: '#F2EFE9' }}
     >
-      {/* Top Header & Toolbar (Theme Xam Trang & Nut Den) */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-stone-200/90 rounded-2xl p-4 shadow-xs">
+      {/* Top Header & Toolbar (System Theme: Sand-Beige #F2EFE9, Cards #FAF8F5, Border #BFBFBD, Buttons #262626) */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-3 border rounded-2xl p-4 shadow-xs"
+        style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
+      >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center shadow-xs">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center shadow-xs"
+            style={{ background: '#262626', color: '#FFFFFF' }}
+          >
             <Camera className="w-5 h-5 text-white" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold tracking-wide text-stone-900 uppercase font-mono">
+              <h1
+                className="text-sm font-bold tracking-wide uppercase font-mono"
+                style={{ color: '#262626' }}
+              >
                 Phone Kiosk Camera & Emotion AI
               </h1>
               <span
@@ -614,44 +623,52 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 }`}
               />
             </div>
-            <p className="text-[11px] text-stone-500 font-mono">
+            <p className="text-[11px] font-mono" style={{ color: '#8C8C8C' }}>
               Live feed tu dien thoai Robot (Kiosk) voi cac diem bieu cam then chot (Key Expression Anchors)
             </p>
           </div>
         </div>
 
-        {/* Action Controls & Feed Selector (Nut Den Toi Gian) */}
+        {/* Action Controls & Feed Selector */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Cụm chọn nguồn Feed */}
-          <div className="flex items-center rounded-xl bg-stone-100 border border-stone-200 p-0.5 text-xs font-mono">
+          <div
+            className="flex items-center rounded-xl border p-0.5 text-xs font-mono"
+            style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+          >
             <button
               type="button"
               onClick={() => setFeedSource('webrtc')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              className="px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer"
+              style={
                 feedSource === 'webrtc'
-                  ? 'bg-black text-white shadow-xs'
-                  : 'text-stone-600 hover:text-black font-semibold'
-              }`}
+                  ? { background: '#262626', color: '#FFFFFF' }
+                  : { background: 'transparent', color: '#555555' }
+              }
             >
               Robot Phone (WebRTC)
             </button>
             <button
               type="button"
               onClick={() => setFeedSource('local_webcam')}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+              className="px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer"
+              style={
                 feedSource === 'local_webcam'
-                  ? 'bg-black text-white shadow-xs'
-                  : 'text-stone-600 hover:text-black font-semibold'
-              }`}
+                  ? { background: '#262626', color: '#FFFFFF' }
+                  : { background: 'transparent', color: '#555555' }
+              }
             >
               Local Test Webcam
             </button>
           </div>
 
           {/* Bộ chọn nhanh góc xoay video 4 nấc (0°, 90°, 180°, 270°) */}
-          <div className="flex items-center rounded-xl bg-stone-100 border border-stone-200 p-0.5 text-xs font-mono">
-            <span className="px-2 text-stone-500 text-[11px] uppercase font-bold flex items-center gap-1">
-              <RotateCw className="w-3.5 h-3.5 text-stone-700" /> Xoay:
+          <div
+            className="flex items-center rounded-xl border p-0.5 text-xs font-mono"
+            style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+          >
+            <span className="px-2 text-[11px] uppercase font-bold flex items-center gap-1" style={{ color: '#8C8C8C' }}>
+              <RotateCw className="w-3.5 h-3.5" style={{ color: '#262626' }} /> Xoay:
             </span>
             {[
               { deg: 0, label: '0°' },
@@ -663,11 +680,12 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 key={item.deg}
                 type="button"
                 onClick={() => setVideoRotation(item.deg)}
-                className={`px-2 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+                className="px-2 py-1 rounded-lg font-bold transition-all cursor-pointer"
+                style={
                   videoRotation === item.deg
-                    ? 'bg-black text-white shadow-xs'
-                    : 'text-stone-600 hover:text-black font-medium'
-                }`}
+                    ? { background: '#262626', color: '#FFFFFF' }
+                    : { background: 'transparent', color: '#555555' }
+                }
                 title={`Xoay video ${item.deg} độ`}
               >
                 {item.label}
@@ -675,42 +693,48 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             ))}
           </div>
 
-          {/* Nút Reconnect (Đen tối giản) */}
+          {/* Nút Reconnect (Đen hệ thống) */}
           <button
             type="button"
             onClick={feedSource === 'webrtc' ? connectWebRTC : connectLocalWebcam}
-            className="p-2 rounded-xl bg-black hover:bg-stone-800 text-white transition-all cursor-pointer shadow-xs active:scale-95"
+            className="p-2 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 hover:opacity-90"
+            style={{ background: '#262626', color: '#FFFFFF' }}
             title="Reconnect Stream"
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className="w-4 h-4 text-white" />
           </button>
 
-          {/* Nút Take Snapshot (Đen tối giản) */}
+          {/* Nút Take Snapshot (Đen hệ thống) */}
           <button
             type="button"
             onClick={handleTakeSnapshot}
-            className="p-2 rounded-xl bg-black hover:bg-stone-800 text-white transition-all cursor-pointer shadow-xs active:scale-95"
+            className="p-2 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 hover:opacity-90"
+            style={{ background: '#262626', color: '#FFFFFF' }}
             title="Take Snapshot"
           >
-            <Camera className="w-4 h-4" />
+            <Camera className="w-4 h-4 text-white" />
           </button>
 
-          {/* Nút Fullscreen (Đen tối giản) */}
+          {/* Nút Fullscreen (Đen hệ thống) */}
           <button
             type="button"
             onClick={toggleFullscreen}
-            className="p-2 rounded-xl bg-black hover:bg-stone-800 text-white transition-all cursor-pointer shadow-xs active:scale-95"
+            className="p-2 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 hover:opacity-90"
+            style={{ background: '#262626', color: '#FFFFFF' }}
             title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
           >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            {isFullscreen ? <Minimize2 className="w-4 h-4 text-white" /> : <Maximize2 className="w-4 h-4 text-white" />}
           </button>
         </div>
       </div>
 
       {/* Main Grid: Video Stream with Landmark Canvas (Left) + Emotion Analytics HUD (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
-        {/* Left Column: Video Viewport + Overlaid Canvas (Theme Xam Trang) */}
-        <div className="lg:col-span-2 flex flex-col bg-white border border-stone-200/90 rounded-2xl overflow-hidden relative shadow-xs">
+        {/* Left Column: Video Viewport + Overlaid Canvas (System Theme) */}
+        <div
+          className="lg:col-span-2 flex flex-col border rounded-2xl overflow-hidden relative shadow-xs"
+          style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
+        >
           <div className="flex-1 relative flex items-center justify-center bg-stone-950 min-h-[420px] overflow-hidden p-2 rounded-t-2xl">
             {/* Container chua Video va Canvas duoc Xoay dong bo */}
             <div
@@ -756,9 +780,12 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               </div>
             )}
 
-            {/* Overlaid Status Badges (Sang va Toi gian) */}
+            {/* Overlaid Status Badges (System Theme Warm Overlay) */}
             <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
-              <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-white/95 backdrop-blur-md border border-stone-200 text-stone-900 shadow-xs">
+              <span
+                className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border shadow-xs"
+                style={{ background: 'rgba(250, 248, 245, 0.95)', borderColor: '#BFBFBD', color: '#262626' }}
+              >
                 {feedSource === 'webrtc' ? 'PHONE KIOSK FEED' : 'LOCAL WEBCAM'}
               </span>
               <span
@@ -774,7 +801,10 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
             {/* Overlaid Active Emotion Badge */}
             {hasRemoteVideo && isFaceDetected && (
-              <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-md border border-stone-200 px-3 py-1.5 rounded-xl flex items-center gap-2 pointer-events-none shadow-sm">
+              <div
+                className="absolute bottom-3 left-3 border px-3 py-1.5 rounded-xl flex items-center gap-2 pointer-events-none shadow-sm"
+                style={{ background: 'rgba(250, 248, 245, 0.95)', borderColor: '#BFBFBD' }}
+              >
                 {activeDisplayEmotion === 'happy' ? (
                   <Smile className="w-4 h-4 text-emerald-600" />
                 ) : activeDisplayEmotion === 'unhappy' ? (
@@ -782,79 +812,104 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 ) : (
                   <Meh className="w-4 h-4 text-sky-600" />
                 )}
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-stone-900">
+                <span
+                  className="text-xs font-mono font-bold uppercase tracking-wider"
+                  style={{ color: '#262626' }}
+                >
                   {activeDisplayEmotion}
                 </span>
-                <span className="text-[10px] font-mono text-stone-500">
+                <span className="text-[10px] font-mono" style={{ color: '#8C8C8C' }}>
                   Smile: {Math.round(smileScore * 100)}% | Frown: {Math.round(frownScore * 100)}%
                 </span>
               </div>
             )}
           </div>
 
-          {/* Footer Information (Theme Sang) */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-stone-50 border-t border-stone-200 text-[11px] font-mono text-stone-600">
+          {/* Footer Information (System Theme: Sand-Beige #E9E5DC, Border #BFBFBD) */}
+          <div
+            className="flex items-center justify-between px-4 py-2.5 border-t text-[11px] font-mono"
+            style={{ background: '#E9E5DC', borderColor: '#BFBFBD', color: '#555555' }}
+          >
             <div className="flex items-center gap-3">
               <span>
-                Status: <strong className="text-stone-900">{connectionStatus.toUpperCase()}</strong>
+                Status: <strong style={{ color: '#262626' }}>{connectionStatus.toUpperCase()}</strong>
               </span>
               <span>
                 AI Engine:{' '}
-                <strong className="text-stone-900">
+                <strong style={{ color: '#262626' }}>
                   {visionModelReady ? 'EXPRESSION AI' : 'INITIALIZING'}
                 </strong>
               </span>
               <span>
-                Orientation: <strong className="text-stone-900">{videoRotation}°</strong>
+                Orientation: <strong style={{ color: '#262626' }}>{videoRotation}°</strong>
               </span>
             </div>
             {feedSource === 'webrtc' && (
               <div className="flex items-center gap-2">
-                <span>Room:</span>
+                <span style={{ color: '#555555' }}>Room:</span>
                 <input
                   type="text"
                   value={sessionId}
                   onChange={(e) => setSessionId(e.target.value)}
-                  className="bg-white border border-stone-300 rounded px-2 py-0.5 text-[11px] text-stone-900 font-mono w-32 focus:border-black outline-none"
+                  className="border rounded px-2 py-0.5 text-[11px] font-mono w-32 outline-none"
+                  style={{ background: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
                 />
               </div>
             )}
           </div>
         </div>
 
-        {/* Right Column: AI Emotion Analytics & Facial Mesh Diagnostics (Theme Sang & Nut Den) */}
+        {/* Right Column: AI Emotion Analytics & Facial Mesh Diagnostics (System Theme) */}
         <div className="flex flex-col gap-4">
           {/* Main Emotion Analytics Card */}
-          <div className="bg-white border border-stone-200/90 rounded-2xl p-4 shadow-xs flex flex-col gap-3">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+          <div
+            className="border rounded-2xl p-4 shadow-xs flex flex-col gap-3"
+            style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
+          >
+            <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#BFBFBD' }}>
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-stone-800" />
-                <span className="text-xs font-bold font-mono uppercase text-stone-900 tracking-wider">
+                <Sparkles className="w-4 h-4" style={{ color: '#262626' }} />
+                <span
+                  className="text-xs font-bold font-mono uppercase tracking-wider"
+                  style={{ color: '#262626' }}
+                >
                   AI Expression Analytics
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsAiEmotionActive((prev) => !prev)}
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold cursor-pointer transition-all ${
+                className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold cursor-pointer transition-all border"
+                style={
                   isAiEmotionActive
-                    ? 'bg-black text-white shadow-xs'
-                    : 'bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 hover:text-black'
-                }`}
+                    ? { background: '#262626', color: '#FFFFFF', borderColor: '#262626' }
+                    : { background: '#E9E5DC', color: '#8C8C8C', borderColor: '#BFBFBD' }
+                }
               >
                 {isAiEmotionActive ? 'AI ON' : 'AI OFF'}
               </button>
             </div>
 
             {/* Current Emotion State */}
-            <div className="p-3 rounded-xl bg-stone-50 border border-stone-200/80 flex items-center justify-between">
+            <div
+              className="p-3 rounded-xl border flex items-center justify-between"
+              style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+            >
               <div className="flex flex-col">
-                <span className="text-[10px] font-mono text-stone-500 uppercase font-semibold">Current Expression</span>
-                <span className="text-base font-black font-mono tracking-wide text-stone-900 uppercase mt-0.5">
+                <span className="text-[10px] font-mono uppercase font-semibold" style={{ color: '#8C8C8C' }}>
+                  Current Expression
+                </span>
+                <span
+                  className="text-base font-black font-mono tracking-wide uppercase mt-0.5"
+                  style={{ color: '#262626' }}
+                >
                   {activeDisplayEmotion}
                 </span>
               </div>
-              <span className="text-[10px] font-mono px-2 py-1 rounded-lg bg-black text-white font-bold shadow-xs">
+              <span
+                className="text-[10px] font-mono px-2 py-1 rounded-lg font-bold shadow-xs"
+                style={{ background: '#262626', color: '#FFFFFF' }}
+              >
                 {overrideEmotion ? 'MANUAL OVERRIDE' : 'REALTIME AI'}
               </span>
             </div>
@@ -862,13 +917,18 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             {/* Gauges for Smile & Frown */}
             <div className="space-y-2.5 font-mono text-xs">
               <div>
-                <div className="flex justify-between text-stone-600 mb-1">
+                <div className="flex justify-between mb-1" style={{ color: '#555555' }}>
                   <span className="flex items-center gap-1.5 font-semibold">
                     <Smile className="w-3.5 h-3.5 text-emerald-600" /> Smile Level
                   </span>
-                  <span className="font-bold text-stone-900">{Math.round(smileScore * 100)}%</span>
+                  <span className="font-bold" style={{ color: '#262626' }}>
+                    {Math.round(smileScore * 100)}%
+                  </span>
                 </div>
-                <div className="w-full h-2 rounded-full bg-stone-100 overflow-hidden border border-stone-200">
+                <div
+                  className="w-full h-2 rounded-full overflow-hidden border"
+                  style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+                >
                   <div
                     className="h-full bg-emerald-600 transition-all duration-300"
                     style={{ width: `${Math.min(100, Math.round(smileScore * 100))}%` }}
@@ -877,13 +937,18 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               </div>
 
               <div>
-                <div className="flex justify-between text-stone-600 mb-1">
+                <div className="flex justify-between mb-1" style={{ color: '#555555' }}>
                   <span className="flex items-center gap-1.5 font-semibold">
                     <Frown className="w-3.5 h-3.5 text-rose-600" /> Frown / Distress Level
                   </span>
-                  <span className="font-bold text-stone-900">{Math.round(frownScore * 100)}%</span>
+                  <span className="font-bold" style={{ color: '#262626' }}>
+                    {Math.round(frownScore * 100)}%
+                  </span>
                 </div>
-                <div className="w-full h-2 rounded-full bg-stone-100 overflow-hidden border border-stone-200">
+                <div
+                  className="w-full h-2 rounded-full overflow-hidden border"
+                  style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+                >
                   <div
                     className="h-full bg-rose-600 transition-all duration-300"
                     style={{ width: `${Math.min(100, Math.round(frownScore * 100))}%` }}
@@ -892,9 +957,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               </div>
             </div>
 
-            {/* Test Robot Expression Override Buttons (Toan bo Nut Den / Xam Sang) */}
-            <div className="pt-2 border-t border-stone-100 space-y-2">
-              <span className="text-[10px] font-mono text-stone-500 block uppercase font-bold">
+            {/* Test Robot Expression Override Buttons (Toan bo Nut Den He Thong / Khung Beige) */}
+            <div className="pt-2 border-t space-y-2" style={{ borderColor: '#BFBFBD' }}>
+              <span className="text-[10px] font-mono block uppercase font-bold" style={{ color: '#8C8C8C' }}>
                 Test / Override Robot Expression:
               </span>
               <div className="grid grid-cols-4 gap-1.5">
@@ -912,11 +977,12 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                     key={String(mode.id)}
                     type="button"
                     onClick={() => handleOverrideEmotion(mode.id)}
-                    className={`py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer border ${
+                    className="py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer border"
+                    style={
                       overrideEmotion === mode.id
-                        ? 'bg-black text-white border-black shadow-xs'
-                        : 'bg-stone-50 text-stone-800 border-stone-200 hover:bg-stone-200 hover:text-black'
-                    }`}
+                        ? { background: '#262626', color: '#FFFFFF', borderColor: '#262626' }
+                        : { background: '#E9E5DC', color: '#262626', borderColor: '#BFBFBD' }
+                    }
                   >
                     {mode.label}
                   </button>
@@ -925,28 +991,45 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </div>
           </div>
 
-          {/* Facial Landmark Mesh & Blendshapes Diagnostic Panel (Theme Sang & Toi Gian) */}
-          <div className="bg-white border border-stone-200/90 rounded-2xl p-4 shadow-xs flex-1 flex flex-col gap-3 font-mono">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-2">
+          {/* Facial Landmark Mesh & Blendshapes Diagnostic Panel (System Theme) */}
+          <div
+            className="border rounded-2xl p-4 shadow-xs flex-1 flex flex-col gap-3 font-mono"
+            style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
+          >
+            <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#BFBFBD' }}>
               <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-stone-800" />
-                <span className="text-xs font-bold uppercase text-stone-900 tracking-wider">
+                <Activity className="w-4 h-4" style={{ color: '#262626' }} />
+                <span
+                  className="text-xs font-bold uppercase tracking-wider"
+                  style={{ color: '#262626' }}
+                >
                   Facial Mesh & Blendshapes
                 </span>
               </div>
-              <span className="text-[10px] text-stone-500 font-bold">Key Anchors (6 PTS)</span>
+              <span className="text-[10px] font-bold" style={{ color: '#8C8C8C' }}>
+                Key Anchors (6 PTS)
+              </span>
             </div>
 
             {/* Muscle Blendshapes Diagnostic Breakdown */}
             <div className="space-y-2 text-xs">
-              <div className="p-2 rounded-xl bg-stone-50 border border-stone-200/80 space-y-2">
-                <div className="text-[11px] font-bold text-stone-800 flex items-center justify-between">
+              <div
+                className="p-2 rounded-xl border space-y-2"
+                style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+              >
+                <div
+                  className="text-[11px] font-bold flex items-center justify-between"
+                  style={{ color: '#262626' }}
+                >
                   <span>Mouth Corners (Smile L/R)</span>
                   <span className="text-emerald-700">
                     {Math.round(blendshapeMetrics.smileLeft * 100)}% | {Math.round(blendshapeMetrics.smileRight * 100)}%
                   </span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-stone-200 overflow-hidden flex gap-0.5">
+                <div
+                  className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5"
+                  style={{ background: '#FAF8F5' }}
+                >
                   <div
                     className="h-full bg-emerald-600 transition-all duration-200"
                     style={{ width: `${Math.round(blendshapeMetrics.smileLeft * 50)}%` }}
@@ -958,14 +1041,23 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 </div>
               </div>
 
-              <div className="p-2 rounded-xl bg-stone-50 border border-stone-200/80 space-y-2">
-                <div className="text-[11px] font-bold text-stone-800 flex items-center justify-between">
+              <div
+                className="p-2 rounded-xl border space-y-2"
+                style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+              >
+                <div
+                  className="text-[11px] font-bold flex items-center justify-between"
+                  style={{ color: '#262626' }}
+                >
                   <span>Brow Depression (Distress L/R)</span>
                   <span className="text-rose-700">
                     {Math.round(blendshapeMetrics.browDownLeft * 100)}% | {Math.round(blendshapeMetrics.browDownRight * 100)}%
                   </span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-stone-200 overflow-hidden flex gap-0.5">
+                <div
+                  className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5"
+                  style={{ background: '#FAF8F5' }}
+                >
                   <div
                     className="h-full bg-rose-600 transition-all duration-200"
                     style={{ width: `${Math.round(blendshapeMetrics.browDownLeft * 50)}%` }}
@@ -977,14 +1069,23 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 </div>
               </div>
 
-              <div className="p-2 rounded-xl bg-stone-50 border border-stone-200/80 space-y-2">
-                <div className="text-[11px] font-bold text-stone-800 flex items-center justify-between">
+              <div
+                className="p-2 rounded-xl border space-y-2"
+                style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+              >
+                <div
+                  className="text-[11px] font-bold flex items-center justify-between"
+                  style={{ color: '#262626' }}
+                >
                   <span>Mouth Frown (Sadness L/R)</span>
                   <span className="text-amber-700">
                     {Math.round(blendshapeMetrics.mouthFrownLeft * 100)}% | {Math.round(blendshapeMetrics.mouthFrownRight * 100)}%
                   </span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-stone-200 overflow-hidden flex gap-0.5">
+                <div
+                  className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5"
+                  style={{ background: '#FAF8F5' }}
+                >
                   <div
                     className="h-full bg-amber-600 transition-all duration-200"
                     style={{ width: `${Math.round(blendshapeMetrics.mouthFrownLeft * 50)}%` }}
@@ -998,15 +1099,25 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
               {/* Eye Squint and Jaw Opening */}
               <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div className="p-2 rounded-xl bg-stone-50 border border-stone-200/80 flex flex-col justify-between">
-                  <span className="text-stone-500 font-semibold">Eye Squint</span>
-                  <span className="text-sm font-bold text-stone-900 mt-1">
+                <div
+                  className="p-2 rounded-xl border flex flex-col justify-between"
+                  style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+                >
+                  <span className="font-semibold" style={{ color: '#8C8C8C' }}>
+                    Eye Squint
+                  </span>
+                  <span className="text-sm font-bold mt-1" style={{ color: '#262626' }}>
                     {Math.round(blendshapeMetrics.eyeSquint * 100)}%
                   </span>
                 </div>
-                <div className="p-2 rounded-xl bg-stone-50 border border-stone-200/80 flex flex-col justify-between">
-                  <span className="text-stone-500 font-semibold">Jaw Open</span>
-                  <span className="text-sm font-bold text-stone-900 mt-1">
+                <div
+                  className="p-2 rounded-xl border flex flex-col justify-between"
+                  style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+                >
+                  <span className="font-semibold" style={{ color: '#8C8C8C' }}>
+                    Jaw Open
+                  </span>
+                  <span className="text-sm font-bold mt-1" style={{ color: '#262626' }}>
                     {Math.round(blendshapeMetrics.jawOpen * 100)}%
                   </span>
                 </div>
@@ -1014,37 +1125,57 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </div>
 
             {/* Mesh Status Note */}
-            <div className="mt-auto pt-2 border-t border-stone-100 text-[10px] text-stone-500 flex items-center justify-between">
-              <span className="flex items-center gap-1 font-semibold text-stone-700">
+            <div
+              className="mt-auto pt-2 border-t text-[10px] flex items-center justify-between"
+              style={{ borderColor: '#BFBFBD', color: '#8C8C8C' }}
+            >
+              <span className="flex items-center gap-1 font-semibold" style={{ color: '#262626' }}>
                 <CheckCircle className="w-3 h-3 text-emerald-600" />
                 Minimal Anchors Mode
               </span>
-              <span className="text-stone-400 font-mono">GPU Accelerated</span>
+              <span className="font-mono" style={{ color: '#8C8C8C' }}>
+                GPU Accelerated
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Snapshot Preview Modal if Captured (Theme Sang & Nut Den) */}
+      {/* Snapshot Preview Modal if Captured (System Theme) */}
       {snapshotUrl && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-stone-200 rounded-2xl p-5 max-w-xl w-full flex flex-col gap-3 shadow-2xl">
-            <div className="flex items-center justify-between pb-2 border-b border-stone-100">
-              <span className="text-xs font-mono font-bold uppercase text-stone-900">Snapshot Captured with Mesh</span>
+          <div
+            className="border rounded-2xl p-5 max-w-xl w-full flex flex-col gap-3 shadow-2xl"
+            style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
+          >
+            <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: '#BFBFBD' }}>
+              <span
+                className="text-xs font-mono font-bold uppercase"
+                style={{ color: '#262626' }}
+              >
+                Snapshot Captured with Mesh
+              </span>
               <button
                 type="button"
                 onClick={() => setSnapshotUrl(null)}
-                className="text-stone-500 hover:text-black text-xs font-mono font-bold cursor-pointer"
+                className="text-xs font-mono font-bold cursor-pointer transition-colors"
+                style={{ color: '#8C8C8C' }}
               >
                 Close
               </button>
             </div>
-            <img src={snapshotUrl} alt="Snapshot" className="rounded-xl w-full object-contain max-h-[400px] border border-stone-200" />
-            <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">
+            <img
+              src={snapshotUrl}
+              alt="Snapshot"
+              className="rounded-xl w-full object-contain max-h-[400px] border"
+              style={{ borderColor: '#BFBFBD' }}
+            />
+            <div className="flex justify-end gap-2 pt-2 border-t" style={{ borderColor: '#BFBFBD' }}>
               <a
                 href={snapshotUrl}
                 download={`kiosk-snapshot-${Date.now()}.jpg`}
-                className="px-3.5 py-1.5 rounded-lg bg-black text-white font-mono text-xs font-bold hover:bg-stone-800 transition-all shadow-xs"
+                className="px-3.5 py-1.5 rounded-lg font-mono text-xs font-bold transition-all shadow-xs"
+                style={{ background: '#262626', color: '#FFFFFF' }}
               >
                 Download
               </a>

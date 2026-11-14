@@ -56,17 +56,20 @@ export const EmotionAssistanceModal = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 select-none overscroll-contain"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150 select-none overscroll-contain"
       role="dialog"
       aria-modal="true"
       aria-labelledby="assistance-modal-title"
     >
-      <div className="relative w-full max-w-[360px] sm:max-w-md bg-stone-900 border border-stone-800 rounded-3xl shadow-2xl overflow-hidden p-5 sm:p-6 text-stone-100 flex flex-col gap-4">
+      <div
+        className="relative w-full max-w-[360px] sm:max-w-md border rounded-3xl shadow-2xl overflow-hidden p-5 sm:p-6 flex flex-col gap-4 text-stone-900"
+        style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
+      >
         {/* Nut Dong nhanh goc phai */}
         <button
           type="button"
           onClick={handleDismiss}
-          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-stone-800/80 hover:bg-stone-700 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-colors cursor-pointer z-10"
+          className="absolute top-4 right-4 w-8 h-8 rounded-full bg-stone-200/80 hover:bg-stone-300 text-stone-600 hover:text-stone-900 flex items-center justify-center transition-colors cursor-pointer z-10"
           title={isEn ? 'Close' : 'Đóng'}
           aria-label={isEn ? 'Close' : 'Đóng'}
         >
@@ -75,17 +78,21 @@ export const EmotionAssistanceModal = ({
 
         {/* Header Modal */}
         <div className="flex items-center gap-3 pr-8">
-          <div className="w-12 h-12 rounded-2xl bg-stone-800 border border-stone-700 text-stone-200 flex items-center justify-center shrink-0 shadow-inner">
-            <ConciergeBell className="w-6 h-6 text-stone-200" />
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs"
+            style={{ background: '#262626', color: '#FFFFFF' }}
+          >
+            <ConciergeBell className="w-6 h-6 text-white" />
           </div>
           <div className="flex-1 min-w-0">
             <h3
               id="assistance-modal-title"
-              className="text-base sm:text-lg font-bold text-white tracking-tight leading-snug"
+              className="text-base sm:text-lg font-bold tracking-tight leading-snug"
+              style={{ color: '#262626' }}
             >
               {isEn ? 'Need Concierge Assistance?' : 'Quý Khách Cần Hỗ Trợ?'}
             </h3>
-            <p className="text-xs text-stone-400 font-normal leading-relaxed mt-0.5">
+            <p className="text-xs font-normal leading-relaxed mt-0.5" style={{ color: '#555555' }}>
               {isEn
                 ? 'Rora noticed you might be experiencing trouble. Would you like to call Concierge staff?'
                 : 'Rora nhận thấy quý khách có thể đang gặp bất tiện. Quý khách có cần gọi nhân viên Concierge hỗ trợ không ạ?'}
@@ -95,48 +102,53 @@ export const EmotionAssistanceModal = ({
 
         {/* Lua chon tuong tac (Touch Options) */}
         <div className="flex flex-col gap-2.5 pt-1">
-          {/* Nút Gọi Concierge (Primary action) */}
+          {/* Nút Gọi Concierge (Primary action - Den he thong) */}
           <button
             type="button"
             onClick={handleConfirm}
-            className="w-full p-3.5 rounded-2xl bg-stone-100 hover:bg-white text-stone-900 font-bold text-sm sm:text-base flex items-center justify-between transition-all shadow-md active:scale-[0.99] cursor-pointer"
+            className="w-full p-3.5 rounded-2xl font-bold text-sm sm:text-base flex items-center justify-between transition-all shadow-md active:scale-[0.99] cursor-pointer"
+            style={{ background: '#262626', color: '#FFFFFF' }}
           >
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-stone-900 text-white flex items-center justify-center">
-                <PhoneCall className="w-4 h-4" />
+              <div className="w-8 h-8 rounded-xl bg-stone-800 text-white flex items-center justify-center">
+                <PhoneCall className="w-4 h-4 text-white" />
               </div>
               <div className="text-left">
-                <div className="font-bold leading-tight">
+                <div className="font-bold leading-tight text-white">
                   {isEn ? 'Call Concierge Staff' : 'Gọi Nhân Viên Concierge'}
                 </div>
-                <div className="text-[11px] text-stone-600 font-normal">
+                <div className="text-[11px] text-stone-300 font-normal">
                   {isEn ? 'Connect directly to support desk' : 'Kết nối trực tiếp hỗ trợ ngay'}
                 </div>
               </div>
             </div>
-            <ArrowRight className="w-4 h-4 text-stone-700 shrink-0" />
+            <ArrowRight className="w-4 h-4 text-stone-300 shrink-0" />
           </button>
 
-          {/* Nút Từ Chối (Secondary action) */}
+          {/* Nút Từ Chối (Secondary action - Xam sang) */}
           <button
             type="button"
             onClick={handleDismiss}
-            className="w-full p-3 rounded-2xl bg-stone-800/80 hover:bg-stone-800 text-stone-300 hover:text-white font-medium text-xs sm:text-sm flex items-center justify-between border border-stone-700/60 transition-all cursor-pointer"
+            className="w-full p-3 rounded-2xl font-medium text-xs sm:text-sm flex items-center justify-between border transition-all cursor-pointer"
+            style={{ background: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
           >
             <div className="flex items-center gap-2.5">
-              <div className="w-6 h-6 rounded-lg bg-stone-700 text-stone-300 flex items-center justify-center">
+              <div className="w-6 h-6 rounded-lg bg-stone-300/80 text-stone-800 flex items-center justify-center">
                 <Check className="w-3.5 h-3.5" />
               </div>
-              <span>{isEn ? 'No, I am fine. Thank you' : 'Không, tôi tự xử lý được. Cảm ơn'}</span>
+              <span className="font-semibold">{isEn ? 'No, I am fine. Thank you' : 'Không, tôi tự xử lý được. Cảm ơn'}</span>
             </div>
-            <span className="text-[11px] text-stone-400 font-mono">
+            <span className="text-[11px] font-mono" style={{ color: '#555555' }}>
               {countdown}s
             </span>
           </button>
         </div>
 
         {/* Footer Hint */}
-        <div className="pt-2 border-t border-stone-800/80 flex items-center justify-between text-[10px] text-stone-400 font-mono">
+        <div
+          className="pt-2 border-t flex items-center justify-between text-[10px] font-mono"
+          style={{ borderColor: '#BFBFBD', color: '#8C8C8C' }}
+        >
           <span>{isEn ? 'Voice recognition enabled' : 'Quý khách có thể nói "Có" hoặc "Không"'}</span>
           <span>{countdown}s</span>
         </div>

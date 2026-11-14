@@ -33,4 +33,10 @@ describe('EmotionAssistanceModal Contract & Minimalist Tone Tests', () => {
     const emojiRegex = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
     expect(emojiRegex.test(modalContent)).toBe(false);
   });
+
+  it('complies with minimal light theme and system palette on mobile kiosk', () => {
+    expect(modalContent).toContain('#FAF8F5');
+    expect(modalContent).toContain('#262626');
+    expect(modalContent).toContain('#BFBFBD');
+  });
 });

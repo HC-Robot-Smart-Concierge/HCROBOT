@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FilesetResolver, FaceLandmarker, DrawingUtils } from '@mediapipe/tasks-vision';
+import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 import {
   Camera,
   RefreshCw,
@@ -12,11 +12,22 @@ import {
   Sparkles,
   VideoOff,
   CheckCircle,
+  RotateCw,
 } from 'lucide-react';
 import { getCallSignalingWsUrl } from '../../../services/conciergeApi';
 import { WEBRTC_ICE_SERVERS } from '../../../hooks/useKioskStreamBroadcaster';
 
 const DEFAULT_SESSION_ID = 'kiosk-live-feed';
+
+// Cac chi so diem moc then chot nhat tao nen bieu cam (Sieu toi gian: 2 khoe mieng, 2 dau long may, dinh va day moi)
+const MINIMAL_EXPRESSION_ANCHORS = [
+  { id: 'mouth_left', index: 61, label: 'Mouth Left' },
+  { id: 'mouth_right', index: 291, label: 'Mouth Right' },
+  { id: 'brow_left', index: 70, label: 'Brow Left' },
+  { id: 'brow_right', index: 300, label: 'Brow Right' },
+  { id: 'lip_top', index: 13, label: 'Upper Lip' },
+  { id: 'lip_bottom', index: 14, label: 'Lower Lip' },
+];
 
 export const AdminPhoneCameraTab = ({ currentUser }) => {
   // Connection States
@@ -26,6 +37,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [snapshotUrl, setSnapshotUrl] = useState(null);
+
+  // Huong xoay video: Mac dinh 90 do (vi dien thoai Kiosk duoc gan xoay ngang)
+  const [videoRotation, setVideoRotation] = useState(90);
 
   // AI Emotion Recognition States
   const [isAiEmotionActive, setIsAiEmotionActive] = useState(true);
@@ -134,7 +148,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     setHasRemoteVideo(false);
     setConnectionStatus('disconnected');
 
-    // Xoa sach canvas overlay
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
       if (ctx) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
@@ -222,7 +235,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        // Bao cho Phone biet Admin da vao phong va san sang nhan Offer
         ws.send(JSON.stringify({ type: 'ready_for_offer' }));
       };
 
@@ -231,16 +243,12 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           const data = JSON.parse(msgEvent.data);
 
           if (data.type === 'peer_joined' && data.role === 'guest') {
-            // Khi Phone Kiosk vua vao, Admin nhac Phone gui Offer
             ws.send(JSON.stringify({ type: 'ready_for_offer' }));
           } else if (data.type === 'kiosk_ready') {
-            // Phone da san sang, Admin nhac Phone gui Offer
             ws.send(JSON.stringify({ type: 'ready_for_offer' }));
           } else if (data.type === 'offer') {
-            // Nhan Offer tu Phone Kiosk -> Set Remote Description -> Tao Answer gui lai Phone
             await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
 
-            // Xu ly hang doi candidate da nhan truoc khi setRemoteDescription
             while (iceCandidateQueueRef.current.length > 0) {
               const cand = iceCandidateQueueRef.current.shift();
               try {
@@ -314,7 +322,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     };
   }, [feedSource, connectWebRTC, connectLocalWebcam, cleanupWebRTC]);
 
-  // 4. Vong lap nhan dien MediaPipe va Ve Luoi Khuon Mat (Face Mesh & Connectors)
+  // 4. Vong lap nhan dien MediaPipe va Ve Cac Diem Neo Bieu Cam Toi Gian (Key Anchors Only)
   useEffect(() => {
     if (!isAiEmotionActive || connectionStatus !== 'connected') {
       setIsFaceDetected(false);
@@ -392,7 +400,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             setDetectedEmotion(currentDetected);
           }
 
-          // 4.2. Ve Luoi Mat (Face Mesh Wireframe & Landmarks) voi DrawingUtils
+          // 4.2. Ve Chi 6 Diem Neo Bieu Cam Then Chot (It diem nhat co the, khong ve luoi da giac)
           if (canvas && ctx) {
             if (canvas.width !== videoEl.videoWidth || canvas.height !== videoEl.videoHeight) {
               canvas.width = videoEl.videoWidth;
@@ -400,90 +408,91 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const drawingUtils = new DrawingUtils(ctx);
 
-            // 4.2. Ve cac duong va diem bieu cam then chot (It diem nhat co the: Long may, Mat, Moi)
-            // Mau sac dong theo bieu cam de nhan biet ngay lap tuc
-            let eyebrowsColor = '#38BDF8';
-            let lipsColor = '#E2E8F0';
-            let eyesColor = '#0EA5E9';
-            let landmarkColor = '#BAE6FD';
+            // Tinh toa do cac diem neo
+            const ptMouthL = landmarks[61];
+            const ptMouthR = landmarks[291];
+            const ptBrowL = landmarks[70];
+            const ptBrowR = landmarks[300];
+            const ptLipTop = landmarks[13];
+            const ptLipBottom = landmarks[14];
 
-            if (currentDetected === 'happy') {
-              eyebrowsColor = '#6EE7B7';
-              lipsColor = '#10B981';
-              eyesColor = '#34D399';
-              landmarkColor = '#A7F3D0';
-            } else if (currentDetected === 'unhappy') {
-              eyebrowsColor = '#F43F5E';
-              lipsColor = '#FB7185';
-              eyesColor = '#E11D48';
-              landmarkColor = '#FECDD3';
+            // 1. Ve duong cau may duy nhat khi Unhappy
+            if (currentDetected === 'unhappy' && ptBrowL && ptBrowR) {
+              ctx.beginPath();
+              ctx.moveTo(ptBrowL.x * canvas.width, ptBrowL.y * canvas.height);
+              ctx.lineTo(ptBrowR.x * canvas.width, ptBrowR.y * canvas.height);
+              ctx.lineWidth = 2.5;
+              ctx.strokeStyle = '#F43F5E';
+              ctx.stroke();
             }
 
-            // 1. Duong noi hai hang long may (Dam hon khi cau may kho chiu)
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, {
-              color: eyebrowsColor,
-              lineWidth: currentDetected === 'unhappy' ? 2.5 : 1.5,
-            });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW, {
-              color: eyebrowsColor,
-              lineWidth: currentDetected === 'unhappy' ? 2.5 : 1.5,
-            });
+            // 2. Ve cung cuoi duy nhat khi Happy
+            if (currentDetected === 'happy' && ptMouthL && ptMouthR && ptLipBottom) {
+              ctx.beginPath();
+              ctx.moveTo(ptMouthL.x * canvas.width, ptMouthL.y * canvas.height);
+              ctx.quadraticCurveTo(
+                ptLipBottom.x * canvas.width,
+                ptLipBottom.y * canvas.height,
+                ptMouthR.x * canvas.width,
+                ptMouthR.y * canvas.height
+              );
+              ctx.lineWidth = 2.5;
+              ctx.strokeStyle = '#10B981';
+              ctx.stroke();
+            }
 
-            // 2. Duong vien mat hai ben
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, {
-              color: eyesColor,
-              lineWidth: 1.2,
-            });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, {
-              color: eyesColor,
-              lineWidth: 1.2,
-            });
-
-            // 3. Duong vien moi (Noi bat hon khi cuoi)
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, {
-              color: lipsColor,
-              lineWidth: currentDetected === 'happy' ? 2.5 : 1.5,
-            });
-
-            // 4. Chi cham cac diem moc then chot tao nen bieu cam (Toi gian, it diem nhat co the)
-            const KEY_EXPRESSION_INDICES = [
-              61,  // Khoe moi trai
-              291, // Khoe moi phai
-              13,  // Dinh moi tren
-              14,  // Day moi duoi
-              70,  // Dau long may trai (nhan biet cau may)
-              300, // Dau long may phai (nhan biet cau may)
-              105, // Dinh long may trai
-              334, // Dinh long may phai
-              33,  // Khoe mat trai
-              263, // Khoe mat phai
-            ];
-
-            for (const idx of KEY_EXPRESSION_INDICES) {
-              const pt = landmarks[idx];
-              if (!pt) continue;
+            // 3. Cham dung cac diem neo quan trong nhat
+            MINIMAL_EXPRESSION_ANCHORS.forEach((anchor) => {
+              const pt = landmarks[anchor.index];
+              if (!pt) return;
               const x = pt.x * canvas.width;
               const y = pt.y * canvas.height;
 
-              ctx.beginPath();
-              let radius = 2.5;
-              let dotColor = landmarkColor;
-              if (currentDetected === 'happy' && (idx === 61 || idx === 291)) {
-                radius = 4;
-                dotColor = '#10B981';
-              } else if (currentDetected === 'unhappy' && (idx === 70 || idx === 300)) {
-                radius = 4;
-                dotColor = '#F43F5E';
+              let dotRadius = 3;
+              let dotColor = '#38BDF8'; // Mac dinh Neutral Cyan
+              let hasGlow = false;
+              let glowColor = '';
+
+              if (currentDetected === 'happy') {
+                if (anchor.id === 'mouth_left' || anchor.id === 'mouth_right') {
+                  dotRadius = 5;
+                  dotColor = '#10B981';
+                  hasGlow = true;
+                  glowColor = 'rgba(16, 185, 129, 0.4)';
+                } else {
+                  dotColor = '#6EE7B7';
+                }
+              } else if (currentDetected === 'unhappy') {
+                if (anchor.id === 'brow_left' || anchor.id === 'brow_right') {
+                  dotRadius = 5;
+                  dotColor = '#F43F5E';
+                  hasGlow = true;
+                  glowColor = 'rgba(244, 63, 94, 0.4)';
+                } else if (anchor.id === 'mouth_left' || anchor.id === 'mouth_right') {
+                  dotColor = '#FB7185';
+                } else {
+                  dotColor = '#FECDD3';
+                }
               }
-              ctx.arc(x, y, radius, 0, 2 * Math.PI);
+
+              // Glow ring
+              if (hasGlow) {
+                ctx.beginPath();
+                ctx.arc(x, y, dotRadius + 4, 0, 2 * Math.PI);
+                ctx.fillStyle = glowColor;
+                ctx.fill();
+              }
+
+              // Dot chinh
+              ctx.beginPath();
+              ctx.arc(x, y, dotRadius, 0, 2 * Math.PI);
               ctx.fillStyle = dotColor;
               ctx.fill();
               ctx.lineWidth = 1;
               ctx.strokeStyle = '#FFFFFF';
               ctx.stroke();
-            }
+            });
           }
         } else {
           noFaceCountRef.current += 1;
@@ -528,22 +537,29 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     [controlIp]
   );
 
-  // 6. Chup anh Snapshot tu Video
+  // 6. Chup anh Snapshot tu Video (ho tro tinh ca huong xoay video)
   const handleTakeSnapshot = useCallback(() => {
     if (!videoRef.current) return;
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    const isSideways = videoRotation === 90 || videoRotation === 270;
+    const vw = video.videoWidth || 640;
+    const vh = video.videoHeight || 480;
+
+    canvas.width = isSideways ? vh : vw;
+    canvas.height = isSideways ? vw : vh;
+
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((videoRotation * Math.PI) / 180);
+      ctx.drawImage(video, -vw / 2, -vh / 2, vw, vh);
       if (canvasRef.current) {
-        ctx.drawImage(canvasRef.current, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(canvasRef.current, -vw / 2, -vh / 2, vw, vh);
       }
       setSnapshotUrl(canvas.toDataURL('image/jpeg'));
     }
-  }, []);
+  }, [videoRotation]);
 
   const toggleFullscreen = useCallback(() => {
     if (!containerRef.current) return;
@@ -616,6 +632,17 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </button>
           </div>
 
+          {/* Nut Xoay Video (Rotate 90 do cho dien thoai nam ngang) */}
+          <button
+            type="button"
+            onClick={() => setVideoRotation((prev) => (prev + 90) % 360)}
+            className="px-2.5 py-1.5 rounded-lg bg-stone-900 border border-white/10 hover:bg-stone-800 text-stone-300 hover:text-white transition-all cursor-pointer flex items-center gap-1.5 text-xs font-mono"
+            title="Xoay video 90 độ (0°, 90°, 180°, 270°)"
+          >
+            <RotateCw className="w-3.5 h-3.5 text-sky-400" />
+            <span>{videoRotation}°</span>
+          </button>
+
           <button
             type="button"
             onClick={feedSource === 'webrtc' ? connectWebRTC : connectLocalWebcam}
@@ -647,28 +674,34 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
       {/* Main Grid: Video Stream with Landmark Canvas (Left) + Emotion Analytics HUD (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
-        {/* Left Column: Video Viewport + Overlaid Canvas */}
+        {/* Left Column: Video Viewport + Overlaid Canvas (Ho tro Xoay Ngang) */}
         <div className="lg:col-span-2 flex flex-col bg-[#18181B] border border-white/10 rounded-2xl overflow-hidden relative shadow-lg">
-          <div className="flex-1 relative flex items-center justify-center bg-black min-h-[420px] overflow-hidden">
-            {/* The Video Element */}
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className={`w-full h-full object-contain ${!hasRemoteVideo && 'hidden'}`}
-            />
+          <div className="flex-1 relative flex items-center justify-center bg-black min-h-[420px] overflow-hidden p-2">
+            {/* Container chua Video va Canvas duoc Xoay dong bo */}
+            <div
+              className="relative flex items-center justify-center transition-transform duration-300 max-w-full max-h-full"
+              style={{
+                transform: `rotate(${videoRotation}deg)`,
+              }}
+            >
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`max-h-[430px] max-w-full object-contain ${!hasRemoteVideo && 'hidden'}`}
+              />
 
-            {/* The Landmark Mesh Canvas Element */}
-            <canvas
-              ref={canvasRef}
-              className={`absolute inset-0 w-full h-full object-contain pointer-events-none ${
-                !hasRemoteVideo && 'hidden'
-              }`}
-            />
+              <canvas
+                ref={canvasRef}
+                className={`absolute inset-0 w-full h-full object-contain pointer-events-none ${
+                  !hasRemoteVideo && 'hidden'
+                }`}
+              />
+            </div>
 
             {!hasRemoteVideo && (
-              <div className="flex flex-col items-center justify-center text-center p-6 text-stone-400 gap-3 select-none">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 text-stone-400 gap-3 select-none bg-black/90">
                 <VideoOff className="w-12 h-12 text-stone-600" />
                 <div>
                   <h3 className="text-sm font-bold text-stone-300 font-mono uppercase">
@@ -732,6 +765,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 <strong className="text-stone-200">
                   {visionModelReady ? 'EXPRESSION AI' : 'INITIALIZING'}
                 </strong>
+              </span>
+              <span>
+                Orientation: <strong className="text-stone-200">{videoRotation}°</strong>
               </span>
             </div>
             {feedSource === 'webrtc' && (
@@ -860,7 +896,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                   Facial Mesh & Blendshapes
                 </span>
               </div>
-              <span className="text-[10px] text-stone-400">Key Anchors</span>
+              <span className="text-[10px] text-stone-400">Key Anchors (6 PTS)</span>
             </div>
 
             {/* Muscle Blendshapes Diagnostic Breakdown */}
@@ -943,7 +979,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             <div className="mt-auto pt-2 border-t border-white/10 text-[10px] text-stone-400 flex items-center justify-between">
               <span className="flex items-center gap-1">
                 <CheckCircle className="w-3 h-3 text-sky-400" />
-                Mesh Wireframe Active
+                Minimal Anchors Mode
               </span>
               <span className="text-stone-500">GPU Accelerated</span>
             </div>

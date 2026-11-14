@@ -206,16 +206,17 @@ async def create_concierge_live_request(
     )
     await session_repo.create(human_session)
 
-    # Gửi thông báo khẩn tới tổng đài viên Concierge
-    await create_department_notification(
-        db,
-        department="Concierge",
-        title=f"Cuộc gọi hỗ trợ mới: {ticket_code}",
-        description=f"Khách tại {new_request.room_number} cần kết nối Live Call với Concierge",
-        request_id=new_request.id,
-        request_type="concierge",
-        type="LiveAssistance",
-    )
+    # Gửi thông báo khẩn tới tổng đài viên Concierge (chỉ gửi khi notify=True)
+    if request_in.notify:
+        await create_department_notification(
+            db,
+            department="Concierge",
+            title=f"Cuộc gọi hỗ trợ mới: {ticket_code}",
+            description=f"Khách tại {new_request.room_number} cần kết nối Live Call với Concierge",
+            request_id=new_request.id,
+            request_type="concierge",
+            type="LiveAssistance",
+        )
 
     await sr_repo.commit()
     await sr_repo.refresh(new_request)

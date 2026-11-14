@@ -58,9 +58,10 @@ describe('Concierge Unpleasant Guest Emotion Alert Workflow Tests', () => {
     expect(conciergeContent).toContain('staff-page-body');
   });
 
-  it('dispatches AI unhappy emotion alerts from RobotScreenPage directly to Concierge instead of Bellman', () => {
-    expect(robotScreenContent).toContain('createConciergeEmotionAlert');
-    expect(robotScreenContent).toContain('Cần nhân viên Concierge tiếp cận hỗ trợ trực tiếp ngay.');
+  it('handles unhappy emotion locally on Kiosk and directly calls Concierge without notification spam', () => {
+    // Không còn phát thông báo spam khi chỉ mới nhận diện biểu cảm
+    expect(robotScreenContent).toContain('setIsUnhappyAssistanceOpen(true)');
+    expect(robotScreenContent).toContain('notify: false');
     expect(robotScreenContent).not.toContain("request_type: 'emotion_alert'");
   });
 });

@@ -176,6 +176,7 @@ class ConciergeLiveRequestCreate(BaseModel):
     assistance_status: Optional[str] = Field("Connected", description="Trạng thái kết nối video: 'Connected', 'Pending', 'Ended'", json_schema_extra={"example": "Connected"})
     transcript: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Đoạn hội thoại đã diễn ra giữa Robot và khách")
     category: Optional[str] = Field(None, description="Phân loại yêu cầu hỗ trợ")
+    notify: bool = Field(True, description="Có gửi thông báo notification đến Concierge hay không")
 
 
 class ConciergeLiveRequestUpdate(BaseModel):

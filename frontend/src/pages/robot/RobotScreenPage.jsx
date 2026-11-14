@@ -453,13 +453,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       speak(promptText);
     } catch {}
 
+    // Gọi thẳng Concierge kết nối video trực tiếp, không gửi thông báo
     try {
       const roomLoc = activeRoomNumber ? `Phòng ${activeRoomNumber}` : 'Sảnh Kiosk';
       const req = await createConciergeRequest({
-        title: 'Khách yêu cầu hỗ trợ trực tiếp khi có biểu cảm khó chịu',
+        title: 'Khách yêu cầu hỗ trợ trực tiếp từ Kiosk',
         room_number: activeRoomNumber || 'Main Lobby Kiosk',
         guest_name: activeRoomNumber ? `Guest (Room ${activeRoomNumber})` : 'Khách tại Sảnh',
-        description: `Robot nhận diện biểu cảm khó chịu (Unhappy) tại ${roomLoc} và khách đã xác nhận gọi Concierge hỗ trợ trực tiếp.`,
+        description: `Kết nối Live Call trực tiếp từ Kiosk tại ${roomLoc}.`,
+        notify: false,
       });
       const canonicalCode = req.ticket_code || req.id || `SUP-${Date.now()}`;
       setVideoCallSessionId(canonicalCode);
@@ -490,21 +492,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setGuestEmotion(emotion);
       if (emotion === 'unhappy') {
         const now = Date.now();
-        // Cooldown 60s tranh spam lien tuc
+        // Cooldown 60s tranh spam lien tuc; khong tao thong bao concierge
         if (now - lastUnhappyAlertTimeRef.current > 60000) {
           lastUnhappyAlertTimeRef.current = now;
-          const roomLoc = activeRoomNumber ? `Room ${activeRoomNumber}` : 'Main Lobby Kiosk';
-          createConciergeEmotionAlert({
-            title: `Cảnh báo AI: Khách có biểu cảm khó chịu tại ${roomLoc}`,
-            location: roomLoc,
-            guest_name: activeRoomNumber ? `Guest (Room ${activeRoomNumber})` : 'Khách tại Sảnh Kiosk',
-            reporter: 'HCRobot Emotion AI',
-            description:
-              'Camera AI phát hiện khách hàng có biểu cảm khó chịu (Unhappy) khi tương tác tại Kiosk. Cần nhân viên Concierge tiếp cận hỗ trợ trực tiếp ngay.',
-            emotion_type: 'Unhappy',
-          }).catch(() => {});
 
-          // Bat modal hoi khach hang neu chua trong cuoc goi video
+          // Bat modal hoi khach hang truc tiep tren man hinh neu chua trong cuoc goi video
           if (!isVideoCallOpenRef.current) {
             setIsUnhappyAssistanceOpen(true);
             const prompt =
@@ -518,7 +510,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }
       }
     },
-    [activeRoomNumber, language, speak]
+    [language, speak]
   );
 
   // Lang nghe phan hoi bang giong noi khi Modal ho tro bieu cam dang mo

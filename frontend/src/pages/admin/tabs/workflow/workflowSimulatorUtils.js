@@ -1,4 +1,5 @@
 import { isPointInZone, isPolygonZone, zoneBounds } from '../physicalMapZones';
+import { simulatorShowStatus } from './workflowSimulatorPresentation';
 
 // Danh sach toa do cac diem moc Sanh Tang Tret (Ground Floor - Lobby Arena 9.80m x 6.30m)
 // Robot mac dinh o vi tri truc Khu Vuc Phia Bac cua Lobby (x: 3.6, y: 4.8)
@@ -407,6 +408,15 @@ const LOBBY_OBSTACLES = [
   { id: 'WC_SOUTH',  minX: 15.30, maxX: 18.00, minY: 0.00, maxY: 1.90 },
 ];
 
+// Used by the web-only guest overlay to avoid placing its marker inside furniture.
+export const isLobbyWalkablePoint = (point, margin = 0.25) =>
+  Number.isFinite(point?.x) && Number.isFinite(point?.y) &&
+  point.x >= margin && point.x <= 19.60 - margin &&
+  point.y >= margin && point.y <= 12.60 - margin &&
+  !LOBBY_OBSTACLES.some((box) =>
+    point.x >= box.minX - margin && point.x <= box.maxX + margin &&
+    point.y >= box.minY - margin && point.y <= box.maxY + margin);
+
 const ccw = (A, B, C) => (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x);
 
 const segmentsIntersect = (A, B, C, D) =>
@@ -634,7 +644,7 @@ export const calculateSafeWaypoints = (from, to) => {
   return filtered;
 };
 
-export const getStepActionDetail = (step) => {
+export const getStepActionDetail = (step, language = 'EN') => {
   if (!step) {
     return {
       label: 'READY',
@@ -651,43 +661,14 @@ export const getStepActionDetail = (step) => {
 
   switch (type) {
     case 'SHOW': {
-      const screenType = params.screen_type || 'MENU';
-      const contentId = params.content_id || '';
-      let displayContent = '';
-      let shortName = 'Man hinh';
-
-      if (screenType === 'LANGUAGE_SELECT' || contentId === 'UI_LANG') {
-        displayContent = 'Man hinh Chon ngon ngu (Tieng Viet / English / 中文)';
-        shortName = 'Chon ngon ngu';
-      } else if (contentId === 'UI_MAIN_MENU' || screenType === 'MENU') {
-        displayContent = 'Thuc don Tien ich Sanh & Dich vu Khach san';
-        shortName = 'Thuc don dich vu';
-      } else if (contentId === 'UI_RECOMMEND_LIST') {
-        displayContent = 'Danh muc Goi y Am thuc & Set Tra chieu sảnh';
-        shortName = 'Goi y am thuc';
-      } else if (contentId === 'UI_SERVICE_FORM') {
-        displayContent = 'Bieu mau Tiep nhan Yeu cau Buong phong & Taxi';
-        shortName = 'Bieu mau dich vu';
-      } else if (contentId === 'UI_CONFIRMATION') {
-        displayContent = 'Man hinh Thong bao Xac nhan Yeu cau Thanh cong';
-        shortName = 'Xac nhan yeu cau';
-      } else if (screenType === 'MAP' || contentId === 'MAP_LOBBY') {
-        displayContent = 'So do Huong dan Duong di Sanh Tang tret';
-        shortName = 'So do sanh';
-      } else if (screenType === 'QR_CODE') {
-        displayContent = 'Ma QR Quet Check-in & Thanh toan';
-        shortName = 'Ma QR Check-in';
-      } else {
-        displayContent = rawTitle || screenType;
-        shortName = rawTitle.slice(0, 16) || screenType;
-      }
-
+      const screen = simulatorShowStatus(params, language);
       return {
         label: 'SHOW',
-        shortChip: `SHOW: ${shortName}`,
-        detailText: `Hien thi man hinh Robot: ${displayContent}`,
-        bubbleTitle: 'MAN HINH ROBOT (SHOW)',
-        bubbleBody: displayContent,
+        shortChip: `SHOW: ${screen.label}`,
+        detailText: screen.label,
+        bubbleTitle: screen.label,
+        bubbleBody: params.display_banner || screen.label,
+        badgeColor: screen.dotColor,
       };
     }
 

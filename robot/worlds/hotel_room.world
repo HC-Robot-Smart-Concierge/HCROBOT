@@ -606,7 +606,7 @@
     <!-- Waypoint 1: Vi Tri Cho Robot Sanh (ROBOT_STANDBY - PARK: Amber) -->
     <model name="wp_marker_standby">
       <static>true</static>
-      <pose>15.32 6.82 0.01 0 0 0</pose>
+      <pose>17.09 6.43 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -622,7 +622,7 @@
     <!-- Waypoint 2: Tram Sac Robot Sanh (CHARGER - CHARGER: Emerald Green) -->
     <model name="wp_marker_charger">
       <static>true</static>
-      <pose>2.33 5.96 0.01 0 0 0</pose>
+      <pose>3.42 6.12 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -638,7 +638,7 @@
     <!-- Waypoint 3: Truoc Quay Le Tan (FRONT_DESK - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_frontdesk">
       <static>true</static>
-      <pose>3.95 6.60 0.01 0 0 0</pose>
+      <pose>13.62 0.58 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -654,7 +654,7 @@
     <!-- Waypoint 4: Cua Chinh Ra Vao Sanh (MAIN_ENTRANCE - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_entrance">
       <static>true</static>
-      <pose>-0.05 0.76 0.01 0 0 0</pose>
+      <pose>8.68 6.07 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -670,14 +670,14 @@
     <!-- Waypoint 5: Truoc Phong Noi Bo (STAFF_ONLY - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_staff">
       <static>true</static>
-      <pose>1.76 1.03 0.01 0 0 0</pose>
+      <pose>7.21 9.45 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
           <material>
-            <ambient>0.58 0.64 0.72 0.9</ambient>
-            <diffuse>0.58 0.64 0.72 0.9</diffuse>
-            <emissive>0.45 0.5 0.58 1.0</emissive>
+            <ambient>0.38 0.65 0.98 0.9</ambient>
+            <diffuse>0.38 0.65 0.98 0.9</diffuse>
+            <emissive>0.25 0.5 0.8 1.0</emissive>
           </material>
         </visual>
       </link>
@@ -686,7 +686,7 @@
     <!-- Waypoint 6: Cum Thang May Tang 1 (ELEVATOR - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_elevator">
       <static>true</static>
-      <pose>0.54 0.96 0.01 0 0 0</pose>
+      <pose>0.00 0.00 -10.00 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -702,7 +702,7 @@
     <!-- Waypoint 7: Nha Ve Sinh Sanh WC (RESTROOMS - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_restrooms">
       <static>true</static>
-      <pose>0.59 0.29 0.01 0 0 0</pose>
+      <pose>0.00 0.00 -10.00 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -718,7 +718,7 @@
     <!-- Waypoint 8: Loi Thoat Hiem Khan Cap (STAIRS / EMERGENCY - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_emergency">
       <static>true</static>
-      <pose>0.82 0.00 0.01 0 0 0</pose>
+      <pose>0.00 0.00 -10.00 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -734,7 +734,7 @@
     <!-- Waypoint 9: Khu Sofa Sanh (LOBBY_LOUNGE - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_lounge">
       <static>true</static>
-      <pose>0.15 -0.16 0.01 0 0 0</pose>
+      <pose>0.00 0.00 -10.00 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>

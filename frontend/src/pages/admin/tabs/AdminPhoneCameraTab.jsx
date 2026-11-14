@@ -402,37 +402,26 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             const drawingUtils = new DrawingUtils(ctx);
 
+            // 4.2. Ve cac duong va diem bieu cam then chot (It diem nhat co the: Long may, Mat, Moi)
             // Mau sac dong theo bieu cam de nhan biet ngay lap tuc
-            let tesselationColor = 'rgba(56, 189, 248, 0.22)';
             let eyebrowsColor = '#38BDF8';
             let lipsColor = '#E2E8F0';
             let eyesColor = '#0EA5E9';
-            let ovalColor = '#0284C7';
             let landmarkColor = '#BAE6FD';
 
             if (currentDetected === 'happy') {
-              tesselationColor = 'rgba(16, 185, 129, 0.25)';
               eyebrowsColor = '#6EE7B7';
               lipsColor = '#10B981';
               eyesColor = '#34D399';
-              ovalColor = '#059669';
               landmarkColor = '#A7F3D0';
             } else if (currentDetected === 'unhappy') {
-              tesselationColor = 'rgba(244, 63, 94, 0.28)';
               eyebrowsColor = '#F43F5E';
               lipsColor = '#FB7185';
               eyesColor = '#E11D48';
-              ovalColor = '#BE123C';
               landmarkColor = '#FECDD3';
             }
 
-            // 1. Luoi da giac toan bo khuon mat (Tesselation Mesh)
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, {
-              color: tesselationColor,
-              lineWidth: 0.7,
-            });
-
-            // 2. Duong noi long may (Dam hon khi cau may kho chiu)
+            // 1. Duong noi hai hang long may (Dam hon khi cau may kho chiu)
             drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, {
               color: eyebrowsColor,
               lineWidth: currentDetected === 'unhappy' ? 2.5 : 1.5,
@@ -442,41 +431,59 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               lineWidth: currentDetected === 'unhappy' ? 2.5 : 1.5,
             });
 
-            // 3. Duong vien mat va con nguoi
+            // 2. Duong vien mat hai ben
             drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, {
               color: eyesColor,
-              lineWidth: 1.5,
+              lineWidth: 1.2,
             });
             drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, {
               color: eyesColor,
-              lineWidth: 1.5,
-            });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, {
-              color: '#FFFFFF',
-              lineWidth: 1.5,
-            });
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, {
-              color: '#FFFFFF',
-              lineWidth: 1.5,
+              lineWidth: 1.2,
             });
 
-            // 4. Khung vien khuon mat
-            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, {
-              color: ovalColor,
-              lineWidth: 1.5,
-            });
-
-            // 5. Vien moi (Day va noi bat hon khi cuoi)
+            // 3. Duong vien moi (Noi bat hon khi cuoi)
             drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, {
               color: lipsColor,
               lineWidth: currentDetected === 'happy' ? 2.5 : 1.5,
             });
 
-            // 6. Cac diem moc co mat (Landmark Dots)
-            drawingUtils.drawLandmarks(landmarks, {
-              color: landmarkColor,
-              radius: 1,
-            });
+            // 4. Chi cham cac diem moc then chot tao nen bieu cam (Toi gian, it diem nhat co the)
+            const KEY_EXPRESSION_INDICES = [
+              61,  // Khoe moi trai
+              291, // Khoe moi phai
+              13,  // Dinh moi tren
+              14,  // Day moi duoi
+              70,  // Dau long may trai (nhan biet cau may)
+              300, // Dau long may phai (nhan biet cau may)
+              105, // Dinh long may trai
+              334, // Dinh long may phai
+              33,  // Khoe mat trai
+              263, // Khoe mat phai
+            ];
+
+            for (const idx of KEY_EXPRESSION_INDICES) {
+              const pt = landmarks[idx];
+              if (!pt) continue;
+              const x = pt.x * canvas.width;
+              const y = pt.y * canvas.height;
+
+              ctx.beginPath();
+              let radius = 2.5;
+              let dotColor = landmarkColor;
+              if (currentDetected === 'happy' && (idx === 61 || idx === 291)) {
+                radius = 4;
+                dotColor = '#10B981';
+              } else if (currentDetected === 'unhappy' && (idx === 70 || idx === 300)) {
+                radius = 4;
+                dotColor = '#F43F5E';
+              }
+              ctx.arc(x, y, radius, 0, 2 * Math.PI);
+              ctx.fillStyle = dotColor;
+              ctx.fill();
+              ctx.lineWidth = 1;
+              ctx.strokeStyle = '#FFFFFF';
+              ctx.stroke();
+            }
           }
         } else {
           noFaceCountRef.current += 1;
@@ -577,7 +584,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               />
             </div>
             <p className="text-[11px] text-stone-400 font-mono">
-              Live feed tu dien thoai Robot (Kiosk) voi luoi bieu cam Landmark Mesh 478 diem
+              Live feed tu dien thoai Robot (Kiosk) voi cac diem bieu cam then chot (Key Expression Anchors)
             </p>
           </div>
         </div>
@@ -690,7 +697,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                     : 'bg-black/60 border-white/10 text-stone-400'
                 }`}
               >
-                {isFaceDetected ? 'FACE MESH 478 PTS' : 'SEARCHING FACE'}
+                {isFaceDetected ? 'EXPRESSION ANCHORS' : 'SEARCHING FACE'}
               </span>
             </div>
 
@@ -723,7 +730,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               <span>
                 AI Engine:{' '}
                 <strong className="text-stone-200">
-                  {visionModelReady ? 'MEDIAPIPE 478 MESH' : 'INITIALIZING'}
+                  {visionModelReady ? 'EXPRESSION AI' : 'INITIALIZING'}
                 </strong>
               </span>
             </div>
@@ -853,7 +860,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                   Facial Mesh & Blendshapes
                 </span>
               </div>
-              <span className="text-[10px] text-stone-400">478 Points</span>
+              <span className="text-[10px] text-stone-400">Key Anchors</span>
             </div>
 
             {/* Muscle Blendshapes Diagnostic Breakdown */}

@@ -189,7 +189,6 @@ export const MobileRobotScreen = ({
   kioskCameraStream = null,
 }) => {
   const isEn = language === 'English';
-  const [isCameraPreviewExpanded, setIsCameraPreviewExpanded] = useState(true);
   const [isMapManualOpen, setIsMapManualOpen] = useState(false);
   const [isUtilitiesMenuOpen, setIsUtilitiesMenuOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
@@ -1005,45 +1004,23 @@ export const MobileRobotScreen = ({
           </main>
         )}
 
-        {/* Mini Kiosk Camera Viewfinder Preview (Trực quan hóa cho khách & Giữ sensor camera iOS luôn active) */}
-        {isKioskCameraActive && kioskCameraStream && (
-          <div
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsCameraPreviewExpanded((prev) => !prev);
+        {/* Video stream chay ngam de duy tri sensor camera WebKit tren iOS Safari (Khach khong nhin thay hinh anh) */}
+        {kioskCameraStream && (
+          <video
+            ref={(el) => {
+              if (el && el.srcObject !== kioskCameraStream) {
+                el.srcObject = kioskCameraStream;
+                el.muted = true;
+                el.playsInline = true;
+                el.play().catch(() => {});
+              }
             }}
-            className={`fixed bottom-3 left-3 z-30 transition-all duration-200 cursor-pointer overflow-hidden rounded-2xl border-2 border-emerald-500/70 bg-black shadow-2xl select-none ${
-              isCameraPreviewExpanded ? 'w-20 h-28 sm:w-24 sm:h-32' : 'w-9 h-9 rounded-full flex items-center justify-center'
-            }`}
-            title={isEn ? "Kiosk Camera Active (Tap to toggle)" : "Camera Kiosk đang hoạt động (Chạm để thu nhỏ/mở)"}
-          >
-            {isCameraPreviewExpanded ? (
-              <>
-                <video
-                  ref={(el) => {
-                    if (el && el.srcObject !== kioskCameraStream) {
-                      el.srcObject = kioskCameraStream;
-                      el.muted = true;
-                      el.playsInline = true;
-                      el.play().catch(() => {});
-                    }
-                  }}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover scale-x-[-1]"
-                />
-                <div className="absolute top-1 left-1.5 flex items-center gap-1 bg-black/70 backdrop-blur-xs px-1.5 py-0.5 rounded text-[9px] font-mono font-bold text-emerald-400 pointer-events-none">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  AI CAM
-                </div>
-              </>
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-stone-900 text-emerald-400">
-                <Camera className="w-4 h-4" />
-              </div>
-            )}
-          </div>
+            autoPlay
+            playsInline
+            muted
+            aria-hidden="true"
+            className="hidden pointer-events-none"
+          />
         )}
 
         {/* Vùng chạm bí mật góc dưới bên phải cho Mobile (Chạm 5 lần trong 2s để đăng xuất) */}

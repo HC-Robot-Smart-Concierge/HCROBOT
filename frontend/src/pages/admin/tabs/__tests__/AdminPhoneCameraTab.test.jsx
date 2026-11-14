@@ -3,24 +3,31 @@ import fs from 'fs';
 import path from 'path';
 import { AdminPhoneCameraTab } from '../AdminPhoneCameraTab';
 
-describe('AdminPhoneCameraTab Component & Facial Mesh Landmarks Integration', () => {
+describe('AdminPhoneCameraTab Component & Key Expression Anchors Integration', () => {
   it('exports AdminPhoneCameraTab as a valid React component function', () => {
     expect(typeof AdminPhoneCameraTab).toBe('function');
   });
 
-  it('uses MediaPipe DrawingUtils to overlay face mesh landmarks directly on video', () => {
+  it('draws only essential facial expression lines and anchor points with minimal clutter', () => {
     const filePath = path.resolve(__dirname, '../AdminPhoneCameraTab.jsx');
     const sourceCode = fs.readFileSync(filePath, 'utf-8');
 
     // Kiem tra da import DrawingUtils
     expect(sourceCode).toContain('DrawingUtils');
 
-    // Kiem tra da su dung cac ket noi mesh de ve len canvas
-    expect(sourceCode).toContain('FACE_LANDMARKS_TESSELATION');
+    // Kiem tra chi ve cac vung co bieu cam quan trong (Long may, Mat, Moi)
     expect(sourceCode).toContain('FACE_LANDMARKS_RIGHT_EYEBROW');
     expect(sourceCode).toContain('FACE_LANDMARKS_LEFT_EYEBROW');
     expect(sourceCode).toContain('FACE_LANDMARKS_LIPS');
-    expect(sourceCode).toContain('drawLandmarks');
+    expect(sourceCode).toContain('FACE_LANDMARKS_RIGHT_EYE');
+    expect(sourceCode).toContain('FACE_LANDMARKS_LEFT_EYE');
+
+    // Kiem tra da loai bo luoi da giac 468 diem toan mat (it diem nhat co the)
+    expect(sourceCode).not.toContain('FACE_LANDMARKS_TESSELATION');
+    expect(sourceCode).not.toContain('FACE_LANDMARKS_FACE_OVAL');
+
+    // Kiem tra co tap hop KEY_EXPRESSION_INDICES de cham diem neo
+    expect(sourceCode).toContain('KEY_EXPRESSION_INDICES');
 
     // Kiem tra da co the canvas phu len video
     expect(sourceCode).toContain('ref={canvasRef}');

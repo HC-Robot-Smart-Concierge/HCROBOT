@@ -430,7 +430,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             const ptMouthR = landmarks[291];
             const ptBrowL = landmarks[70];
             const ptBrowR = landmarks[300];
-            const ptLipTop = landmarks[13];
             const ptLipBottom = landmarks[14];
 
             // 1. Ve duong cau may duy nhat khi Unhappy
@@ -466,7 +465,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               const y = pt.y * canvas.height;
 
               let dotRadius = 3;
-              let dotColor = '#38BDF8'; // Mac dinh Neutral Cyan
+              let dotColor = '#38BDF8';
               let hasGlow = false;
               let glowColor = '';
 
@@ -591,46 +590,47 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full flex flex-col p-4 overflow-y-auto custom-scrollbar gap-4 text-stone-200"
-      style={{ background: '#121214' }}
+      className="w-full h-full flex flex-col p-4 overflow-y-auto custom-scrollbar gap-4 text-stone-900 bg-[#F4F4F6]"
+      style={{ background: '#F4F4F6' }}
     >
-      {/* Top Header & Toolbar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#18181B] border border-white/10 rounded-2xl p-4 shadow-lg">
+      {/* Top Header & Toolbar (Theme Xam Trang & Nut Den) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white border border-stone-200/90 rounded-2xl p-4 shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-stone-800 border border-white/10 flex items-center justify-center text-stone-200">
-            <Camera className="w-5 h-5" />
+          <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center shadow-xs">
+            <Camera className="w-5 h-5 text-white" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-sm font-bold tracking-wide text-white uppercase font-mono">
+              <h1 className="text-sm font-bold tracking-wide text-stone-900 uppercase font-mono">
                 Phone Kiosk Camera & Emotion AI
               </h1>
               <span
                 className={`w-2 h-2 rounded-full ${
                   connectionStatus === 'connected' && hasRemoteVideo
-                    ? 'bg-emerald-400 animate-pulse'
+                    ? 'bg-emerald-500 animate-pulse'
                     : connectionStatus === 'connecting'
-                    ? 'bg-amber-400 animate-pulse'
-                    : 'bg-stone-500'
+                    ? 'bg-amber-500 animate-pulse'
+                    : 'bg-stone-400'
                 }`}
               />
             </div>
-            <p className="text-[11px] text-stone-400 font-mono">
+            <p className="text-[11px] text-stone-500 font-mono">
               Live feed tu dien thoai Robot (Kiosk) voi cac diem bieu cam then chot (Key Expression Anchors)
             </p>
           </div>
         </div>
 
-        {/* Action Controls & Feed Selector */}
+        {/* Action Controls & Feed Selector (Nut Den Toi Gian) */}
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center rounded-lg bg-stone-900 border border-white/10 p-0.5 text-xs font-mono">
+          {/* Cụm chọn nguồn Feed */}
+          <div className="flex items-center rounded-xl bg-stone-100 border border-stone-200 p-0.5 text-xs font-mono">
             <button
               type="button"
               onClick={() => setFeedSource('webrtc')}
-              className={`px-3 py-1.5 rounded-md font-bold transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                 feedSource === 'webrtc'
-                  ? 'bg-stone-200 text-stone-900 shadow-xs'
-                  : 'text-stone-400 hover:text-stone-200'
+                  ? 'bg-black text-white shadow-xs'
+                  : 'text-stone-600 hover:text-black font-semibold'
               }`}
             >
               Robot Phone (WebRTC)
@@ -638,20 +638,20 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             <button
               type="button"
               onClick={() => setFeedSource('local_webcam')}
-              className={`px-3 py-1.5 rounded-md font-bold transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                 feedSource === 'local_webcam'
-                  ? 'bg-stone-200 text-stone-900 shadow-xs'
-                  : 'text-stone-400 hover:text-stone-200'
+                  ? 'bg-black text-white shadow-xs'
+                  : 'text-stone-600 hover:text-black font-semibold'
               }`}
             >
               Local Test Webcam
             </button>
           </div>
 
-          {/* Bo Chon Nhanh Huong Xoay Video (0°, 90°, 180°, 270°) */}
-          <div className="flex items-center rounded-lg bg-stone-900 border border-white/10 p-0.5 text-xs font-mono">
-            <span className="px-2 text-stone-400 text-[11px] uppercase font-bold flex items-center gap-1">
-              <RotateCw className="w-3.5 h-3.5 text-sky-400" /> Xoay:
+          {/* Bộ chọn nhanh góc xoay video 4 nấc (0°, 90°, 180°, 270°) */}
+          <div className="flex items-center rounded-xl bg-stone-100 border border-stone-200 p-0.5 text-xs font-mono">
+            <span className="px-2 text-stone-500 text-[11px] uppercase font-bold flex items-center gap-1">
+              <RotateCw className="w-3.5 h-3.5 text-stone-700" /> Xoay:
             </span>
             {[
               { deg: 0, label: '0°' },
@@ -663,10 +663,10 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 key={item.deg}
                 type="button"
                 onClick={() => setVideoRotation(item.deg)}
-                className={`px-2 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                className={`px-2 py-1 rounded-lg font-bold transition-all cursor-pointer ${
                   videoRotation === item.deg
-                    ? 'bg-stone-200 text-stone-900 shadow-xs'
-                    : 'text-stone-400 hover:text-stone-200'
+                    ? 'bg-black text-white shadow-xs'
+                    : 'text-stone-600 hover:text-black font-medium'
                 }`}
                 title={`Xoay video ${item.deg} độ`}
               >
@@ -675,28 +675,31 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             ))}
           </div>
 
+          {/* Nút Reconnect (Đen tối giản) */}
           <button
             type="button"
             onClick={feedSource === 'webrtc' ? connectWebRTC : connectLocalWebcam}
-            className="p-2 rounded-lg bg-stone-900 border border-white/10 hover:bg-stone-800 text-stone-300 hover:text-white transition-all cursor-pointer"
+            className="p-2 rounded-xl bg-black hover:bg-stone-800 text-white transition-all cursor-pointer shadow-xs active:scale-95"
             title="Reconnect Stream"
           >
             <RefreshCw className="w-4 h-4" />
           </button>
 
+          {/* Nút Take Snapshot (Đen tối giản) */}
           <button
             type="button"
             onClick={handleTakeSnapshot}
-            className="p-2 rounded-lg bg-stone-900 border border-white/10 hover:bg-stone-800 text-stone-300 hover:text-white transition-all cursor-pointer"
+            className="p-2 rounded-xl bg-black hover:bg-stone-800 text-white transition-all cursor-pointer shadow-xs active:scale-95"
             title="Take Snapshot"
           >
             <Camera className="w-4 h-4" />
           </button>
 
+          {/* Nút Fullscreen (Đen tối giản) */}
           <button
             type="button"
             onClick={toggleFullscreen}
-            className="p-2 rounded-lg bg-stone-900 border border-white/10 hover:bg-stone-800 text-stone-300 hover:text-white transition-all cursor-pointer"
+            className="p-2 rounded-xl bg-black hover:bg-stone-800 text-white transition-all cursor-pointer shadow-xs active:scale-95"
             title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -706,9 +709,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
       {/* Main Grid: Video Stream with Landmark Canvas (Left) + Emotion Analytics HUD (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
-        {/* Left Column: Video Viewport + Overlaid Canvas (Ho tro Xoay Ngang) */}
-        <div className="lg:col-span-2 flex flex-col bg-[#18181B] border border-white/10 rounded-2xl overflow-hidden relative shadow-lg">
-          <div className="flex-1 relative flex items-center justify-center bg-black min-h-[420px] overflow-hidden p-2">
+        {/* Left Column: Video Viewport + Overlaid Canvas (Theme Xam Trang) */}
+        <div className="lg:col-span-2 flex flex-col bg-white border border-stone-200/90 rounded-2xl overflow-hidden relative shadow-xs">
+          <div className="flex-1 relative flex items-center justify-center bg-stone-950 min-h-[420px] overflow-hidden p-2 rounded-t-2xl">
             {/* Container chua Video va Canvas duoc Xoay dong bo */}
             <div
               className="relative flex items-center justify-center transition-all duration-300"
@@ -736,15 +739,15 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </div>
 
             {!hasRemoteVideo && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 text-stone-400 gap-3 select-none bg-black/90">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 text-stone-400 gap-3 select-none bg-stone-950/95">
                 <VideoOff className="w-12 h-12 text-stone-600" />
                 <div>
-                  <h3 className="text-sm font-bold text-stone-300 font-mono uppercase">
+                  <h3 className="text-sm font-bold text-stone-200 font-mono uppercase">
                     {feedSource === 'webrtc'
                       ? 'Waiting for Robot Phone Video Stream...'
                       : 'Local Camera Standby'}
                   </h3>
-                  <p className="text-xs text-stone-500 font-mono mt-1">
+                  <p className="text-xs text-stone-400 font-mono mt-1">
                     {feedSource === 'webrtc'
                       ? `Dang cho tin hieu WebRTC tu dien thoai Robot (Session: ${sessionId})`
                       : 'Nhan nut Reconnect de cap quyen truy cap camera may tinh'}
@@ -753,16 +756,16 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               </div>
             )}
 
-            {/* Overlaid Status Badges */}
+            {/* Overlaid Status Badges (Sang va Toi gian) */}
             <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
-              <span className="px-2.5 py-1 rounded-md text-[10px] font-mono font-bold bg-black/60 backdrop-blur-md border border-white/10 text-white">
+              <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-white/95 backdrop-blur-md border border-stone-200 text-stone-900 shadow-xs">
                 {feedSource === 'webrtc' ? 'PHONE KIOSK FEED' : 'LOCAL WEBCAM'}
               </span>
               <span
-                className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-bold border backdrop-blur-md ${
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border backdrop-blur-md ${
                   isFaceDetected
-                    ? 'bg-emerald-950/70 border-emerald-500/40 text-emerald-300'
-                    : 'bg-black/60 border-white/10 text-stone-400'
+                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                    : 'bg-black/60 border-white/20 text-stone-300'
                 }`}
               >
                 {isFaceDetected ? 'EXPRESSION ANCHORS' : 'SEARCHING FACE'}
@@ -771,38 +774,38 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
             {/* Overlaid Active Emotion Badge */}
             {hasRemoteVideo && isFaceDetected && (
-              <div className="absolute bottom-3 left-3 bg-black/75 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-xl flex items-center gap-2 pointer-events-none">
+              <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur-md border border-stone-200 px-3 py-1.5 rounded-xl flex items-center gap-2 pointer-events-none shadow-sm">
                 {activeDisplayEmotion === 'happy' ? (
-                  <Smile className="w-4 h-4 text-emerald-400" />
+                  <Smile className="w-4 h-4 text-emerald-600" />
                 ) : activeDisplayEmotion === 'unhappy' ? (
-                  <Frown className="w-4 h-4 text-rose-400" />
+                  <Frown className="w-4 h-4 text-rose-600" />
                 ) : (
-                  <Meh className="w-4 h-4 text-sky-400" />
+                  <Meh className="w-4 h-4 text-sky-600" />
                 )}
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-white">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-stone-900">
                   {activeDisplayEmotion}
                 </span>
-                <span className="text-[10px] font-mono text-stone-400">
+                <span className="text-[10px] font-mono text-stone-500">
                   Smile: {Math.round(smileScore * 100)}% | Frown: {Math.round(frownScore * 100)}%
                 </span>
               </div>
             )}
           </div>
 
-          {/* Footer Information */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-black/40 border-t border-white/10 text-[11px] font-mono text-stone-400">
+          {/* Footer Information (Theme Sang) */}
+          <div className="flex items-center justify-between px-4 py-2.5 bg-stone-50 border-t border-stone-200 text-[11px] font-mono text-stone-600">
             <div className="flex items-center gap-3">
               <span>
-                Status: <strong className="text-stone-200">{connectionStatus.toUpperCase()}</strong>
+                Status: <strong className="text-stone-900">{connectionStatus.toUpperCase()}</strong>
               </span>
               <span>
                 AI Engine:{' '}
-                <strong className="text-stone-200">
+                <strong className="text-stone-900">
                   {visionModelReady ? 'EXPRESSION AI' : 'INITIALIZING'}
                 </strong>
               </span>
               <span>
-                Orientation: <strong className="text-stone-200">{videoRotation}°</strong>
+                Orientation: <strong className="text-stone-900">{videoRotation}°</strong>
               </span>
             </div>
             {feedSource === 'webrtc' && (
@@ -812,31 +815,31 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                   type="text"
                   value={sessionId}
                   onChange={(e) => setSessionId(e.target.value)}
-                  className="bg-stone-900 border border-white/10 rounded px-2 py-0.5 text-[11px] text-white font-mono w-32"
+                  className="bg-white border border-stone-300 rounded px-2 py-0.5 text-[11px] text-stone-900 font-mono w-32 focus:border-black outline-none"
                 />
               </div>
             )}
           </div>
         </div>
 
-        {/* Right Column: AI Emotion Analytics & Facial Mesh Diagnostics */}
+        {/* Right Column: AI Emotion Analytics & Facial Mesh Diagnostics (Theme Sang & Nut Den) */}
         <div className="flex flex-col gap-4">
           {/* Main Emotion Analytics Card */}
-          <div className="bg-[#18181B] border border-white/10 rounded-2xl p-4 shadow-lg flex flex-col gap-3">
-            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+          <div className="bg-white border border-stone-200/90 rounded-2xl p-4 shadow-xs flex flex-col gap-3">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-2">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-stone-300" />
-                <span className="text-xs font-bold font-mono uppercase text-white tracking-wider">
+                <Sparkles className="w-4 h-4 text-stone-800" />
+                <span className="text-xs font-bold font-mono uppercase text-stone-900 tracking-wider">
                   AI Expression Analytics
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => setIsAiEmotionActive((prev) => !prev)}
-                className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold cursor-pointer border ${
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold cursor-pointer transition-all ${
                   isAiEmotionActive
-                    ? 'bg-stone-200 text-stone-900 border-white'
-                    : 'bg-stone-900 text-stone-400 border-stone-800 hover:text-stone-200'
+                    ? 'bg-black text-white shadow-xs'
+                    : 'bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 hover:text-black'
                 }`}
               >
                 {isAiEmotionActive ? 'AI ON' : 'AI OFF'}
@@ -844,14 +847,14 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </div>
 
             {/* Current Emotion State */}
-            <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between">
+            <div className="p-3 rounded-xl bg-stone-50 border border-stone-200/80 flex items-center justify-between">
               <div className="flex flex-col">
-                <span className="text-[10px] font-mono text-stone-400 uppercase">Current Expression</span>
-                <span className="text-base font-bold font-mono tracking-wide text-white uppercase mt-0.5">
+                <span className="text-[10px] font-mono text-stone-500 uppercase font-semibold">Current Expression</span>
+                <span className="text-base font-black font-mono tracking-wide text-stone-900 uppercase mt-0.5">
                   {activeDisplayEmotion}
                 </span>
               </div>
-              <span className="text-[10px] font-mono px-2 py-1 rounded bg-stone-800 text-stone-300 border border-stone-700">
+              <span className="text-[10px] font-mono px-2 py-1 rounded-lg bg-black text-white font-bold shadow-xs">
                 {overrideEmotion ? 'MANUAL OVERRIDE' : 'REALTIME AI'}
               </span>
             </div>
@@ -859,39 +862,39 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             {/* Gauges for Smile & Frown */}
             <div className="space-y-2.5 font-mono text-xs">
               <div>
-                <div className="flex justify-between text-stone-400 mb-1">
-                  <span className="flex items-center gap-1.5">
-                    <Smile className="w-3.5 h-3.5 text-emerald-400" /> Smile Level
+                <div className="flex justify-between text-stone-600 mb-1">
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    <Smile className="w-3.5 h-3.5 text-emerald-600" /> Smile Level
                   </span>
-                  <span className="font-bold text-stone-200">{Math.round(smileScore * 100)}%</span>
+                  <span className="font-bold text-stone-900">{Math.round(smileScore * 100)}%</span>
                 </div>
-                <div className="w-full h-2 rounded-full bg-stone-900 overflow-hidden border border-white/5">
+                <div className="w-full h-2 rounded-full bg-stone-100 overflow-hidden border border-stone-200">
                   <div
-                    className="h-full bg-emerald-400 transition-all duration-300"
+                    className="h-full bg-emerald-600 transition-all duration-300"
                     style={{ width: `${Math.min(100, Math.round(smileScore * 100))}%` }}
                   />
                 </div>
               </div>
 
               <div>
-                <div className="flex justify-between text-stone-400 mb-1">
-                  <span className="flex items-center gap-1.5">
-                    <Frown className="w-3.5 h-3.5 text-rose-400" /> Frown / Distress Level
+                <div className="flex justify-between text-stone-600 mb-1">
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    <Frown className="w-3.5 h-3.5 text-rose-600" /> Frown / Distress Level
                   </span>
-                  <span className="font-bold text-stone-200">{Math.round(frownScore * 100)}%</span>
+                  <span className="font-bold text-stone-900">{Math.round(frownScore * 100)}%</span>
                 </div>
-                <div className="w-full h-2 rounded-full bg-stone-900 overflow-hidden border border-white/5">
+                <div className="w-full h-2 rounded-full bg-stone-100 overflow-hidden border border-stone-200">
                   <div
-                    className="h-full bg-rose-400 transition-all duration-300"
+                    className="h-full bg-rose-600 transition-all duration-300"
                     style={{ width: `${Math.min(100, Math.round(frownScore * 100))}%` }}
                   />
                 </div>
               </div>
             </div>
 
-            {/* Test Robot Expression Override Buttons */}
-            <div className="pt-2 border-t border-white/10 space-y-2">
-              <span className="text-[10px] font-mono text-stone-400 block uppercase">
+            {/* Test Robot Expression Override Buttons (Toan bo Nut Den / Xam Sang) */}
+            <div className="pt-2 border-t border-stone-100 space-y-2">
+              <span className="text-[10px] font-mono text-stone-500 block uppercase font-bold">
                 Test / Override Robot Expression:
               </span>
               <div className="grid grid-cols-4 gap-1.5">
@@ -911,8 +914,8 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                     onClick={() => handleOverrideEmotion(mode.id)}
                     className={`py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer border ${
                       overrideEmotion === mode.id
-                        ? 'bg-stone-200 text-stone-900 border-white shadow-xs'
-                        : 'bg-stone-900 text-stone-400 border-stone-800 hover:text-stone-200'
+                        ? 'bg-black text-white border-black shadow-xs'
+                        : 'bg-stone-50 text-stone-800 border-stone-200 hover:bg-stone-200 hover:text-black'
                     }`}
                   >
                     {mode.label}
@@ -922,72 +925,72 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </div>
           </div>
 
-          {/* Facial Landmark Mesh & Blendshapes Diagnostic Panel */}
-          <div className="bg-[#18181B] border border-white/10 rounded-2xl p-4 shadow-lg flex-1 flex flex-col gap-3 font-mono">
-            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+          {/* Facial Landmark Mesh & Blendshapes Diagnostic Panel (Theme Sang & Toi Gian) */}
+          <div className="bg-white border border-stone-200/90 rounded-2xl p-4 shadow-xs flex-1 flex flex-col gap-3 font-mono">
+            <div className="flex items-center justify-between border-b border-stone-100 pb-2">
               <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-sky-400" />
-                <span className="text-xs font-bold uppercase text-white tracking-wider">
+                <Activity className="w-4 h-4 text-stone-800" />
+                <span className="text-xs font-bold uppercase text-stone-900 tracking-wider">
                   Facial Mesh & Blendshapes
                 </span>
               </div>
-              <span className="text-[10px] text-stone-400">Key Anchors (6 PTS)</span>
+              <span className="text-[10px] text-stone-500 font-bold">Key Anchors (6 PTS)</span>
             </div>
 
             {/* Muscle Blendshapes Diagnostic Breakdown */}
             <div className="space-y-2 text-xs">
-              <div className="p-2 rounded-xl bg-black/40 border border-white/5 space-y-2">
-                <div className="text-[11px] font-bold text-stone-300 flex items-center justify-between">
+              <div className="p-2 rounded-xl bg-stone-50 border border-stone-200/80 space-y-2">
+                <div className="text-[11px] font-bold text-stone-800 flex items-center justify-between">
                   <span>Mouth Corners (Smile L/R)</span>
-                  <span className="text-emerald-400">
+                  <span className="text-emerald-700">
                     {Math.round(blendshapeMetrics.smileLeft * 100)}% | {Math.round(blendshapeMetrics.smileRight * 100)}%
                   </span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-stone-900 overflow-hidden flex gap-0.5">
+                <div className="w-full h-1.5 rounded-full bg-stone-200 overflow-hidden flex gap-0.5">
                   <div
-                    className="h-full bg-emerald-500/80 transition-all duration-200"
+                    className="h-full bg-emerald-600 transition-all duration-200"
                     style={{ width: `${Math.round(blendshapeMetrics.smileLeft * 50)}%` }}
                   />
                   <div
-                    className="h-full bg-emerald-400 transition-all duration-200"
+                    className="h-full bg-emerald-500 transition-all duration-200"
                     style={{ width: `${Math.round(blendshapeMetrics.smileRight * 50)}%` }}
                   />
                 </div>
               </div>
 
-              <div className="p-2 rounded-xl bg-black/40 border border-white/5 space-y-2">
-                <div className="text-[11px] font-bold text-stone-300 flex items-center justify-between">
+              <div className="p-2 rounded-xl bg-stone-50 border border-stone-200/80 space-y-2">
+                <div className="text-[11px] font-bold text-stone-800 flex items-center justify-between">
                   <span>Brow Depression (Distress L/R)</span>
-                  <span className="text-rose-400">
+                  <span className="text-rose-700">
                     {Math.round(blendshapeMetrics.browDownLeft * 100)}% | {Math.round(blendshapeMetrics.browDownRight * 100)}%
                   </span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-stone-900 overflow-hidden flex gap-0.5">
+                <div className="w-full h-1.5 rounded-full bg-stone-200 overflow-hidden flex gap-0.5">
                   <div
-                    className="h-full bg-rose-500/80 transition-all duration-200"
+                    className="h-full bg-rose-600 transition-all duration-200"
                     style={{ width: `${Math.round(blendshapeMetrics.browDownLeft * 50)}%` }}
                   />
                   <div
-                    className="h-full bg-rose-400 transition-all duration-200"
+                    className="h-full bg-rose-500 transition-all duration-200"
                     style={{ width: `${Math.round(blendshapeMetrics.browDownRight * 50)}%` }}
                   />
                 </div>
               </div>
 
-              <div className="p-2 rounded-xl bg-black/40 border border-white/5 space-y-2">
-                <div className="text-[11px] font-bold text-stone-300 flex items-center justify-between">
+              <div className="p-2 rounded-xl bg-stone-50 border border-stone-200/80 space-y-2">
+                <div className="text-[11px] font-bold text-stone-800 flex items-center justify-between">
                   <span>Mouth Frown (Sadness L/R)</span>
-                  <span className="text-amber-400">
+                  <span className="text-amber-700">
                     {Math.round(blendshapeMetrics.mouthFrownLeft * 100)}% | {Math.round(blendshapeMetrics.mouthFrownRight * 100)}%
                   </span>
                 </div>
-                <div className="w-full h-1.5 rounded-full bg-stone-900 overflow-hidden flex gap-0.5">
+                <div className="w-full h-1.5 rounded-full bg-stone-200 overflow-hidden flex gap-0.5">
                   <div
-                    className="h-full bg-amber-500/80 transition-all duration-200"
+                    className="h-full bg-amber-600 transition-all duration-200"
                     style={{ width: `${Math.round(blendshapeMetrics.mouthFrownLeft * 50)}%` }}
                   />
                   <div
-                    className="h-full bg-amber-400 transition-all duration-200"
+                    className="h-full bg-amber-500 transition-all duration-200"
                     style={{ width: `${Math.round(blendshapeMetrics.mouthFrownRight * 50)}%` }}
                   />
                 </div>
@@ -995,15 +998,15 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
               {/* Eye Squint and Jaw Opening */}
               <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div className="p-2 rounded-xl bg-black/40 border border-white/5 flex flex-col justify-between">
-                  <span className="text-stone-400">Eye Squint</span>
-                  <span className="text-sm font-bold text-stone-200 mt-1">
+                <div className="p-2 rounded-xl bg-stone-50 border border-stone-200/80 flex flex-col justify-between">
+                  <span className="text-stone-500 font-semibold">Eye Squint</span>
+                  <span className="text-sm font-bold text-stone-900 mt-1">
                     {Math.round(blendshapeMetrics.eyeSquint * 100)}%
                   </span>
                 </div>
-                <div className="p-2 rounded-xl bg-black/40 border border-white/5 flex flex-col justify-between">
-                  <span className="text-stone-400">Jaw Open</span>
-                  <span className="text-sm font-bold text-stone-200 mt-1">
+                <div className="p-2 rounded-xl bg-stone-50 border border-stone-200/80 flex flex-col justify-between">
+                  <span className="text-stone-500 font-semibold">Jaw Open</span>
+                  <span className="text-sm font-bold text-stone-900 mt-1">
                     {Math.round(blendshapeMetrics.jawOpen * 100)}%
                   </span>
                 </div>
@@ -1011,37 +1014,37 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </div>
 
             {/* Mesh Status Note */}
-            <div className="mt-auto pt-2 border-t border-white/10 text-[10px] text-stone-400 flex items-center justify-between">
-              <span className="flex items-center gap-1">
-                <CheckCircle className="w-3 h-3 text-sky-400" />
+            <div className="mt-auto pt-2 border-t border-stone-100 text-[10px] text-stone-500 flex items-center justify-between">
+              <span className="flex items-center gap-1 font-semibold text-stone-700">
+                <CheckCircle className="w-3 h-3 text-emerald-600" />
                 Minimal Anchors Mode
               </span>
-              <span className="text-stone-500">GPU Accelerated</span>
+              <span className="text-stone-400 font-mono">GPU Accelerated</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Snapshot Preview Modal if Captured */}
+      {/* Snapshot Preview Modal if Captured (Theme Sang & Nut Den) */}
       {snapshotUrl && (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="bg-[#18181B] border border-white/10 rounded-2xl p-4 max-w-xl w-full flex flex-col gap-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold uppercase text-white">Snapshot Captured with Mesh</span>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-stone-200 rounded-2xl p-5 max-w-xl w-full flex flex-col gap-3 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-stone-100">
+              <span className="text-xs font-mono font-bold uppercase text-stone-900">Snapshot Captured with Mesh</span>
               <button
                 type="button"
                 onClick={() => setSnapshotUrl(null)}
-                className="text-stone-400 hover:text-white text-xs font-mono cursor-pointer"
+                className="text-stone-500 hover:text-black text-xs font-mono font-bold cursor-pointer"
               >
                 Close
               </button>
             </div>
-            <img src={snapshotUrl} alt="Snapshot" className="rounded-xl w-full object-contain max-h-[400px]" />
-            <div className="flex justify-end gap-2">
+            <img src={snapshotUrl} alt="Snapshot" className="rounded-xl w-full object-contain max-h-[400px] border border-stone-200" />
+            <div className="flex justify-end gap-2 pt-2 border-t border-stone-100">
               <a
                 href={snapshotUrl}
                 download={`kiosk-snapshot-${Date.now()}.jpg`}
-                className="px-3 py-1.5 rounded-lg bg-stone-200 text-stone-900 font-mono text-xs font-bold hover:bg-white"
+                className="px-3.5 py-1.5 rounded-lg bg-black text-white font-mono text-xs font-bold hover:bg-stone-800 transition-all shadow-xs"
               >
                 Download
               </a>

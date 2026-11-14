@@ -90,8 +90,9 @@ flowchart LR
   * Bảng đối chiếu các nút trên Frontend Web Admin (Menu COMMANDS) với lệnh Terminal WSL2 tương đương: Quét SLAM, Foxglove, Tự hành Frontier Exploration, Lưu bản đồ, Dẫn đường AMCL/Nav2, Lái xe WASD và Phanh khẩn cấp E-STOP.
 * **[[guides/distributed_ros2|Kiến Trúc Mạng ROS 2 Phân Tán (guides/distributed_ros2.md)]]**:
   * Cấu hình CycloneDDS, VPN Tailscale kết nối giữa Laptop NUC và Raspberry Pi 5.
-* **[[guides/tailscale_hybrid_deployment_pi5_guide|Hướng Dẫn Triển Khai Tailscale Hybrid Pi 5 (guides/tailscale_hybrid_deployment_pi5_guide.md)]]**:
-  * Thiết lập mạng riêng WireGuard P2P (< 5ms) kết hợp Tailscale Funnel phục vụ bản đồ tĩnh ra ngoài Internet qua mã QR.
+* **[[guides/tailscale_hybrid_deployment_pi5_guide|Hướng Dẫn Triển Khai Hybrid Cloud & Vận Hành Demo (guides/tailscale_hybrid_deployment_pi5_guide.md)]]**:
+  * Kiến trúc Hybrid Cloud phân tán: Điện thoại (Cloudflare Workers) ↔ Tailscale Funnel ↔ Laptop Backend ↔ Raspberry Pi 5.
+  * Toàn bộ luồng dữ liệu thời gian thực (Đẩy quảng cáo WebSocket, WebRTC Camera P2P, Teleop UDP) cùng quy trình khởi động chi tiết khi đi demo.
 * **[[guides/ultrasonic_setup|Cấu Hình Cảm Biến Siêu Âm HC-SR04 & ESP32 (guides/ultrasonic_setup.md)]]**:
   * Sơ đồ phần cứng giữa ESP32, L298N và cảm biến siêu âm tránh va chạm khẩn cấp thời gian thực.
 

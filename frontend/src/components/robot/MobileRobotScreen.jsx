@@ -22,6 +22,7 @@ import {
   UserCheck,
   Wrench,
   Luggage,
+  Camera,
 } from 'lucide-react';
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {
@@ -183,6 +184,8 @@ export const MobileRobotScreen = ({
   showQrModalExternal = false,
   qrCountdown = null,
   onCloseQrModal = null,
+  isKioskCameraActive = true,
+  onStartKioskCamera = null,
 }) => {
   const isEn = language === 'English';
   const [isMapManualOpen, setIsMapManualOpen] = useState(false);
@@ -292,6 +295,22 @@ export const MobileRobotScreen = ({
                 {activeRoomNumber}
               </span>
             )}
+
+            {/* Chi bao / Nut bat Camera Kiosk tren Mobile neu chua cap quyen */}
+            {!isKioskCameraActive && onStartKioskCamera && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartKioskCamera();
+                }}
+                className="h-7 px-2.5 rounded-full border border-amber-600/60 bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95 animate-pulse"
+                title={isEn ? "Tap to enable Kiosk Camera" : "Chạm để bật Camera Kiosk"}
+              >
+                <Camera className="w-3.5 h-3.5 text-amber-800" />
+                <span className="text-[11px] font-bold">{isEn ? "Camera Off" : "Bật Camera AI"}</span>
+              </button>
+            )}
             {activeRoomNumber && (
               <button
                 type="button"
@@ -347,6 +366,27 @@ export const MobileRobotScreen = ({
             </button>
           </div>
         </header>
+
+        {/* Banner nhac nho bat Camera Kiosk AI neu chua duoc cap quyen tren Mobile */}
+        {!isKioskCameraActive && onStartKioskCamera && (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              onStartKioskCamera();
+            }}
+            className="mx-3 my-1 px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-900 flex items-center justify-between text-xs cursor-pointer active:scale-[0.99] transition-all shadow-xs shrink-0 select-none"
+          >
+            <div className="flex items-center gap-2">
+              <Camera className="w-4 h-4 text-amber-800 shrink-0 animate-pulse" />
+              <span className="font-semibold text-stone-900 text-[11px] sm:text-xs">
+                {isEn ? 'Tap here to enable Kiosk Camera AI' : 'Chạm vào đây để cấp quyền Camera AI Kiosk'}
+              </span>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-600 text-white uppercase shadow-2xs">
+              {isEn ? 'Allow' : 'Bật ngay'}
+            </span>
+          </div>
+        )}
 
         {/* Modal Chọn Ngôn Ngữ Cỡ Lớn Chuẩn Kiosk & Touch Display (Tối giản, chỉ icon cờ và tên ngôn ngữ) */}
         {isLangMenuOpen && (
@@ -850,6 +890,9 @@ export const MobileRobotScreen = ({
         ) : (
           <main
             onClick={() => {
+              if (typeof onStartKioskCamera === 'function' && !isKioskCameraActive) {
+                onStartKioskCamera();
+              }
               if (isSpeaking && onStopSpeaking) {
                 onStopSpeaking();
                 return;

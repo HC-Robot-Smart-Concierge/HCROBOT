@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
+import { FilesetResolver, FaceLandmarker, DrawingUtils } from '@mediapipe/tasks-vision';
 import {
-  Video,
-  VideoOff,
   Camera,
   RefreshCw,
   Maximize2,
@@ -11,9 +9,11 @@ import {
   Frown,
   Meh,
   Activity,
-  Sliders,
   Sparkles,
-  ShieldAlert,
+  VideoOff,
+  Eye,
+  Sliders,
+  CheckCircle,
 } from 'lucide-react';
 import { getCallSignalingWsUrl } from '../../../services/conciergeApi';
 
@@ -44,13 +44,25 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const [smileScore, setSmileScore] = useState(0);
   const [frownScore, setFrownScore] = useState(0);
   const [overrideEmotion, setOverrideEmotion] = useState(null);
-  const [emotionLogs, setEmotionLogs] = useState([]);
+
+  // Detailed Facial Blendshapes Metrics
+  const [blendshapeMetrics, setBlendshapeMetrics] = useState({
+    smileLeft: 0,
+    smileRight: 0,
+    browDownLeft: 0,
+    browDownRight: 0,
+    mouthFrownLeft: 0,
+    mouthFrownRight: 0,
+    eyeSquint: 0,
+    jawOpen: 0,
+  });
 
   // Teleop robot control target IP
   const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.99.72.51');
 
   // Refs
   const videoRef = useRef(null);
+  const canvasRef = useRef(null);
   const pcRef = useRef(null);
   const wsRef = useRef(null);
   const landmarkerRef = useRef(null);
@@ -88,7 +100,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
         landmarkerRef.current = landmarker;
         setVisionModelReady(true);
       } catch (err) {
-        console.warn('[AdminPhoneCameraTab] MediaPipe model init fallback:', err);
+        // Fallback init silent
       }
     };
 
@@ -104,7 +116,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     };
   }, []);
 
-  // 2. Ket noi WebRTC vao phong Kiosk Video Stream
+  // 2. Ket noi WebRTC vao phong Kiosk Video Stream tu Phone
   const cleanupWebRTC = useCallback(() => {
     if (wsRef.current) {
       try {
@@ -126,6 +138,12 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     }
     setHasRemoteVideo(false);
     setConnectionStatus('disconnected');
+
+    // Xoa sach canvas overlay
+    if (canvasRef.current) {
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    }
   }, []);
 
   const connectWebRTC = useCallback(() => {
@@ -136,7 +154,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       const pc = new RTCPeerConnection(ICE_SERVERS);
       pcRef.current = pc;
 
-      // Nhận media stream từ robot phone kiosk
+      // Nhan media stream tu robot phone kiosk
       pc.ontrack = (event) => {
         if (videoRef.current && event.streams && event.streams[0]) {
           videoRef.current.srcObject = event.streams[0];
@@ -199,8 +217,8 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             setConnectionStatus('disconnected');
             setHasRemoteVideo(false);
           }
-        } catch (err) {
-          console.warn('[AdminPhoneCameraTab] Signaling message error:', err);
+        } catch {
+          // ignore
         }
       };
 
@@ -211,8 +229,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       ws.onclose = () => {
         setConnectionStatus('disconnected');
       };
-    } catch (err) {
-      console.warn('[AdminPhoneCameraTab] WebRTC setup error:', err);
+    } catch {
       setConnectionStatus('disconnected');
     }
   }, [cleanupWebRTC, sessionId, currentUser]);
@@ -232,8 +249,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       }
       setHasRemoteVideo(true);
       setConnectionStatus('connected');
-    } catch (err) {
-      console.warn('[AdminPhoneCameraTab] Local camera error:', err);
+    } catch {
       setConnectionStatus('disconnected');
     }
   }, [cleanupWebRTC]);
@@ -249,10 +265,14 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     };
   }, [feedSource, connectWebRTC, connectLocalWebcam, cleanupWebRTC]);
 
-  // 4. Vong lap nhan dien bieu cam MediaPipe tren frame video
+  // 4. Vong lap nhan dien MediaPipe va Ve Luoi Khuon Mat (Face Mesh & Connectors)
   useEffect(() => {
     if (!isAiEmotionActive || connectionStatus !== 'connected') {
       setIsFaceDetected(false);
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      }
       return;
     }
 
@@ -261,6 +281,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       const videoEl = videoRef.current;
       if (videoEl.readyState < 2 || videoEl.videoWidth === 0) return;
 
+      const canvas = canvasRef.current;
+      const ctx = canvas ? canvas.getContext('2d') : null;
+
       try {
         const results = landmarkerRef.current.detect(videoEl);
 
@@ -268,6 +291,10 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           setIsFaceDetected(true);
           noFaceCountRef.current = 0;
 
+          const landmarks = results.faceLandmarks[0];
+
+          // 4.1. Trich xuat cac chi so co mat Blendshapes
+          let currentDetected = 'neutral';
           if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
             const categories = results.faceBlendshapes[0].categories;
             let sLeft = 0;
@@ -276,6 +303,8 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             let bDownR = 0;
             let mFrownL = 0;
             let mFrownR = 0;
+            let eyeSquint = 0;
+            let jawOpen = 0;
 
             for (const c of categories) {
               if (c.categoryName === 'mouthSmileLeft') sLeft = c.score;
@@ -284,6 +313,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               else if (c.categoryName === 'browDownRight') bDownR = c.score;
               else if (c.categoryName === 'mouthFrownLeft') mFrownL = c.score;
               else if (c.categoryName === 'mouthFrownRight') mFrownR = c.score;
+              else if (c.categoryName === 'eyeSquintLeft') eyeSquint = Math.max(eyeSquint, c.score);
+              else if (c.categoryName === 'eyeSquintRight') eyeSquint = Math.max(eyeSquint, c.score);
+              else if (c.categoryName === 'jawOpen') jawOpen = c.score;
             }
 
             const smile = (sLeft + sRight) / 2;
@@ -291,23 +323,112 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             setSmileScore(smile);
             setFrownScore(frown);
 
-            let detected = 'neutral';
+            setBlendshapeMetrics({
+              smileLeft: sLeft,
+              smileRight: sRight,
+              browDownLeft: bDownL,
+              browDownRight: bDownR,
+              mouthFrownLeft: mFrownL,
+              mouthFrownRight: mFrownR,
+              eyeSquint,
+              jawOpen,
+            });
+
             if (smile >= 0.35) {
-              detected = 'happy';
+              currentDetected = 'happy';
             } else if (frown >= 0.28) {
-              detected = 'unhappy';
+              currentDetected = 'unhappy';
             }
 
-            setDetectedEmotion((prev) => {
-              if (prev !== detected) {
-                const now = new Date();
-                const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                setEmotionLogs((logs) => [
-                  { id: Date.now(), time: timeStr, emotion: detected, smile, frown },
-                  ...logs.slice(0, 19),
-                ]);
-              }
-              return detected;
+            setDetectedEmotion(currentDetected);
+          }
+
+          // 4.2. Ve Luoi Mat (Face Mesh Wireframe & Landmarks) voi DrawingUtils
+          if (canvas && ctx) {
+            if (canvas.width !== videoEl.videoWidth || canvas.height !== videoEl.videoHeight) {
+              canvas.width = videoEl.videoWidth;
+              canvas.height = videoEl.videoHeight;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const drawingUtils = new DrawingUtils(ctx);
+
+            // Mau sac dong theo bieu cam de nhan biet ngay lap tuc
+            let tesselationColor = 'rgba(56, 189, 248, 0.22)'; // Neutral Sky Blue
+            let eyebrowsColor = '#38BDF8';
+            let lipsColor = '#E2E8F0';
+            let eyesColor = '#0EA5E9';
+            let ovalColor = '#0284C7';
+            let landmarkColor = '#BAE6FD';
+
+            if (currentDetected === 'happy') {
+              // Vui ve: Mau xanh luc bao ruc sang
+              tesselationColor = 'rgba(16, 185, 129, 0.25)';
+              eyebrowsColor = '#6EE7B7';
+              lipsColor = '#10B981';
+              eyesColor = '#34D399';
+              ovalColor = '#059669';
+              landmarkColor = '#A7F3D0';
+            } else if (currentDetected === 'unhappy') {
+              // Kho chiu: Mau do hong canh bao
+              tesselationColor = 'rgba(244, 63, 94, 0.28)';
+              eyebrowsColor = '#F43F5E';
+              lipsColor = '#FB7185';
+              eyesColor = '#E11D48';
+              ovalColor = '#BE123C';
+              landmarkColor = '#FECDD3';
+            }
+
+            // 1. Luoi da giac toan bo khuon mat (Tesselation Mesh)
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_TESSELATION, {
+              color: tesselationColor,
+              lineWidth: 0.7,
+            });
+
+            // 2. Duong noi long may (Dam hon khi cau may kho chiu)
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW, {
+              color: eyebrowsColor,
+              lineWidth: currentDetected === 'unhappy' ? 2.5 : 1.5,
+            });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW, {
+              color: eyebrowsColor,
+              lineWidth: currentDetected === 'unhappy' ? 2.5 : 1.5,
+            });
+
+            // 3. Duong vien mat va con nguoi
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE, {
+              color: eyesColor,
+              lineWidth: 1.5,
+            });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_EYE, {
+              color: eyesColor,
+              lineWidth: 1.5,
+            });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS, {
+              color: '#FFFFFF',
+              lineWidth: 1.5,
+            });
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS, {
+              color: '#FFFFFF',
+              lineWidth: 1.5,
+            });
+
+            // 4. Khung vien khuon mat
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL, {
+              color: ovalColor,
+              lineWidth: 1.5,
+            });
+
+            // 5. Vien moi (Day va noi bat hon khi cuoi)
+            drawingUtils.drawConnectors(landmarks, FaceLandmarker.FACE_LANDMARKS_LIPS, {
+              color: lipsColor,
+              lineWidth: currentDetected === 'happy' ? 2.5 : 1.5,
+            });
+
+            // 6. Cac diem moc co mat (Landmark Dots)
+            drawingUtils.drawLandmarks(landmarks, {
+              color: landmarkColor,
+              radius: 1,
             });
           }
         } else {
@@ -317,12 +438,15 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             setDetectedEmotion('neutral');
             setSmileScore(0);
             setFrownScore(0);
+            if (canvas && ctx) {
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
           }
         }
       } catch {
         // Tranh treo khi frame bi gian doan
       }
-    }, 500);
+    }, 200);
 
     return () => clearInterval(intervalId);
   }, [isAiEmotionActive, connectionStatus]);
@@ -360,6 +484,10 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      // Chup kem ca lop mesh neu dang co
+      if (canvasRef.current) {
+        ctx.drawImage(canvasRef.current, 0, 0, canvas.width, canvas.height);
+      }
       setSnapshotUrl(canvas.toDataURL('image/jpeg'));
     }
   }, []);
@@ -403,7 +531,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               />
             </div>
             <p className="text-[11px] text-stone-400 font-mono">
-              Live feed tu dien thoai Robot (Kiosk) va he thong phan tich bieu cam khach hang
+              Live feed tu dien thoai Robot (Kiosk) voi luoi bieu cam Landmark Mesh 478 diem
             </p>
           </div>
         </div>
@@ -464,11 +592,12 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
         </div>
       </div>
 
-      {/* Main Grid: Video Stream (Left) + Emotion Analytics HUD (Right) */}
+      {/* Main Grid: Video Stream with Landmark Canvas (Left) + Emotion Analytics HUD (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
-        {/* Left Column: Video Viewport */}
+        {/* Left Column: Video Viewport + Overlaid Canvas */}
         <div className="lg:col-span-2 flex flex-col bg-[#18181B] border border-white/10 rounded-2xl overflow-hidden relative shadow-lg">
-          <div className="flex-1 relative flex items-center justify-center bg-black min-h-[420px]">
+          <div className="flex-1 relative flex items-center justify-center bg-black min-h-[420px] overflow-hidden">
+            {/* The Video Element */}
             <video
               ref={videoRef}
               autoPlay
@@ -476,6 +605,14 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               muted
               webkit-playsinline="true"
               className={`w-full h-full object-contain ${!hasRemoteVideo && 'hidden'}`}
+            />
+
+            {/* The Landmark Mesh Canvas Element */}
+            <canvas
+              ref={canvasRef}
+              className={`absolute inset-0 w-full h-full object-contain pointer-events-none ${
+                !hasRemoteVideo && 'hidden'
+              }`}
             />
 
             {!hasRemoteVideo && (
@@ -508,25 +645,25 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                     : 'bg-black/60 border-white/10 text-stone-400'
                 }`}
               >
-                {isFaceDetected ? 'FACE TRACKED' : 'SEARCHING FACE'}
+                {isFaceDetected ? 'FACE MESH 478 PTS' : 'SEARCHING FACE'}
               </span>
             </div>
 
             {/* Overlaid Active Emotion Badge */}
             {hasRemoteVideo && isFaceDetected && (
-              <div className="absolute bottom-3 left-3 bg-black/70 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-xl flex items-center gap-2 pointer-events-none">
+              <div className="absolute bottom-3 left-3 bg-black/75 backdrop-blur-md border border-white/10 px-3 py-1.5 rounded-xl flex items-center gap-2 pointer-events-none">
                 {activeDisplayEmotion === 'happy' ? (
                   <Smile className="w-4 h-4 text-emerald-400" />
                 ) : activeDisplayEmotion === 'unhappy' ? (
                   <Frown className="w-4 h-4 text-rose-400" />
                 ) : (
-                  <Meh className="w-4 h-4 text-amber-400" />
+                  <Meh className="w-4 h-4 text-sky-400" />
                 )}
                 <span className="text-xs font-mono font-bold uppercase tracking-wider text-white">
                   {activeDisplayEmotion}
                 </span>
                 <span className="text-[10px] font-mono text-stone-400">
-                  Smile: {Math.round(smileScore * 100)}%
+                  Smile: {Math.round(smileScore * 100)}% | Frown: {Math.round(frownScore * 100)}%
                 </span>
               </div>
             )}
@@ -535,8 +672,15 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           {/* Footer Information */}
           <div className="flex items-center justify-between px-4 py-2.5 bg-black/40 border-t border-white/10 text-[11px] font-mono text-stone-400">
             <div className="flex items-center gap-3">
-              <span>Status: <strong className="text-stone-200">{connectionStatus.toUpperCase()}</strong></span>
-              <span>AI Engine: <strong className="text-stone-200">{visionModelReady ? 'MEDIAPIPE READY' : 'INITIALIZING'}</strong></span>
+              <span>
+                Status: <strong className="text-stone-200">{connectionStatus.toUpperCase()}</strong>
+              </span>
+              <span>
+                AI Engine:{' '}
+                <strong className="text-stone-200">
+                  {visionModelReady ? 'MEDIAPIPE 478 MESH' : 'INITIALIZING'}
+                </strong>
+              </span>
             </div>
             {feedSource === 'webrtc' && (
               <div className="flex items-center gap-2">
@@ -552,9 +696,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           </div>
         </div>
 
-        {/* Right Column: AI Emotion Analytics & Diagnostics */}
+        {/* Right Column: AI Emotion Analytics & Facial Mesh Diagnostics (No Log) */}
         <div className="flex flex-col gap-4">
-          {/* Emotion Card & Gauge */}
+          {/* Main Emotion Analytics Card */}
           <div className="bg-[#18181B] border border-white/10 rounded-2xl p-4 shadow-lg flex flex-col gap-3">
             <div className="flex items-center justify-between border-b border-white/10 pb-2">
               <div className="flex items-center gap-2">
@@ -594,13 +738,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               <div>
                 <div className="flex justify-between text-stone-400 mb-1">
                   <span className="flex items-center gap-1.5">
-                    <Smile className="w-3.5 h-3.5 text-stone-300" /> Smile Level
+                    <Smile className="w-3.5 h-3.5 text-emerald-400" /> Smile Level
                   </span>
                   <span className="font-bold text-stone-200">{Math.round(smileScore * 100)}%</span>
                 </div>
                 <div className="w-full h-2 rounded-full bg-stone-900 overflow-hidden border border-white/5">
                   <div
-                    className="h-full bg-stone-200 transition-all duration-300"
+                    className="h-full bg-emerald-400 transition-all duration-300"
                     style={{ width: `${Math.min(100, Math.round(smileScore * 100))}%` }}
                   />
                 </div>
@@ -609,20 +753,20 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               <div>
                 <div className="flex justify-between text-stone-400 mb-1">
                   <span className="flex items-center gap-1.5">
-                    <Frown className="w-3.5 h-3.5 text-stone-400" /> Frown / Distress Level
+                    <Frown className="w-3.5 h-3.5 text-rose-400" /> Frown / Distress Level
                   </span>
                   <span className="font-bold text-stone-200">{Math.round(frownScore * 100)}%</span>
                 </div>
                 <div className="w-full h-2 rounded-full bg-stone-900 overflow-hidden border border-white/5">
                   <div
-                    className="h-full bg-stone-400 transition-all duration-300"
+                    className="h-full bg-rose-400 transition-all duration-300"
                     style={{ width: `${Math.min(100, Math.round(frownScore * 100))}%` }}
                   />
                 </div>
               </div>
             </div>
 
-            {/* Test Robot Expression Buttons */}
+            {/* Test Robot Expression Override Buttons */}
             <div className="pt-2 border-t border-white/10 space-y-2">
               <span className="text-[10px] font-mono text-stone-400 block uppercase">
                 Test / Override Robot Expression:
@@ -655,49 +799,101 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </div>
           </div>
 
-          {/* Interaction Timeline Log */}
-          <div className="bg-[#18181B] border border-white/10 rounded-2xl p-4 shadow-lg flex-1 flex flex-col min-h-[200px]">
-            <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-2">
+          {/* Facial Landmark Mesh & Blendshapes Diagnostic Panel (Thay the cho Log da xoa) */}
+          <div className="bg-[#18181B] border border-white/10 rounded-2xl p-4 shadow-lg flex-1 flex flex-col gap-3 font-mono">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
               <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-stone-400" />
-                <span className="text-xs font-bold font-mono uppercase text-white tracking-wider">
-                  Expression History Log
+                <Activity className="w-4 h-4 text-sky-400" />
+                <span className="text-xs font-bold uppercase text-white tracking-wider">
+                  Facial Mesh & Blendshapes
                 </span>
               </div>
-              <span className="text-[10px] font-mono text-stone-500">{emotionLogs.length} events</span>
+              <span className="text-[10px] text-stone-400">478 Points</span>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1.5 pr-1">
-              {emotionLogs.length === 0 ? (
-                <div className="text-center py-6 text-stone-500 text-xs font-mono">
-                  No emotion changes detected in current session yet
+            {/* Muscle Blendshapes Diagnostic Breakdown */}
+            <div className="space-y-2 text-xs">
+              <div className="p-2 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                <div className="text-[11px] font-bold text-stone-300 flex items-center justify-between">
+                  <span>Mouth Corners (Smile L/R)</span>
+                  <span className="text-emerald-400">
+                    {Math.round(blendshapeMetrics.smileLeft * 100)}% | {Math.round(blendshapeMetrics.smileRight * 100)}%
+                  </span>
                 </div>
-              ) : (
-                emotionLogs.map((log) => (
+                <div className="w-full h-1.5 rounded-full bg-stone-900 overflow-hidden flex gap-0.5">
                   <div
-                    key={log.id}
-                    className="p-2 rounded-lg bg-black/40 border border-white/5 flex items-center justify-between text-[11px] font-mono"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="text-stone-500 text-[10px]">{log.time}</span>
-                      <span
-                        className={`font-bold uppercase ${
-                          log.emotion === 'happy'
-                            ? 'text-emerald-400'
-                            : log.emotion === 'unhappy'
-                            ? 'text-rose-400'
-                            : 'text-stone-300'
-                        }`}
-                      >
-                        {log.emotion}
-                      </span>
-                    </div>
-                    <span className="text-stone-400 text-[10px]">
-                      S: {Math.round(log.smile * 100)}% | F: {Math.round(log.frown * 100)}%
-                    </span>
-                  </div>
-                ))
-              )}
+                    className="h-full bg-emerald-500/80 transition-all duration-200"
+                    style={{ width: `${Math.round(blendshapeMetrics.smileLeft * 50)}%` }}
+                  />
+                  <div
+                    className="h-full bg-emerald-400 transition-all duration-200"
+                    style={{ width: `${Math.round(blendshapeMetrics.smileRight * 50)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="p-2 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                <div className="text-[11px] font-bold text-stone-300 flex items-center justify-between">
+                  <span>Brow Depression (Distress L/R)</span>
+                  <span className="text-rose-400">
+                    {Math.round(blendshapeMetrics.browDownLeft * 100)}% | {Math.round(blendshapeMetrics.browDownRight * 100)}%
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-stone-900 overflow-hidden flex gap-0.5">
+                  <div
+                    className="h-full bg-rose-500/80 transition-all duration-200"
+                    style={{ width: `${Math.round(blendshapeMetrics.browDownLeft * 50)}%` }}
+                  />
+                  <div
+                    className="h-full bg-rose-400 transition-all duration-200"
+                    style={{ width: `${Math.round(blendshapeMetrics.browDownRight * 50)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="p-2 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                <div className="text-[11px] font-bold text-stone-300 flex items-center justify-between">
+                  <span>Mouth Frown (Sadness L/R)</span>
+                  <span className="text-amber-400">
+                    {Math.round(blendshapeMetrics.mouthFrownLeft * 100)}% | {Math.round(blendshapeMetrics.mouthFrownRight * 100)}%
+                  </span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-stone-900 overflow-hidden flex gap-0.5">
+                  <div
+                    className="h-full bg-amber-500/80 transition-all duration-200"
+                    style={{ width: `${Math.round(blendshapeMetrics.mouthFrownLeft * 50)}%` }}
+                  />
+                  <div
+                    className="h-full bg-amber-400 transition-all duration-200"
+                    style={{ width: `${Math.round(blendshapeMetrics.mouthFrownRight * 50)}%` }}
+                  />
+                </div>
+              </div>
+
+              {/* Eye Squint and Jaw Opening */}
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2 rounded-xl bg-black/40 border border-white/5 flex flex-col justify-between">
+                  <span className="text-stone-400">Eye Squint</span>
+                  <span className="text-sm font-bold text-stone-200 mt-1">
+                    {Math.round(blendshapeMetrics.eyeSquint * 100)}%
+                  </span>
+                </div>
+                <div className="p-2 rounded-xl bg-black/40 border border-white/5 flex flex-col justify-between">
+                  <span className="text-stone-400">Jaw Open</span>
+                  <span className="text-sm font-bold text-stone-200 mt-1">
+                    {Math.round(blendshapeMetrics.jawOpen * 100)}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Mesh Status Note */}
+            <div className="mt-auto pt-2 border-t border-white/10 text-[10px] text-stone-400 flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                <CheckCircle className="w-3 h-3 text-sky-400" />
+                Mesh Wireframe Active
+              </span>
+              <span className="text-stone-500">GPU Accelerated</span>
             </div>
           </div>
         </div>
@@ -708,7 +904,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
           <div className="bg-[#18181B] border border-white/10 rounded-2xl p-4 max-w-xl w-full flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold uppercase text-white">Snapshot Captured</span>
+              <span className="text-xs font-mono font-bold uppercase text-white">Snapshot Captured with Mesh</span>
               <button
                 type="button"
                 onClick={() => setSnapshotUrl(null)}
@@ -733,4 +929,3 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     </div>
   );
 };
-

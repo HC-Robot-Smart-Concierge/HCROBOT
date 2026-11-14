@@ -25,6 +25,7 @@ export const CameraPreview = ({
   defaultMinimized = true,
   visible = true,
   onClose,
+  externalStream = null,
 }) => {
   const isPi5 = source === 'pi5';
   // Guest-session updates change the handlers, but must not restart the camera.
@@ -202,8 +203,17 @@ export const CameraPreview = ({
     }
   }, [isPi5, stream]);
 
+  // Tự động sử dụng externalStream nếu được cung cấp từ hook useKioskStreamBroadcaster
+  useEffect(() => {
+    if (externalStream) {
+      setStream(externalStream);
+      setIsCameraActive(true);
+    }
+  }, [externalStream]);
+
   // Tự động bật camera nếu autoStart = true, tắt camera giải phóng phần cứng khi autoStart = false
   useEffect(() => {
+    if (externalStream) return undefined;
     if (autoStart) {
       startCamera();
     } else {

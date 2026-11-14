@@ -5,6 +5,7 @@ import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl, detectDestinationPo
 import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck, Wrench, Luggage } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
+import { useKioskStreamBroadcaster } from '../../hooks/useKioskStreamBroadcaster';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
 import { RobotRoomServiceScreen } from '../../components/robot/RobotRoomServiceScreen';
@@ -347,6 +348,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const isVideoCallOpenRef = useRef(false);
   const [videoCallSessionId, setVideoCallSessionId] = useState(null);
   const [videoCallTicketCode, setVideoCallTicketCode] = useState(null);
+
+  // Kiosk Phone Camera Broadcaster to Admin WebRTC (kiosk-live-feed)
+  const {
+    stream: kioskCameraStream,
+    isCameraActive: isKioskCameraActive,
+    isBroadcasting: isKioskBroadcasting,
+    needsUserGesture: needsKioskCameraGesture,
+    startCamera: startKioskCamera,
+  } = useKioskStreamBroadcaster({
+    enabled: true,
+    isPaused: isVideoCallOpen,
+  });
 
   useEffect(() => {
     isVideoCallOpenRef.current = isVideoCallOpen;
@@ -2761,21 +2774,23 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }}
       />
 
-      {/* Camera AI (Chạy ngầm 100% nhận diện khách/cảm xúc; tự động nhường camera khi mở Video Call) */}
+      {/* Camera AI (Chạy ngầm nhận diện khách/cảm xúc và stream WebRTC về Admin) */}
       <CameraPreview
-        autoStart={!isPhoneLayout && !isVideoCallOpen}
+        autoStart={true}
+        externalStream={kioskCameraStream}
         controlsClassName="robot-camera-control"
         onGuestApproached={handleGuestApproached}
         onGuestLeft={handleGuestLeft}
         onEmotionChange={handleGuestEmotionDetected}
-        source={import.meta.env.VITE_CAMERA_SOURCE || 'local'}
-        streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || '/api/v1/operations/robot/camera/stream'}
+        source="local"
         defaultMinimized={true}
         visible={false}
       />
 
 
       <MobileRobotScreen
+        isKioskCameraActive={isKioskCameraActive}
+        onStartKioskCamera={startKioskCamera}
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
         eyeExpression={activeEyeExpression}

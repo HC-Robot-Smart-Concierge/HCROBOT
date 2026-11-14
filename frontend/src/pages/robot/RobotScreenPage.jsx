@@ -31,6 +31,7 @@ import { playEarcon } from '../../utils/audioFeedback';
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
 import { RobotFacilitiesModal } from '../../components/robot/RobotFacilitiesModal';
+import { EmotionAssistanceModal } from '../../components/robot/EmotionAssistanceModal';
 import { createConciergeRequest, createConciergeEmotionAlert } from '../../services/conciergeApi';
 import { createBellRequest, createMaintenanceRequest } from '../../services/operationsApi';
 import { useRobotBattery } from '../../hooks/useRobotBattery';
@@ -427,13 +428,57 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
   const lastUnhappyAlertTimeRef = useRef(0);
+  const [isUnhappyAssistanceOpen, setIsUnhappyAssistanceOpen] = useState(false);
+
+  const handleConfirmCallConcierge = useCallback(async () => {
+    setIsUnhappyAssistanceOpen(false);
+    try {
+      const promptText =
+        language === 'English'
+          ? 'Connecting to Concierge staff now. Please wait a moment.'
+          : 'Dạ vâng, đang kết nối tới nhân viên Concierge. Quý khách vui lòng đợi trong giây lát ạ.';
+      speak(promptText);
+    } catch {}
+
+    try {
+      const roomLoc = activeRoomNumber ? `Phòng ${activeRoomNumber}` : 'Sảnh Kiosk';
+      const req = await createConciergeRequest({
+        title: 'Khách yêu cầu hỗ trợ trực tiếp khi có biểu cảm khó chịu',
+        room_number: activeRoomNumber || 'Main Lobby Kiosk',
+        guest_name: activeRoomNumber ? `Guest (Room ${activeRoomNumber})` : 'Khách tại Sảnh',
+        description: `Robot nhận diện biểu cảm khó chịu (Unhappy) tại ${roomLoc} và khách đã xác nhận gọi Concierge hỗ trợ trực tiếp.`,
+      });
+      const canonicalCode = req.ticket_code || req.id || `SUP-${Date.now()}`;
+      setVideoCallSessionId(canonicalCode);
+      setVideoCallTicketCode(req.ticket_code || canonicalCode);
+      setIsVideoCallOpen(true);
+    } catch (err) {
+      console.warn('Call concierge fallback:', err);
+      const fallbackCode = `CCG-${Date.now()}`;
+      setVideoCallSessionId(fallbackCode);
+      setVideoCallTicketCode(fallbackCode);
+      setIsVideoCallOpen(true);
+    }
+  }, [activeRoomNumber, language, speak]);
+
+  const handleDismissUnhappyAssistance = useCallback(() => {
+    setIsUnhappyAssistanceOpen(false);
+    try {
+      const promptText =
+        language === 'English'
+          ? 'Thank you. Please feel free to touch the screen anytime if you need help.'
+          : 'Dạ vâng, nếu cần thêm bất cứ trợ giúp nào, quý khách cứ chạm vào màn hình nhé.';
+      speak(promptText);
+    } catch {}
+  }, [language, speak]);
 
   const handleGuestEmotionDetected = useCallback(
     (emotion) => {
       setGuestEmotion(emotion);
       if (emotion === 'unhappy') {
         const now = Date.now();
-        if (now - lastUnhappyAlertTimeRef.current > 90000) {
+        // Cooldown 60s tranh spam lien tuc
+        if (now - lastUnhappyAlertTimeRef.current > 60000) {
           lastUnhappyAlertTimeRef.current = now;
           const roomLoc = activeRoomNumber ? `Room ${activeRoomNumber}` : 'Main Lobby Kiosk';
           createConciergeEmotionAlert({
@@ -445,11 +490,34 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               'Camera AI phát hiện khách hàng có biểu cảm khó chịu (Unhappy) khi tương tác tại Kiosk. Cần nhân viên Concierge tiếp cận hỗ trợ trực tiếp ngay.',
             emotion_type: 'Unhappy',
           }).catch(() => {});
+
+          // Bat modal hoi khach hang neu chua trong cuoc goi video
+          if (!isVideoCallOpenRef.current) {
+            setIsUnhappyAssistanceOpen(true);
+            const prompt =
+              language === 'English'
+                ? 'I noticed you might need assistance. Would you like me to call our Concierge staff right away?'
+                : 'Dạ, tôi thấy quý khách dường như đang gặp bất tiện. Quý khách có cần tôi gọi nhân viên Concierge tới hỗ trợ trực tiếp không ạ?';
+            try {
+              speak(prompt);
+            } catch {}
+          }
         }
       }
     },
-    [activeRoomNumber]
+    [activeRoomNumber, language, speak]
   );
+
+  // Lang nghe phan hoi bang giong noi khi Modal ho tro bieu cam dang mo
+  useEffect(() => {
+    if (!isUnhappyAssistanceOpen || !transcript) return;
+    const lower = transcript.toLowerCase();
+    if (/có|gọi|nhân viên|đồng ý|hỗ trợ|yes|call|staff|concierge|help/i.test(lower)) {
+      handleConfirmCallConcierge();
+    } else if (/không|thôi|được rồi|tự làm|tự xử lý|no|cancel|dismiss/i.test(lower)) {
+      handleDismissUnhappyAssistance();
+    }
+  }, [transcript, isUnhappyAssistanceOpen, handleConfirmCallConcierge, handleDismissUnhappyAssistance]);
 
   // Load available workflows for AUTO_DETECT trigger & manual launcher
   useEffect(() => {
@@ -3894,6 +3962,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         speak={speak}
         onStartTalk={handleStartTalk}
         onSuccess={() => {}}
+      />
+
+      {/* POP-UP HỎI VÀ GỌI CONCIERGE KHI PHÁT HIỆN KHÁCH KHÓ CHỊU */}
+      <EmotionAssistanceModal
+        isOpen={isUnhappyAssistanceOpen}
+        onConfirm={handleConfirmCallConcierge}
+        onDismiss={handleDismissUnhappyAssistance}
+        language={language}
       />
     </div>
   );

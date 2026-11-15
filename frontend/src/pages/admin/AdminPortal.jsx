@@ -253,6 +253,16 @@ export const AdminPortal = ({ currentUser, onLogout = () => { }, onNotify = () =
                       >
                         {t('adminSubFastPath')}
                       </button>
+                      <button
+                        onClick={() => setKnowledgeSubTab('persona')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: knowledgeSubTab === 'persona' ? '#262626' : 'transparent',
+                          color: knowledgeSubTab === 'persona' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('adminSubPersona')}
+                      </button>
                     </div>
                   )}
 

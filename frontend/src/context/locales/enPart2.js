@@ -32,6 +32,7 @@ export const enPart2 = {
     knowledgeBtnSpeechRateTooltip: 'Configure Robot AI voice pitch and speech rate',
     knowledgeTabSources: 'Knowledge Vault',
     knowledgeTabScenarios: 'Fast-Path Scenarios',
+    knowledgeTabPersona: 'AI Persona & Voice',
     knowledgeCardTotalFiles: 'TOTAL KNOWLEDGE FILES',
     knowledgeCardTotalFilesSub: 'documents ready for AI retrieval',
     knowledgeCardStorageSize: 'VAULT STORAGE SIZE',

@@ -265,6 +265,8 @@ export async function executeRobotChatTurn(ctx) {
     handleStartTalk,
     handleStopTalkAndProcess,
     speak,
+    viVoice,
+    enVoice,
     stopSpeaking,
     startListening,
     stopListening,
@@ -361,6 +363,8 @@ export async function executeRobotChatTurn(ctx) {
         setIsStandby,
         lastInteractionTimeRef,
         speak,
+        viVoice,
+        enVoice,
         startListening,
         stopListening,
         resetTranscript,
@@ -369,6 +373,8 @@ export async function executeRobotChatTurn(ctx) {
       return;
     }
 
+    const hasAudio = Boolean(chatRes.audio_base64 && chatRes.audio_base64.length > 50);
+
     let hasRenderedText = false;
     const revealSubtitle = () => {
       if (!hasRenderedText && currentChatId === activeChatRequestIdRef.current) {
@@ -376,9 +382,21 @@ export async function executeRobotChatTurn(ctx) {
         stopListening();
         resetTranscript();
         setAiResponseText(replyText);
+        setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
       }
     };
-    const textSafetyTimer = setTimeout(revealSubtitle, 2000);
+
+    // Nếu backend không có audio (ví dụ timeout/lỗi mạng), hiển thị phụ đề và thoát trạng thái xoay RT-04 ngay lập tức
+    if (!hasAudio) {
+      revealSubtitle();
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+    }
+
+    // Fallback an toàn: nếu sau 1.5s âm thanh chưa kịp bắn onplay, hiển thị phụ đề để không trễ
+    const textSafetyTimer = setTimeout(() => {
+      revealSubtitle();
+    }, hasAudio ? 1500 : 0);
 
     speak(
       replyText,
@@ -448,7 +466,7 @@ export async function executeRobotChatTurn(ctx) {
       },
       chatRes.audio_base64,
       null,
-      { skipRemoteTts: false }
+      { skipRemoteTts: !hasAudio }
     );
   } catch {
     if (fillerTimerRef.current) {

@@ -35,6 +35,8 @@ export function runMultiStageWayfindingSequence({
   setIsStandby,
   lastInteractionTimeRef,
   speak,
+  viVoice,
+  enVoice,
   startListening,
   stopListening,
   resetTranscript,
@@ -61,12 +63,12 @@ export function runMultiStageWayfindingSequence({
   let preloadedStep2Audio = null;
   let preloadedQrAudio = null;
 
-  // Preload background EdgeTTS (vi-VN-HoaiMyNeural) ngay khi Chặng 1 bắt đầu (cửa sổ 10 giây)
+  // Preload background EdgeTTS ngay khi Chặng 1 bắt đầu (cửa sổ 10 giây)
   // Triệt tiêu 100% rủi ro đổi sang giọng Safari Linh trên iPhone XR do mất gesture sau setTimeout
   if (destObj.isDifferentFloor && cleanStep2) {
     synthesizeSpeech(step2Speech, {
       language: isEn ? 'en-US' : 'vi-VN',
-      voice: isEn ? 'en-US-JennyNeural' : 'vi-VN-HoaiMyNeural',
+      voice: isEn ? (enVoice || 'en-US-JennyNeural') : (viVoice || 'vi-VN-NamMinhNeural'),
     })
       .then((res) => {
         if (res?.audio_base64 && currentChatId === activeChatRequestIdRef.current) {
@@ -78,7 +80,7 @@ export function runMultiStageWayfindingSequence({
 
   synthesizeSpeech(qrVoicePrompt, {
     language: isEn ? 'en-US' : 'vi-VN',
-    voice: isEn ? 'en-US-JennyNeural' : 'vi-VN-HoaiMyNeural',
+    voice: isEn ? (enVoice || 'en-US-JennyNeural') : (viVoice || 'vi-VN-NamMinhNeural'),
   })
     .then((res) => {
       if (res?.audio_base64 && currentChatId === activeChatRequestIdRef.current) {

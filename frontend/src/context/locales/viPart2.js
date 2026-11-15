@@ -32,6 +32,7 @@ export const viPart2 = {
     knowledgeBtnSpeechRateTooltip: 'Cài đặt tốc độ nói và giọng phát âm AI của Robot',
     knowledgeTabSources: 'Kho Tài Liệu Tri Thức',
     knowledgeTabScenarios: 'Kịch Bản Fast-Path',
+    knowledgeTabPersona: 'Nhân dạng & Giọng điệu AI',
     knowledgeCardTotalFiles: 'TỔNG FILE TRI THỨC',
     knowledgeCardTotalFilesSub: 'tài liệu sẵn sàng phục vụ',
     knowledgeCardStorageSize: 'DUNG LƯỢNG KHO LƯU TRỮ',

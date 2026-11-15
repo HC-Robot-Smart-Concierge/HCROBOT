@@ -151,6 +151,7 @@ export const enPart1 = {
     adminSubLiveCamera: 'Live Camera FPV',
     adminSubKnowledgeVault: 'Knowledge Vault',
     adminSubFastPath: 'Fast-Path Scenarios',
+    adminSubPersona: 'AI Persona & Voice',
     adminRoleAdmin: 'Operations Admin',
     adminRoleSystem: 'System Admin',
     adminLogout: 'Log out',

@@ -100,7 +100,7 @@ export function sanitizeSpeechText(text) {
     .trim();
 }
 
-export function resolveSpeechVoiceAndLang(cleanText, language, voices) {
+export function resolveSpeechVoiceAndLang(cleanText, language, voices, voicePrefs = null) {
   const hasVietnameseDiacritics = /[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i.test(cleanText);
   const hasVietnameseKeywords = /\b(dạ|em|anh|chị|quý khách|khách sạn|phòng|đã|rồi|ạ|hỗ trợ|yêu cầu|dịch vụ|không|có|tại|tầng|hồ bơi|cảm ơn|bảo trì|lễ tân|nhân viên|vận chuyển|hành lý)\b/i.test(cleanText);
   const isVietnameseText = hasVietnameseDiacritics || hasVietnameseKeywords;
@@ -113,20 +113,31 @@ export function resolveSpeechVoiceAndLang(cleanText, language, voices) {
   const availableVoices = voices.length > 0 ? voices : (window.speechSynthesis ? window.speechSynthesis.getVoices() : []);
   let targetVoice = null;
 
+  const overrideVoice = typeof voicePrefs === 'string' ? voicePrefs : voicePrefs?.voice;
+  const activeVoice = overrideVoice || (langTag.startsWith('vi') ? (voicePrefs?.viVoice || 'vi-VN-HoaiMyNeural') : (voicePrefs?.enVoice || 'en-US-JennyNeural'));
+  const isMaleVoice = activeVoice.toLowerCase().includes('namminh') || activeVoice.toLowerCase().includes('guy') || activeVoice.toLowerCase().includes('male');
+
   if (langTag.startsWith('vi')) {
-    targetVoice = availableVoices.find((v) => v.name.toLowerCase().includes('hoaimy') || v.name.toLowerCase().includes('hoài my')) ||
-      availableVoices.find((v) => v.name.toLowerCase().includes('namminh') || v.name.toLowerCase().includes('nam minh')) ||
-      availableVoices.find((v) => v.name.toLowerCase().includes('natural') && v.lang.toLowerCase().startsWith('vi')) ||
-      availableVoices.find((v) => v.name.toLowerCase().includes('google') && v.lang.toLowerCase().startsWith('vi')) ||
-      availableVoices.find((v) => v.lang.toLowerCase().startsWith('vi') || v.name.toLowerCase().includes('vietnamese'));
+    if (isMaleVoice) {
+      targetVoice = availableVoices.find((v) => v.name.toLowerCase().includes('namminh') || v.name.toLowerCase().includes('nam minh')) ||
+        availableVoices.find((v) => v.name.toLowerCase().includes('male') && v.lang.toLowerCase().startsWith('vi')) ||
+        availableVoices.find((v) => v.name.toLowerCase().includes('natural') && v.lang.toLowerCase().startsWith('vi')) ||
+        availableVoices.find((v) => v.lang.toLowerCase().startsWith('vi') || v.name.toLowerCase().includes('vietnamese'));
+    } else {
+      targetVoice = availableVoices.find((v) => v.name.toLowerCase().includes('hoaimy') || v.name.toLowerCase().includes('hoài my')) ||
+        availableVoices.find((v) => v.name.toLowerCase().includes('female') && v.lang.toLowerCase().startsWith('vi')) ||
+        availableVoices.find((v) => v.name.toLowerCase().includes('natural') && v.lang.toLowerCase().startsWith('vi')) ||
+        availableVoices.find((v) => v.name.toLowerCase().includes('google') && v.lang.toLowerCase().startsWith('vi')) ||
+        availableVoices.find((v) => v.lang.toLowerCase().startsWith('vi') || v.name.toLowerCase().includes('vietnamese'));
+    }
   } else if (langTag.startsWith('en')) {
-    targetVoice = availableVoices.find(
-      (v) =>
-        v.lang.toLowerCase().startsWith('en') ||
-        v.name.toLowerCase().includes('english') ||
-        v.name.toLowerCase().includes('zira') ||
-        v.name.toLowerCase().includes('david')
-    );
+    if (isMaleVoice) {
+      targetVoice = availableVoices.find((v) => v.name.toLowerCase().includes('guy') || v.name.toLowerCase().includes('david') || v.name.toLowerCase().includes('male')) ||
+        availableVoices.find((v) => v.lang.toLowerCase().startsWith('en'));
+    } else {
+      targetVoice = availableVoices.find((v) => v.name.toLowerCase().includes('jenny') || v.name.toLowerCase().includes('zira') || v.name.toLowerCase().includes('female')) ||
+        availableVoices.find((v) => v.lang.toLowerCase().startsWith('en'));
+    }
   }
 
   return { langTag, targetVoice };
@@ -147,6 +158,9 @@ export function speakWithBrowserUtterance({
   activeUtteranceRef,
   safetyTimerRef,
   setIsSpeaking,
+  voices = [],
+  viVoice = null,
+  enVoice = null,
 }) {
   if (speechId && speechId !== activeSpeechIdRef.current) {
     return;
@@ -171,12 +185,34 @@ export function speakWithBrowserUtterance({
     const effectiveRate = Math.max(0.5, Math.min(2.0, rate ?? speechRate ?? 1.0));
     const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = langTag;
-    utterance.rate = Math.max(0.5, Math.min(2.0, rate || 1.0));
+    utterance.rate = effectiveRate;
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
 
-    if (targetVoice) {
-      utterance.voice = targetVoice;
+    let selectedVoice = targetVoice;
+    if (!selectedVoice && 'speechSynthesis' in window) {
+      const availableVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices();
+      const activeVoice = langTag.startsWith('vi') ? (viVoice || 'vi-VN-HoaiMyNeural') : (enVoice || 'en-US-JennyNeural');
+      const isMale = activeVoice.toLowerCase().includes('namminh') || activeVoice.toLowerCase().includes('guy') || activeVoice.toLowerCase().includes('male');
+      if (langTag.startsWith('vi')) {
+        selectedVoice = isMale
+          ? (availableVoices.find((v) => v.name.toLowerCase().includes('namminh') || v.name.toLowerCase().includes('nam minh')) ||
+             availableVoices.find((v) => v.name.toLowerCase().includes('male') && v.lang.toLowerCase().startsWith('vi')) ||
+             availableVoices.find((v) => v.lang.toLowerCase().startsWith('vi')))
+          : (availableVoices.find((v) => v.name.toLowerCase().includes('hoaimy') || v.name.toLowerCase().includes('hoài my')) ||
+             availableVoices.find((v) => v.name.toLowerCase().includes('female') && v.lang.toLowerCase().startsWith('vi')) ||
+             availableVoices.find((v) => v.lang.toLowerCase().startsWith('vi')));
+      } else {
+        selectedVoice = isMale
+          ? (availableVoices.find((v) => v.name.toLowerCase().includes('guy') || v.name.toLowerCase().includes('david')) ||
+             availableVoices.find((v) => v.lang.toLowerCase().startsWith('en')))
+          : (availableVoices.find((v) => v.name.toLowerCase().includes('jenny') || v.name.toLowerCase().includes('zira')) ||
+             availableVoices.find((v) => v.lang.toLowerCase().startsWith('en')));
+      }
+    }
+
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
     }
 
     activeUtteranceRef.current = utterance;
@@ -232,6 +268,21 @@ export function speakWithBrowserUtterance({
       }
     }, maxMs);
 
+    // Auto-release du phong khi trinh duyet thieu voice engine tieng Viet (vi du Chrome tren Windows)
+    if (!selectedVoice && langTag.startsWith('vi')) {
+      setTimeout(() => {
+        if (!hasFinished && (!speechId || speechId === activeSpeechIdRef.current)) {
+          if (onStartCallback) onStartCallback();
+        }
+      }, 120);
+      const fallbackReadMs = Math.min(Math.max(wordCount * 280, 2500), 5500);
+      setTimeout(() => {
+        if (!hasFinished && (!speechId || speechId === activeSpeechIdRef.current)) {
+          finishOnce();
+        }
+      }, fallbackReadMs);
+    }
+
     window.speechSynthesis.speak(utterance);
   } catch (err) {
     console.warn('TTS Error:', err);
@@ -255,6 +306,8 @@ export function createStreamingQueueController({
   speakWebSpeech,
   speechRate,
   cancel,
+  viVoiceRef,
+  enVoiceRef,
 }) {
   const playNextInQueue = async () => {
     if (queueRef.current.length === 0) {
@@ -371,7 +424,7 @@ export function createStreamingQueueController({
 
     const isSupportedEdgeLang = lang.startsWith('vi') || lang.startsWith('en');
     if (isSupportedEdgeLang) {
-      const edgeVoice = lang.startsWith('vi') ? 'vi-VN-HoaiMyNeural' : 'en-US-JennyNeural';
+      const edgeVoice = lang.startsWith('vi') ? (viVoiceRef?.current || 'vi-VN-HoaiMyNeural') : (enVoiceRef?.current || 'en-US-JennyNeural');
       const edgeLang = lang.startsWith('vi') ? 'vi-VN' : 'en-US';
       audioPromise = synthesizeSpeech(rawText, { language: edgeLang, voice: edgeVoice })
         .then((data) => {

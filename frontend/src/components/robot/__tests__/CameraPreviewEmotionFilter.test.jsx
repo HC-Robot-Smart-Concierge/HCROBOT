@@ -17,13 +17,13 @@ describe('CameraPreview Emotion False-Positive Mitigation Tests', () => {
 
   it('incorporates multi-feature compound distress scoring', () => {
     expect(content).toContain('compoundDistress');
-    expect(content).toContain('browDown * 0.6 + mouthFrown * 0.4');
-    expect(content).toContain('compoundDistress >= 0.38');
+    expect(content).toContain('browDown * 0.7 + mouthFrown * 0.3');
+    expect(content).toContain('browDown >= 0.30');
   });
 
   it('enforces temporal confirmation filter before confirming unhappy emotion', () => {
     expect(content).toContain('consecutiveUnhappyFramesRef');
-    expect(content).toContain('consecutiveUnhappyFramesRef.current >= 3');
+    expect(content).toContain('consecutiveUnhappyFramesRef.current >= 2');
   });
 
   it('guarantees zero emoji characters in CameraPreview', () => {

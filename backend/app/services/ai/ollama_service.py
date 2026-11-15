@@ -8,6 +8,11 @@ import ollama
 from app.core.config import settings
 from app.services.ai.ollama_groq_and_intent_mixin import OllamaGroqAndIntentMixin
 from app.services.ai.ollama_prompt_fastpath_mixin import OllamaPromptFastpathMixin
+from app.services.ai.prompt_guard import (
+    check_prompt_injection,
+    format_safe_user_prompt,
+    get_rejection_reply,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +37,12 @@ class OllamaService(OllamaPromptFastpathMixin, OllamaGroqAndIntentMixin):
         Async Generator sinh token theo thời gian thực từ Qwen/Groq/Gemini/Ollama (stream=True).
         Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
+        # 0.0. Kiem tra an toan bao mat: Chan Prompt Injection tuc thi (< 0.05ms)
+        if check_prompt_injection(prompt):
+            lang_code = "en-US" if (language and (language == "English" or "en" in str(language).lower())) else "vi-VN"
+            yield get_rejection_reply(lang_code)
+            return
+
         # 0. Kiểm tra Mega Fast-Path tức thì (< 1ms), bỏ qua nếu caller truyền sẵn rag_context từ Knowledge Base
         fast_hit = None if (rag_context and rag_context.strip()) else self.check_fast_path(prompt, language)
         if fast_hit:
@@ -65,7 +76,7 @@ class OllamaService(OllamaPromptFastpathMixin, OllamaGroqAndIntentMixin):
             for turn in chat_history:
                 if turn.get("role") in ["user", "assistant"] and turn.get("content"):
                     messages.append({"role": turn["role"], "content": turn["content"]})
-        messages.append({"role": "user", "content": prompt})
+        messages.append({"role": "user", "content": format_safe_user_prompt(prompt)})
 
         provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
 
@@ -159,6 +170,12 @@ class OllamaService(OllamaPromptFastpathMixin, OllamaGroqAndIntentMixin):
         Sinh câu trả lời thoại cho Concierge Robot dựa trên câu hỏi của khách và lịch sử phiên.
         Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
+        # 0.0. Kiem tra an toan bao mat: Chan Prompt Injection tuc thi (< 0.05ms)
+        if check_prompt_injection(prompt):
+            lang_code = "en-US" if (language and (language == "English" or "en" in str(language).lower())) else "vi-VN"
+            lang_name = "English" if lang_code == "en-US" else "Tiếng Việt"
+            return get_rejection_reply(lang_code), lang_name, lang_code
+
         # 0. Kiểm tra Fast-Path trước (< 1ms), bỏ qua nếu caller truyền sẵn rag_context từ Knowledge Base
         fast_hit = None if (rag_context and rag_context.strip()) else self.check_fast_path(prompt, language)
         if fast_hit:
@@ -190,7 +207,7 @@ class OllamaService(OllamaPromptFastpathMixin, OllamaGroqAndIntentMixin):
             for turn in chat_history:
                 if turn.get("role") in ["user", "assistant"] and turn.get("content"):
                     messages.append({"role": turn["role"], "content": turn["content"]})
-        messages.append({"role": "user", "content": prompt})
+        messages.append({"role": "user", "content": format_safe_user_prompt(prompt)})
 
         provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
 
@@ -200,7 +217,7 @@ class OllamaService(OllamaPromptFastpathMixin, OllamaGroqAndIntentMixin):
         if provider not in ["gemini", "ollama"] and bool(settings.GROQ_API_KEY):
             try:
                 logger.info(f"[AI Tier 1] Gửi Groq Cloud (model: {settings.GROQ_MODEL})...")
-                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=150)
+                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=80)
                 if groq_reply and groq_reply.strip():
                     reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
                     if lang_code == "en-US" and not re.search(r"[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]", reply, re.IGNORECASE):
@@ -248,7 +265,7 @@ class OllamaService(OllamaPromptFastpathMixin, OllamaGroqAndIntentMixin):
                         "temperature": 0.7,
                         "top_p": 0.9,
                         "num_ctx": 1024,
-                        "num_predict": 70,
+                        "num_predict": 45,
                         "num_thread": 8,
                         "repeat_penalty": 1.1,
                     },

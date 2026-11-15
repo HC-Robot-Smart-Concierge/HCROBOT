@@ -8,16 +8,27 @@ import { AdminKnowledgeScenariosView } from './AdminKnowledgeScenariosView';
 import { AdminKnowledgeSourceEditorModal } from './AdminKnowledgeSourceEditorModal';
 import { AdminKnowledgeScenarioAndVoiceModals } from './AdminKnowledgeScenarioAndVoiceModals';
 import { AdminKnowledgeGuideAndDeleteModals } from './AdminKnowledgeGuideAndDeleteModals';
+import { AdminKnowledgePersonaTab } from './knowledge/AdminKnowledgePersonaTab';
 
 export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView = () => {} }) => {
   const { t, language } = useLanguage();
   const isEN = language === 'EN';
 
-  const [currentTab, setCurrentTab] = useState(() => (activeSubView === 'scenarios' ? 'scenarios' : 'sources'));
+  const [currentTab, setCurrentTab] = useState(() => {
+    if (activeSubView === 'scenarios') return 'scenarios';
+    if (activeSubView === 'persona') return 'persona';
+    return 'sources';
+  });
 
   useEffect(() => {
     if (activeSubView) {
-      setCurrentTab(activeSubView === 'scenarios' ? 'scenarios' : 'sources');
+      setCurrentTab(
+        activeSubView === 'scenarios'
+          ? 'scenarios'
+          : activeSubView === 'persona'
+          ? 'persona'
+          : 'sources'
+      );
     }
   }, [activeSubView]);
 
@@ -229,6 +240,10 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
         handleOpenEditModal={handleOpenEditModal}
         handleDeleteScenario={handleDeleteScenario}
       />
+
+      {currentTab === 'persona' && (
+        <AdminKnowledgePersonaTab isEN={isEN} onShowToast={showNotification} />
+      )}
 
       <AdminKnowledgeSourceEditorModal
         editingSourceFile={editingSourceFile}

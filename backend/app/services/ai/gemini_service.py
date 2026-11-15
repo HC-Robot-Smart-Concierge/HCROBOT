@@ -7,6 +7,7 @@ import httpx
 
 from app.core.config import settings
 from app.services.ai.gemini_prompt_fallback_mixin import GeminiPromptFallbackMixin
+from app.services.ai.prompt_guard import check_prompt_injection, get_rejection_reply
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,12 @@ class GeminiService(GeminiPromptFallbackMixin):
         Yield từng token ngay khi API sinh ra.
         Tự động fallback sang Groq Cloud Stream nếu Gemini gặp lỗi và chưa emit token nào.
         """
+        # 0.0. Kiem tra an toan bao mat: Chan Prompt Injection tuc thi (< 0.05ms)
+        if check_prompt_injection(prompt):
+            lang_code = "en-US" if (language and (language == "English" or "en" in str(language).lower())) else "vi-VN"
+            yield get_rejection_reply(lang_code)
+            return
+
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
         else:
@@ -152,6 +159,12 @@ class GeminiService(GeminiPromptFallbackMixin):
         """
         Sinh câu trả lời hội thoại tức thì từ Gemini cho Concierge Robot.
         """
+        # 0.0. Kiem tra an toan bao mat: Chan Prompt Injection tuc thi (< 0.05ms)
+        if check_prompt_injection(prompt):
+            lang_code = "en-US" if (language and (language == "English" or "en" in str(language).lower())) else "vi-VN"
+            lang_name = "English" if lang_code == "en-US" else "Tiếng Việt"
+            return get_rejection_reply(lang_code), lang_name, lang_code
+
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
         else:

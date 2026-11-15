@@ -205,15 +205,23 @@ export const getVoiceSettings = async () => {
   try {
     const res = await fetch(`${API_BASE_URL}/voice-settings`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    const data = await res.json();
+    if (typeof window !== 'undefined' && data) {
+      if (data.speech_rate !== undefined) localStorage.setItem('rora_speech_rate', data.speech_rate.toString());
+      if (data.vi_voice) localStorage.setItem('rora_vi_voice', data.vi_voice);
+      if (data.en_voice) localStorage.setItem('rora_en_voice', data.en_voice);
+    }
+    return data;
   } catch (err) {
     console.warn('[AIApi] getVoiceSettings error:', err.message);
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('rora_speech_rate') : null;
+    const savedRate = typeof window !== 'undefined' ? localStorage.getItem('rora_speech_rate') : null;
+    const savedViVoice = typeof window !== 'undefined' ? localStorage.getItem('rora_vi_voice') : null;
+    const savedEnVoice = typeof window !== 'undefined' ? localStorage.getItem('rora_en_voice') : null;
     return {
-      speech_rate: saved ? parseFloat(saved) : 1.0,
+      speech_rate: savedRate ? parseFloat(savedRate) : 1.0,
       rate_percentage: '+0%',
-      vi_voice: 'vi-VN-HoaiMyNeural',
-      en_voice: 'en-US-JennyNeural',
+      vi_voice: savedViVoice || 'vi-VN-HoaiMyNeural',
+      en_voice: savedEnVoice || 'en-US-JennyNeural',
     };
   }
 };
@@ -231,7 +239,9 @@ export const updateVoiceSettings = async ({ speech_rate, vi_voice, en_voice }) =
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (typeof window !== 'undefined') {
-      localStorage.setItem('rora_speech_rate', data.speech_rate.toString());
+      if (data?.speech_rate !== undefined) localStorage.setItem('rora_speech_rate', data.speech_rate.toString());
+      if (data?.vi_voice) localStorage.setItem('rora_vi_voice', data.vi_voice);
+      if (data?.en_voice) localStorage.setItem('rora_en_voice', data.en_voice);
       try {
         const bc = new BroadcastChannel('hcrobot_voice_settings');
         bc.postMessage({ type: 'VOICE_SETTINGS_UPDATED', ...data });
@@ -242,7 +252,9 @@ export const updateVoiceSettings = async ({ speech_rate, vi_voice, en_voice }) =
   } catch (err) {
     console.warn('[AIApi] updateVoiceSettings error:', err.message);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('rora_speech_rate', speech_rate.toString());
+      if (speech_rate !== undefined) localStorage.setItem('rora_speech_rate', speech_rate.toString());
+      if (vi_voice) localStorage.setItem('rora_vi_voice', vi_voice);
+      if (en_voice) localStorage.setItem('rora_en_voice', en_voice);
     }
     return {
       speech_rate,
@@ -250,6 +262,68 @@ export const updateVoiceSettings = async ({ speech_rate, vi_voice, en_voice }) =
       vi_voice: vi_voice || 'vi-VN-HoaiMyNeural',
       en_voice: en_voice || 'en-US-JennyNeural',
     };
+  }
+};
+
+/**
+ * Lấy cấu hình Persona & Văn phong nói chuyện của Robot
+ */
+export const getPersonaSettings = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/persona-settings`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[AIApi] getPersonaSettings error:', err.message);
+    return {
+      bot_name: 'Rora',
+      hotel_name: 'Aurora Grand Hotel',
+      star_rating: 5,
+      tone_style: 'luxury',
+      pronoun_bot_vi: 'em hoặc Rora',
+      pronoun_guest_vi: 'quý khách hoặc anh/chị',
+      qr_cta_vi: 'Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ.',
+      qr_cta_en: 'In addition, you can scan the QR code on the screen to save the directions!',
+      unhappy_empathy_vi: 'Khách đang có biểu cảm khó chịu hoặc chưa hài lòng, hãy phản hồi với thái độ xin lỗi chân thành, xoa dịu ân cần và cho biết nhân viên Concierge tại sảnh sẽ hỗ trợ ngay.',
+      unhappy_empathy_en: 'The guest appears annoyed or dissatisfied. Respond with a sincere, caring apology and assure them that Concierge staff will assist right away.',
+      out_of_scope_vi: 'Dạ Rora là trợ lý robot phục vụ tại khách sạn Aurora Grand Hotel và chỉ có thể hỗ trợ các thông tin, dịch vụ liên quan đến kỳ nghỉ của quý khách thôi ạ.',
+      out_of_scope_en: 'I am Rora, your AI Concierge at Aurora Grand Hotel. I can only assist you with hotel amenities, services, and inquiries regarding your stay.',
+    };
+  }
+};
+
+/**
+ * Admin cập nhật cấu hình Persona & Văn phong
+ */
+export const updatePersonaSettings = async (data) => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/persona-settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[AIApi] updatePersonaSettings error:', err.message);
+    return data;
+  }
+};
+
+/**
+ * Khôi phục Persona mặc định
+ */
+export const resetPersonaSettings = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/persona-settings/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[AIApi] resetPersonaSettings error:', err.message);
+    return null;
   }
 };
 

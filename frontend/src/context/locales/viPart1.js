@@ -149,6 +149,7 @@ export const viPart1 = {
     adminSubLiveCamera: 'Camera FPV Trực Tiếp',
     adminSubKnowledgeVault: 'Kho Tri Thức',
     adminSubFastPath: 'Kịch Bản Xử Lý Nhanh',
+    adminSubPersona: 'Nhân dạng & Giọng điệu AI',
     adminRoleAdmin: 'Bộ Phận Quản Trị',
     adminRoleSystem: 'Quản Trị Viên Hệ Thống',
     adminLogout: 'Đăng xuất',

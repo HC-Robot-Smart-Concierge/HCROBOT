@@ -173,7 +173,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const [showQuickMenu, setShowQuickMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
 
-  const { speak, prime, cancel: stopSpeaking, isSpeaking, updateSpeechRate } = useSpeechSynthesis();
+  const {
+    speak,
+    prime,
+    cancel: stopSpeaking,
+    isSpeaking,
+    updateSpeechRate,
+    viVoice,
+    enVoice,
+    updateVoiceSettings,
+  } = useSpeechSynthesis();
   const isSpeakingRef = useRef(false);
   useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
 
@@ -194,8 +203,21 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   useEffect(() => {
     fetchWorkflows().then((data) => { if (Array.isArray(data)) setAvailableWorkflows(data); }).catch((err) => console.warn('Could not load workflows:', err));
-    getVoiceSettings().then((data) => { if (data?.speech_rate) updateSpeechRate(data.speech_rate); }).catch((err) => console.warn('Could not fetch voice settings:', err));
   }, []);
+
+  useEffect(() => {
+    getVoiceSettings()
+      .then((data) => {
+        if (data) {
+          if (updateVoiceSettings) {
+            updateVoiceSettings(data);
+          } else if (data.speech_rate) {
+            updateSpeechRate(data.speech_rate);
+          }
+        }
+      })
+      .catch((err) => console.warn('Could not fetch voice settings:', err));
+  }, [updateVoiceSettings, updateSpeechRate]);
 
   const {
     activeWorkflow, isWorkflowRunning, currentStepIndex, activeStep, totalSteps,
@@ -273,6 +295,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const sharedSpeech = {
     language, setLanguage, languageRef, prime, speak, stopSpeaking, isSpeaking, isSpeakingRef,
+    viVoice, enVoice,
     isListening, transcript, speechError, startListening, stopListening, resetTranscript, volumeLevel,
   };
   const sharedRoomUi = {

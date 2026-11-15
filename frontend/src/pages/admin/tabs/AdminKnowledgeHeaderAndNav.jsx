@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, RefreshCw, Zap, Volume2, Folder, Languages, BookOpen } from 'lucide-react';
+import { Plus, RefreshCw, Zap, Volume2, Folder, Languages, BookOpen, Bot } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 
 export const AdminKnowledgeHeaderAndNav = ({
@@ -20,7 +20,8 @@ export const AdminKnowledgeHeaderAndNav = ({
   handleReloadCache,
   handleOpenCreateModal,
 }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const isEN = language === 'EN';
   return (
     <>
       {/* Toast Notification */}
@@ -48,29 +49,41 @@ export const AdminKnowledgeHeaderAndNav = ({
             <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
               {currentTab === 'sources'
                 ? t('knowledgeSourcesTitle')
-                : t('knowledgeScenariosTitle')}
+                : currentTab === 'scenarios'
+                ? t('knowledgeScenariosTitle')
+                : isEN ? 'AI Persona & Voice Tone Settings' : 'Cấu hình Nhân dạng & Giọng điệu AI'}
             </h2>
             <span
               className="px-2 py-0.5 rounded text-[10px] font-bold border tracking-wider uppercase inline-flex items-center gap-1"
               style={{
-                backgroundColor: currentTab === 'sources' ? '#EFF6FF' : '#DCFCE7',
-                color: currentTab === 'sources' ? '#1D4ED8' : '#15803D',
-                borderColor: currentTab === 'sources' ? '#BFDBFE' : '#BBF7D0',
+                backgroundColor: currentTab === 'sources' ? '#EFF6FF' : currentTab === 'scenarios' ? '#DCFCE7' : '#FEF3C7',
+                color: currentTab === 'sources' ? '#1D4ED8' : currentTab === 'scenarios' ? '#15803D' : '#B45309',
+                borderColor: currentTab === 'sources' ? '#BFDBFE' : currentTab === 'scenarios' ? '#BBF7D0' : '#FDE68A',
               }}
             >
               {currentTab === 'sources' ? (
                 <>
                   <Folder className="w-3 h-3" /> {t('knowledgeVaultBadge')}
                 </>
-              ) : (
+              ) : currentTab === 'scenarios' ? (
                 <>
                   <Zap className="w-3 h-3" /> {isEN ? '< 1ms In-Memory' : '< 1ms Trong Bộ Nhớ'}
+                </>
+              ) : (
+                <>
+                  <Bot className="w-3 h-3" /> {isEN ? 'Live Hot-Reload' : 'Nạp tức thì'}
                 </>
               )}
             </span>
           </div>
           <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
-            {currentTab === 'sources' ? t('knowledgeSourcesSubtitle') : t('knowledgeScenariosSubtitle')}
+            {currentTab === 'sources'
+              ? t('knowledgeSourcesSubtitle')
+              : currentTab === 'scenarios'
+              ? t('knowledgeScenariosSubtitle')
+              : isEN
+              ? 'Customize robot name, hotel branding, forms of address, and empathy scripts.'
+              : 'Tùy biến tên robot, tên khách sạn, đại từ xưng hô, câu mời quét QR và kịch bản thấu cảm phát thanh.'}
           </p>
         </div>
 
@@ -233,6 +246,18 @@ export const AdminKnowledgeHeaderAndNav = ({
             >
               {scenarios.length}
             </span>
+          </button>
+
+          <button
+            onClick={() => handleSwitchTab('persona')}
+            className="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2"
+            style={{
+              backgroundColor: currentTab === 'persona' ? '#262626' : 'transparent',
+              color: currentTab === 'persona' ? '#FFFFFF' : '#8C8C8C',
+            }}
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span>{t('knowledgeTabPersona')}</span>
           </button>
         </div>
       </div>

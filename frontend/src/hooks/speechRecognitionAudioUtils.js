@@ -316,7 +316,6 @@ export async function initializeHardwareMicAnalyser({
           consecutiveVoiceFrames++;
           if (consecutiveVoiceFrames >= 3) {
             hasDetectedVoiceRef.current = true;
-            clearSpeechFinalizeTimer();
             if (silenceTimerRef.current) {
               clearTimeout(silenceTimerRef.current);
               silenceTimerRef.current = null;

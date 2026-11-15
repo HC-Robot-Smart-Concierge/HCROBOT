@@ -389,26 +389,31 @@ export const CameraPreview = ({
                 const smile = (sLeft + sRight) / 2;
                 const browDown = (bDownL + bDownR) / 2;
                 const mouthFrown = (mFrownL + mFrownR) / 2;
-                // Diem kho chiu tong hop (Compound Distress): 60% tu chan may, 40% tu khoe mieng
-                const compoundDistress = browDown * 0.6 + mouthFrown * 0.4;
+                // Diem kho chiu tong hop (Compound Distress): 70% tu chan may, 30% tu khoe mieng
+                const compoundDistress = browDown * 0.7 + mouthFrown * 0.3;
                 const frown = Math.max(browDown, mouthFrown);
                 setSmileScore(smile);
                 setFrownScore(frown);
 
-                // 1. Danh gia ung vien bieu cam (Candidate Emotion)
+                // 1. Danh gia ung vien bieu cam (Candidate Emotion):
+                // Khach duoc xem la unhappy khi ha chan may (browDown >= 0.30), tre khoe mieng (mouthFrown >= 0.22),
+                // hoac phoi hop ca hai (compoundDistress >= 0.26 hoac browDown >= 0.25 va mouthFrown >= 0.12), va khong cuoi (smile < 0.18)
                 let candidate = 'neutral';
                 if (smile >= 0.35) {
                   candidate = 'happy';
-                } else if ((compoundDistress >= 0.38 || (browDown >= 0.45 && mouthFrown >= 0.18)) && smile < 0.15) {
+                } else if (
+                  (browDown >= 0.30 || mouthFrown >= 0.22 || compoundDistress >= 0.26 || (browDown >= 0.25 && mouthFrown >= 0.12)) &&
+                  smile < 0.18
+                ) {
                   candidate = 'unhappy';
                 }
 
                 // 2. Bo loc xac nhan theo thoi gian (Temporal Confirmation Filter):
-                // Phai duy tri bieu cam kho chiu lien tuc >= 3 frames (~1.5s) de tranh bao sai khi chop mat hoac cui dau
+                // O chu ky 500ms/frame, duy tri lien tuc >= 2 frames (~1.0s) de tranh bao sai do chop mat ma van bat nhay bieu cam
                 let confirmedEmotion = 'neutral';
                 if (candidate === 'unhappy') {
                   consecutiveUnhappyFramesRef.current += 1;
-                  if (consecutiveUnhappyFramesRef.current >= 3) {
+                  if (consecutiveUnhappyFramesRef.current >= 2) {
                     confirmedEmotion = 'unhappy';
                   } else {
                     confirmedEmotion = 'neutral';

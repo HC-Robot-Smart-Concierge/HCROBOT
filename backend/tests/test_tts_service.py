@@ -25,7 +25,7 @@ async def test_tts_service_fallback_execution():
 @pytest.mark.asyncio
 async def test_tts_service_voice_selection_by_language():
     """Unit test kiểm tra phân giải giọng đọc chuẩn xác theo language code"""
-    service = TTSService()
+    service = TTSService(load_persisted=False)
 
     # Text tiếng Anh có thể vô tình chứa từ tiếng Việt ("Aurora Hotel")
     en_key = service._get_cache_key("Welcome to Aurora Hotel", "edge", service.default_en_voice)
@@ -68,6 +68,17 @@ async def test_tts_service_voice_settings_management():
     assert fetched["speech_rate"] == 0.85
     assert fetched["rate_percentage"] == "-15%"
     assert fetched["vi_voice"] == "vi-VN-NamMinhNeural"
+
+
+@pytest.mark.asyncio
+async def test_tts_service_disk_persistence():
+    """Unit test kiem tra luu va tai cau hinh giong noi ben vung tren dia"""
+    service = TTSService(load_persisted=True)
+    service.update_voice_settings(speech_rate=1.0, vi_voice="vi-VN-NamMinhNeural", en_voice="en-US-JennyNeural")
+    new_service = TTSService(load_persisted=True)
+    assert new_service.default_vi_voice == "vi-VN-NamMinhNeural"
+    assert new_service.default_en_voice == "en-US-JennyNeural"
+    assert new_service.current_rate == 1.0
 
 
 @pytest.mark.asyncio

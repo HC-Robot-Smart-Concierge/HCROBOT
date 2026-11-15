@@ -114,6 +114,7 @@ export const useAdminKnowledgeHandlers = ({
     speak(sampleText, {
       rate: tempRate,
       lang: isEN ? 'en-US' : 'vi-VN',
+      voice: tempVoice,
       onEnd: () => setIsTestSpeaking(false),
       onError: () => setIsTestSpeaking(false),
     });
@@ -236,7 +237,7 @@ export const useAdminKnowledgeHandlers = ({
     setIsUploading(true);
     try {
       const res = await uploadRAGFile(selectedUploadFile, uploadCategory);
-      showNotification(`✅ ${t('knowledgeNotifySourceUploaded').replace('{name}', selectedUploadFile.name)}`);
+      showNotification(t('knowledgeNotifySourceUploaded').replace('{name}', selectedUploadFile.name));
       setSelectedUploadFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       await loadRAGData();

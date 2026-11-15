@@ -6,6 +6,13 @@ from typing import Dict, Any, List, Optional, Tuple, AsyncGenerator
 import httpx
 
 from app.core.config import settings
+from app.services.ai.prompt_guard import (
+    check_prompt_injection,
+    get_rejection_reply,
+    get_immutability_directives,
+    format_safe_user_prompt,
+    format_safe_rag_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +160,10 @@ class GeminiService:
             prompt += "\n[Cảm xúc khách]: Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
 
         if rag_context:
-            prompt += f"\n[Cơ sở tri thức khách sạn (RAG)]:\n{rag_context}"
+            prompt += format_safe_rag_context(rag_context, lang_code)
+
+        # Cung co nguyen tac bat bien bao mat chong Prompt Injection
+        prompt += get_immutability_directives(lang_code)
 
         return prompt
 
@@ -181,7 +191,7 @@ class GeminiService:
 
         contents.append({
             "role": "user",
-            "parts": [{"text": prompt}]
+            "parts": [{"text": format_safe_user_prompt(prompt)}]
         })
 
         payload: Dict[str, Any] = {
@@ -330,6 +340,12 @@ class GeminiService:
         Yield từng token ngay khi API sinh ra.
         Tự động fallback sang Groq Cloud Stream nếu Gemini gặp lỗi và chưa emit token nào.
         """
+        # 0.0. Kiem tra an toan bao mat: Chan Prompt Injection tuc thi (< 0.05ms)
+        if check_prompt_injection(prompt):
+            lang_code = "en-US" if (language and (language == "English" or "en" in str(language).lower())) else "vi-VN"
+            yield get_rejection_reply(lang_code)
+            return
+
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
         else:
@@ -424,6 +440,12 @@ class GeminiService:
         """
         Sinh câu trả lời hội thoại tức thì từ Gemini cho Concierge Robot.
         """
+        # 0.0. Kiem tra an toan bao mat: Chan Prompt Injection tuc thi (< 0.05ms)
+        if check_prompt_injection(prompt):
+            lang_code = "en-US" if (language and (language == "English" or "en" in str(language).lower())) else "vi-VN"
+            lang_name = "English" if lang_code == "en-US" else "Tiếng Việt"
+            return get_rejection_reply(lang_code), lang_name, lang_code
+
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
         else:

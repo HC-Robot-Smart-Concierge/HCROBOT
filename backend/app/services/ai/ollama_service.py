@@ -12,6 +12,13 @@ from app.services.ai.scenario_service import scenario_service
 from app.services.ai.constants import BELLMAN_MENU_TRIGGER_KEYWORDS, SERVICE_KEYWORDS
 from app.services.bell_request_service import classify_bell_request
 from app.services.maintenance_request_service import is_fault_report
+from app.services.ai.prompt_guard import (
+    check_prompt_injection,
+    get_rejection_reply,
+    get_immutability_directives,
+    format_safe_user_prompt,
+    format_safe_rag_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -401,8 +408,10 @@ class OllamaService:
             prompt += "\n[Cảm xúc khách]: Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
 
         if rag_context:
-            kb_label = "[Hotel Knowledge Base (Reference Facts)]" if lang_code == "en-US" else "[Cơ sở tri thức khách sạn (RAG)]"
-            prompt += f"\n{kb_label}:\n{rag_context}"
+            prompt += format_safe_rag_context(rag_context, lang_code)
+
+        # Cung co nguyen tac bat bien bao mat chong Prompt Injection
+        prompt += get_immutability_directives(lang_code)
 
         return prompt
 
@@ -419,6 +428,12 @@ class OllamaService:
         Async Generator sinh token theo thời gian thực từ Qwen/Groq/Gemini/Ollama (stream=True).
         Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
+        # 0.0. Kiem tra an toan bao mat: Chan Prompt Injection tuc thi (< 0.05ms)
+        if check_prompt_injection(prompt):
+            lang_code = "en-US" if (language and (language == "English" or "en" in str(language).lower())) else "vi-VN"
+            yield get_rejection_reply(lang_code)
+            return
+
         # 0. Kiểm tra Mega Fast-Path tức thì (< 1ms), bỏ qua nếu caller truyền sẵn rag_context từ Knowledge Base
         fast_hit = None if (rag_context and rag_context.strip()) else self.check_fast_path(prompt, language)
         if fast_hit:
@@ -452,7 +467,7 @@ class OllamaService:
             for turn in chat_history:
                 if turn.get("role") in ["user", "assistant"] and turn.get("content"):
                     messages.append({"role": turn["role"], "content": turn["content"]})
-        messages.append({"role": "user", "content": prompt})
+        messages.append({"role": "user", "content": format_safe_user_prompt(prompt)})
 
         provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
 
@@ -558,6 +573,12 @@ class OllamaService:
         Sinh câu trả lời thoại cho Concierge Robot dựa trên câu hỏi của khách và lịch sử phiên.
         Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
+        # 0.0. Kiem tra an toan bao mat: Chan Prompt Injection tuc thi (< 0.05ms)
+        if check_prompt_injection(prompt):
+            lang_code = "en-US" if (language and (language == "English" or "en" in str(language).lower())) else "vi-VN"
+            lang_name = "English" if lang_code == "en-US" else "Tiếng Việt"
+            return get_rejection_reply(lang_code), lang_name, lang_code
+
         # 0. Kiểm tra Fast-Path trước (< 1ms), bỏ qua nếu caller truyền sẵn rag_context từ Knowledge Base
         fast_hit = None if (rag_context and rag_context.strip()) else self.check_fast_path(prompt, language)
         if fast_hit:
@@ -589,7 +610,7 @@ class OllamaService:
             for turn in chat_history:
                 if turn.get("role") in ["user", "assistant"] and turn.get("content"):
                     messages.append({"role": turn["role"], "content": turn["content"]})
-        messages.append({"role": "user", "content": prompt})
+        messages.append({"role": "user", "content": format_safe_user_prompt(prompt)})
 
         provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
 

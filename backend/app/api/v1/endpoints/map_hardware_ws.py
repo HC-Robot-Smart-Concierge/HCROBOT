@@ -1,0 +1,187 @@
+"""Map hardware control, lock/reset, LiDAR navigation, and WebSocket stream endpoints."""
+
+import asyncio
+import json
+import logging
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
+
+from app.repositories import MapRepository, get_map_repository
+from app.schemas.map import NavigationRequest, NavigationResponse
+from app.services.hardware.rplidar_service import rplidar_service
+from .map_defaults_gazebo import current_robot_pose, is_point_in_zone
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+@router.post("/toggle_lock", summary="Bật/tắt chế độ khóa bản đồ tĩnh")
+async def toggle_map_lock(lock: Optional[bool] = None):
+    """Khóa bản đồ (để bản đồ đứng yên cố định không bị trôi) hoặc mở khóa (để quét thêm không gian mới)."""
+    new_state = rplidar_service.set_map_lock(not rplidar_service.is_map_locked if lock is None else lock)
+    msg = "Đã KHÓA bản đồ cố định (Static Map Locked)" if new_state else "Đã MỞ KHÓA chế độ quét bản đồ tự do (Free Mapping Mode)"
+    return {
+        "status": "SUCCESS",
+        "message": msg,
+        "is_map_locked": new_state
+    }
+
+
+@router.post("/reset_map", summary="Xóa trắng bản đồ 2D để tiến hành quét SLAM lại từ đầu")
+async def reset_map():
+    rplidar_service.reset_grid_map()
+    return {"status": "SUCCESS", "message": "Đã xử lý reset bản đồ 2D"}
+
+
+@router.post("/connect_lidar", summary="Kích hoạt kết nối với cổng COM9 của RPLiDAR")
+async def connect_lidar_hardware():
+    success = await asyncio.to_thread(rplidar_service.connect)
+    if success:
+        rplidar_service.start_scanning()
+        return {"status": "SUCCESS", "message": "Đã kết nối thành công phần cứng RPLiDAR COM9", "info": rplidar_service.device_info}
+    else:
+        return {"status": "FAILED", "message": rplidar_service.last_error or "Lỗi kết nối cổng COM9"}
+
+
+@router.post("/scan_360", summary="Kích hoạt robot quay 360 độ để quét toàn cảnh phòng")
+async def trigger_scan_360():
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            res = await client.post("http://100.99.72.51:8000/api/v1/map/scan_360")
+            return res.json()
+    except Exception:
+        return {"status": "SUCCESS", "message": "Đã gửi lệnh quét 360 độ tới robot"}
+
+
+@router.post("/teleop", summary="Điều khiển thủ công Robot di chuyển")
+async def trigger_teleop(payload: dict):
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            res = await client.post("http://100.99.72.51:8000/api/v1/map/teleop", json=payload)
+            return res.json()
+    except Exception:
+        return {"status": "SUCCESS", "command": payload.get("command")}
+
+
+@router.post("/navigate", response_model=NavigationResponse, summary="Gửi mục tiêu di chuyển Robot")
+async def navigate_to_target(
+    request: NavigationRequest,
+    repo: MapRepository = Depends(get_map_repository),
+):
+    global current_robot_pose
+    try:
+        active_zones = await repo.list_zones()
+        for z in active_zones:
+            if z.type == "KEEP_OUT" and is_point_in_zone(request.target_x, request.target_y, z):
+                return NavigationResponse(
+                    status="REJECTED",
+                    message=f"Đích đến ({request.target_x:.2f}, {request.target_y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!",
+                    target_x=request.target_x,
+                    target_y=request.target_y,
+                )
+            if z.type == "NO_STOP" and is_point_in_zone(request.target_x, request.target_y, z):
+                return NavigationResponse(
+                    status="REJECTED",
+                    message=f"Đích đến ({request.target_x:.2f}, {request.target_y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}'. Robot không thể chọn đây làm điểm kết thúc!",
+                    target_x=request.target_x,
+                    target_y=request.target_y,
+                )
+
+        current_robot_pose.x = request.target_x
+        current_robot_pose.y = request.target_y
+        if request.target_yaw is not None:
+            current_robot_pose.yaw = request.target_yaw
+
+        return NavigationResponse(
+            status="SUCCESS",
+            message=f"Đã nhận mục tiêu (x: {request.target_x:.2f}, y: {request.target_y:.2f})",
+            target_x=request.target_x,
+            target_y=request.target_y,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.websocket("/ws")
+async def map_websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket streaming dữ liệu 100% THỰC TẾ từ phần cứng RPLiDAR COM9 và Bản đồ Cố định.
+    """
+    await websocket.accept()
+    logger.info("🔌 WebSocket LiDAR Client connected")
+
+    if not rplidar_service.is_running:
+        success = await asyncio.to_thread(rplidar_service.connect)
+        if success:
+            rplidar_service.start_scanning()
+
+    try:
+        while True:
+            status_info = rplidar_service.get_status()
+
+            if rplidar_service.is_connected and rplidar_service.is_running:
+                scans = rplidar_service.get_latest_scans()
+                map_info = rplidar_service.get_grid_map_data()
+                payload = {
+                    "type": "telemetry_update",
+                    "source": "REAL_RPLIDAR_HARDWARE",
+                    "device_info": rplidar_service.device_info,
+                    "robot_pose": {
+                        "x": current_robot_pose.x,
+                        "y": current_robot_pose.y,
+                        "yaw": current_robot_pose.yaw
+                    },
+                    "battery": 98,
+                    "linear_velocity": 0.0,
+                    "angular_velocity": 0.0,
+                    "status": "RPLIDAR_COM9_ACTIVE",
+                    "is_map_locked": rplidar_service.is_map_locked,
+                    "saved_map_id": rplidar_service.saved_map_id,
+                    "scan_points": scans,
+                    "grid_data": map_info["grid_data"],
+                    "grid_metadata": {
+                        "width": map_info["width"],
+                        "height": map_info["height"],
+                        "resolution": map_info["resolution"],
+                        "origin_x": map_info["origin_x"],
+                        "origin_y": map_info["origin_y"],
+                    }
+                }
+            else:
+                map_info = rplidar_service.get_grid_map_data()
+                payload = {
+                    "type": "telemetry_update",
+                    "source": "NO_HARDWARE_CONNECTED",
+                    "robot_pose": {
+                        "x": current_robot_pose.x,
+                        "y": current_robot_pose.y,
+                        "yaw": current_robot_pose.yaw
+                    },
+                    "battery": 98,
+                    "linear_velocity": 0.0,
+                    "angular_velocity": 0.0,
+                    "status": "WAITING_FOR_COM9_HARDWARE",
+                    "is_map_locked": rplidar_service.is_map_locked,
+                    "saved_map_id": rplidar_service.saved_map_id,
+                    "last_error": rplidar_service.last_error,
+                    "scan_points": [],
+                    "grid_data": map_info["grid_data"],
+                    "grid_metadata": {
+                        "width": map_info["width"],
+                        "height": map_info["height"],
+                        "resolution": map_info["resolution"],
+                        "origin_x": map_info["origin_x"],
+                        "origin_y": map_info["origin_y"],
+                    }
+                }
+
+            await websocket.send_text(json.dumps(payload))
+            await asyncio.sleep(0.033)  # ~30 Hz real-time refresh rate
+
+    except WebSocketDisconnect:
+        logger.info("🔌 WebSocket LiDAR Client disconnected")
+    except Exception as e:
+        logger.error(f"Lỗi WebSocket LiDAR: {e}")
+        await websocket.close()

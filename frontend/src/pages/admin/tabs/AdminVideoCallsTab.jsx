@@ -22,8 +22,11 @@ import {
   fetchVideoCallMetrics,
   syncCloudinaryRecordings,
 } from '../../../services/conciergeApi';
+import { Pagination } from '../../../components/common/Pagination';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export const AdminVideoCallsTab = ({ currentUser }) => {
+  const { language } = useLanguage();
   const [sessions, setSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -56,9 +59,37 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [detectedDuration, setDetectedDuration] = useState(null);
 
-  // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
+  // Pagination (synced with URL query params like Department & Account tabs)
+  const [currentPage, setCurrentPage] = useState(() => {
+    try {
+      const p = parseInt(new URLSearchParams(window.location.search).get('page'), 10);
+      return !isNaN(p) && p > 0 ? p : 1;
+    } catch {
+      return 1;
+    }
+  });
   const pageSize = 10;
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      params.set('tab', 'Video Calls');
+      params.set('page', newPage.toString());
+      window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+    } catch {}
+  };
+
+  useEffect(() => {
+    const onPopState = () => {
+      try {
+        const p = parseInt(new URLSearchParams(window.location.search).get('page'), 10);
+        if (!isNaN(p) && p > 0) setCurrentPage(p);
+      } catch {}
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -141,7 +172,6 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
   }, [sessions, startDate, endDate, recordingStatusFilter, searchTerm]);
 
   // Paginated Slices
-  const totalPages = Math.max(1, Math.ceil(filteredSessions.length / pageSize));
   const paginatedSessions = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredSessions.slice(start, start + pageSize);
@@ -152,7 +182,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
     setEndDate('');
     setRecordingStatusFilter('all');
     setSearchTerm('');
-    setCurrentPage(1);
+    handlePageChange(1);
   };
 
   const handleSyncCloudinary = async () => {
@@ -305,7 +335,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         {/* Total Calls */}
         <div
-          onClick={() => { setRecordingStatusFilter('all'); setCurrentPage(1); }}
+          onClick={() => { setRecordingStatusFilter('all'); handlePageChange(1); }}
           className={`px-4 py-2.5 rounded-xl bg-white border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
             recordingStatusFilter === 'all' ? 'border-neutral-400 ring-1 ring-neutral-300' : 'border-neutral-200/80 hover:border-neutral-300'
           }`}
@@ -321,7 +351,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
 
         {/* Ready Recordings */}
         <div
-          onClick={() => { setRecordingStatusFilter('ready'); setCurrentPage(1); }}
+          onClick={() => { setRecordingStatusFilter('ready'); handlePageChange(1); }}
           className={`px-4 py-2.5 rounded-xl bg-white border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
             recordingStatusFilter === 'ready' ? 'border-emerald-500 ring-1 ring-emerald-200' : 'border-neutral-200/80 hover:border-emerald-300'
           }`}
@@ -338,7 +368,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
 
         {/* Saving Recordings */}
         <div
-          onClick={() => { setRecordingStatusFilter('saving'); setCurrentPage(1); }}
+          onClick={() => { setRecordingStatusFilter('saving'); handlePageChange(1); }}
           className={`px-4 py-2.5 rounded-xl bg-white border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
             recordingStatusFilter === 'saving' ? 'border-amber-500 ring-1 ring-amber-200' : 'border-neutral-200/80 hover:border-amber-300'
           }`}
@@ -355,7 +385,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
 
         {/* Failed Recordings */}
         <div
-          onClick={() => { setRecordingStatusFilter('failed'); setCurrentPage(1); }}
+          onClick={() => { setRecordingStatusFilter('failed'); handlePageChange(1); }}
           className={`px-4 py-2.5 rounded-xl bg-white border shadow-xs flex items-center justify-between cursor-pointer transition-all ${
             recordingStatusFilter === 'failed' ? 'border-rose-500 ring-1 ring-rose-200' : 'border-neutral-200/80 hover:border-rose-300'
           }`}
@@ -379,7 +409,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
           <input
             type="text"
             value={searchTerm}
-            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+            onChange={(e) => { setSearchTerm(e.target.value); handlePageChange(1); }}
             placeholder="Tìm theo mã phiên, thiết bị robot, ticket..."
             className="w-full pl-8 pr-3 py-1.5 text-xs rounded-full bg-neutral-100/70 hover:bg-neutral-100 focus:bg-white border border-transparent focus:border-neutral-300 focus:outline-hidden transition-all text-neutral-800 placeholder:text-neutral-400"
           />
@@ -392,7 +422,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
           <input
             type="date"
             value={startDate}
-            onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
+            onChange={(e) => { setStartDate(e.target.value); handlePageChange(1); }}
             className="bg-transparent text-xs text-neutral-700 focus:outline-hidden cursor-pointer"
           />
         </div>
@@ -403,7 +433,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
           <input
             type="date"
             value={endDate}
-            onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
+            onChange={(e) => { setEndDate(e.target.value); handlePageChange(1); }}
             className="bg-transparent text-xs text-neutral-700 focus:outline-hidden cursor-pointer"
           />
         </div>
@@ -413,7 +443,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
           <Filter className="w-3 h-3 text-neutral-400" />
           <select
             value={recordingStatusFilter}
-            onChange={(e) => { setRecordingStatusFilter(e.target.value); setCurrentPage(1); }}
+            onChange={(e) => { setRecordingStatusFilter(e.target.value); handlePageChange(1); }}
             className="bg-transparent text-xs text-neutral-700 focus:outline-hidden cursor-pointer pr-1"
           >
             <option value="all">Tất cả trạng thái</option>
@@ -586,30 +616,14 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
           </div>
         )}
 
-        {/* Minimalist Pagination */}
-        {totalPages > 1 && (
-          <div className="px-4 py-2 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
-            <div>
-              Trang {currentPage} / {totalPages} (Tổng {filteredSessions.length} phiên)
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                disabled={currentPage <= 1}
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="px-2.5 py-1 rounded-full text-xs text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer transition-colors"
-              >
-                Trước
-              </button>
-              <button
-                disabled={currentPage >= totalPages}
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="px-2.5 py-1 rounded-full text-xs text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer transition-colors"
-              >
-                Sau
-              </button>
-            </div>
-          </div>
-        )}
+        {/* Pagination Footer */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredSessions.length}
+          pageSize={pageSize}
+          onPageChange={handlePageChange}
+          itemName={language === 'EN' ? 'sessions' : 'phiên'}
+        />
       </div>
 
       {/* 5. Maximized Video Player Modal with Automatic Fallback & Exception Recovery */}

@@ -88,6 +88,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const wsRef = useRef(null);
   const landmarkerRef = useRef(null);
   const noFaceCountRef = useRef(0);
+  const consecutiveUnhappyFramesRef = useRef(0);
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
   const iceCandidateQueueRef = useRef([]);
@@ -392,7 +393,10 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             }
 
             const smile = (sLeft + sRight) / 2;
-            const frown = Math.max((bDownL + bDownR) / 2, (mFrownL + mFrownR) / 2);
+            const browDown = (bDownL + bDownR) / 2;
+            const mouthFrown = (mFrownL + mFrownR) / 2;
+            const compoundDistress = browDown * 0.6 + mouthFrown * 0.4;
+            const frown = Math.max(browDown, mouthFrown);
             setSmileScore(smile);
             setFrownScore(frown);
 
@@ -407,10 +411,26 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               jawOpen,
             });
 
+            // 1. Danh gia ung vien bieu cam (Candidate Emotion)
+            let candidate = 'neutral';
             if (smile >= 0.35) {
-              currentDetected = 'happy';
-            } else if (frown >= 0.28) {
-              currentDetected = 'unhappy';
+              candidate = 'happy';
+            } else if ((compoundDistress >= 0.38 || (browDown >= 0.45 && mouthFrown >= 0.18)) && smile < 0.15) {
+              candidate = 'unhappy';
+            }
+
+            // 2. Bo loc xac nhan theo thoi gian (Temporal Confirmation Filter):
+            // O toc do 200ms/frame, khach phai duy tri net mat kho chiu >= 6 frames (~1.2s) moi xac nhan Unhappy
+            if (candidate === 'unhappy') {
+              consecutiveUnhappyFramesRef.current += 1;
+              if (consecutiveUnhappyFramesRef.current >= 6) {
+                currentDetected = 'unhappy';
+              } else {
+                currentDetected = 'neutral';
+              }
+            } else {
+              consecutiveUnhappyFramesRef.current = 0;
+              currentDetected = candidate;
             }
 
             setDetectedEmotion(currentDetected);
@@ -516,6 +536,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             setDetectedEmotion('neutral');
             setSmileScore(0);
             setFrownScore(0);
+            consecutiveUnhappyFramesRef.current = 0;
             if (canvas && ctx) {
               ctx.clearRect(0, 0, canvas.width, canvas.height);
             }

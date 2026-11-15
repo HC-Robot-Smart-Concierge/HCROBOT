@@ -68,4 +68,13 @@ describe('AdminPhoneCameraTab Component & Minimal Expression Anchors & Rotation'
     const emojiRegex = /[\uD83C-\uDBFF\uDC00-\uDFFF]/;
     expect(emojiRegex.test(sourceCode)).toBe(false);
   });
+
+  it('implements compound distress scoring and temporal confirmation filter to avoid false positives', () => {
+    const filePath = path.resolve(__dirname, '../AdminPhoneCameraTab.jsx');
+    const sourceCode = fs.readFileSync(filePath, 'utf-8');
+
+    expect(sourceCode).toContain('compoundDistress');
+    expect(sourceCode).toContain('consecutiveUnhappyFramesRef');
+    expect(sourceCode).toContain('consecutiveUnhappyFramesRef.current >= 6');
+  });
 });

@@ -42,6 +42,7 @@ export const CameraPreview = ({
 
   const isTriggeredRef = useRef(false);
   const negativeFramesRef = useRef(0);
+  const consecutiveUnhappyFramesRef = useRef(0);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isMinimized, setIsMinimized] = useState(defaultMinimized);
@@ -512,28 +513,49 @@ export const CameraPreview = ({
                 }
 
                 const smile = (sLeft + sRight) / 2;
-                const frown = Math.max((bDownL + bDownR) / 2, (mFrownL + mFrownR) / 2);
+                const browDown = (bDownL + bDownR) / 2;
+                const mouthFrown = (mFrownL + mFrownR) / 2;
+                // Diem kho chiu tong hop (Compound Distress): 60% tu chan may, 40% tu khoe mieng
+                const compoundDistress = browDown * 0.6 + mouthFrown * 0.4;
+                const frown = Math.max(browDown, mouthFrown);
                 setSmileScore(smile);
                 setFrownScore(frown);
 
-                let detected = 'neutral';
+                // 1. Danh gia ung vien bieu cam (Candidate Emotion)
+                let candidate = 'neutral';
                 if (smile >= 0.35) {
-                  detected = 'happy';
-                } else if (frown >= 0.28) {
-                  detected = 'unhappy';
+                  candidate = 'happy';
+                } else if ((compoundDistress >= 0.38 || (browDown >= 0.45 && mouthFrown >= 0.18)) && smile < 0.15) {
+                  candidate = 'unhappy';
+                }
+
+                // 2. Bo loc xac nhan theo thoi gian (Temporal Confirmation Filter):
+                // Phai duy tri bieu cam kho chiu lien tuc >= 3 frames (~1.5s) de tranh bao sai khi chop mat hoac cui dau
+                let confirmedEmotion = 'neutral';
+                if (candidate === 'unhappy') {
+                  consecutiveUnhappyFramesRef.current += 1;
+                  if (consecutiveUnhappyFramesRef.current >= 3) {
+                    confirmedEmotion = 'unhappy';
+                  } else {
+                    confirmedEmotion = 'neutral';
+                  }
+                } else {
+                  consecutiveUnhappyFramesRef.current = 0;
+                  confirmedEmotion = candidate;
                 }
 
                 setCurrentEmotion((prev) => {
-                  if (prev !== detected) {
-                    if (onEmotionChange) onEmotionChange(detected);
+                  if (prev !== confirmedEmotion) {
+                    if (onEmotionChange) onEmotionChange(confirmedEmotion);
                   }
-                  return detected;
+                  return confirmedEmotion;
                 });
               }
             } else {
               setIsFaceDetected(false);
               setSmileScore(0);
               setFrownScore(0);
+              consecutiveUnhappyFramesRef.current = 0;
             }
           } catch (mpErr) {
             // Lỗi đọc frame tạm thời

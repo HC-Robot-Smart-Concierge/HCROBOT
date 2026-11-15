@@ -879,7 +879,7 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
             }}
           >
             <Bot className="w-3.5 h-3.5" />
-            <span>{isEN ? 'AI Persona & Voice' : 'Nhân dạng & Giọng điệu'}</span>
+            <span>{t('knowledgeTabPersona')}</span>
           </button>
         </div>
       </div>

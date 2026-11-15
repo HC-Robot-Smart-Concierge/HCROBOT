@@ -74,16 +74,22 @@ describe('RobotRoomServiceScreen Contract & Behavior Tests', () => {
     });
   });
 
+  const readAllRoomServiceFiles = () => [
+    '../RobotRoomServiceScreen.jsx',
+    '../robotRoomServiceCatalog.jsx',
+    '../RobotRoomServiceMainView.jsx',
+    '../RobotRoomServiceReviewAndPinModals.jsx',
+    '../RobotRoomServiceSuccessAndStatusModals.jsx',
+  ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+
   it('guarantees code has no emoji characters anywhere in RobotRoomServiceScreen', () => {
-    const filePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = readAllRoomServiceFiles();
     const emojiRegex = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
     expect(emojiRegex.test(content)).toBe(false);
   });
 
   it('contains Reception notification and checkout billing notice', () => {
-    const filePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = readAllRoomServiceFiles();
 
     // Check references to Reception and room billing notice
     expect(content).toContain('Lễ tân');
@@ -92,31 +98,27 @@ describe('RobotRoomServiceScreen Contract & Behavior Tests', () => {
   });
 
   it('fetches dynamic catalog using fetchRoomServiceCatalog', () => {
-    const filePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = readAllRoomServiceFiles();
 
     expect(content).toContain('fetchRoomServiceCatalog');
     expect(content).toContain('catalogItems');
   });
 
   it('enforces clean Aurora Stone styling matching hotel design system', () => {
-    const filePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = readAllRoomServiceFiles();
 
     expect(content).toContain('bg-[#F5F2EB]');
     expect(content).toContain('border-[#E3DFD5]');
   });
 
   it('supports room selection badge and in-modal room picker button', () => {
-    const filePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = readAllRoomServiceFiles();
 
     expect(content).toContain('Chọn số phòng');
   });
 
   it('correctly binds live order status tracking to loadStatusForRoom and avoids undefined handleViewStatus', () => {
-    const filePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = readAllRoomServiceFiles();
 
     expect(content).not.toContain('handleViewStatus');
     expect(content).toContain("window.addEventListener('app:task_status_updated', handleLiveStatus)");

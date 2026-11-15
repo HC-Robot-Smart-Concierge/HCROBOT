@@ -8,8 +8,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe('Concierge Taxi Reception & Calling Workflow Tests', () => {
-  const conciergePath = path.resolve(__dirname, '../ConciergeDashboard.jsx');
-  const conciergeContent = fs.readFileSync(conciergePath, 'utf8');
+  const conciergeContent = [
+    '../ConciergeDashboard.jsx',
+    '../conciergeDashboardUtils.js',
+    '../ConciergeBannerAndNav.jsx',
+    '../ConciergeEmotionAlertsView.jsx',
+    '../ConciergeLiveCallAndRecordingsView.jsx',
+    '../ConciergeTaxiView.jsx',
+    '../ConciergeFeedbackView.jsx',
+    '../ConciergeModals.jsx',
+  ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
 
   it('exports ConciergeDashboard as a functional component', () => {
     expect(typeof ConciergeDashboard).toBe('function');

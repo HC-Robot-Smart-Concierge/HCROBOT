@@ -23,15 +23,23 @@ describe('RoomPinModal Minimal Gray Theme & 4-Digit UX', () => {
   });
 
   it('guarantees code has no emoji characters anywhere in the file', () => {
-    const filePath = path.resolve(__dirname, '../RoomPinModal.jsx');
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = [
+      '../RoomPinModal.jsx',
+      '../roomPinLockoutUtils.js',
+      '../useRoomPinNfc.js',
+      '../RoomPinViews.jsx',
+    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
     const emojiRegex = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
     expect(emojiRegex.test(content)).toBe(false);
   });
 
   it('enforces 4-digit PIN indicator and clean light theme classes with minimal icons', () => {
-    const filePath = path.resolve(__dirname, '../RoomPinModal.jsx');
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = [
+      '../RoomPinModal.jsx',
+      '../roomPinLockoutUtils.js',
+      '../useRoomPinNfc.js',
+      '../RoomPinViews.jsx',
+    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
 
     // 4 ô chỉ báo
     expect(content).toContain('[0, 1, 2, 3].map');
@@ -50,19 +58,35 @@ describe('RoomPinModal Minimal Gray Theme & 4-Digit UX', () => {
   });
 
   it('supports skipTicketCreation to prevent duplicate ghost support requests', () => {
-    const modalPath = path.resolve(__dirname, '../RoomPinModal.jsx');
-    const modalContent = fs.readFileSync(modalPath, 'utf8');
+    const modalContent = [
+      '../RoomPinModal.jsx',
+      '../roomPinLockoutUtils.js',
+      '../useRoomPinNfc.js',
+      '../RoomPinViews.jsx',
+    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
 
     expect(modalContent).toContain('skipTicketCreation = true');
     expect(modalContent).toContain('skipTicketCreation');
 
-    const foodMenuPath = path.resolve(__dirname, '../RobotFoodMenuScreen.jsx');
-    const foodContent = fs.readFileSync(foodMenuPath, 'utf8');
+    const foodContent = [
+      '../RobotFoodMenuScreen.jsx',
+      '../robotFoodMenuCatalog.js',
+      '../robotFoodMenuDataPart1.js',
+      '../robotFoodMenuDataPart2.js',
+      '../useRobotFoodMenuLogic.js',
+      '../RobotFoodMenuMainView.jsx',
+      '../RobotFoodMenuModals.jsx',
+    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
     expect(foodContent).toContain('skipTicketCreation={true}');
     expect(foodContent).toContain('pendingAction="verify_only"');
 
-    const roomServicePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
-    const roomContent = fs.readFileSync(roomServicePath, 'utf8');
+    const roomContent = [
+      '../RobotRoomServiceScreen.jsx',
+      '../robotRoomServiceCatalog.jsx',
+      '../RobotRoomServiceMainView.jsx',
+      '../RobotRoomServiceReviewAndPinModals.jsx',
+      '../RobotRoomServiceSuccessAndStatusModals.jsx',
+    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
     expect(roomContent).toContain('skipTicketCreation={true}');
     expect(roomContent).toContain('pendingAction="verify_only"');
   });

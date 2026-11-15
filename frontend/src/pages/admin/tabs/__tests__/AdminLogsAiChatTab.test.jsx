@@ -9,8 +9,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe('AdminLogsTab AI Chat History Integration', () => {
-  const logsTabPath = path.resolve(__dirname, '../AdminLogsTab.jsx');
-  const logsTabContent = fs.readFileSync(logsTabPath, 'utf8');
+  const logsTabContent = [
+    '../AdminLogsTab.jsx',
+    '../adminLogsUtils.js',
+    '../AdminLogsOperationalView.jsx',
+    '../AdminLogsAuditAndChatViews.jsx',
+    '../AdminLogsModals.jsx',
+  ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
   const adminPortalPath = path.resolve(__dirname, '../../AdminPortal.jsx');
   const adminPortalContent = fs.readFileSync(adminPortalPath, 'utf8');
 

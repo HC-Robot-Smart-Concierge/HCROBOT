@@ -10,8 +10,13 @@ describe('Speech Synthesis Voice Consistency & Web Audio API Fallback Tests', ()
   const useSpeechSynthesisPath = path.resolve(__dirname, '../useSpeechSynthesis.js');
   const useSpeechSynthesisContent = fs.readFileSync(useSpeechSynthesisPath, 'utf8');
 
-  const robotScreenPath = path.resolve(__dirname, '../../pages/robot/RobotScreenPage.jsx');
-  const robotScreenContent = fs.readFileSync(robotScreenPath, 'utf8');
+  const robotDir = path.resolve(__dirname, '../../pages/robot');
+  const robotScreenContent = fs
+    .readdirSync(robotDir)
+    .filter((f) => /\.(js|jsx)$/.test(f))
+    .sort()
+    .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
+    .join('\n');
 
   it('guarantees no emoji characters in useSpeechSynthesis and RobotScreenPage', () => {
     const emojiRegex = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;

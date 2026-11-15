@@ -13,17 +13,35 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe('Numeric Input Validation & Character Blocking Tests', () => {
-  const receptionPath = path.resolve(__dirname, '../ReceptionDashboard.jsx');
-  const receptionContent = fs.readFileSync(receptionPath, 'utf8');
+  const receptionContent = [
+    '../ReceptionDashboard.jsx',
+    '../ReceptionRequestsTab.jsx',
+    '../ReceptionRoomsTab.jsx',
+    '../ReceptionCheckInOutModals.jsx',
+  ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
 
-  const conciergePath = path.resolve(__dirname, '../ConciergeDashboard.jsx');
-  const conciergeContent = fs.readFileSync(conciergePath, 'utf8');
+  const conciergeContent = [
+    '../ConciergeDashboard.jsx',
+    '../conciergeDashboardUtils.js',
+    '../ConciergeBannerAndNav.jsx',
+    '../ConciergeEmotionAlertsView.jsx',
+    '../ConciergeLiveCallAndRecordingsView.jsx',
+    '../ConciergeTaxiView.jsx',
+    '../ConciergeFeedbackView.jsx',
+    '../ConciergeModals.jsx',
+  ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
 
   const paginationPath = path.resolve(__dirname, '../../../components/common/Pagination.jsx');
   const paginationContent = fs.readFileSync(paginationPath, 'utf8');
 
-  const kitchenMenuPath = path.resolve(__dirname, '../../staff/KitchenMenuManagementPage.jsx');
-  const kitchenMenuContent = fs.readFileSync(kitchenMenuPath, 'utf8');
+  const kitchenMenuContent = [
+    '../../staff/KitchenMenuManagementPage.jsx',
+    '../../staff/kitchenMenuUtils.js',
+    '../../staff/KitchenMenuHeaderAndToolbar.jsx',
+    '../../staff/KitchenMenuTabsView.jsx',
+    '../../staff/KitchenMenuCrudModals.jsx',
+    '../../staff/KitchenMenuAssignAndConfirmModals.jsx',
+  ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
 
   const roomServiceMenuPath = path.resolve(__dirname, '../../staff/RoomServiceMenuManagementPage.jsx');
   const roomServiceMenuContent = fs.readFileSync(roomServiceMenuPath, 'utf8');

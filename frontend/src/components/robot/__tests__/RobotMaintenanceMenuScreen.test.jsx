@@ -63,8 +63,13 @@ describe('RobotMaintenanceMenuScreen Component & Contract Tests', () => {
     const sourceCode = RobotMaintenanceMenuScreen.toString();
     expect(sourceCode).toContain('onRoomChange');
 
-    const pagePath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
-    const pageContent = fs.readFileSync(pagePath, 'utf8');
+    const robotDir = path.resolve(__dirname, '../../../pages/robot');
+    const pageContent = fs
+      .readdirSync(robotDir)
+      .filter((f) => /\.(js|jsx)$/.test(f))
+      .sort()
+      .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
+      .join('\n');
 
     // RobotMaintenanceMenuScreen invocation preserves room session
     expect(pageContent).toContain('onPinVerifiedSuccess={(room) => {');

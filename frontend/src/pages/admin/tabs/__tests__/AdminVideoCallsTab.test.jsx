@@ -9,7 +9,11 @@ const __dirname = path.dirname(__filename);
 
 describe('AdminVideoCallsTab (WF-04 Call Monitoring & Video Tab)', () => {
   const componentPath = path.resolve(__dirname, '../AdminVideoCallsTab.jsx');
-  const componentContent = fs.readFileSync(componentPath, 'utf8');
+  const partsPath = path.resolve(__dirname, '../AdminVideoCallsParts.jsx');
+  const componentContent = [
+    fs.readFileSync(componentPath, 'utf8'),
+    fs.readFileSync(partsPath, 'utf8'),
+  ].join('\n');
 
   it('exports AdminVideoCallsTab as a functional component', () => {
     expect(typeof AdminVideoCallsTab).toBe('function');

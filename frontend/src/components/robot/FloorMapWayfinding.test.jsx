@@ -119,7 +119,14 @@ describe('FloorMap Wayfinding Logic & Contract Tests', () => {
 
     const path = await import('path');
 
-    const code = fs.readFileSync(path.resolve('src/components/robot/FloorMap.jsx'), 'utf8');
+    const code = [
+      'src/components/robot/FloorMap.jsx',
+      'src/components/robot/floorMapGroundDestinations.js',
+      'src/components/robot/floorMapRoomDestinations.js',
+      'src/components/robot/floorMapWayfindingUtils.js',
+      'src/components/robot/FloorMapHeaderBar.jsx',
+      'src/components/robot/FloorMapContentViews.jsx',
+    ].map((rel) => fs.readFileSync(path.resolve(rel), 'utf8')).join('\n');
 
 
 

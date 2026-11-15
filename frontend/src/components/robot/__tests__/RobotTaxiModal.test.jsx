@@ -155,8 +155,13 @@ describe('RobotTaxiModal Component & Logic Tests', () => {
   });
 
   it('kiểm tra tính toàn vẹn tích hợp luồng taxi trong RobotScreenPage.jsx', () => {
-    const robotScreenPath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
-    const sourceCode = fs.readFileSync(robotScreenPath, 'utf-8');
+    const robotDir = path.resolve(__dirname, '../../../pages/robot');
+    const sourceCode = fs
+      .readdirSync(robotDir)
+      .filter((f) => /\.(js|jsx)$/.test(f))
+      .sort()
+      .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf-8'))
+      .join('\n');
 
     // Phải có hàm handleTriggerTaxiBooking
     expect(sourceCode).toContain('handleTriggerTaxiBooking');
@@ -182,8 +187,13 @@ describe('RobotTaxiModal Component & Logic Tests', () => {
     expect(sourceCode).toContain('onClose={handleCloseTaxiModal}');
 
     // Giao diện RobotTaxiModal không hiển thị "(Nói hoặc bấm chọn)" và không hiển thị mục "3. Số khách"
-    const modalPath = path.resolve(__dirname, '../RobotTaxiModal.jsx');
-    const modalSource = fs.readFileSync(modalPath, 'utf-8');
+    const modalSource = [
+      '../RobotTaxiModal.jsx',
+      '../robotTaxiUtils.js',
+      '../RobotTaxiViews.jsx',
+    ]
+      .map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf-8'))
+      .join('\n');
     expect(modalSource).not.toContain('(Nói hoặc bấm chọn)');
     expect(modalSource).not.toContain('3. Số khách');
   });

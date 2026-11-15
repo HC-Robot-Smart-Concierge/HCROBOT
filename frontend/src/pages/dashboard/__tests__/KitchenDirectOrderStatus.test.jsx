@@ -10,16 +10,29 @@ const __dirname = path.dirname(__filename);
 
 describe('Kitchen Direct Order Status & Guest Contact Workflow Tests', () => {
   const kitchenPath = path.resolve(__dirname, '../KitchenDashboard.jsx');
-  const kitchenContent = fs.readFileSync(kitchenPath, 'utf8');
+  const kitchenPartsPath = path.resolve(__dirname, '../KitchenDashboardParts.jsx');
+  const kitchenContent = [kitchenPath, kitchenPartsPath].map((p) => fs.readFileSync(p, 'utf8')).join('\n');
 
   const roomServicePath = path.resolve(__dirname, '../RoomServiceDashboard.jsx');
   const roomServiceContent = fs.readFileSync(roomServicePath, 'utf8');
 
-  const robotFoodMenuPath = path.resolve(__dirname, '../../../components/robot/RobotFoodMenuScreen.jsx');
-  const robotFoodMenuContent = fs.readFileSync(robotFoodMenuPath, 'utf8');
+  const robotFoodMenuContent = [
+    '../../../components/robot/RobotFoodMenuScreen.jsx',
+    '../../../components/robot/robotFoodMenuCatalog.js',
+    '../../../components/robot/robotFoodMenuDataPart1.js',
+    '../../../components/robot/robotFoodMenuDataPart2.js',
+    '../../../components/robot/useRobotFoodMenuLogic.js',
+    '../../../components/robot/RobotFoodMenuMainView.jsx',
+    '../../../components/robot/RobotFoodMenuModals.jsx',
+  ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
 
-  const robotServicePath = path.resolve(__dirname, '../../../components/robot/RobotRoomServiceScreen.jsx');
-  const robotServiceContent = fs.readFileSync(robotServicePath, 'utf8');
+  const robotServiceContent = [
+    '../../../components/robot/RobotRoomServiceScreen.jsx',
+    '../../../components/robot/robotRoomServiceCatalog.jsx',
+    '../../../components/robot/RobotRoomServiceMainView.jsx',
+    '../../../components/robot/RobotRoomServiceReviewAndPinModals.jsx',
+    '../../../components/robot/RobotRoomServiceSuccessAndStatusModals.jsx',
+  ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
 
   it('exports KitchenDashboard and RoomServiceDashboard as functional components', () => {
     expect(typeof KitchenDashboard).toBe('function');
@@ -121,10 +134,14 @@ describe('Kitchen Direct Order Status & Guest Contact Workflow Tests', () => {
       path.resolve(__dirname, '../../../components/dashboard/RoomServiceFrame.jsx'),
       'utf8'
     );
-    const kitchenMenuContent = fs.readFileSync(
-      path.resolve(__dirname, '../../staff/KitchenMenuManagementPage.jsx'),
-      'utf8'
-    );
+    const kitchenMenuContent = [
+      '../../staff/KitchenMenuManagementPage.jsx',
+      '../../staff/kitchenMenuUtils.js',
+      '../../staff/KitchenMenuHeaderAndToolbar.jsx',
+      '../../staff/KitchenMenuTabsView.jsx',
+      '../../staff/KitchenMenuCrudModals.jsx',
+      '../../staff/KitchenMenuAssignAndConfirmModals.jsx',
+    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
 
     expect(staffLayoutContent).toMatch(/usesAdminStylePortal[\s\S]*'kitchen'/);
     expect(frameContent).toContain("brand: 'KITCHEN PORTAL'");

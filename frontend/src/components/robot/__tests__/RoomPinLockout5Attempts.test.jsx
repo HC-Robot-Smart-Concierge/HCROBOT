@@ -77,8 +77,12 @@ describe('RoomPinModal 5-Attempt Failure Limit & 1-Minute Lockout Tests', () => 
   });
 
   it('verifies RoomPinModal code disables numpad and displays lockout badge during cooldown', () => {
-    const filePath = path.resolve(__dirname, '../RoomPinModal.jsx');
-    const content = fs.readFileSync(filePath, 'utf8');
+    const content = [
+      '../RoomPinModal.jsx',
+      '../roomPinLockoutUtils.js',
+      '../useRoomPinNfc.js',
+      '../RoomPinViews.jsx',
+    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
 
     expect(content).toContain('lockoutRemaining > 0');
     expect(content).toContain('PIN_LOCKOUT_MAX_ATTEMPTS');
@@ -109,6 +113,9 @@ describe('RoomPinModal 5-Attempt Failure Limit & 1-Minute Lockout Tests', () => 
   it('ensures no emojis exist in modified files', () => {
     const files = [
       path.resolve(__dirname, '../RoomPinModal.jsx'),
+      path.resolve(__dirname, '../roomPinLockoutUtils.js'),
+      path.resolve(__dirname, '../useRoomPinNfc.js'),
+      path.resolve(__dirname, '../RoomPinViews.jsx'),
       path.resolve(__dirname, '../../../services/operationsApi.js'),
       path.resolve(__dirname, '../../../../../backend/app/api/v1/endpoints/operations/reception.py'),
     ];

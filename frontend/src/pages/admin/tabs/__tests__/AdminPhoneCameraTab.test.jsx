@@ -75,6 +75,6 @@ describe('AdminPhoneCameraTab Component & Minimal Expression Anchors & Rotation'
 
     expect(sourceCode).toContain('compoundDistress');
     expect(sourceCode).toContain('consecutiveUnhappyFramesRef');
-    expect(sourceCode).toContain('consecutiveUnhappyFramesRef.current >= 6');
+    expect(sourceCode).toContain('consecutiveUnhappyFramesRef.current >= 3');
   });
 });

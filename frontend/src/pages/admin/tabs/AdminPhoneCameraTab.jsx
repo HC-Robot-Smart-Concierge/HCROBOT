@@ -395,7 +395,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             const smile = (sLeft + sRight) / 2;
             const browDown = (bDownL + bDownR) / 2;
             const mouthFrown = (mFrownL + mFrownR) / 2;
-            const compoundDistress = browDown * 0.6 + mouthFrown * 0.4;
+            const compoundDistress = browDown * 0.7 + mouthFrown * 0.3;
             const frown = Math.max(browDown, mouthFrown);
             setSmileScore(smile);
             setFrownScore(frown);
@@ -415,15 +415,18 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             let candidate = 'neutral';
             if (smile >= 0.35) {
               candidate = 'happy';
-            } else if ((compoundDistress >= 0.38 || (browDown >= 0.45 && mouthFrown >= 0.18)) && smile < 0.15) {
+            } else if (
+              (browDown >= 0.30 || mouthFrown >= 0.22 || compoundDistress >= 0.26 || (browDown >= 0.25 && mouthFrown >= 0.12)) &&
+              smile < 0.18
+            ) {
               candidate = 'unhappy';
             }
 
             // 2. Bo loc xac nhan theo thoi gian (Temporal Confirmation Filter):
-            // O toc do 200ms/frame, khach phai duy tri net mat kho chiu >= 6 frames (~1.2s) moi xac nhan Unhappy
+            // O toc do 200ms/frame, duy tri lien tuc >= 3 frames (~600ms) giup phan hoi nhanh ma van loai bo chop mat
             if (candidate === 'unhappy') {
               consecutiveUnhappyFramesRef.current += 1;
-              if (consecutiveUnhappyFramesRef.current >= 6) {
+              if (consecutiveUnhappyFramesRef.current >= 3) {
                 currentDetected = 'unhappy';
               } else {
                 currentDetected = 'neutral';

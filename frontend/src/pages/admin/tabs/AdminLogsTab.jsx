@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { RotateCw } from 'lucide-react';
+import { RotateCw, MessageSquare, Bot, User, X } from 'lucide-react';
 import { Pagination } from '../../../components/common/Pagination';
 import { useLanguage } from '../../../context/LanguageContext';
 import {
@@ -9,14 +9,23 @@ import {
   fetchAuditLogs,
   getLogExportUrl,
 } from '../../../services/logsApi';
+import {
+  fetchChatSessions,
+  fetchSessionMessages,
+} from '../../../services/aiApi';
 
-export const AdminLogsTab = () => {
+export const AdminLogsTab = ({ subTabProp, onSelectSubTab }) => {
   const { t, language } = useLanguage();
-  const [activeView, setActiveView] = useState('operational'); // 'operational' | 'audit'
+  const [activeView, setActiveView] = useState(subTabProp || 'operational'); // 'operational' | 'audit' | 'conversations'
   const [logs, setLogs] = useState([]);
   const [totalLogs, setTotalLogs] = useState(0);
   const [auditLogs, setAuditLogs] = useState([]);
   const [totalAudit, setTotalAudit] = useState(0);
+  const [chatSessions, setChatSessions] = useState([]);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [activeChatSession, setActiveChatSession] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [isChatMessagesLoading, setIsChatMessagesLoading] = useState(false);
 
   const [statistics, setStatistics] = useState({
     total: 0,
@@ -194,6 +203,21 @@ export const AdminLogsTab = () => {
               .replace(/token:[a-zA-Z0-9_\-\.]+/gi, '***');
   };
 
+  useEffect(() => {
+    if (subTabProp && subTabProp !== activeView) {
+      setActiveView(subTabProp);
+      setCurrentPage(1);
+    }
+  }, [subTabProp]);
+
+  const switchView = (view) => {
+    setActiveView(view);
+    setCurrentPage(1);
+    if (onSelectSubTab) {
+      onSelectSubTab(view);
+    }
+  };
+
   const loadLogsData = async () => {
     if (activeView === 'operational') {
       try {
@@ -212,7 +236,7 @@ export const AdminLogsTab = () => {
       } catch {
         // Fallback
       }
-    } else {
+    } else if (activeView === 'audit') {
       try {
         const res = await fetchAuditLogs({
           page: currentPage,
@@ -221,6 +245,15 @@ export const AdminLogsTab = () => {
         if (res && res.status === 'success') {
           setAuditLogs(res.items || []);
           setTotalAudit(res.total || 0);
+        }
+      } catch {
+        // Fallback
+      }
+    } else if (activeView === 'conversations') {
+      try {
+        const res = await fetchChatSessions();
+        if (Array.isArray(res)) {
+          setChatSessions(res);
         }
       } catch {
         // Fallback
@@ -312,6 +345,36 @@ export const AdminLogsTab = () => {
     }
   };
 
+  const handleOpenChatTranscript = async (session) => {
+    if (!session?.id) return;
+    setActiveChatSession(session);
+    setChatMessages([]);
+    setIsChatMessagesLoading(true);
+    try {
+      const msgs = await fetchSessionMessages(session.id);
+      setChatMessages(Array.isArray(msgs) ? msgs : []);
+    } catch {
+      showToast(language === 'EN' ? 'Failed to load AI chat transcript.' : 'Lỗi tải chi tiết hội thoại AI.');
+    } finally {
+      setIsChatMessagesLoading(false);
+    }
+  };
+
+  const filteredChatSessions = useMemo(() => {
+    const q = chatSearchQuery.trim().toLowerCase();
+    if (!q) return chatSessions;
+    return chatSessions.filter((s) =>
+      String(s.id || '').toLowerCase().includes(q) ||
+      String(s.room_number || '').toLowerCase().includes(q) ||
+      String(s.guest_name || '').toLowerCase().includes(q)
+    );
+  }, [chatSessions, chatSearchQuery]);
+
+  const paginatedChatSessions = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredChatSessions.slice(start, start + pageSize);
+  }, [filteredChatSessions, currentPage, pageSize]);
+
   const formatTimestamp = (ts) => {
     if (!ts) return '--:--:--';
     try {
@@ -377,21 +440,28 @@ export const AdminLogsTab = () => {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* Toggle Operational vs Audit */}
+          {/* Toggle Operational vs Audit vs AI Chat History */}
           <div className="flex rounded-lg border p-0.5" style={{ borderColor: '#BFBFBD', backgroundColor: '#E9E5DC' }}>
             <button
-              onClick={() => { setActiveView('operational'); setCurrentPage(1); }}
+              onClick={() => switchView('operational')}
               className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'operational' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
                 }`}
             >
               {t('logsTabOperational')}
             </button>
             <button
-              onClick={() => { setActiveView('audit'); setCurrentPage(1); }}
+              onClick={() => switchView('audit')}
               className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'audit' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
                 }`}
             >
               {t('logsTabAudit')}
+            </button>
+            <button
+              onClick={() => switchView('conversations')}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'conversations' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
+                }`}
+            >
+              {t('logsTabAiChat')}
             </button>
           </div>
 
@@ -672,7 +742,7 @@ export const AdminLogsTab = () => {
             />
           </div>
         </>
-      ) : (
+      ) : activeView === 'audit' ? (
         /* AUDIT TRAIL VIEW */
         <div
           className="rounded-xl border overflow-hidden shadow-none"
@@ -743,6 +813,141 @@ export const AdminLogsTab = () => {
             className="border-t px-3 py-2"
           />
         </div>
+      ) : (
+        /* AI CHAT HISTORY VIEW */
+        <>
+          <div
+            className="p-2.5 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-2.5"
+            style={{
+              backgroundColor: '#E9E5DC',
+              borderColor: '#BFBFBD',
+            }}
+          >
+            <input
+              type="text"
+              value={chatSearchQuery}
+              onChange={(e) => { setChatSearchQuery(e.target.value); setCurrentPage(1); }}
+              placeholder={t('logsChatSearchPlaceholder')}
+              className="w-full sm:w-80 px-3 py-1.5 rounded-lg text-xs font-normal border focus:outline-none"
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderColor: '#BFBFBD',
+                color: '#262626',
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={handleManualRefresh}
+              disabled={isLoading}
+              title={t('logsRefreshTooltip')}
+              className="px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-all hover:bg-[#F2EFE9] active:scale-95 flex items-center gap-1.5 shrink-0"
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderColor: '#BFBFBD',
+                color: '#262626',
+              }}
+            >
+              <RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              <span>{t('logsRefreshTooltip')}</span>
+            </button>
+          </div>
+
+          <div
+            className="rounded-xl border overflow-hidden shadow-none"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+            }}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr
+                    className="border-b text-[11px] font-semibold uppercase tracking-wider"
+                    style={{
+                      backgroundColor: '#E9E5DC',
+                      borderColor: '#BFBFBD',
+                      color: '#262626',
+                    }}
+                  >
+                    <th className="py-2 px-3 w-40">{t('logsChatColUpdated')}</th>
+                    <th className="py-2 px-3">{t('logsChatColSession')}</th>
+                    <th className="py-2 px-3 w-48">{t('logsChatColRoom')}</th>
+                    <th className="py-2 px-3 w-36 text-center">{t('logsChatColStatus')}</th>
+                    <th className="py-2 px-3 w-40 text-right">{t('logsColAction')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
+                  {isLoading && chatSessions.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
+                        {t('logsChatLoading')}
+                      </td>
+                    </tr>
+                  ) : paginatedChatSessions.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
+                        {t('logsChatEmpty')}
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedChatSessions.map((session) => (
+                      <tr key={session.id} className="hover:bg-[#F2EFE9]/50 transition-colors">
+                        <td className="py-2 px-3 font-mono text-[11px]" style={{ color: '#8C8C8C' }}>
+                          {formatTimestamp(session.updated_at || session.created_at)}
+                        </td>
+                        <td className="py-2 px-3 font-mono text-[11px] font-semibold" style={{ color: '#262626' }}>
+                          {session.id}
+                        </td>
+                        <td className="py-2 px-3 text-[11px] font-medium" style={{ color: '#262626' }}>
+                          {session.room_number
+                            ? `${language === 'EN' ? 'Room' : 'Phòng'} ${session.room_number}`
+                            : t('logsChatLobbyGuest')}
+                          {session.guest_name ? ` • ${session.guest_name}` : ''}
+                        </td>
+                        <td className="py-2 px-3 text-center">
+                          <span
+                            className="px-2 py-0.5 rounded text-[10px] font-semibold border"
+                            style={
+                              session.is_active
+                                ? { backgroundColor: '#262626', color: '#F2EFE9', borderColor: '#262626' }
+                                : { backgroundColor: '#FFFFFF', color: '#8C8C8C', borderColor: '#BFBFBD' }
+                            }
+                          >
+                            {session.is_active ? t('logsChatStatusActive') : t('logsChatStatusEnded')}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          <button
+                            onClick={() => handleOpenChatTranscript(session)}
+                            className="text-[11px] font-bold px-2.5 py-1 rounded border cursor-pointer hover:bg-stone-200 inline-flex items-center gap-1"
+                            style={{
+                              backgroundColor: '#E9E5DC',
+                              borderColor: '#BFBFBD',
+                              color: '#262626',
+                            }}
+                          >
+                            <MessageSquare className="w-3 h-3" />
+                            <span>{t('logsChatActionTranscript')}</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              currentPage={currentPage}
+              totalItems={filteredChatSessions.length}
+              pageSize={pageSize}
+              onPageChange={handlePageChange}
+              className="border-t px-3 py-2"
+            />
+          </div>
+        </>
       )}
       </div>
 
@@ -907,6 +1112,101 @@ export const AdminLogsTab = () => {
               <button
                 onClick={() => setActiveTrace(null)}
                 className="px-4 py-2 rounded-xl text-xs font-bold bg-stone-900 text-white cursor-pointer"
+              >
+                {t('logsDetailClose')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: AI CHAT TRANSCRIPT */}
+      {activeChatSession && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div
+            className="max-w-2xl w-full p-5 rounded-2xl border shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+          >
+            <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#BFBFBD' }}>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold flex items-center gap-2" style={{ color: '#262626' }}>
+                  <MessageSquare className="w-4 h-4 shrink-0" />
+                  <span>{t('logsChatModalTitle')}</span>
+                </h3>
+                <p className="text-[11px] font-mono truncate mt-0.5" style={{ color: '#8C8C8C' }}>
+                  {activeChatSession.id}
+                  {activeChatSession.room_number
+                    ? ` • ${language === 'EN' ? 'Room' : 'Phòng'} ${activeChatSession.room_number}`
+                    : ` • ${t('logsChatLobbyGuest')}`}
+                  {activeChatSession.guest_name ? ` • ${activeChatSession.guest_name}` : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveChatSession(null)}
+                className="w-7 h-7 rounded-full flex items-center justify-center cursor-pointer transition-colors hover:bg-stone-200"
+                style={{ backgroundColor: '#E9E5DC', color: '#262626' }}
+                aria-label={t('logsDetailClose')}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2.5 pr-1 text-xs">
+              {isChatMessagesLoading ? (
+                <div className="py-10 text-center" style={{ color: '#8C8C8C' }}>{t('logsChatLoading')}</div>
+              ) : chatMessages.length === 0 ? (
+                <div className="py-10 text-center" style={{ color: '#8C8C8C' }}>{t('logsChatModalEmpty')}</div>
+              ) : (
+                chatMessages.map((msg, idx) => {
+                  const isGuest = msg.sender === 'user';
+                  return (
+                    <div
+                      key={msg.id || idx}
+                      className="p-3 rounded-xl border space-y-1.5"
+                      style={{
+                        backgroundColor: isGuest ? '#F2EFE9' : '#FFFFFF',
+                        borderColor: '#BFBFBD',
+                      }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 font-bold text-[11px]" style={{ color: '#262626' }}>
+                          {isGuest ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
+                          <span>{isGuest ? t('logsChatRoleGuest') : t('logsChatRoleAi')}</span>
+                          {msg.language && (
+                            <span
+                              className="px-1.5 py-0.2 rounded border text-[9px] font-mono font-semibold"
+                              style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+                            >
+                              {msg.language}
+                            </span>
+                          )}
+                          {msg.intent_action && (
+                            <span
+                              className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold"
+                              style={{ backgroundColor: '#262626', color: '#F2EFE9' }}
+                            >
+                              {msg.intent_action}
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-mono text-[10px]" style={{ color: '#8C8C8C' }}>
+                          {formatTimestamp(msg.created_at)}
+                        </span>
+                      </div>
+                      <div className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: '#262626' }}>
+                        {msg.text}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t" style={{ borderColor: '#BFBFBD' }}>
+              <button
+                onClick={() => setActiveChatSession(null)}
+                className="px-4 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer"
+                style={{ backgroundColor: '#262626', borderColor: '#262626', color: '#F2EFE9' }}
               >
                 {t('logsDetailClose')}
               </button>

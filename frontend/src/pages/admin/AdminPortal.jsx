@@ -19,7 +19,7 @@ import {
   deleteNotification,
 } from '../../services/operationsApi';
 
-export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () => {} }) => {
+export const AdminPortal = ({ currentUser, onLogout = () => { }, onNotify = () => { } }) => {
   const { language, t } = useLanguage();
   const getInitialTab = () => {
     try {
@@ -55,6 +55,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   const [robotSubTab, setRobotSubTab] = useState('lidar');
   const [manageRobotSubTab, setManageRobotSubTab] = useState('robot_profile');
   const [knowledgeSubTab, setKnowledgeSubTab] = useState('sources');
+  const [logsSubTab, setLogsSubTab] = useState('operational');
 
   // Real-time Notifications Center State
   const [notifications, setNotifications] = useState([]);
@@ -99,7 +100,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             setNotifications((prev) => [newNotif, ...prev.filter((n) => n.id !== newNotif.id)]);
             onNotify(`🔔 [${newNotif.department || 'Admin'}] ${newNotif.title}`);
           }
-        } catch {}
+        } catch { }
       };
 
       ws.onerror = () => {
@@ -130,7 +131,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       setNotifications((prev) =>
         prev.map((n) => (n.id === notifId ? { ...n, is_read: !n.is_read } : n))
       );
-    } catch {}
+    } catch { }
   };
 
   const handleMarkAllRead = async () => {
@@ -138,14 +139,14 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       await markAllNotificationsRead('All');
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
       onNotify(t('adminMarkAllReadNotice'));
-    } catch {}
+    } catch { }
   };
 
   const handleDeleteNotif = async (notifId) => {
     try {
       await deleteNotification(notifId);
       setNotifications((prev) => prev.filter((n) => n.id !== notifId));
-    } catch {}
+    } catch { }
   };
 
   const handleSelectTab = (tabId) => {
@@ -155,7 +156,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       params.set('tab', tabId);
       params.delete('page');
       window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -164,23 +165,23 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         const params = new URLSearchParams(window.location.search);
         const tab = params.get('tab');
         if (tab) setActiveMenu(tab);
-      } catch {}
+      } catch { }
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
   const menuItems = [
-    { id: 'Dashboard',     label: t('adminDashboard') },
-    { id: 'Operations',    label: t('adminOperations') },
+    { id: 'Dashboard', label: t('adminDashboard') },
+    { id: 'Operations', label: t('adminOperations') },
     { id: 'Robot Control', label: t('adminRobotControl') },
-    { id: 'Manage Robot',  label: t('adminManageRobot') },
-    { id: 'Knowledge',     label: t('adminKnowledge') },
-    { id: 'Advertisements',label: t('adminAdvertisements') },
-    { id: 'Department',    label: t('adminDepartment') },
-    { id: 'Video Calls',   label: 'Video Calls' },
-    { id: 'Account',       label: t('adminAccount') },
-    { id: 'Logs',          label: t('adminLogs') },
+    { id: 'Manage Robot', label: t('adminManageRobot') },
+    { id: 'Knowledge', label: t('adminKnowledge') },
+    { id: 'Advertisements', label: t('adminAdvertisements') },
+    { id: 'Department', label: t('adminDepartment') },
+    { id: 'Video Calls', label: 'Video Calls' },
+    { id: 'Account', label: t('adminAccount') },
+    { id: 'Logs', label: t('adminLogs') },
   ];
 
   return (
@@ -194,19 +195,19 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         <div>
           <div className="px-3 border-b flex items-center gap-2 shrink-0" style={{ height: 'var(--admin-header-height)', borderColor: 'var(--admin-header-border)' }}>
             {!isSidebarCollapsed && <>
-            <img
-              src="/hc-robot-logo.png"
-              alt="HC-Robot Logo"
-              className="w-8 h-8 object-contain shrink-0 drop-shadow-xs"
-            />
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-black tracking-tight truncate" style={{ color: '#262626' }}>
-                HC-ROBOT
+              <img
+                src="/hc-robot-logo.png"
+                alt="HC-Robot Logo"
+                className="w-8 h-8 object-contain shrink-0 drop-shadow-xs"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-black tracking-tight truncate" style={{ color: '#262626' }}>
+                  HC-ROBOT
+                </div>
+                <div className="text-[10px] font-semibold tracking-widest truncate" style={{ color: '#8C8C8C' }}>
+                  {t('adminBrandSubtitle')}
+                </div>
               </div>
-              <div className="text-[10px] font-semibold tracking-widest truncate" style={{ color: '#8C8C8C' }}>
-                {t('adminBrandSubtitle')}
-              </div>
-            </div>
             </>}
             <button
               type="button"
@@ -363,6 +364,42 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                       </button>
                     </div>
                   )}
+
+                  {/* Logs sub-items */}
+                  {item.id === 'Logs' && activeMenu === 'Logs' && (
+                    <div className="ml-3 pl-3 border-l my-0.5 space-y-0.5" style={{ borderColor: '#262626' }}>
+                      <button
+                        onClick={() => setLogsSubTab('operational')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: logsSubTab === 'operational' ? '#262626' : 'transparent',
+                          color: logsSubTab === 'operational' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('logsTabOperational')}
+                      </button>
+                      <button
+                        onClick={() => setLogsSubTab('audit')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: logsSubTab === 'audit' ? '#262626' : 'transparent',
+                          color: logsSubTab === 'audit' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('logsTabAudit')}
+                      </button>
+                      <button
+                        onClick={() => setLogsSubTab('conversations')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: logsSubTab === 'conversations' ? '#262626' : 'transparent',
+                          color: logsSubTab === 'conversations' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('logsTabAiChat')}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -498,9 +535,8 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                   notifications.map((item) => (
                     <div
                       key={item.id}
-                      className={`p-3 transition-colors flex items-start justify-between gap-2 ${
-                        item.is_read ? 'bg-white opacity-70' : 'bg-[#E9E5DC]/30 font-medium'
-                      }`}
+                      className={`p-3 transition-colors flex items-start justify-between gap-2 ${item.is_read ? 'bg-white opacity-70' : 'bg-[#E9E5DC]/30 font-medium'
+                        }`}
                     >
                       <div
                         onClick={() => handleToggleRead(item.id)}
@@ -599,7 +635,11 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           )}
 
           {activeMenu === 'Logs' && (
-            <AdminLogsTab currentUser={currentUser} />
+            <AdminLogsTab
+              currentUser={currentUser}
+              subTabProp={logsSubTab}
+              onSelectSubTab={setLogsSubTab}
+            />
           )}
 
           {(activeMenu === 'Advertisements' || activeMenu === 'Hotel Content') && (

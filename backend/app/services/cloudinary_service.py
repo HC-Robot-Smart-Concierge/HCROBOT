@@ -102,6 +102,80 @@ class CloudinaryService:
         # Fallback lưu trữ local để đảm bảo hệ thống không bao giờ bị lỗi gián đoạn
         return await self._save_locally(file_bytes, filename, duration)
 
+    async def list_video_recordings(
+        self,
+        folder: Optional[str] = None,
+        max_results: int = 100,
+    ) -> list[Dict[str, Any]]:
+        """
+        Lấy danh sách các video recording đã lưu trên Cloudinary trong folder quy định (Hướng 1).
+        Trả về: list[dict] gồm: public_id, secure_url, duration, created_at, format, filename
+        """
+        if not self._is_configured:
+            logger.warning("CloudinaryService: Chưa cấu hình Cloudinary nên không thể list resources.")
+            return []
+
+        import asyncio
+        target_folder = folder or settings.CLOUDINARY_FOLDER or "hcrobot/call_recordings"
+
+        def _do_list():
+            import cloudinary.api
+            try:
+                # 1. Quét video theo target_folder (ví dụ hcrobot/call_recordings)
+                res = cloudinary.api.resources(
+                    resource_type="video",
+                    type="upload",
+                    prefix=target_folder,
+                    max_results=max_results,
+                )
+                items = res.get("resources", [])
+
+                # 2. Quét thêm toàn bộ video trên Cloudinary để không bỏ sót các video cũ trước đây
+                try:
+                    res_all = cloudinary.api.resources(
+                        resource_type="video",
+                        type="upload",
+                        max_results=max_results,
+                    )
+                    all_items = res_all.get("resources", [])
+                    existing_pub_ids = {it.get("public_id") for it in items}
+                    for it in all_items:
+                        if it.get("public_id") not in existing_pub_ids:
+                            items.append(it)
+                except Exception as ex_all:
+                    logger.debug(f"CloudinaryService: scan all videos fallback note: {ex_all}")
+
+                result = []
+                for item in items:
+                    pub_id = item.get("public_id", "")
+                    sec_url = item.get("secure_url", "")
+                    file_bytes_len = int(item.get("bytes") or 0)
+                    # Loại bỏ video mẫu mặc định của Cloudinary, video quảng cáo và file lỗi rỗng (< 1KB)
+                    if (
+                        not pub_id
+                        or pub_id.startswith("samples/")
+                        or "/advertisements/" in pub_id
+                        or pub_id.startswith("advertisements/")
+                        or (0 < file_bytes_len < 1024)
+                    ):
+                        continue
+                    base_name = pub_id.split("/")[-1] if "/" in pub_id else pub_id
+                    result.append({
+                        "public_id": pub_id,
+                        "secure_url": sec_url,
+                        "duration": int(item.get("duration") or 0),
+                        "created_at": item.get("created_at"),
+                        "format": item.get("format"),
+                        "bytes": file_bytes_len,
+                        "filename": base_name,
+                    })
+                return result
+            except Exception as e:
+                logger.error(f"CloudinaryService: Lỗi list_video_recordings: {e}")
+                return []
+
+        return await asyncio.to_thread(_do_list)
+
     async def _save_locally(self, file_bytes: bytes, filename: str, duration: Optional[int] = None) -> Dict[str, Any]:
         """Lưu video ghi hình vào thư mục local ./uploaded_recordings."""
         import asyncio

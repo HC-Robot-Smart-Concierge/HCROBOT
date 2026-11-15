@@ -258,17 +258,31 @@ def transcribe_audio_wav_detailed(
                 full_text = " ".join(results).strip()
                 normalized_text = normalize_hotel_stt_transcript(full_text)
                 if normalized_text:
-                    det_lang = "vi" if str(info.language).lower().startswith("vi") else "en"
-                    prob = round(float(getattr(info, "language_probability", 0.85)), 3)
-                    logger.info(
-                        f"[STT Service - Whisper Auto] lang={det_lang} prob={prob} len={len(normalized_text)}"
-                    )
-                    return {
-                        "text": normalized_text,
-                        "detected_language": det_lang,
-                        "confidence": prob,
-                        "provider": "faster_whisper_auto",
-                    }
+                    # Kiểm tra nếu Whisper nhận diện sang chữ tượng hình ngoại lai (CJK) -> Bỏ qua kết quả hallucinate này để chuyển sang bộ chấm điểm song ngữ
+                    if re.search(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]', normalized_text):
+                        logger.warning(
+                            f"[STT Service - Whisper Auto] Rejected foreign script hallucination: '{normalized_text}'"
+                        )
+                    else:
+                        whisper_raw_lang = str(getattr(info, "language", "")).lower()
+                        if whisper_raw_lang.startswith("vi") or VI_DIACRITICS_RE.search(normalized_text):
+                            det_lang = "vi"
+                        elif whisper_raw_lang.startswith("en"):
+                            det_lang = "en"
+                        else:
+                            # Nếu whisper trả về mã ngôn ngữ khác (ja, zh, ko, es...), dùng bộ phân tích song ngữ theo từ vựng
+                            det_lang = "vi" if VI_ANCHOR_WORDS_RE.search(normalized_text) else "en"
+
+                        prob = round(float(getattr(info, "language_probability", 0.85)), 3)
+                        logger.info(
+                            f"[STT Service - Whisper Auto] lang={det_lang} prob={prob} len={len(normalized_text)}"
+                        )
+                        return {
+                            "text": normalized_text,
+                            "detected_language": det_lang,
+                            "confidence": prob,
+                            "provider": "faster_whisper_auto",
+                        }
         except Exception as e_wh:
             logger.warning(f"[STT Service - Whisper Auto] Error: {e_wh}")
 

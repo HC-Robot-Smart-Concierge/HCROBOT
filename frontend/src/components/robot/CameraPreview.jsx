@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
+import { X } from 'lucide-react';
 import {
   detectPerson,
   loadPersonDetector,
@@ -25,6 +26,7 @@ export const CameraPreview = ({
   defaultMinimized = true,
   visible = true,
   onClose,
+  externalStream = null,
 }) => {
   const isPi5 = source === 'pi5';
   // Guest-session updates change the handlers, but must not restart the camera.
@@ -41,6 +43,7 @@ export const CameraPreview = ({
 
   const isTriggeredRef = useRef(false);
   const negativeFramesRef = useRef(0);
+  const consecutiveUnhappyFramesRef = useRef(0);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isMinimized, setIsMinimized] = useState(defaultMinimized);
@@ -202,8 +205,18 @@ export const CameraPreview = ({
     }
   }, [isPi5, stream]);
 
-  // Tự động bật camera nếu autoStart = true, tắt camera giải phóng phần cứng khi autoStart = false
+  // Tự động sử dụng externalStream nếu được cung cấp từ hook useKioskStreamBroadcaster
   useEffect(() => {
+    if (externalStream) {
+      setStream(externalStream);
+      setIsCameraActive(true);
+    }
+  }, [externalStream]);
+
+  // Tự động bật camera nếu autoStart = true (chỉ khi không có externalStream)
+  useEffect(() => {
+    if (externalStream) return undefined;
+
     if (autoStart) {
       startCamera();
     } else {
@@ -211,11 +224,12 @@ export const CameraPreview = ({
     }
 
     return () => {
-      if (stream) {
+      // Chỉ cleanup stream do chính component tự tạo, không stop externalStream
+      if (!externalStream && stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [autoStart, startCamera, stopCamera]);
+  }, [autoStart, externalStream, startCamera, stopCamera]);
 
   // Gán stream cho các thẻ video và bắt buộc gọi play()
   useEffect(() => {
@@ -500,28 +514,54 @@ export const CameraPreview = ({
                 }
 
                 const smile = (sLeft + sRight) / 2;
-                const frown = Math.max((bDownL + bDownR) / 2, (mFrownL + mFrownR) / 2);
+                const browDown = (bDownL + bDownR) / 2;
+                const mouthFrown = (mFrownL + mFrownR) / 2;
+                // Diem kho chiu tong hop (Compound Distress): 70% tu chan may, 30% tu khoe mieng
+                const compoundDistress = browDown * 0.7 + mouthFrown * 0.3;
+                const frown = Math.max(browDown, mouthFrown);
                 setSmileScore(smile);
                 setFrownScore(frown);
 
-                let detected = 'neutral';
+                // 1. Danh gia ung vien bieu cam (Candidate Emotion):
+                // Khach duoc xem la unhapppy khi ha chan may (browDown >= 0.30), tre khoe mieng (mouthFrown >= 0.22),
+                // hoac phoi hop ca hai (compoundDistress >= 0.26 hoac browDown >= 0.25 va mouthFrown >= 0.12), va khong cuoi (smile < 0.18)
+                let candidate = 'neutral';
                 if (smile >= 0.35) {
-                  detected = 'happy';
-                } else if (frown >= 0.28) {
-                  detected = 'unhappy';
+                  candidate = 'happy';
+                } else if (
+                  (browDown >= 0.30 || mouthFrown >= 0.22 || compoundDistress >= 0.26 || (browDown >= 0.25 && mouthFrown >= 0.12)) &&
+                  smile < 0.18
+                ) {
+                  candidate = 'unhappy';
+                }
+
+                // 2. Bo loc xac nhan theo thoi gian (Temporal Confirmation Filter):
+                // O chu ky 500ms/frame, duy tri lien tuc >= 2 frames (~1.0s) de tranh bao sai do chop mat ma van bat nhay bieu cam
+                let confirmedEmotion = 'neutral';
+                if (candidate === 'unhappy') {
+                  consecutiveUnhappyFramesRef.current += 1;
+                  if (consecutiveUnhappyFramesRef.current >= 2) {
+                    confirmedEmotion = 'unhappy';
+                  } else {
+                    confirmedEmotion = 'neutral';
+                  }
+                } else {
+                  consecutiveUnhappyFramesRef.current = 0;
+                  confirmedEmotion = candidate;
                 }
 
                 setCurrentEmotion((prev) => {
-                  if (prev !== detected) {
-                    if (onEmotionChange) onEmotionChange(detected);
+                  if (prev !== confirmedEmotion) {
+                    if (onEmotionChange) onEmotionChange(confirmedEmotion);
                   }
-                  return detected;
+                  return confirmedEmotion;
                 });
               }
             } else {
               setIsFaceDetected(false);
               setSmileScore(0);
               setFrownScore(0);
+              consecutiveUnhappyFramesRef.current = 0;
             }
           } catch (mpErr) {
             // Lỗi đọc frame tạm thời
@@ -657,10 +697,10 @@ export const CameraPreview = ({
                     setIsMinimized(true);
                     onClose?.();
                   }}
-                  className="text-stone-400 hover:text-white p-1 rounded-md hover:bg-stone-800 text-xs leading-none transition-colors cursor-pointer"
+                  className="text-stone-400 hover:text-white p-1 rounded-md hover:bg-stone-800 transition-colors cursor-pointer flex items-center justify-center"
                   title="Đóng camera"
                 >
-                  ✕
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>

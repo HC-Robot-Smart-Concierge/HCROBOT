@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import hashlib
+import json
 import logging
 import os
 import re
@@ -26,7 +27,7 @@ class TTSService:
     with multi-tier Audio Caching (Memory + Disk) and structured error codes.
     """
 
-    def __init__(self):
+    def __init__(self, load_persisted: bool = True):
         self.default_vi_voice = "vi-VN-HoaiMyNeural"
         self.default_en_voice = "en-US-JennyNeural"
         self.current_rate: float = 1.0
@@ -43,6 +44,45 @@ class TTSService:
             os.makedirs(self._cache_dir, exist_ok=True)
         except Exception as e:
             logger.warning(f"[TTSService] Cannot create audio_cache dir: {e}")
+
+        # 3. Disk Config File: backend/data/ai_voice_config.json
+        self._config_file = os.path.join(current_dir, "..", "..", "..", "data", "ai_voice_config.json")
+        if load_persisted:
+            self._load_voice_config_from_disk()
+
+    def _load_voice_config_from_disk(self) -> None:
+        try:
+            if os.path.isfile(self._config_file):
+                with open(self._config_file, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                    if isinstance(saved, dict):
+                        if saved.get("vi_voice"):
+                            self.default_vi_voice = saved["vi_voice"]
+                        if saved.get("en_voice"):
+                            self.default_en_voice = saved["en_voice"]
+                        if saved.get("speech_rate") is not None:
+                            clamped = max(0.5, min(2.0, float(saved["speech_rate"])))
+                            self.current_rate = clamped
+                            self.current_rate_str = self.rate_float_to_percentage(clamped)
+                            settings.TTS_RATE = self.current_rate_str
+                        logger.info(f"[TTSService] Loaded voice settings from disk: vi_voice={self.default_vi_voice}, rate={self.current_rate}")
+        except Exception as e:
+            logger.warning(f"[TTSService] Failed to load voice config from disk: {e}")
+
+    def _save_voice_config_to_disk(self) -> None:
+        try:
+            os.makedirs(os.path.dirname(self._config_file), exist_ok=True)
+            payload = {
+                "vi_voice": self.default_vi_voice,
+                "en_voice": self.default_en_voice,
+                "speech_rate": self.current_rate,
+                "rate_percentage": self.current_rate_str,
+            }
+            with open(self._config_file, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            logger.info(f"[TTSService] Saved voice settings to disk: {self._config_file}")
+        except Exception as e:
+            logger.error(f"[TTSService] Failed to save voice config to disk: {e}")
 
     @staticmethod
     def clean_text_for_tts(text: str) -> str:
@@ -100,7 +140,16 @@ class TTSService:
             self.default_vi_voice = vi_voice
         if en_voice:
             self.default_en_voice = en_voice
+        self._save_voice_config_to_disk()
         logger.info(f"[TTSService] Cập nhật cấu hình giọng nói AI: rate={clamped_rate} ({rate_str}), vi_voice={self.default_vi_voice}")
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self.warm_up_common_phrases(vi_voice=self.default_vi_voice, en_voice=self.default_en_voice))
+        except Exception:
+            pass
+
         return self.get_voice_settings()
 
     @staticmethod
@@ -170,7 +219,7 @@ class TTSService:
         voice: Optional[str] = None,
         language: Optional[str] = None,
         rate: Optional[str] = None,
-        timeout: float = 6.0,
+        timeout: float = 3.5,
         allow_fallback: bool = True,
     ) -> Dict[str, Any]:
         """
@@ -389,8 +438,19 @@ class TTSService:
         last_err_detail = f"EdgeTTS returned 0 bytes for voice={voice}"
 
         for attempt in range(2):
+            # Attempt 0: Thu giong yeu cau (vi du: vi-VN-NamMinhNeural)
+            # Attempt 1: Neu attempt 0 loi (vi du NoAudioReceived tren Azure TTS), tu dong thu giong Neural con lai
+            current_voice = voice
+            if attempt == 1:
+                if "NamMinh" in voice:
+                    current_voice = "vi-VN-HoaiMyNeural"
+                    logger.info(f"[TTSService] EdgeTTS attempt 2: Switch fallback voice to {current_voice}")
+                elif "HoaiMy" in voice:
+                    current_voice = "vi-VN-NamMinhNeural"
+                    logger.info(f"[TTSService] EdgeTTS attempt 2: Switch fallback voice to {current_voice}")
+
             try:
-                communicate = _edge_tts.Communicate(clean_text, voice, rate=selected_rate)
+                communicate = _edge_tts.Communicate(clean_text, current_voice, rate=selected_rate)
                 audio_bytes = b""
                 async for chunk in communicate.stream():
                     if chunk.get("type") == "audio":
@@ -398,13 +458,13 @@ class TTSService:
                 if audio_bytes and len(audio_bytes) > 100:
                     return base64.b64encode(audio_bytes).decode("utf-8"), None, None
                 last_err_code = "TTS_AUDIO_EMPTY"
-                last_err_detail = f"EdgeTTS returned {len(audio_bytes)} bytes (voice={voice}, attempt={attempt + 1})"
+                last_err_detail = f"EdgeTTS returned {len(audio_bytes)} bytes (voice={current_voice}, attempt={attempt + 1})"
             except Exception as e:
                 last_err_code = "TTS_PROVIDER_ERROR"
-                last_err_detail = f"{type(e).__name__}: {e} (voice={voice}, attempt={attempt + 1})"
+                last_err_detail = f"{type(e).__name__}: {e} (voice={current_voice}, attempt={attempt + 1})"
                 logger.warning(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
             if attempt == 0:
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.1)
 
         return None, last_err_code, last_err_detail
 
@@ -416,7 +476,7 @@ class TTSService:
     async def _synthesize_google_tts(self, text: str, lang_short: str = "vi") -> Optional[str]:
         """
         Dự phòng tổng hợp âm thanh MP3 qua Google Translate TTS endpoint khi EdgeTTS bị nghẽn hoặc lỗi.
-        Chia nhỏ câu nếu dài quá 180 ký tự.
+        Chia nhỏ câu nếu dài quá 180 ký tự, giới hạn tối đa 2 đoạn để phản hồi dưới 0.6s.
         """
         clean = self.clean_text_for_tts(text)
         if not clean:
@@ -440,8 +500,8 @@ class TTSService:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        async with httpx.AsyncClient(timeout=3.0, headers=headers) as client:
-            for seg in segments[:4]:
+        async with httpx.AsyncClient(timeout=2.0, headers=headers) as client:
+            for seg in segments[:2]:
                 q = urllib.parse.quote(seg)
                 url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl={tl}&q={q}"
                 resp = await client.get(url)
@@ -559,44 +619,33 @@ class TTSService:
                 logger.error(f"[TTSService] OpenAI TTS API error {resp.status_code}: {resp.text}")
         return None
 
-    async def warm_up_common_phrases(self):
+    async def warm_up_common_phrases(self, vi_voice: Optional[str] = None, en_voice: Optional[str] = None):
         """Pre-cache câu đệm và câu chào phổ biến để phản hồi tức thì 0ms."""
+        target_vi = vi_voice or self.default_vi_voice
+        target_en = en_voice or self.default_en_voice
 
         common_phrases = [
-
-            ("Dạ đợi em một tí nhé ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
-
-            ("Please wait a moment.", "en-US", "en-US-JennyNeural"),
-
-            ("Dạ đợi em một tí ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
-
-            ("Rora cảm ơn quý khách! Quý khách chấm điểm dịch vụ giúp em nhé.", "vi-VN", "vi-VN-HoaiMyNeural"),
-
-            ("Rora cảm ơn quý khách! Chúc quý khách kỳ nghỉ tuyệt vời.", "vi-VN", "vi-VN-HoaiMyNeural"),
-
-            ("Rora xin ghi nhận ý kiến để hoàn thiện hơn. Cảm ơn quý khách.", "vi-VN", "vi-VN-HoaiMyNeural"),
-
-            ("Dạ đây là toàn bộ cơ sở vật chất và tiện ích 5 sao của khách sạn ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
-
-            ("Xin lỗi quý khách, không thể kết nối tới AI Server.", "vi-VN", "vi-VN-HoaiMyNeural"),
-
-            ("Xác thực phòng thành công! Đơn phục vụ đã được tạo.", "vi-VN", "vi-VN-HoaiMyNeural"),
-
-            ("Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
-
-            ("You can scan the QR code on the screen to save directions on your mobile phone.", "en-US", "en-US-JennyNeural"),
-
-            ("Dạ em đã hiểu ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
-
-            ("I understand.", "en-US", "en-US-JennyNeural"),
-
+            ("Dạ đợi em một tí nhé ạ.", "vi-VN", target_vi),
+            ("Please wait a moment.", "en-US", target_en),
+            ("Dạ đợi em một tí ạ.", "vi-VN", target_vi),
+            ("Rora cảm ơn quý khách! Quý khách chấm điểm dịch vụ giúp em nhé.", "vi-VN", target_vi),
+            ("Rora cảm ơn quý khách! Chúc quý khách kỳ nghỉ tuyệt vời.", "vi-VN", target_vi),
+            ("Rora xin ghi nhận ý kiến để hoàn thiện hơn. Cảm ơn quý khách.", "vi-VN", target_vi),
+            ("Dạ đây là toàn bộ cơ sở vật chất và tiện ích 5 sao của khách sạn ạ.", "vi-VN", target_vi),
+            ("Xin lỗi quý khách, không thể kết nối tới AI Server.", "vi-VN", target_vi),
+            ("Xác thực phòng thành công! Đơn phục vụ đã được tạo.", "vi-VN", target_vi),
+            ("Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.", "vi-VN", target_vi),
+            ("You can scan the QR code on the screen to save directions on your mobile phone.", "en-US", target_en),
+            ("Dạ em đã hiểu ạ.", "vi-VN", target_vi),
+            ("I understand.", "en-US", target_en),
         ]
+        rate_str = getattr(self, "current_rate_str", "+0%") or "+0%"
         for phrase, lang, voice in common_phrases:
             try:
-                cache_key = self._get_cache_key(phrase, "edge", voice, "+0%")
+                cache_key = self._get_cache_key(phrase, "edge", voice, rate_str)
                 if not self._get_from_cache(cache_key):
                     await self.synthesize(phrase, provider="edge", language=lang, voice=voice)
-                    logger.info(f"[TTSService] Pre-cached filler phrase: '{phrase}'")
+                    logger.info(f"[TTSService] Pre-cached filler phrase: '{phrase}' ({voice})")
             except Exception as e:
                 logger.debug(f"[TTSService] Warmup skip for '{phrase}': {e}")
 

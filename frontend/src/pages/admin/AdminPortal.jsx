@@ -10,6 +10,7 @@ import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
 import { AdminAdvertisementsTab } from './tabs/AdminAdvertisementsTab';
+import { AdminVideoCallsTab } from './tabs/AdminVideoCallsTab';
 import { useLanguage } from '../../context/LanguageContext';
 import {
   fetchNotifications,
@@ -35,6 +36,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Department',
         'Account',
         'Staff',
+        'Video Calls',
         'Logs',
         'Settings',
       ];
@@ -176,6 +178,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Knowledge',     label: t('adminKnowledge') },
     { id: 'Advertisements',label: t('adminAdvertisements') },
     { id: 'Department',    label: t('adminDepartment') },
+    { id: 'Video Calls',   label: 'Video Calls' },
     { id: 'Account',       label: t('adminAccount') },
     { id: 'Logs',          label: t('adminLogs') },
   ];
@@ -267,6 +270,16 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         {t('adminSubControlCamera')}
                       </button>
                       <button
+                        onClick={() => setRobotSubTab('phone_camera')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: robotSubTab === 'phone_camera' ? '#262626' : 'transparent',
+                          color: robotSubTab === 'phone_camera' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('adminSubPhoneCamera')}
+                      </button>
+                      <button
                         onClick={() => setRobotSubTab('physical_map')}
                         className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
                         style={{
@@ -347,6 +360,16 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         }}
                       >
                         {t('adminSubFastPath')}
+                      </button>
+                      <button
+                        onClick={() => setKnowledgeSubTab('persona')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: knowledgeSubTab === 'persona' ? '#262626' : 'transparent',
+                          color: knowledgeSubTab === 'persona' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('adminSubPersona')}
                       </button>
                     </div>
                   )}
@@ -571,6 +594,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
           {activeMenu === 'Department' && (
             <AdminDepartmentTab currentUser={currentUser} />
+          )}
+
+          {activeMenu === 'Video Calls' && (
+            <AdminVideoCallsTab currentUser={currentUser} />
           )}
 
           {(activeMenu === 'Account' || activeMenu === 'Staff') && (

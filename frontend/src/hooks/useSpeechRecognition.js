@@ -426,8 +426,6 @@ export const useSpeechRecognition = (callbacks = {}) => {
               consecutiveVoiceFrames++;
               if (consecutiveVoiceFrames >= 3) {
                 hasDetectedVoiceRef.current = true;
-                // Khach van dang noi -> Ngat ngay bo dem chot cau de tranh bi cuop loi khi nghi lay hoi
-                clearSpeechFinalizeTimer();
                 if (silenceTimerRef.current) {
                   clearTimeout(silenceTimerRef.current);
                   silenceTimerRef.current = null;

@@ -22,6 +22,7 @@ import {
   UserCheck,
   Wrench,
   Luggage,
+  Camera,
 } from 'lucide-react';
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {
@@ -183,6 +184,9 @@ export const MobileRobotScreen = ({
   showQrModalExternal = false,
   qrCountdown = null,
   onCloseQrModal = null,
+  isKioskCameraActive = true,
+  onStartKioskCamera = null,
+  kioskCameraStream = null,
 }) => {
   const isEn = language === 'English';
   const [isMapManualOpen, setIsMapManualOpen] = useState(false);
@@ -292,6 +296,22 @@ export const MobileRobotScreen = ({
                 {activeRoomNumber}
               </span>
             )}
+
+            {/* Chi bao / Nut bat Camera Kiosk tren Mobile neu chua cap quyen */}
+            {!isKioskCameraActive && onStartKioskCamera && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onStartKioskCamera();
+                }}
+                className="h-7 px-2.5 rounded-full border border-amber-600/60 bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95 animate-pulse"
+                title={isEn ? "Tap to enable Kiosk Camera" : "Chạm để bật Camera Kiosk"}
+              >
+                <Camera className="w-3.5 h-3.5 text-amber-800" />
+                <span className="text-[11px] font-bold">{isEn ? "Camera Off" : "Bật Camera AI"}</span>
+              </button>
+            )}
             {activeRoomNumber && (
               <button
                 type="button"
@@ -348,7 +368,28 @@ export const MobileRobotScreen = ({
           </div>
         </header>
 
-        {/* Modal Chọn Ngôn Ngữ Cỡ Lớn Chuẩn Kiosk & Touch Display (Tối giản, chỉ icon cờ và tên ngôn ngữ) */}
+        {/* Banner nhac nho bat Camera Kiosk AI neu chua duoc cap quyen tren Mobile */}
+        {!isKioskCameraActive && onStartKioskCamera && (
+          <div
+            onClick={(e) => {
+              e.stopPropagation();
+              onStartKioskCamera();
+            }}
+            className="mx-3 my-1 px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-900 flex items-center justify-between text-xs cursor-pointer active:scale-[0.99] transition-all shadow-xs shrink-0 select-none"
+          >
+            <div className="flex items-center gap-2">
+              <Camera className="w-4 h-4 text-amber-800 shrink-0 animate-pulse" />
+              <span className="font-semibold text-stone-900 text-[11px] sm:text-xs">
+                {isEn ? 'Tap here to enable Kiosk Camera AI' : 'Chạm vào đây để cấp quyền Camera AI Kiosk'}
+              </span>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-600 text-white uppercase shadow-2xs">
+              {isEn ? 'Allow' : 'Bật ngay'}
+            </span>
+          </div>
+        )}
+
+        {/* Modal Chọn Ngôn Ngữ Cỡ Lớn Chuẩn Kiosk & Touch Display (Theme Xám Sáng Tinh Tế) */}
         {isLangMenuOpen && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in select-none"
@@ -361,20 +402,21 @@ export const MobileRobotScreen = ({
             <div
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
-              className="w-full max-w-xs sm:max-w-sm bg-stone-900 border border-stone-700/80 rounded-3xl shadow-2xl p-4 sm:p-5 text-stone-100 flex flex-col gap-3.5 animate-in zoom-in-95 duration-150"
+              className="w-full max-w-xs sm:max-w-sm rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col gap-3.5 animate-in zoom-in-95 duration-150 border text-stone-900"
+              style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
             >
               {/* Header Modal */}
-              <div className="flex items-center justify-between pb-2.5 border-b border-stone-800">
+              <div className="flex items-center justify-between pb-2.5 border-b border-stone-200">
                 <div className="flex items-center gap-2">
-                  <Globe className="w-4 h-4 text-stone-300" />
-                  <h2 className="text-sm font-bold text-white tracking-wide">
+                  <Globe className="w-4 h-4 text-stone-800" />
+                  <h2 className="text-sm font-bold tracking-wide" style={{ color: '#262626' }}>
                     {isEn ? 'Language' : 'Ngôn ngữ'}
                   </h2>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsLangMenuOpen(false)}
-                  className="w-8 h-8 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white flex items-center justify-center active:scale-95 transition-all cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-stone-200/80 hover:bg-stone-300 text-stone-600 hover:text-stone-900 flex items-center justify-center active:scale-95 transition-all cursor-pointer"
                   title={isEn ? 'Close' : 'Đóng'}
                   aria-label={isEn ? 'Close' : 'Đóng'}
                 >
@@ -391,24 +433,25 @@ export const MobileRobotScreen = ({
                     onToggleLanguage('Tiếng Việt');
                     setIsLangMenuOpen(false);
                   }}
-                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${!isEn
-                      ? 'bg-stone-800/90 border-stone-500 ring-2 ring-stone-400/40 text-white shadow-lg'
-                      : 'bg-stone-800/40 border-stone-700/60 hover:bg-stone-800/70 text-stone-300 hover:text-white'
-                    }`}
+                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
+                    !isEn
+                      ? 'bg-black border-black text-white shadow-md'
+                      : 'bg-stone-100 hover:bg-stone-200 border-stone-300 text-stone-900'
+                  }`}
                 >
                   <div className="flex items-center gap-3">
                     <svg viewBox="0 0 32 24" className="w-10 h-7 rounded-md overflow-hidden shadow-xs border border-rose-800/60 shrink-0">
                       <rect width="32" height="24" fill="#DA251D" />
                       <polygon points="16,4 17.8,9.7 23.8,9.7 19,13.2 20.8,19 16,15.5 11.2,19 13,13.2 8.2,9.7 14.2,9.7" fill="#FFFF00" />
                     </svg>
-                    <span className="text-base font-bold text-white">Tiếng Việt</span>
+                    <span className={`text-base font-bold ${!isEn ? 'text-white' : 'text-stone-900'}`}>Tiếng Việt</span>
                   </div>
                   {!isEn ? (
-                    <div className="w-6 h-6 rounded-full bg-stone-200 text-stone-900 flex items-center justify-center shrink-0 shadow-sm">
+                    <div className="w-6 h-6 rounded-full bg-white text-stone-900 flex items-center justify-center shrink-0 shadow-sm">
                       <Check className="w-3.5 h-3.5 stroke-[3]" />
                     </div>
                   ) : (
-                    <div className="w-6 h-6 rounded-full border border-stone-700 shrink-0" />
+                    <div className="w-6 h-6 rounded-full border border-stone-300 shrink-0" />
                   )}
                 </button>
 
@@ -419,10 +462,11 @@ export const MobileRobotScreen = ({
                     onToggleLanguage('English');
                     setIsLangMenuOpen(false);
                   }}
-                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${isEn
-                      ? 'bg-stone-800/90 border-stone-500 ring-2 ring-stone-400/40 text-white shadow-lg'
-                      : 'bg-stone-800/40 border-stone-700/60 hover:bg-stone-800/70 text-stone-300 hover:text-white'
-                    }`}
+                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
+                    isEn
+                      ? 'bg-black border-black text-white shadow-md'
+                      : 'bg-stone-100 hover:bg-stone-200 border-stone-300 text-stone-900'
+                  }`}
                 >
                   <div className="flex items-center gap-3">
                     <svg viewBox="0 0 32 24" className="w-10 h-7 rounded-md overflow-hidden shadow-xs border border-blue-900/60 shrink-0">
@@ -432,14 +476,14 @@ export const MobileRobotScreen = ({
                       <path d="M16,0 V24 M0,12 H32" stroke="#FFFFFF" strokeWidth="6" />
                       <path d="M16,0 V24 M0,12 H32" stroke="#C8102E" strokeWidth="3.6" />
                     </svg>
-                    <span className="text-base font-bold text-white">English</span>
+                    <span className={`text-base font-bold ${isEn ? 'text-white' : 'text-stone-900'}`}>English</span>
                   </div>
                   {isEn ? (
-                    <div className="w-6 h-6 rounded-full bg-stone-200 text-stone-900 flex items-center justify-center shrink-0 shadow-sm">
+                    <div className="w-6 h-6 rounded-full bg-white text-stone-900 flex items-center justify-center shrink-0 shadow-sm">
                       <Check className="w-3.5 h-3.5 stroke-[3]" />
                     </div>
                   ) : (
-                    <div className="w-6 h-6 rounded-full border border-stone-700 shrink-0" />
+                    <div className="w-6 h-6 rounded-full border border-stone-300 shrink-0" />
                   )}
                 </button>
               </div>
@@ -850,6 +894,9 @@ export const MobileRobotScreen = ({
         ) : (
           <main
             onClick={() => {
+              if (typeof onStartKioskCamera === 'function' && !isKioskCameraActive) {
+                onStartKioskCamera();
+              }
               if (isSpeaking && onStopSpeaking) {
                 onStopSpeaking();
                 return;
@@ -958,6 +1005,25 @@ export const MobileRobotScreen = ({
               )}
             </div>
           </main>
+        )}
+
+        {/* Video stream chay ngam de duy tri sensor camera WebKit tren iOS Safari (Khach khong nhin thay hinh anh) */}
+        {kioskCameraStream && (
+          <video
+            ref={(el) => {
+              if (el && el.srcObject !== kioskCameraStream) {
+                el.srcObject = kioskCameraStream;
+                el.muted = true;
+                el.playsInline = true;
+                el.play().catch(() => {});
+              }
+            }}
+            autoPlay
+            playsInline
+            muted
+            aria-hidden="true"
+            className="hidden pointer-events-none"
+          />
         )}
 
         {/* Vùng chạm bí mật góc dưới bên phải cho Mobile (Chạm 5 lần trong 2s để đăng xuất) */}

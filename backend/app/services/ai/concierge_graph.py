@@ -149,6 +149,7 @@ from app.services.ai.constants import (
 
 
 from app.services.ai.ollama_service import ollama_service
+from app.services.ai.prompt_guard import check_prompt_injection, get_rejection_reply
 
 
 
@@ -535,6 +536,25 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
     session_id = state.get("session_id") or "default_session"
+
+    # 0.0. Kiem tra bao mat: Chan dung Prompt Injection ngay lap tuc (< 0.05ms)
+    if check_prompt_injection(prompt):
+        lang_code = "en-US" if (language and (language == "English" or "en" in str(language).lower())) else "vi-VN"
+        lang_name = "English" if lang_code == "en-US" else "Tiếng Việt"
+        rejection_reply = get_rejection_reply(lang_code)
+        logger.warning(f"[PromptGuard] Blocked prompt injection in session '{session_id}': '{prompt[:80]}'")
+        return {
+            "fast_path_hit": True,
+            "response": rejection_reply,
+            "lang_name": lang_name,
+            "lang_code": lang_code,
+            "language": lang_name,
+            "intent_category": "security_guard",
+            "action": "chitchat",
+            "destination_key": None,
+            "trigger_video_call": False,
+            "trigger_menu": None,
+        }
 
     # 0. Ưu tiên kiểm tra trực tiếp Fast-Path cho lệnh chuyển đổi ngôn ngữ giao tiếp
     early_fast_hit = ollama_service.check_fast_path_full(prompt, language)

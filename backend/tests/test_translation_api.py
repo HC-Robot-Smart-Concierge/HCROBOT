@@ -163,3 +163,47 @@ def test_bilingual_stt_candidate_scoring():
     assert lang_vi == "vi"
     assert text_vi == "Cho tôi hỏi nhà hàng mở cửa lúc mấy giờ"
     assert conf_vi >= 0.9
+
+
+@pytest.mark.asyncio
+async def test_quick_translate_strict_binary_and_rejection():
+    """
+    Kiểm tra ràng buộc nhị phân (chỉ chấp nhận 'vi' và 'en'):
+    - Các mã lạ như 'ja', 'zh-CN', 'ko', 'es' không được làm lọt sang ngôn ngữ thứ 3.
+    - Transcript chứa chữ tượng hình CJK ngoại lai bị từ chối, không đẩy sang TTS hay dịch sai.
+    - Câu chứa tiếng Anh mượn / số phòng trong tiếng Việt ('khách ở phòng VIP 402') vẫn giữ nguyên và xử lý đúng.
+    """
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # 1. Truyền source_lang là 'ja' -> Chuẩn hóa không coi là hợp lệ, tự động phân tích theo text
+        res_ja = await ac.post(
+            "/api/v1/ai/translate",
+            json={
+                "text": "Where is the elevator?",
+                "source_lang": "ja",
+                "target_lang": "vi",
+                "sender_role": "guest",
+                "with_audio": False,
+            },
+        )
+        assert res_ja.status_code == 200
+        data_ja = res_ja.json()
+        assert data_ja["source_lang"] == "en"  # Nhận diện chính xác là 'en', không biến thành 'ja'
+        assert data_ja["target_lang"] == "vi"
+
+        # 2. Transcript bị lỗi hallucinate sang chữ CJK (tiếng Nhật/Trung/Hàn)
+        res_cjk = await ac.post(
+            "/api/v1/ai/translate",
+            json={
+                "text": "こんにちは",
+                "source_lang": "auto",
+                "target_lang": "vi",
+                "sender_role": "guest",
+                "with_audio": False,
+            },
+        )
+        assert res_cjk.status_code == 200
+        data_cjk = res_cjk.json()
+        assert data_cjk["needs_translation"] is False
+        assert data_cjk["tts_error_code"] == "STT_SCRIPT_UNSUPPORTED"
+        assert data_cjk["audio_base64"] is None

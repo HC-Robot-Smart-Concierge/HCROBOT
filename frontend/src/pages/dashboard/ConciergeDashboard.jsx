@@ -66,6 +66,8 @@ export const ConciergeDashboard = ({
 
   // Live Call states
   const [activeSession, setActiveSession] = useState(null);
+  const [activeCallSessionId, setActiveCallSessionId] = useState(null);
+  const [activeCallSession, setActiveCallSession] = useState(null);
   const [activeCount, setActiveCount] = useState(0);
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
@@ -282,6 +284,37 @@ export const ConciergeDashboard = ({
     }
   };
 
+  const handleAcceptCall = (session = activeSession) => {
+    if (!session) return;
+    const targetId = session.ticket_code || session.id;
+    setActiveCallSessionId(targetId);
+    setActiveCallSession(session);
+    setIsVideoModalOpen(true);
+
+    const reqId = session.id || session.ticket_code;
+    if (reqId) {
+      updateConciergeRequest(reqId, {
+        status: 'Connected',
+        assigned_staff_name: currentUser?.full_name || 'Concierge Specialist',
+      }).catch(() => {});
+    }
+  };
+
+  const handleFinishCall = async () => {
+    setIsVideoModalOpen(false);
+    const targetId = activeCallSessionId || activeSession?.ticket_code || activeSession?.id;
+    setActiveCallSessionId(null);
+    setActiveCallSession(null);
+    setActiveSession(null);
+    if (targetId) {
+      await updateConciergeRequest(targetId, {
+        status: 'Closed',
+        assigned_staff_name: currentUser?.full_name || 'Concierge Specialist',
+      }).catch(() => {});
+    }
+    await loadData();
+  };
+
   const handleUpdateStatus = async (status) => {
     if (!activeSession) return;
     const reqId = activeSession.id || activeSession.ticket_code;
@@ -289,6 +322,7 @@ export const ConciergeDashboard = ({
     // Optimistic UI: nếu từ chối hoặc đóng cuộc gọi, lập tức tắt modal
     if (status === 'Closed' || status === 'Completed' || status === 'Cancelled') {
       setActiveSession(null);
+      setIsVideoModalOpen(false);
     }
 
     const result = await updateConciergeRequest(reqId, {
@@ -919,11 +953,8 @@ export const ConciergeDashboard = ({
                     {activeSession.status !== 'Connected' && activeSession.status !== 'Closed' && (
                       <button
                         type="button"
-                        onClick={async () => {
-                          await handleUpdateStatus('Connected');
-                          setIsVideoModalOpen(true);
-                        }}
-                        className="flex-1 sm:flex-initial px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-bold flex items-center justify-center gap-2 cursor-pointer"
+                        onClick={() => handleAcceptCall(activeSession)}
+                        className="flex-1 sm:flex-initial w-full sm:w-auto px-5 py-3 sm:py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
                       >
                         <Video className="w-4 h-4" />
                         <span>Tiếp nhận cuộc gọi Video</span>
@@ -933,8 +964,8 @@ export const ConciergeDashboard = ({
                     {activeSession.status === 'Connected' && (
                       <button
                         type="button"
-                        onClick={() => setIsVideoModalOpen(true)}
-                        className="flex-1 sm:flex-initial px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[12px] font-bold flex items-center justify-center gap-2 cursor-pointer"
+                        onClick={() => handleAcceptCall(activeSession)}
+                        className="flex-1 sm:flex-initial w-full sm:w-auto px-5 py-3 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
                       >
                         <Video className="w-4 h-4" />
                         <span>Mở Màn Hình Cuộc Gọi</span>
@@ -944,11 +975,8 @@ export const ConciergeDashboard = ({
                     {activeSession.status === 'Connected' && (
                       <button
                         type="button"
-                        onClick={async () => {
-                          setIsVideoModalOpen(false);
-                          await handleUpdateStatus('Closed');
-                        }}
-                        className="px-4 py-2 rounded-lg bg-[#262626] hover:bg-[#404040] text-white text-[12px] font-bold flex items-center justify-center gap-2 cursor-pointer"
+                        onClick={handleFinishCall}
+                        className="px-4 py-3 sm:py-2 rounded-xl bg-neutral-700 hover:bg-neutral-800 active:bg-neutral-900 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
                       >
                         <PhoneOff className="w-4 h-4" />
                         <span>Kết thúc</span>
@@ -1054,7 +1082,16 @@ export const ConciergeDashboard = ({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {session.recording_url ? (
+                        {session.recording_status === 'saving' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            Đang lưu bản ghi...
+                          </span>
+                        ) : session.recording_status === 'failed' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                            Lưu thất bại
+                          </span>
+                        ) : session.recording_url ? (
                           <>
                             <button
                               type="button"
@@ -1798,45 +1835,51 @@ export const ConciergeDashboard = ({
         </div>
       )}
 
-      {/* INCOMING CALL RINGING MODAL FOR STAFF (FACE-TIME / MESSENGER STYLE) */}
+      {/* INCOMING CALL RINGING MODAL FOR STAFF (GOOGLE USER / MEET STYLE) */}
       {activeSession && activeSession.status === 'Pending' && !isVideoModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-neutral-900 border border-emerald-500/50 rounded-3xl p-6 max-w-sm w-full text-center space-y-5 shadow-2xl text-white">
-            <div className="relative mx-auto w-20 h-20 rounded-full bg-emerald-600/20 border-2 border-emerald-500 flex items-center justify-center animate-pulse">
-              <PhoneCall className="w-10 h-10 text-emerald-400 animate-bounce" />
+        <div className="fixed inset-0 z-50 bg-[#141413]/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white border border-[#E3DFD5] rounded-3xl p-6 sm:p-7 max-w-sm w-full text-center space-y-5 shadow-2xl text-[#1A1917] animate-in zoom-in-95 duration-200">
+            {/* Animated Call Ring Icon */}
+            <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+              <span className="absolute inset-0 rounded-full bg-emerald-500/20 animate-ping" />
+              <div className="relative w-20 h-20 rounded-full bg-emerald-50 border-2 border-emerald-500 flex items-center justify-center text-emerald-600 shadow-md">
+                <PhoneCall className="w-9 h-9 animate-pulse" />
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <span className="text-[10px] font-mono font-bold tracking-widest text-emerald-400 uppercase bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-800">
-                CUỘC GỌI ĐẾN TỪ ROBOT KIOSK
+            {/* Caller Information */}
+            <div className="space-y-1.5">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold tracking-wide uppercase">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Cuộc gọi đến từ Robot Kiosk
               </span>
-              <h3 className="text-lg font-black text-white pt-1">
+              <h3 className="text-xl font-bold text-[#1A1917] pt-1">
                 {activeSession.guest_name || 'Khách tại Sảnh'}
               </h3>
-              <p className="text-xs text-neutral-400 font-medium">
-                Vị trí: {activeSession.room_number || 'Main Lobby Kiosk'} • Mã: {activeSession.ticket_code}
+              <p className="text-xs text-[#8C857B] font-medium">
+                Vị trí: <span className="font-semibold text-[#1A1917]">{activeSession.room_number || 'Main Lobby Kiosk'}</span> • Mã: <span className="font-mono font-semibold">{activeSession.ticket_code}</span>
               </p>
             </div>
 
-            <p className="text-xs text-neutral-300 bg-neutral-800/80 p-3 rounded-2xl border border-neutral-700 italic">
+            {/* Call Reason / Description */}
+            <div className="text-xs text-[#8C857B] bg-[#F9F8F5] p-3.5 rounded-2xl border border-[#E3DFD5] italic leading-relaxed text-left">
               "{activeSession.description || 'Khách bấm gọi hỗ trợ trực tiếp từ màn hình Robot Concierge'}"
-            </p>
+            </div>
 
-            <div className="flex items-center gap-3 pt-2">
+            {/* Action Buttons (Google Phone Style) */}
+            <div className="flex items-center gap-3 pt-1">
               <button
                 type="button"
                 onClick={() => handleUpdateStatus('Closed')}
-                className="flex-1 py-3 rounded-2xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs transition-colors cursor-pointer"
+                className="flex-1 py-3 px-4 rounded-full bg-[#F5F2EB] hover:bg-red-50 text-[#1A1917] hover:text-red-700 font-semibold text-xs sm:text-sm border border-[#E3DFD5] hover:border-red-200 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95"
               >
-                Từ chối
+                <PhoneOff className="w-4 h-4 text-[#8C857B]" />
+                <span>Từ chối</span>
               </button>
               <button
                 type="button"
-                onClick={async () => {
-                  await handleUpdateStatus('Connected');
-                  setIsVideoModalOpen(true);
-                }}
-                className="flex-1 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 cursor-pointer active:scale-95 animate-pulse"
+                onClick={() => handleAcceptCall(activeSession)}
+                className="flex-1 py-3 px-4 rounded-full bg-[#059669] hover:bg-emerald-700 active:bg-emerald-800 text-white font-bold text-xs sm:text-sm transition-all shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
               >
                 <PhoneCall className="w-4 h-4" />
                 <span>Trả Lời Ngay</span>
@@ -1849,28 +1892,15 @@ export const ConciergeDashboard = ({
       {/* MESSENGER VIDEO CALL MODAL (STAFF CALLEE ROLE) */}
       <MessengerVideoCallModal
         isOpen={isVideoModalOpen}
-        sessionId={activeSession?.ticket_code || activeSession?.id || 'SUP-STAFF'}
+        sessionId={activeCallSessionId || activeSession?.ticket_code || activeSession?.id || 'SUP-STAFF'}
         role="staff"
-        callerName={activeSession?.guest_name || 'Khách hàng'}
+        callerName={activeCallSession?.guest_name || activeSession?.guest_name || 'Khách hàng'}
         calleeName={currentUser?.full_name || 'Nhân viên hỗ trợ'}
-        roomNumber={activeSession?.room_number || ''}
-        ticketCode={activeSession?.ticket_code}
-        guestLanguage={activeSession?.language || 'Tiếng Việt'}
-        onClose={async () => {
-          setIsVideoModalOpen(false);
-          if (activeSession && activeSession.status === 'Connected') {
-            await handleUpdateStatus('Closed');
-          }
-          loadData();
-        }}
-        onCallEnded={async (recordRes) => {
-          console.log('[ConciergeDashboard] Staff call ended:', recordRes);
-          setIsVideoModalOpen(false);
-          if (activeSession && activeSession.status === 'Connected') {
-            await handleUpdateStatus('Closed');
-          }
-          loadData();
-        }}
+        roomNumber={activeCallSession?.room_number || activeSession?.room_number || ''}
+        ticketCode={activeCallSession?.ticket_code || activeSession?.ticket_code}
+        guestLanguage={activeCallSession?.language || activeSession?.language || 'Tiếng Việt'}
+        onClose={handleFinishCall}
+        onCallEnded={handleFinishCall}
       />
     </div>
   );

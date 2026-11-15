@@ -132,6 +132,35 @@ export const useSpeechSynthesis = () => {
     }
   });
 
+  const [viVoice, setViVoiceState] = useState(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('rora_vi_voice') : null;
+      return saved || 'vi-VN-HoaiMyNeural';
+    } catch {
+      return 'vi-VN-HoaiMyNeural';
+    }
+  });
+
+  const [enVoice, setEnVoiceState] = useState(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('rora_en_voice') : null;
+      return saved || 'en-US-JennyNeural';
+    } catch {
+      return 'en-US-JennyNeural';
+    }
+  });
+
+  const viVoiceRef = useRef(viVoice);
+  const enVoiceRef = useRef(enVoice);
+
+  useEffect(() => {
+    viVoiceRef.current = viVoice;
+  }, [viVoice]);
+
+  useEffect(() => {
+    enVoiceRef.current = enVoice;
+  }, [enVoice]);
+
   const updateSpeechRate = useCallback((newRate) => {
     const parsed = parseFloat(newRate);
     const clamped = Math.max(0.5, Math.min(2.0, isNaN(parsed) ? 1.0 : parsed));
@@ -143,6 +172,26 @@ export const useSpeechSynthesis = () => {
     } catch {}
     return clamped;
   }, []);
+
+  const updateVoiceSettings = useCallback(({ speech_rate, vi_voice, en_voice }) => {
+    if (speech_rate !== undefined && speech_rate !== null) {
+      updateSpeechRate(speech_rate);
+    }
+    if (vi_voice) {
+      setViVoiceState(vi_voice);
+      viVoiceRef.current = vi_voice;
+      try {
+        if (typeof window !== 'undefined') localStorage.setItem('rora_vi_voice', vi_voice);
+      } catch {}
+    }
+    if (en_voice) {
+      setEnVoiceState(en_voice);
+      enVoiceRef.current = en_voice;
+      try {
+        if (typeof window !== 'undefined') localStorage.setItem('rora_en_voice', en_voice);
+      } catch {}
+    }
+  }, [updateSpeechRate]);
 
   // Load available TTS voices from browser
   useEffect(() => {
@@ -157,15 +206,34 @@ export const useSpeechSynthesis = () => {
     window.speechSynthesis.onvoiceschanged = updateVoices;
   }, []);
 
-  // Sync speech rate from BroadcastChannel across tabs (Admin -> Robot Screen)
+  // Sync speech rate & voices from BroadcastChannel across tabs (Admin -> Robot Screen)
   useEffect(() => {
     let bc;
     try {
       bc = new BroadcastChannel('hcrobot_voice_settings');
       bc.onmessage = (event) => {
-        if (event.data?.type === 'VOICE_SETTINGS_UPDATED' && event.data?.speech_rate) {
-          const clamped = Math.max(0.5, Math.min(2.0, parseFloat(event.data.speech_rate) || 1.0));
-          setSpeechRateState(clamped);
+        if (event.data?.type === 'VOICE_SETTINGS_UPDATED') {
+          if (event.data.speech_rate !== undefined && event.data.speech_rate !== null) {
+            const clamped = Math.max(0.5, Math.min(2.0, parseFloat(event.data.speech_rate) || 1.0));
+            setSpeechRateState(clamped);
+            try {
+              if (typeof window !== 'undefined') localStorage.setItem('rora_speech_rate', clamped.toString());
+            } catch {}
+          }
+          if (event.data.vi_voice) {
+            setViVoiceState(event.data.vi_voice);
+            viVoiceRef.current = event.data.vi_voice;
+            try {
+              if (typeof window !== 'undefined') localStorage.setItem('rora_vi_voice', event.data.vi_voice);
+            } catch {}
+          }
+          if (event.data.en_voice) {
+            setEnVoiceState(event.data.en_voice);
+            enVoiceRef.current = event.data.en_voice;
+            try {
+              if (typeof window !== 'undefined') localStorage.setItem('rora_en_voice', event.data.en_voice);
+            } catch {}
+          }
         }
       };
     } catch {}
@@ -225,7 +293,7 @@ export const useSpeechSynthesis = () => {
   const onQueueStartCallbackRef = useRef(null);
   const streamLangRef = useRef('vi-VN');
 
-  const speakWebSpeech = (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, shouldCancel = true, rate = null, targetSpeechId = null, targetSignal = null) => {
+  const speakWebSpeech = (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, shouldCancel = true, rate = null, targetSpeechId = null, targetSignal = null, options = {}) => {
     const speechId = targetSpeechId ?? ++activeSpeechIdRef.current;
     const signal = targetSignal ?? abortControllerRef.current?.signal;
 
@@ -276,27 +344,36 @@ export const useSpeechSynthesis = () => {
     const availableVoices = voices.length > 0 ? voices : (window.speechSynthesis ? window.speechSynthesis.getVoices() : []);
     let targetVoice = null;
 
+    const activeVoice = options?.voice || (langTag.startsWith('vi') ? (viVoiceRef.current || 'vi-VN-HoaiMyNeural') : (enVoiceRef.current || 'en-US-JennyNeural'));
+    const isMaleVoice = activeVoice.toLowerCase().includes('namminh') || activeVoice.toLowerCase().includes('guy') || activeVoice.toLowerCase().includes('male');
+
     if (langTag.startsWith('vi')) {
-      targetVoice = availableVoices.find((v) => v.name.toLowerCase().includes('hoaimy') || v.name.toLowerCase().includes('hoài my')) ||
-        availableVoices.find((v) => v.name.toLowerCase().includes('namminh') || v.name.toLowerCase().includes('nam minh')) ||
-        availableVoices.find((v) => v.name.toLowerCase().includes('natural') && v.lang.toLowerCase().startsWith('vi')) ||
-        availableVoices.find((v) => v.name.toLowerCase().includes('google') && v.lang.toLowerCase().startsWith('vi')) ||
-        availableVoices.find((v) => v.lang.toLowerCase().startsWith('vi') || v.name.toLowerCase().includes('vietnamese'));
+      if (isMaleVoice) {
+        targetVoice = availableVoices.find((v) => v.name.toLowerCase().includes('namminh') || v.name.toLowerCase().includes('nam minh')) ||
+          availableVoices.find((v) => v.name.toLowerCase().includes('male') && v.lang.toLowerCase().startsWith('vi')) ||
+          availableVoices.find((v) => v.name.toLowerCase().includes('natural') && v.lang.toLowerCase().startsWith('vi')) ||
+          availableVoices.find((v) => v.lang.toLowerCase().startsWith('vi') || v.name.toLowerCase().includes('vietnamese'));
+      } else {
+        targetVoice = availableVoices.find((v) => v.name.toLowerCase().includes('hoaimy') || v.name.toLowerCase().includes('hoài my')) ||
+          availableVoices.find((v) => v.name.toLowerCase().includes('female') && v.lang.toLowerCase().startsWith('vi')) ||
+          availableVoices.find((v) => v.name.toLowerCase().includes('natural') && v.lang.toLowerCase().startsWith('vi')) ||
+          availableVoices.find((v) => v.name.toLowerCase().includes('google') && v.lang.toLowerCase().startsWith('vi')) ||
+          availableVoices.find((v) => v.lang.toLowerCase().startsWith('vi') || v.name.toLowerCase().includes('vietnamese'));
+      }
     } else if (langTag.startsWith('en')) {
-      targetVoice = availableVoices.find(
-        (v) =>
-          v.lang.toLowerCase().startsWith('en') ||
-          v.name.toLowerCase().includes('english') ||
-          v.name.toLowerCase().includes('zira') ||
-          v.name.toLowerCase().includes('david')
-      );
+      if (isMaleVoice) {
+        targetVoice = availableVoices.find((v) => v.name.toLowerCase().includes('guy') || v.name.toLowerCase().includes('david') || v.name.toLowerCase().includes('male')) ||
+          availableVoices.find((v) => v.lang.toLowerCase().startsWith('en'));
+      } else {
+        targetVoice = availableVoices.find((v) => v.name.toLowerCase().includes('jenny') || v.name.toLowerCase().includes('zira') || v.name.toLowerCase().includes('female')) ||
+          availableVoices.find((v) => v.lang.toLowerCase().startsWith('en'));
+      }
     }
 
-    // 1. ƯU TIÊN GỌI Backend EdgeTTS Neural (vi-VN: vi-VN-HoaiMyNeural, en-US: en-US-JennyNeural)
-    // Đảm bảo phát ra giọng đọc nữ tự nhiên 100%, luyến láy truyền cảm, không giật cục theo dấu câu
-    const isSupportedEdgeLang = langTag.startsWith('vi') || langTag.startsWith('en');
+    // 1. ƯU TIÊN GỌI Backend EdgeTTS Neural theo cấu hình giọng của Robot
+    const isSupportedEdgeLang = (langTag.startsWith('vi') || langTag.startsWith('en')) && !options?.skipRemoteTts;
     if (isSupportedEdgeLang) {
-      const edgeVoice = langTag.startsWith('vi') ? 'vi-VN-HoaiMyNeural' : 'en-US-JennyNeural';
+      const edgeVoice = activeVoice;
       const edgeLang = langTag.startsWith('vi') ? 'vi-VN' : 'en-US';
       synthesizeSpeech(cleanText, { language: edgeLang, voice: edgeVoice, signal })
         .then((data) => {
@@ -434,8 +511,30 @@ export const useSpeechSynthesis = () => {
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
-      if (targetVoice) {
-        utterance.voice = targetVoice;
+      let selectedVoice = targetVoice;
+      if (!selectedVoice && 'speechSynthesis' in window) {
+        const availableVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices();
+        const activeVoice = langTag.startsWith('vi') ? (viVoiceRef.current || 'vi-VN-HoaiMyNeural') : (enVoiceRef.current || 'en-US-JennyNeural');
+        const isMale = activeVoice.toLowerCase().includes('namminh') || activeVoice.toLowerCase().includes('guy') || activeVoice.toLowerCase().includes('male');
+        if (langTag.startsWith('vi')) {
+          selectedVoice = isMale
+            ? (availableVoices.find((v) => v.name.toLowerCase().includes('namminh') || v.name.toLowerCase().includes('nam minh')) ||
+               availableVoices.find((v) => v.name.toLowerCase().includes('male') && v.lang.toLowerCase().startsWith('vi')) ||
+               availableVoices.find((v) => v.lang.toLowerCase().startsWith('vi')))
+            : (availableVoices.find((v) => v.name.toLowerCase().includes('hoaimy') || v.name.toLowerCase().includes('hoài my')) ||
+               availableVoices.find((v) => v.name.toLowerCase().includes('female') && v.lang.toLowerCase().startsWith('vi')) ||
+               availableVoices.find((v) => v.lang.toLowerCase().startsWith('vi')));
+        } else {
+          selectedVoice = isMale
+            ? (availableVoices.find((v) => v.name.toLowerCase().includes('guy') || v.name.toLowerCase().includes('david')) ||
+               availableVoices.find((v) => v.lang.toLowerCase().startsWith('en')))
+            : (availableVoices.find((v) => v.name.toLowerCase().includes('jenny') || v.name.toLowerCase().includes('zira')) ||
+               availableVoices.find((v) => v.lang.toLowerCase().startsWith('en')));
+        }
+      }
+
+      if (selectedVoice) {
+        utterance.voice = selectedVoice;
       }
 
       // Ngăn Chromium Garbage Collector thu gom utterance giữa chừng gây đứng TTS
@@ -493,6 +592,21 @@ export const useSpeechSynthesis = () => {
           finishOnce();
         }
       }, maxMs);
+
+      // Auto-release dự phòng khi trình duyệt thiếu voice engine tiếng Việt (ví dụ Chrome trên Windows)
+      if (!selectedVoice && langTag.startsWith('vi')) {
+        setTimeout(() => {
+          if (!hasFinished && (!speechId || speechId === activeSpeechIdRef.current)) {
+            if (onStartCallback) onStartCallback();
+          }
+        }, 120);
+        const fallbackReadMs = Math.min(Math.max(wordCount * 280, 2500), 5500);
+        setTimeout(() => {
+          if (!hasFinished && (!speechId || speechId === activeSpeechIdRef.current)) {
+            finishOnce();
+          }
+        }, fallbackReadMs);
+      }
 
       window.speechSynthesis.speak(utterance);
     } catch (err) {
@@ -621,7 +735,7 @@ export const useSpeechSynthesis = () => {
 
     const isSupportedEdgeLang = lang.startsWith('vi') || lang.startsWith('en');
     if (isSupportedEdgeLang) {
-      const edgeVoice = lang.startsWith('vi') ? 'vi-VN-HoaiMyNeural' : 'en-US-JennyNeural';
+      const edgeVoice = lang.startsWith('vi') ? (viVoiceRef.current || 'vi-VN-HoaiMyNeural') : (enVoiceRef.current || 'en-US-JennyNeural');
       const edgeLang = lang.startsWith('vi') ? 'vi-VN' : 'en-US';
       audioPromise = synthesizeSpeech(rawText, { language: edgeLang, voice: edgeVoice })
         .then((data) => {
@@ -660,12 +774,29 @@ export const useSpeechSynthesis = () => {
     }
   };
 
-  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, preloadedAudioBase64 = null, rate = null, options = {}) => {
+  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, rawPreloadedAudioBase64 = null, rate = null, options = {}) => {
     cancel();
 
+    // Ho tro ca positional parameters va object options: speak(text, { rate, lang, voice, onEnd, onStart })
+    let actualLang = language;
+    let actualOnEnd = onEndCallback;
+    let actualOnStart = onStartCallback;
+    let preloadedAudioBase64 = rawPreloadedAudioBase64;
+    let actualRate = rate;
+    let actualOptions = options || {};
+
+    if (language && typeof language === 'object' && !Array.isArray(language)) {
+      actualOptions = language;
+      actualLang = actualOptions.lang || actualOptions.language || 'vi-VN';
+      actualOnEnd = actualOptions.onEnd || actualOptions.onEndCallback || null;
+      actualOnStart = actualOptions.onStart || actualOptions.onStartCallback || null;
+      preloadedAudioBase64 = actualOptions.preloadedAudioBase64 || null;
+      actualRate = actualOptions.rate ?? null;
+    }
+
     if (!text || !text.trim()) {
-      if (onStartCallback) onStartCallback();
-      if (onEndCallback) onEndCallback();
+      if (actualOnStart) actualOnStart();
+      if (actualOnEnd) actualOnEnd();
       return;
     }
 
@@ -673,8 +804,8 @@ export const useSpeechSynthesis = () => {
     abortControllerRef.current = new AbortController();
     const currentSignal = abortControllerRef.current.signal;
 
-    const effectiveRate = Math.max(0.5, Math.min(2.0, rate ?? speechRate ?? 1.0));
-    const skipRemoteTts = Boolean(options?.skipRemoteTts);
+    const effectiveRate = Math.max(0.5, Math.min(2.0, actualRate ?? speechRate ?? 1.0));
+    const skipRemoteTts = Boolean(actualOptions?.skipRemoteTts);
 
     let recoveryHandled = false;
     let hasStartedPlaying = false;
@@ -684,7 +815,7 @@ export const useSpeechSynthesis = () => {
       recoveryHandled = true;
       if (currentSpeechId !== activeSpeechIdRef.current) return;
       stopCurrentAudio();
-      _speakWithBrowserUtterance(text, language, null, onEndCallback, onStartCallback, true, effectiveRate, currentSpeechId);
+      _speakWithBrowserUtterance(text, actualLang, null, actualOnEnd, actualOnStart, true, effectiveRate, currentSpeechId);
     };
 
     // 0. ƯU TIÊN PHÁT NGAY LẬP TỨC AUDIO PRELOADED TỪ /chat (0ms Network delay)
@@ -730,7 +861,7 @@ export const useSpeechSynthesis = () => {
             try { window.speechSynthesis.cancel(); } catch (e) {}
           }
           setIsSpeaking(true);
-          if (onStartCallback) onStartCallback();
+          if (actualOnStart) actualOnStart();
         };
 
         audio.onended = () => {
@@ -740,7 +871,7 @@ export const useSpeechSynthesis = () => {
           if (currentSpeechId === activeSpeechIdRef.current) {
             setIsSpeaking(false);
             audioRef.current = null;
-            if (onEndCallback) onEndCallback();
+            if (actualOnEnd) actualOnEnd();
           }
         };
 
@@ -751,7 +882,7 @@ export const useSpeechSynthesis = () => {
           if (currentSpeechId === activeSpeechIdRef.current) {
             audioRef.current = null;
             if (!hasStartedPlaying && !recoveryHandled) {
-              const played = await playAudioBufferViaWebAudio(preloadedAudioBase64, effectiveRate, onStartCallback, onEndCallback, currentSpeechId);
+              const played = await playAudioBufferViaWebAudio(preloadedAudioBase64, effectiveRate, actualOnStart, actualOnEnd, currentSpeechId);
               if (played) {
                 hasStartedPlaying = true;
                 recoveryHandled = true;
@@ -760,7 +891,7 @@ export const useSpeechSynthesis = () => {
               triggerSingleRecovery();
             } else {
               setIsSpeaking(false);
-              if (onEndCallback) onEndCallback();
+              if (actualOnEnd) actualOnEnd();
             }
           }
         };
@@ -774,7 +905,7 @@ export const useSpeechSynthesis = () => {
 
         // Thử giải mã và phát trực tiếp qua Web Audio API (vượt qua rào cản Safari User Gesture)
         try {
-          const played = await playAudioBufferViaWebAudio(preloadedAudioBase64, effectiveRate, onStartCallback, onEndCallback, currentSpeechId);
+          const played = await playAudioBufferViaWebAudio(preloadedAudioBase64, effectiveRate, actualOnStart, actualOnEnd, currentSpeechId);
           if (played) {
             hasStartedPlaying = true;
             recoveryHandled = true;
@@ -795,9 +926,9 @@ export const useSpeechSynthesis = () => {
     if (currentSpeechId === activeSpeechIdRef.current) {
       if (skipRemoteTts) {
         // Backend đã thử tổng hợp TTS trước đó rồi, dùng ngay WebSpeech cục bộ để tránh gọi mạng 2 lần
-        _speakWithBrowserUtterance(text, language, null, onEndCallback, onStartCallback, true, effectiveRate, currentSpeechId);
+        _speakWithBrowserUtterance(text, actualLang, null, actualOnEnd, actualOnStart, true, effectiveRate, currentSpeechId);
       } else {
-        speakWebSpeech(text, language, onEndCallback, onStartCallback, true, effectiveRate, currentSpeechId, currentSignal);
+        speakWebSpeech(text, actualLang, actualOnEnd, actualOnStart, true, effectiveRate, currentSpeechId, currentSignal, actualOptions);
       }
     }
   };
@@ -837,12 +968,18 @@ export const useSpeechSynthesis = () => {
 
   return {
     speak,
+    speakWebSpeech,
     prime,
     cancel,
+    stop: cancel,
     isSpeaking,
+    voices,
     speechRate,
     setSpeechRate: updateSpeechRate,
     updateSpeechRate,
+    viVoice,
+    enVoice,
+    updateVoiceSettings,
     initStreamSpeech,
     enqueueStreamChunk,
     endStreamSpeech,

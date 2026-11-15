@@ -59,6 +59,7 @@ import {
   Copy,
 } from 'lucide-react';
 import { KnowledgeTableEditor } from '../../../components/admin/KnowledgeTableEditor';
+import { AdminKnowledgePersonaTab } from './knowledge/AdminKnowledgePersonaTab';
 
 const CATEGORY_MAP = {
   facility: { labelVI: 'Tiện ích', labelEN: 'Amenities', bg: '#EDE9FE', text: '#6D28D9', border: '#DDD6FE' },
@@ -93,15 +94,22 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
   const { t, language } = useLanguage();
   const isEN = language === 'EN';
 
-  // Navigation View State ('sources' | 'scenarios')
+  // Navigation View State ('sources' | 'scenarios' | 'persona')
   const [currentTab, setCurrentTab] = useState(() => {
     if (activeSubView === 'scenarios') return 'scenarios';
+    if (activeSubView === 'persona') return 'persona';
     return 'sources';
   });
 
   useEffect(() => {
     if (activeSubView) {
-      setCurrentTab(activeSubView === 'scenarios' ? 'scenarios' : 'sources');
+      setCurrentTab(
+        activeSubView === 'scenarios'
+          ? 'scenarios'
+          : activeSubView === 'persona'
+          ? 'persona'
+          : 'sources'
+      );
     }
   }, [activeSubView]);
 
@@ -228,6 +236,7 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
     speak(sampleText, {
       rate: tempRate,
       lang: isEN ? 'en-US' : 'vi-VN',
+      voice: tempVoice,
       onEnd: () => setIsTestSpeaking(false),
       onError: () => setIsTestSpeaking(false),
     });
@@ -351,7 +360,7 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
     setIsUploading(true);
     try {
       const res = await uploadRAGFile(selectedUploadFile, uploadCategory);
-      showNotification(`✅ ${t('knowledgeNotifySourceUploaded').replace('{name}', selectedUploadFile.name)}`);
+      showNotification(t('knowledgeNotifySourceUploaded').replace('{name}', selectedUploadFile.name));
       setSelectedUploadFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       await loadRAGData();
@@ -663,29 +672,41 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
             <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
               {currentTab === 'sources'
                 ? t('knowledgeSourcesTitle')
-                : t('knowledgeScenariosTitle')}
+                : currentTab === 'scenarios'
+                ? t('knowledgeScenariosTitle')
+                : isEN ? 'AI Persona & Voice Tone Settings' : 'Cấu hình Nhân dạng & Giọng điệu AI'}
             </h2>
             <span
               className="px-2 py-0.5 rounded text-[10px] font-bold border tracking-wider uppercase inline-flex items-center gap-1"
               style={{
-                backgroundColor: currentTab === 'sources' ? '#EFF6FF' : '#DCFCE7',
-                color: currentTab === 'sources' ? '#1D4ED8' : '#15803D',
-                borderColor: currentTab === 'sources' ? '#BFDBFE' : '#BBF7D0',
+                backgroundColor: currentTab === 'sources' ? '#EFF6FF' : currentTab === 'scenarios' ? '#DCFCE7' : '#FEF3C7',
+                color: currentTab === 'sources' ? '#1D4ED8' : currentTab === 'scenarios' ? '#15803D' : '#B45309',
+                borderColor: currentTab === 'sources' ? '#BFDBFE' : currentTab === 'scenarios' ? '#BBF7D0' : '#FDE68A',
               }}
             >
               {currentTab === 'sources' ? (
                 <>
                   <Folder className="w-3 h-3" /> {t('knowledgeVaultBadge')}
                 </>
-              ) : (
+              ) : currentTab === 'scenarios' ? (
                 <>
                   <Zap className="w-3 h-3" /> {isEN ? '< 1ms In-Memory' : '< 1ms Trong Bộ Nhớ'}
+                </>
+              ) : (
+                <>
+                  <Bot className="w-3 h-3" /> {isEN ? 'Live Hot-Reload' : 'Nạp tức thì'}
                 </>
               )}
             </span>
           </div>
           <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
-            {currentTab === 'sources' ? t('knowledgeSourcesSubtitle') : t('knowledgeScenariosSubtitle')}
+            {currentTab === 'sources'
+              ? t('knowledgeSourcesSubtitle')
+              : currentTab === 'scenarios'
+              ? t('knowledgeScenariosSubtitle')
+              : isEN
+              ? 'Customize robot name, hotel branding, forms of address, and empathy scripts.'
+              : 'Tùy biến tên robot, tên khách sạn, đại từ xưng hô, câu mời quét QR và kịch bản thấu cảm phát thanh.'}
           </p>
         </div>
 
@@ -848,6 +869,18 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
             >
               {scenarios.length}
             </span>
+          </button>
+
+          <button
+            onClick={() => handleSwitchTab('persona')}
+            className="px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2"
+            style={{
+              backgroundColor: currentTab === 'persona' ? '#262626' : 'transparent',
+              color: currentTab === 'persona' ? '#FFFFFF' : '#8C8C8C',
+            }}
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span>{t('knowledgeTabPersona')}</span>
           </button>
         </div>
       </div>
@@ -1436,6 +1469,13 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
             />
           </div>
         </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* VIEW 3: CẤU HÌNH NHÂN DẠNG & GIỌNG ĐIỆU AI (AI PERSONA & VOICE)      */}
+      {/* =================================================================== */}
+      {currentTab === 'persona' && (
+        <AdminKnowledgePersonaTab isEN={isEN} onShowToast={showNotification} />
       )}
 
       {/* =================================================================== */}

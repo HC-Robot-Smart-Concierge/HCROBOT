@@ -688,9 +688,13 @@ export const deleteNotification = async (notificationId) => {
   );
 };
 
-export const fetchAnalyticsSummary = async () => {
-  return await fetchWithFallback(`${BASE_URL}/analytics/summary`, {}, {
-    total_tasks: 0,
+export const fetchAnalyticsSummary = async (period = 'all') => {
+  return await fetchWithFallback(
+    `${BASE_URL}/analytics/summary?period=${encodeURIComponent(period)}`,
+    {},
+    {
+      period,
+      total_tasks: 0,
     active_tasks: 0,
     completed_tasks: 0,
     completion_rate: 0,

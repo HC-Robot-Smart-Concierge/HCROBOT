@@ -261,3 +261,19 @@ async def test_all_operations_dashboards_and_endpoints():
         assert done_em.json()["status"] == "Completed"
 
 
+@pytest.mark.asyncio
+async def test_analytics_summary_period_filters():
+    await init_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        for period in ("all", "weekly", "monthly"):
+            res = await ac.get(f"/api/v1/operations/analytics/summary?period={period}")
+            assert res.status_code == 200
+            payload = res.json()
+            assert payload["period"] == period
+            assert "total_tasks" in payload
+            assert "dept_distribution" in payload
+
+        bad_res = await ac.get("/api/v1/operations/analytics/summary?period=yearly")
+        assert bad_res.status_code == 422
+
+

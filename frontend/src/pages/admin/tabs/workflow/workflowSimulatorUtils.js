@@ -261,9 +261,16 @@ export function resolveMoveTarget(step, endpoints = []) {
   return endpoint || GAZEBO_LOBBY_WAYPOINTS[key] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
 }
 
-export const validateWorkflowStepZone = (step, zones = SIMULATOR_HOTEL_ZONES, customEndpoints = null) => {
+export const validateWorkflowStepZone = (step, zones = SIMULATOR_HOTEL_ZONES, customEndpoints = null, robotPose = null) => {
   if (!step) return { valid: true };
   const stepType = step.type || '';
+  if (stepType !== 'MOVE' && robotPose) {
+    const zone = getActiveSimulatorZone(robotPose.x, robotPose.y, zones);
+    if (zone && ['KEEP_OUT', 'NO_STOP'].includes(zone.type)) {
+      return { valid: false, zone,
+        error: `Không thể thực hiện bước dừng/chờ trong vùng "${zone.name}". Di chuyển robot ra ngoài vùng trước.` };
+    }
+  }
 
   if (stepType === 'MOVE') {
     const { x: targetX, y: targetY } = resolveMoveTarget(step, customEndpoints);
@@ -278,85 +285,14 @@ export const validateWorkflowStepZone = (step, zones = SIMULATOR_HOTEL_ZONES, cu
     }
     if (zone && zone.type === 'NO_STOP') {
       return {
-        valid: true,
-        warning: `Điểm đến nằm trong Vùng cấm dừng "${zone.name}". Robot chỉ được phép đi qua, không nên kết thúc hành trình tại đây.`,
+        valid: false,
+        error: `Điểm đến nằm trong Vùng cấm dừng "${zone.name}". Robot chỉ được đi qua; hãy chọn điểm dừng bên ngoài vùng.`,
         zone,
       };
     }
   }
 
   return { valid: true };
-};
-
-/**
- * Tinh toan diem thoat an toan xuyen qua Vung cam dung (NO_STOP).
- * Robot khong duoc phep dung lai trong Vung cam dung (vi du Cua thong sanh chinh x=4.4m).
- * Neu muc tieu hoac diem click nam trong vung nay, ham se tu dong chieu vec-to di chuyen
- * de dua robot di xuyen qua vung den vi tri an toan ke tiep o gian phong doi dien.
- */
-export const resolveNoStopPassthrough = (fromPt, targetPt, zones = SIMULATOR_HOTEL_ZONES) => {
-  if (!targetPt || typeof targetPt.x !== 'number' || typeof targetPt.y !== 'number') {
-    return { isNoStop: false, safePoint: targetPt, zone: null };
-  }
-
-  const activeZone = getActiveSimulatorZone(targetPt.x, targetPt.y, zones);
-  if (!activeZone || activeZone.type !== 'NO_STOP') {
-    return { isNoStop: false, safePoint: targetPt, zone: null };
-  }
-
-  const zw = Number(activeZone.width) || 1.20;
-  const zh = Number(activeZone.height) || 1.40;
-  const zx = Number(activeZone.x) || 12.84;
-  const zy = Number(activeZone.y) || 9.80;
-
-  const minX = zx - zw / 2;
-  const maxX = zx + zw / 2;
-  const minY = zy - zh / 2;
-  const maxY = zy + zh / 2;
-
-  const fromX = typeof fromPt?.x === 'number' ? fromPt.x : zx + 1.0;
-  const fromY = typeof fromPt?.y === 'number' ? fromPt.y : zy;
-
-  const dx = targetPt.x - fromX;
-  const dy = targetPt.y - fromY;
-
-  const clearance = 0.50; // Khoang dem thoat khoi vung (m)
-  let safeX = targetPt.x;
-  let safeY = targetPt.y;
-
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    if (fromX >= zx) {
-      safeX = Number((minX - clearance).toFixed(2));
-      safeY = Number(Math.max(minY, Math.min(maxY, targetPt.y)).toFixed(2));
-    } else {
-      safeX = Number((maxX + clearance).toFixed(2));
-      safeY = Number(Math.max(minY, Math.min(maxY, targetPt.y)).toFixed(2));
-    }
-  } else {
-    if (fromY >= zy) {
-      safeY = Number((minY - clearance).toFixed(2));
-      safeX = Number(Math.max(minX, Math.min(maxX, targetPt.x)).toFixed(2));
-    } else {
-      safeY = Number((maxY + clearance).toFixed(2));
-      safeX = Number(Math.max(minX, Math.min(maxX, targetPt.x)).toFixed(2));
-    }
-  }
-
-  safeX = Number(Math.max(0.8, Math.min(18.0, safeX)).toFixed(2));
-  safeY = Number(Math.max(0.8, Math.min(11.2, safeY)).toFixed(2));
-
-  const keepOutCheck = getActiveSimulatorZone(safeX, safeY, zones);
-  if (keepOutCheck && keepOutCheck.type === 'KEEP_OUT') {
-    safeX = 4.2;
-    safeY = 4.9;
-  }
-
-  return {
-    isNoStop: true,
-    safePoint: { x: safeX, y: safeY },
-    zone: activeZone,
-    originalPoint: { x: Number(targetPt.x.toFixed(2)), y: Number(targetPt.y.toFixed(2)) },
-  };
 };
 
 // Chuyen toa do Met (ROS: X 0..9.80m, Y 0..6.30m) sang Toa do SVG Canvas (490x315 px + padding 35px, 50 px/m)
@@ -390,7 +326,7 @@ export const svgToMeter = (svgX, svgY) => {
 // Graph-based roadmap + Line-of-sight collision checking + String-pulling shortcut smoothing
 // ========================================================
 
-const LOBBY_OBSTACLES = [
+export const LOBBY_OBSTACLES = [
   // Wall segments leave the west entrance (y=6.25) and east exit (y=3.53) clear.
   { id: 'WEST_SOUTH', minX: 0, maxX: 0.25, minY: 0, maxY: 5.75 },
   { id: 'WEST_NORTH', minX: 0, maxX: 0.25, minY: 6.75, maxY: 12.60 },

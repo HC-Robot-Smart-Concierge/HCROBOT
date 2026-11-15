@@ -107,3 +107,17 @@ def point_in_zone(x, y, zone):
 
 def distance_to_zone(x, y, zone):
     return distance_to_polygon(x, y, zone_points(zone))
+
+
+def effective_speed_limit(x, y, zones):
+    """Minimum overlapping speed restriction, independent of display-zone priority."""
+    limits = []
+    for zone in zones:
+        if field(zone, 'type') not in ('SPEED_ZONE', 'SLOW_SPEED') or not point_in_zone(x, y, zone):
+            continue
+        try:
+            limit = float(field(zone, 'speed_limit', 0.2))
+        except (TypeError, ValueError):
+            limit = 0.2
+        limits.append(limit if math.isfinite(limit) and limit > 0 else 0.2)
+    return min(limits) if limits else None

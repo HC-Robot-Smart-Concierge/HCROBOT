@@ -10,9 +10,9 @@
 ## 1. Tổng Quan Không Gian Sa Bàn & Thiết Lập Quy Hoạch (Zone & Endpoints)
 
 ### 1.1. Bản đồ & Khu vực chức năng (Zones)
-Môi trường sảnh khách sạn trong Gazebo được phân chia thành các vùng chức năng áp dụng các bộ lọc Nav2 Costmap Filter:
+Môi trường sảnh khách sạn được phân chia thành các vùng chức năng. KEEP_OUT và SPEED_ZONE có Nav2 Costmap Filter khi chạy Nav2 với mask của bản đồ đã lưu; NO_STOP được kiểm tra ở quy tắc đích/chờ. Gazebo demo dùng `autonomous_navigator.py` nhận `/hotel_zones`, khác với bộ chạy Nav2:
 
-| Ký hiệu | Tên vùng | Loại vùng Nav2 | Tọa độ & Phạm vi | Ý nghĩa vận hành |
+| Ký hiệu | Tên vùng | Loại vùng | Tọa độ & Phạm vi | Ý nghĩa vận hành |
 |---|---|---|---|---|
 | **NG-1** | Phòng Nội Bộ Quầy Lễ Tân | `KEEP_OUT` (Cấm vào) | $X \approx 11.44m, Y \approx 6.40m$ | Khu vực nhân viên làm việc phía sau quầy, robot tuyệt đối không đi vào. |
 | **NG-2** | Khu Vực WC Nam & Nữ | `KEEP_OUT` (Cấm vào) | Góc phải dưới bản đồ ($X: 15.5m - 19.6m$) | Khu vệ sinh, robot không nhận điểm đến và không đi qua. |
@@ -47,6 +47,14 @@ Simulator trên web hiển thị một biểu tượng **Guest 01 · Simulated**
 Biểu tượng khách chỉ nằm trên web, không phát hiện người bằng camera và không tạo vật cản cho LiDAR/Nav2. Để kiểm tra tránh người trong Gazebo, cần bổ sung vật cản hoặc mô hình có va chạm trong môi trường mô phỏng.
 
 ---
+
+### 1.4. Chế độ điều khiển và chỉnh sửa sa bàn
+
+- **Robot control** (mặc định): click sàn/endpoint gửi đích; các vùng và endpoint khóa chỉnh sửa.
+- **Edit zones / endpoints**: vẽ/sửa vùng, kéo endpoint, thêm/xóa đỉnh. Click sàn không gửi lệnh robot. Stop workflow/lộ trình trước khi đổi sang chế độ này.
+- KEEP_OUT chặn đường đi và đích; SPEED_ZONE áp dụng mức thấp nhất khi chồng vùng; NO_STOP cho đi xuyên nhưng chặn đích/điểm chờ bên trong. Lệnh Stop/Pause luôn thắng quy định cấm dừng.
+- Tắt **Show zones** chỉ ẩn hình vẽ. Thử tốc độ ở 1x để đối chiếu m/s; 2x/4x tăng tốc đồng hồ giả lập web.
+- Chi tiết sửa lỗi, kiểm tra trong bộ nhớ và cách thử UI/Gazebo nằm ở mục 8 của [báo cáo thực hiện simulator zone](bao-cao-thuc-hien-simulator-zone-polygon.md). Kiểm tra logic/build không thay thế chạy Gazebo thực tế.
 
 ## 2. Chi Tiết 6 Kịch Bản Giả Lập Chuẩn
 

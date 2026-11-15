@@ -8,6 +8,11 @@ import {
   insertZoneVertex,
   polygonEdgeAtPoint,
   MAX_ZONE_VERTICES,
+  endpointZoneViolation,
+  zoneEndpointConflict,
+  zoneCorners,
+  zoneBounds,
+  resizeZoneFromCorner,
 } from '../physicalMapZones';
 import {
   Play,
@@ -72,7 +77,6 @@ import {
   STANDARD_LOBBY_WAYPOINTS,
   meterToSvg,
   svgToMeter,
-  calculateSafeWaypoints,
   getStepActionDetail,
   SIMULATOR_HOTEL_ZONES,
   isPointInSimulatorZone,
@@ -80,7 +84,6 @@ import {
   zoneToSvgRect,
   validateWorkflowStepZone,
   resolveMoveTarget,
-  resolveNoStopPassthrough,
 } from './workflowSimulatorUtils';
 import { guestRequestPhase } from '../../../../utils/workflowGuestRequest';
 import { WorkflowGuestRequestPanel } from './WorkflowGuestRequestPanel';
@@ -100,6 +103,8 @@ import { useWorkflowZoomPan } from './useWorkflowZoomPan';
 import { useSimulatedGuest } from './useSimulatedGuest';
 import { SimulatorGuestControls, SimulatorGuestMarker } from './SimulatorGuest';
 import { simulatorRobotStatus } from './workflowSimulatorPresentation';
+import { SimulatorMapMode } from './SimulatorMapMode';
+import { simulatorGoalViolation, planSimulatorRoute, buildSimulatorMotion, sampleSimulatorMotion } from './simulatorNavigation';
 
 // Kich thuoc ViewBox co so (om sat map 490x315 voi le 3px de anh map to toi da)
 const BASE_VB_WIDTH = 496;
@@ -215,12 +220,18 @@ export const WorkflowSimulatorStudio = ({
         ? { x: robotPoseRef.current.x, y: robotPoseRef.current.y }
         : { x: fromWp?.x ?? 3.7, y: fromWp?.y ?? 5.0 };
     const goalPt = { x: targetWp.x, y: targetWp.y };
-    const pts = calculateSafeWaypoints(startPt, goalPt);
+    const pts = planSimulatorRoute(startPt, goalPt, zonesRef.current);
+    if (!pts) {
+      onNotify(language === 'VI' ? 'Không có lộ trình khả dụng giữa hai điểm.' : 'No clear route between these endpoints.', 'warning');
+      setCurrentPath(null);
+      return;
+    }
     let totalDist = 0;
     for (let i = 0; i < pts.length - 1; i++) {
       totalDist += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
     }
     setCurrentPath({
+      preview: true,
       waypoints: pts,
       label: targetWp.name,
       targetPoint: goalPt,
@@ -327,12 +338,26 @@ export const WorkflowSimulatorStudio = ({
   const [manualNavLabel, setManualNavLabel] = useState(null);
   const [isRosEnabled, setIsRosEnabled] = useState(true);
   const [isRosConnected, setIsRosConnected] = useState(false);
+  const [interactionMode, setInteractionMode] = useState('CONTROL');
+  const interactionModeRef = useRef(interactionMode);
+  interactionModeRef.current = interactionMode;
+  const isMapEditing = interactionMode === 'EDIT' && !isPlaying && (!currentPath || currentPath.preview);
+  const [linearSpeed, setLinearSpeed] = useState(0);
+  const navigationContextRef = useRef({ language });
+  navigationContextRef.current = { language };
 
   // Quan ly 3 Vung Chuc Nang: Keep-Out, Speed Zone, No-Stop
   const [zones, setZones] = useState(SIMULATOR_HOTEL_ZONES);
   const [showZones, setShowZones] = useState(true);
   const [selectedZone, setSelectedZone] = useState(null);
   const [zoneAlert, setZoneAlert] = useState(null);
+
+  // Zone feedback stays on the map instead of also opening the parent toast.
+  useEffect(() => {
+    if (!zoneAlert) return;
+    const timeout = window.setTimeout(() => setZoneAlert(null), 3500);
+    return () => window.clearTimeout(timeout);
+  }, [zoneAlert]);
 
   const svgRef = useRef(null);
   const {
@@ -433,6 +458,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Them Vung moi tren sa ban (Add Zone)
   const handleAddZone = (type) => {
+    if (!isMapEditing) return;
     setIsZoneMenuOpen(false);
     setIsMapMenuOpen(false);
     const count = zones.filter((z) => z.type === type).length + 1;
@@ -470,6 +496,8 @@ export const WorkflowSimulatorStudio = ({
       description: 'Vùng được tạo mới bởi quản trị viên.',
     };
 
+    const conflict = zoneEndpointConflict(newZone, endpointsRef.current);
+    if (conflict) { onNotify(conflict.message, 'warning'); return; }
     const updatedZones = [...zones, newZone];
     setZones(updatedZones);
     setSelectedZone(newZone);
@@ -490,6 +518,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Toggle polygon/rect draw mode (giong AdminPhysicalMapTab.toggleZoneDraw)
   const toggleZoneDraw = (type) => {
+    if (!isMapEditing) return;
     setZoneDraft(null);
     setZoneDrawType((cur) => (cur === type ? null : type));
     setIsMapMenuOpen(false);
@@ -497,6 +526,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Hoan thanh polygon zone (khi nguoi dung double-click hoac bam nut Xong)
   const finishPolygon = () => {
+    if (!isMapEditing) return;
     const vertices = zoneDraft?.vertices || [];
     const error = polygonValidationError(vertices);
     if (error) { onNotify(error, 'warning'); return; }
@@ -511,6 +541,8 @@ export const WorkflowSimulatorStudio = ({
       ...zoneFromVertices(vertices),
       vertices,
     };
+    const conflict = zoneEndpointConflict(newZone, endpointsRef.current);
+    if (conflict) { onNotify(conflict.message, 'warning'); return; }
     const updatedZones = [...zones, newZone];
     setZones(updatedZones);
     setSelectedZone(newZone);
@@ -525,6 +557,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Xoa dinh dang chon cua polygon (Toi thieu 3 dinh)
   const handleDeleteSelectedVertex = () => {
+    if (!isMapEditing) return false;
     if (!isPolygonZone(selectedZone) || selectedZoneVertex === null || !showZones || zoneDrawType) return false;
     const result = removeZoneVertex(selectedZone, selectedZoneVertex);
     if (result.error) {
@@ -532,6 +565,8 @@ export const WorkflowSimulatorStudio = ({
       return false;
     }
     const updated = result.zone;
+    const conflict = zoneEndpointConflict(updated, endpointsRef.current);
+    if (conflict) { onNotify(conflict.message, 'warning'); return false; }
     const nextList = zones.map((z) => (z.id === updated.id ? updated : z));
     setZones(nextList);
     setSelectedZone(updated);
@@ -568,6 +603,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Xoa Vung duoc chon (Delete Zone)
   const handleDeleteZone = async (zoneId) => {
+    if (!isMapEditing) return;
     if (!zoneId) return;
     const target = zones.find((z) => z.id === zoneId);
     const updatedZones = zones.filter((z) => z.id !== zoneId);
@@ -594,8 +630,13 @@ export const WorkflowSimulatorStudio = ({
 
   // Cap nhat thuoc tinh cua Vung dang chon (Edit Zone attributes)
   const handleUpdateSelectedZone = (field, value) => {
+    if (!isMapEditing) return;
     if (!selectedZone) return;
     const updated = { ...selectedZone, [field]: value };
+    if (field === 'type') {
+      const conflict = zoneEndpointConflict(updated, endpointsRef.current);
+      if (conflict) { onNotify(conflict.message, 'warning'); return; }
+    }
     setSelectedZone(updated);
     setZones((prev) => prev.map((z) => (z.id === selectedZone.id ? updated : z)));
     setHasUnsavedZones(true);
@@ -603,6 +644,11 @@ export const WorkflowSimulatorStudio = ({
 
   // Luu cau hinh 3 Vung Chuc Nang vao CSDL va phat len topic ROS 2
   const handleSaveZones = async () => {
+    if (!isMapEditing) return;
+    for (const zone of zones) {
+      const error = isPolygonZone(zone) ? polygonValidationError(zone.vertices) : null;
+      if (error) { onNotify(error, 'warning'); return; }
+    }
     setIsSavingZones(true);
     try {
       for (const z of zones) {
@@ -617,16 +663,9 @@ export const WorkflowSimulatorStudio = ({
       }
       setHasUnsavedZones(false);
       onNotify('Đã lưu cấu hình vị trí & kích thước Vùng thành công.', 'success');
-    } catch {
-      if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
-        rosClientRef.current.publish(
-          '/hotel_zones',
-          'std_msgs/String',
-          createZoneSyncMsg(zones)
-        );
-      }
-      setHasUnsavedZones(false);
-      onNotify('Đã áp dụng vị trí Vùng cho phiên làm việc hiện tại.', 'info');
+    } catch (error) {
+      setHasUnsavedZones(true);
+      onNotify(language === 'VI' ? `Chưa lưu được vùng: ${error.message}` : `Zones were not saved: ${error.message}`, 'warning');
     } finally {
       setIsSavingZones(false);
     }
@@ -634,6 +673,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Khoi phuc vi tri 3 Vung Chuc Nang ve mac dinh
   const handleResetDefaultZones = () => {
+    if (!isMapEditing) return;
     setZones(SIMULATOR_HOTEL_ZONES);
     setSelectedZone(null);
     setHasUnsavedZones(true);
@@ -681,6 +721,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Them Endpoint moi (Add Endpoint)
   const handleAddEndpoint = (type = 'WAYPOINT', customCoords = null) => {
+    if (!isMapEditing) return;
     setIsEndpointMenuOpen(false);
     setIsMapMenuOpen(false);
     const count = endpoints.filter((e) => (e.type || 'WAYPOINT') === type).length + 1;
@@ -706,6 +747,9 @@ export const WorkflowSimulatorStudio = ({
       description: typeInfo.description,
     };
 
+    const placementError = endpointZoneViolation(newEndpoint, zones);
+    if (placementError) { onNotify(placementError, 'warning'); return; }
+
     setEndpoints((prev) => [...prev, newEndpoint]);
     setSelectedEndpoint(newEndpoint);
     setSelectedZone(null);
@@ -728,6 +772,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Cap nhat thong tin Endpoint (ten, loai)
   const handleUpdateSelectedEndpoint = (field, value) => {
+    if (!isMapEditing) return;
     if (!selectedEndpoint) return;
     const updated = { ...selectedEndpoint, [field]: value };
     setSelectedEndpoint(updated);
@@ -745,7 +790,10 @@ export const WorkflowSimulatorStudio = ({
 
   // Luu endpoint vao CSDL
   const handleSaveEndpointToDb = async (endpoint) => {
+    if (!isMapEditing) return;
     if (!endpoint || !endpoint.name?.trim()) return;
+    const placementError = endpointZoneViolation(endpoint, zonesRef.current);
+    if (placementError) { onNotify(placementError, 'warning'); return; }
     try {
       setIsSavingEndpoints(true);
       await saveWaypoint({
@@ -774,6 +822,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Xoa Endpoint
   const handleDeleteEndpoint = async (endpointId) => {
+    if (!isMapEditing) return;
     const target = endpoints.find((e) => e.id === endpointId);
     const name = target?.name || 'Endpoint';
     setEndpoints((prev) => prev.filter((e) => e.id !== endpointId));
@@ -799,6 +848,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Dat lai danh sach Endpoints chuan ban dau
   const handleResetDefaultEndpoints = () => {
+    if (!isMapEditing) return;
     setEndpoints(STANDARD_LOBBY_WAYPOINTS);
     setSelectedEndpoint(null);
     setHasUnsavedEndpoints(true);
@@ -814,6 +864,7 @@ export const WorkflowSimulatorStudio = ({
 
   // PointerDown de keo tha Endpoint tren SVG Map
   const handleEndpointPointerDown = (e, ep) => {
+    if (!isMapEditing || zoneDrawType || e.shiftKey) return;
     if (e.button !== 0) return;
     e.stopPropagation();
     setSelectedEndpoint(ep);
@@ -831,6 +882,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Bat dau keo tha di chuyen hoac co gian kich thuoc Vung
   const handleZonePointerDown = (e, zone, type = 'MOVE') => {
+    if (!isMapEditing || e.shiftKey) return;
     if (e.button !== 0) return;
     if (zoneDrawType) return;
     e.stopPropagation();
@@ -866,6 +918,7 @@ export const WorkflowSimulatorStudio = ({
     }
 
     // Cap nhat cursor cho polygon draw preview
+    if (!isMapEditing) return;
     if (zoneDrawType && zoneDrawShape === 'polygon' && zoneDraft?.vertices) {
       const pt = getSvgPointFromClient(e.clientX, e.clientY);
       const p = svgToMeter(pt.x, pt.y);
@@ -900,12 +953,7 @@ export const WorkflowSimulatorStudio = ({
 
     // QUAN TRỌNG: Neu chuot KHONG con duoc de nhan (e.buttons === 0), lap tuc huy trang thai keo tha
     if (e.buttons !== undefined && (e.buttons & 1) === 0) {
-      if (dragEndpointState) {
-        setDragEndpointState(null);
-      }
-      if (dragState) {
-        setDragState(null);
-      }
+      handleSvgPointerUp(e);
       return;
     }
 
@@ -1003,49 +1051,11 @@ export const WorkflowSimulatorStudio = ({
       setSelectedZone(updated);
       setHasUnsavedZones(true);
     } else {
-      // RESIZE HANDLES (NW, NE, SW, SE)
-      const zw = Number(initZone.width) || 2.0;
-      const zh = Number(initZone.height) || 2.0;
-      const left = initZone.x - zw / 2;
-      const right = initZone.x + zw / 2;
-      const bottom = initZone.y - zh / 2;
-      const top = initZone.y + zh / 2;
-
-      let newLeft = left;
-      let newRight = right;
-      let newBottom = bottom;
-      let newTop = top;
-
-      if (dragState.type === 'RESIZE_SE') {
-        newRight = Math.max(left + 0.6, Math.min(19.60, right + deltaMeterX));
-        newBottom = Math.min(top - 0.6, Math.max(0.0, bottom + deltaMeterY));
-      } else if (dragState.type === 'RESIZE_SW') {
-        newLeft = Math.min(right - 0.6, Math.max(0.0, left + deltaMeterX));
-        newBottom = Math.min(top - 0.6, Math.max(0.0, bottom + deltaMeterY));
-      } else if (dragState.type === 'RESIZE_NE') {
-        newRight = Math.max(left + 0.6, Math.min(19.60, right + deltaMeterX));
-        newTop = Math.max(bottom + 0.6, Math.min(12.60, top + deltaMeterY));
-      } else if (dragState.type === 'RESIZE_NW') {
-        newLeft = Math.min(right - 0.6, Math.max(0.0, left + deltaMeterX));
-        newTop = Math.max(bottom + 0.6, Math.min(12.60, top + deltaMeterY));
-      }
-
-      const newWidth = Number((newRight - newLeft).toFixed(2));
-      const newHeight = Number((newTop - newBottom).toFixed(2));
-      const newCenterX = Number(((newLeft + newRight) / 2).toFixed(2));
-      const newCenterY = Number(((newBottom + newTop) / 2).toFixed(2));
-
-      const updated = {
-        ...initZone,
-        x: newCenterX,
-        y: newCenterY,
-        width: newWidth,
-        height: newHeight,
-      };
-
-      const updatedZones = zonesRef.current.map((z) => (z.id === dragState.zoneId ? updated : z));
+      const pt = getSvgPointFromClient(e.clientX, e.clientY);
+      const updated = { ...initZone, ...resizeZoneFromCorner(initZone,
+        dragState.type.replace('RESIZE_', '').toLowerCase(), svgToMeter(pt.x, pt.y), 0.6) };
+      const updatedZones = zonesRef.current.map((z) => z.id === dragState.zoneId ? updated : z);
       zonesRef.current = updatedZones;
-
       setZones(updatedZones);
       setSelectedZone(updated);
       setHasUnsavedZones(true);
@@ -1072,7 +1082,14 @@ export const WorkflowSimulatorStudio = ({
 
     if (dragEndpointState) {
       const curEp = endpointsRef.current.find((ep) => ep.id === dragEndpointState.endpointId);
-      if (curEp && wasDraggingRef.current) {
+      const placementError = curEp && endpointZoneViolation(curEp, zonesRef.current);
+      if (placementError && wasDraggingRef.current) {
+        const restored = endpointsRef.current.map((ep) => ep.id === curEp.id ? dragEndpointState.initialEndpoint : ep);
+        endpointsRef.current = restored;
+        setEndpoints(restored);
+        setSelectedEndpoint(dragEndpointState.initialEndpoint);
+        onNotify(placementError, 'warning');
+      } else if (curEp && wasDraggingRef.current) {
         saveWaypoint(curEp).catch(() => { });
         if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
           rosClientRef.current.publish(
@@ -1087,10 +1104,21 @@ export const WorkflowSimulatorStudio = ({
 
     if (dragState) {
       const curZone = zonesRef.current.find((z) => z.id === dragState.zoneId);
-      if (curZone && wasDraggingRef.current) {
-        saveZone(curZone).catch(() => { });
+      const bounds = curZone && zoneBounds(curZone);
+      const outsideMap = bounds && (bounds.minX < 0 || bounds.maxX > 19.6 || bounds.minY < 0 || bounds.maxY > 12.6);
+      const zoneError = curZone && ((outsideMap && (language === 'VI' ? 'Vùng phải nằm trong sảnh.' : 'Keep the zone inside the lobby.'))
+        || (isPolygonZone(curZone) && polygonValidationError(curZone.vertices))
+        || zoneEndpointConflict(curZone, endpointsRef.current)?.message);
+      if (zoneError && wasDraggingRef.current) {
+        const restored = zonesRef.current.map((z) => z.id === curZone.id ? dragState.initialZone : z);
+        zonesRef.current = restored;
+        setZones(restored);
+        setSelectedZone(dragState.initialZone);
+        onNotify(zoneError, 'warning');
+      } else if (curZone && wasDraggingRef.current) {
+        saveZone(curZone).catch((error) => onNotify(error.message, 'warning'));
       }
-      if (isRosEnabledRef.current && rosClientRef.current?.isConnected && wasDraggingRef.current) {
+      if (!zoneError && isRosEnabledRef.current && rosClientRef.current?.isConnected && wasDraggingRef.current) {
         rosClientRef.current.publish(
           '/hotel_zones',
           'std_msgs/String',
@@ -1120,6 +1148,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Xu ly click chon vung hoac chuyen doi luan phien khi cac vung chong len nhau
   const handleZoneClick = (e, clickedZone) => {
+    if (!isMapEditing || e.shiftKey) return;
     if (zoneDrawType) return;
     e.stopPropagation();
     if (wasDraggingRef.current) return;
@@ -1231,7 +1260,7 @@ export const WorkflowSimulatorStudio = ({
   const showingIdlePromo = activeWorkflow?.id === 'wf-06-idle-promo' && activeStep?.type === 'SHOW';
   const promotionInterrupted = showingIdlePromo && simGuestPresent;
   const requestPhase = guestRequestPhase(activeWorkflow?.id, activeStep);
-  const isMoving = Boolean(currentPath && currentPath.waypoints && currentPath.waypoints.length > 0);
+  const isMoving = Boolean(currentPath && !currentPath.preview && currentPath.waypoints && currentPath.waypoints.length > 0);
 
   const robotStatus = simulatorRobotStatus({
     step: activeStep, language, isMoving, manualNavLabel, isPaused, promotionInterrupted,
@@ -1246,6 +1275,7 @@ export const WorkflowSimulatorStudio = ({
   // Chuyen buoc ke tiep
   // outcome: { type: 'CHOSEN' | 'TIMEOUT' | 'CANCEL', optionId } cho buoc CHOICE; bo trong = xong buoc
   const handleStepFinish = useCallback((outcome) => {
+    setLinearSpeed(0);
     if (timerRef.current) clearTimeout(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (stopSpeakingRef.current) stopSpeakingRef.current();
@@ -1318,14 +1348,14 @@ export const WorkflowSimulatorStudio = ({
           const curStep = stepsRef.current?.[currentStepIndexRef.current];
           const isMoveStep = isPlayingRef.current ? curStep?.type === 'MOVE' : Boolean(curPath);
 
-          if (curPath?.targetPoint && isMoveStep) {
+          if (curPath?.targetPoint && !curPath.preview && isMoveStep) {
             const distRemaining = Math.hypot(pos.x - curPath.targetPoint.x, pos.y - curPath.targetPoint.y);
             const totalDist = curPath.totalDistance || 1.0;
             const progress = Math.max(0, Math.min(99, Math.round(((totalDist - distRemaining) / totalDist) * 100)));
             setStepProgress(progress);
 
             // Nguong den noi theo tieu chuan vi tri thuc cua Gazebo (0.35m)
-            if (distRemaining < 0.35) {
+            if (distRemaining < 0.35 && !simulatorGoalViolation({ x: pos.x, y: pos.y }, zonesRef.current)) {
               setStepProgress(100);
               setCurrentPath(null);
               currentPathRef.current = null;
@@ -1342,6 +1372,7 @@ export const WorkflowSimulatorStudio = ({
 
     // 2. Fallback subscribe /odom truc tiep tu Gazebo DiffDrive
     const unbindOdom = client.subscribe(ROS_TOPICS.ODOM, ROS_MSG_TYPES.ODOMETRY, (msg) => {
+      setLinearSpeed(Math.abs(Number(msg?.twist?.twist?.linear?.x) || 0));
       const pos = msg?.pose?.pose?.position;
       const orient = msg?.pose?.pose?.orientation;
       if (pos && !targetTelemetryPoseRef.current) {
@@ -1366,12 +1397,21 @@ export const WorkflowSimulatorStudio = ({
       '/goal_reached',
       'std_msgs/String',
       (msg) => {
+        if (msg?.data?.startsWith('REJECTED') && currentPathRef.current && !currentPathRef.current.preview) {
+          setZoneAlert({ type: 'error', message: msg.data });
+          setCurrentPath(null);
+          currentPathRef.current = null;
+          setLinearSpeed(0);
+          setIsPlaying(false);
+          setIsPaused(false);
+          return;
+        }
         if (msg?.data?.startsWith('REACHED')) {
           const curPath = currentPathRef.current;
           const curStep = stepsRef.current?.[currentStepIndexRef.current];
           const isMoveStep = isPlayingRef.current ? curStep?.type === 'MOVE' : Boolean(curPath);
 
-          if (isMoveStep && curPath) {
+          if (isMoveStep && curPath && !curPath.preview) {
             setStepProgress(100);
             setCurrentPath(null);
             currentPathRef.current = null;
@@ -1393,167 +1433,66 @@ export const WorkflowSimulatorStudio = ({
     };
   }, [isRosEnabled, handleStepFinish]);
 
-  // Dieu huong robot toi bat ky diem nao (Click waypoint hoac click sanh map hoac buoc MOVE)
+  // Both manual goals and workflow moves use the same zone rules.
   const handleNavigateToGoal = useCallback(
-    (targetX, targetY, targetName = 'Điểm đã chọn', fromWorkflow = false, startPoseOverride = null) => {
+    (targetX, targetY, targetName = 'Destination', fromWorkflow = false, startPoseOverride = null) => {
+      const { language } = navigationContextRef.current;
+      if (!fromWorkflow && (interactionModeRef.current !== 'CONTROL' || isPlayingRef.current)) return;
+      const startPoint = startPoseOverride
+        ? { x: Number(startPoseOverride.x), y: Number(startPoseOverride.y) }
+        : { x: robotPoseRef.current.x, y: robotPoseRef.current.y };
+      const goalPoint = { x: Number(Number(targetX).toFixed(2)), y: Number(Number(targetY).toFixed(2)) };
+      const violation = simulatorGoalViolation(goalPoint, zonesRef.current, language);
+      const waypoints = violation ? null : planSimulatorRoute(startPoint, goalPoint, zonesRef.current);
+      if (violation || !waypoints) {
+        const message = violation || (language === 'VI'
+          ? 'Không có lộ trình đủ khoảng cách an toàn tới điểm này. Kiểm tra vật cản, vùng cấm vào và vị trí xuất phát.'
+          : 'No route with enough clearance to this destination. Check obstacles, keep-out zones and the starting position.');
+        setZoneAlert({ type: 'error', message });
+        if (fromWorkflow) { setIsPlaying(false); setIsPaused(false); setLinearSpeed(0); }
+        return;
+      }
       if (timerRef.current) clearTimeout(timerRef.current);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
-      if (stopSpeakingRef.current) stopSpeakingRef.current();
-
-      const startPoint = startPoseOverride
-        ? { x: Number(startPoseOverride.x.toFixed(2)), y: Number(startPoseOverride.y.toFixed(2)) }
-        : { x: robotPoseRef.current.x, y: robotPoseRef.current.y };
-      const goalPoint = { x: Number(targetX.toFixed(2)), y: Number(targetY.toFixed(2)) };
-
-      // Kiem tra an toan Vung chuc nang: Chặn tuyet doi neu dich den la KEEP_OUT
-      const targetZone = getActiveSimulatorZone(goalPoint.x, goalPoint.y, zonesRef.current);
-      if (targetZone && targetZone.type === 'KEEP_OUT') {
-        const errMessage = `Vị trí (${goalPoint.x}m, ${goalPoint.y}m) thuộc "${targetZone.name}" (Vùng cấm vào - KEEP_OUT). Lệnh điều hướng đã bị chặn!`;
-        setZoneAlert({
-          type: 'error',
-          message: errMessage,
-        });
-        onNotify(errMessage, 'warning');
-        return;
-      }
-
-      // Xu ly tu dong di xuyen qua neu dich den nam trong NO_STOP (tuyet doi khong dung lai giua vung cam dung)
-      const passthrough = resolveNoStopPassthrough(startPoint, goalPoint, zonesRef.current);
-      if (passthrough.isNoStop) {
-        goalPoint.x = passthrough.safePoint.x;
-        goalPoint.y = passthrough.safePoint.y;
-        onNotify(
-          `Điểm đến nằm trong Vùng cấm dừng "${passthrough.zone.name}". Robot tự động đi xuyên qua vùng cấm đến vị trí an toàn (${goalPoint.x}m, ${goalPoint.y}m).`,
-          'info'
-        );
-      }
-
+      stopSpeakingRef.current?.();
+      setZoneAlert(null);
       if (startPoseOverride) {
-        const resetPose = {
-          x: startPoint.x,
-          y: startPoint.y,
-          yaw: startPoseOverride.yaw ?? robotPoseRef.current.yaw,
-        };
-        robotPoseRef.current = resetPose;
-        setRobotPose(resetPose);
+        const pose = { ...startPoint, yaw: startPoseOverride.yaw ?? robotPoseRef.current.yaw };
+        robotPoseRef.current = pose;
+        setRobotPose(pose);
       }
+      const cruiseSpeed = fromWorkflow ? Number(stepsRef.current?.[currentStepIndexRef.current]?.params?.speed) : 0.35;
+      const motion = buildSimulatorMotion(waypoints, zonesRef.current, cruiseSpeed);
+      const path = { waypoints, label: targetName, targetPoint: goalPoint, totalDistance: motion.totalDistance };
+      currentPathRef.current = path;
+      setCurrentPath(path);
+      setStepProgress(0);
+      if (!fromWorkflow) setManualNavLabel(`${language === 'VI' ? 'Tới' : 'To'}: ${targetName}`);
 
-      // Tinh toan lo trinh da diem ne tuong va vach ngan
-      const waypoints = calculateSafeWaypoints(startPoint, goalPoint);
-
-      // Kiem tra neu lo trinh bat buoc phai di qua vung KEEP_OUT (vi du cua thong sanh bi chan boi KEEP_OUT)
-      const blockedMidpoint = waypoints.slice(1, -1).find((pt) => {
-        const z = getActiveSimulatorZone(pt.x, pt.y, zonesRef.current);
-        return z && z.type === 'KEEP_OUT';
-      });
-
-      if (blockedMidpoint) {
-        const blockingZone = getActiveSimulatorZone(blockedMidpoint.x, blockedMidpoint.y, zonesRef.current);
-        const warnMsg = `Lộ trình di chuyển bị chặn bởi Vùng cấm vào "${blockingZone?.name || 'KEEP_OUT'}" ngay tại lối đi. Nếu đây là lối đi cần cấm dừng/đậu, vui lòng chuyển loại vùng sang "Cấm dừng (NO_STOP)".`;
-        setZoneAlert({
-          type: 'error',
-          message: warnMsg,
-        });
-        onNotify(warnMsg, 'warning');
-        return;
-      }
-
-      const segments = [];
-      let totalDistance = 0;
-      for (let i = 0; i < waypoints.length - 1; i++) {
-        const p1 = waypoints[i];
-        const p2 = waypoints[i + 1];
-        const segDx = p2.x - p1.x;
-        const segDy = p2.y - p1.y;
-        const segDist = Math.hypot(segDx, segDy);
-        const segYaw = Math.atan2(segDy, segDx);
-
-        segments.push({
-          p1,
-          p2,
-          segDx,
-          segDy,
-          segDist,
-          segYaw,
-          startDist: totalDistance,
-          endDist: totalDistance + segDist,
-        });
-        totalDistance += segDist;
-      }
-
-      setCurrentPath({
-        waypoints,
-        label: targetName,
-        targetPoint: goalPoint,
-        totalDistance,
-      });
-
-      if (!fromWorkflow) {
-        setManualNavLabel(`Toi: ${targetName}`);
-      }
-
-      // Phat tin hieu goal toi ROS 2 Gazebo (Chi khi dang bat ket noi ROS 2)
+      // Gazebo owns its actual motion. Web-only simulation uses physical distance / speed.
       if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
         rosClientRef.current.publishGoal(goalPoint.x, goalPoint.y, 0.0);
-        // KHI DA KET NOI VOI GAZEBO:
-        // Vi tri va goc quay hoan toan do Telemetry thuc cua Gazebo dieu khien qua LERP 60fps
-        // Khong chay animation gia lap noi bo de dong bo ti le 100% va khong bi giat rung
         return;
       }
-
-      // CHE DO GIA LAP THUAN WEB (Internal Animation):
-      // Chay animation noi bo voi ti le van toc thuc 0.35m/s (Dong nhat ti le voi Gazebo)
-      const currentSpeed = simSpeedRef.current || 1.0;
-      const baseDurationSec = Math.max(2.5, Math.min(12.0, totalDistance / 0.35));
-      const durationMs = (baseDurationSec * 1000) / currentSpeed;
-      const startTime = performance.now();
-
+      let previousTime = performance.now(), seconds = 0;
       const animateMove = (now) => {
-        const elapsed = now - startTime;
-        const progress = Math.min(1.0, elapsed / durationMs);
-        const ease = progress * progress * (3 - 2 * progress);
-        const curTraveledDist = ease * totalDistance;
-
-        let activeSeg =
-          segments.find((s) => curTraveledDist >= s.startDist && curTraveledDist <= s.endDist) ||
-          segments[segments.length - 1];
-
-        let curX = goalPoint.x;
-        let curY = goalPoint.y;
-        let curYaw = robotPoseRef.current.yaw;
-
-        if (activeSeg) {
-          const segRatio =
-            activeSeg.segDist > 0.001
-              ? (curTraveledDist - activeSeg.startDist) / activeSeg.segDist
-              : 1.0;
-          curX = Number((activeSeg.p1.x + activeSeg.segDx * segRatio).toFixed(2));
-          curY = Number((activeSeg.p1.y + activeSeg.segDy * segRatio).toFixed(2));
-          curYaw = Number(activeSeg.segYaw.toFixed(2));
-        }
-
-        const newPose = { x: curX, y: curY, yaw: curYaw };
-        robotPoseRef.current = newPose;
-        setRobotPose(newPose);
-        setStepProgress(Math.round(progress * 100));
-
-        if (progress < 1.0) {
+        seconds += Math.max(0, now - previousTime) / 1000 * (simSpeedRef.current || 1);
+        previousTime = now;
+        const sample = sampleSimulatorMotion(motion, seconds);
+        const pose = { x: Number(sample.x.toFixed(3)), y: Number(sample.y.toFixed(3)), yaw: sample.yaw };
+        robotPoseRef.current = pose;
+        setRobotPose(pose);
+        setLinearSpeed(sample.speed);
+        setStepProgress(sample.progress);
+        if (sample.progress < 100) {
           animFrameRef.current = requestAnimationFrame(animateMove);
         } else {
-          const lastYaw = segments.length > 0 ? segments[segments.length - 1].segYaw : robotPoseRef.current.yaw;
-          const finalPose = { x: goalPoint.x, y: goalPoint.y, yaw: Number(lastYaw.toFixed(2)) };
-          robotPoseRef.current = finalPose;
-          setRobotPose(finalPose);
-          setStepProgress(100);
-
-          if (fromWorkflow) {
-            handleStepFinish();
-          } else {
-            setManualNavLabel(`Da den: ${targetName}`);
-          }
+          currentPathRef.current = null;
+          setCurrentPath(null);
+          if (fromWorkflow) handleStepFinish();
+          else setManualNavLabel(`${language === 'VI' ? 'Đã đến' : 'Arrived'}: ${targetName}`);
         }
       };
-
       animFrameRef.current = requestAnimationFrame(animateMove);
     },
     [handleStepFinish]
@@ -1570,12 +1509,11 @@ export const WorkflowSimulatorStudio = ({
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
 
     // Kiem tra an toan Vung chuc nang truoc khi thuc thi buoc
-    const stepValidation = validateWorkflowStepZone(activeStep, zonesRef.current, endpointsRef.current);
+    const stepValidation = validateWorkflowStepZone(activeStep, zonesRef.current, endpointsRef.current, robotPoseRef.current);
     if (!stepValidation.valid) {
       setIsPlaying(false);
       setIsPaused(false);
       setZoneAlert({ type: 'error', message: stepValidation.error });
-      onNotify(stepValidation.error, 'error');
       return;
     }
     if (stepValidation.warning) {
@@ -1765,6 +1703,11 @@ export const WorkflowSimulatorStudio = ({
       );
       return;
     }
+    handleInteractionModeChange('CONTROL');
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    currentPathRef.current = null;
+    setCurrentPath(null);
+    setLinearSpeed(0);
     setGuestRequest({});
     setGuestRunId((id) => id + 1);
     setSimGuestPresent(false);
@@ -1820,6 +1763,11 @@ export const WorkflowSimulatorStudio = ({
   const handlePauseSim = () => {
     setIsPaused((prev) => !prev);
     if (!isPaused) {
+      setLinearSpeed(0);
+      if (rosClientRef.current?.isConnected) {
+        rosClientRef.current.publish('/nav_mode', 'std_msgs/String', { data: 'STOP' });
+        rosClientRef.current.publishCmdVel(0, 0);
+      }
       if (timerRef.current) clearTimeout(timerRef.current);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (stopSpeakingRef.current) stopSpeakingRef.current();
@@ -1827,6 +1775,12 @@ export const WorkflowSimulatorStudio = ({
   };
 
   const handleStopSim = () => {
+    setLinearSpeed(0);
+    currentPathRef.current = null;
+    if (rosClientRef.current?.isConnected) {
+      rosClientRef.current.publish('/nav_mode', 'std_msgs/String', { data: 'STOP' });
+      rosClientRef.current.publishCmdVel(0, 0);
+    }
     simulatedGuest.reset();
     setIsPlaying(false);
     setIsPaused(false);
@@ -1838,8 +1792,10 @@ export const WorkflowSimulatorStudio = ({
     if (timerRef.current) clearTimeout(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (stopSpeakingRef.current) stopSpeakingRef.current();
-    robotPoseRef.current = ROBOT_INITIAL_POSE;
-    setRobotPose(ROBOT_INITIAL_POSE);
+    if (!rosClientRef.current?.isConnected) {
+      robotPoseRef.current = ROBOT_INITIAL_POSE;
+      setRobotPose(ROBOT_INITIAL_POSE);
+    }
   };
 
   const handleNextStep = () => {
@@ -1850,78 +1806,51 @@ export const WorkflowSimulatorStudio = ({
     handleStopSim();
   };
 
-  // Nguoi dung click vao mat san de chon diem den truc tiep tren ban do
+  const handleInteractionModeChange = (mode) => {
+    if (mode === 'EDIT' && (isPlayingRef.current || (currentPathRef.current && !currentPathRef.current.preview))) return;
+    if (dragState || dragEndpointState) return;
+    // A draft is not a saved zone; changing mode must not leave invisible edit targets.
+    setZoneDraft(null);
+    setZoneDrawType(null);
+    setSelectedZone(null);
+    setSelectedZoneVertex(null);
+    setZoneEdgeHover(null);
+    setSelectedEndpoint(null);
+    setIsZoneEditMode(false);
+    setIsEndpointEditMode(false);
+    setIsMapMenuOpen(false);
+    if (currentPathRef.current?.preview) { currentPathRef.current = null; setCurrentPath(null); }
+    interactionModeRef.current = mode;
+    setInteractionMode(mode);
+  };
+
   const handleMapClick = (e) => {
-    if (e.target?.closest?.('[data-sim-guest]')) return;
-    // Neu vua keo tha Vung hoac Endpoint xong thi khong kich hoat dieu huong robot
+    if (e.shiftKey || e.target?.closest?.('[data-sim-guest]')) return;
     if (wasDraggingRef.current || dragState || dragEndpointState) return;
-
-    // Neu click trung endpoint hoac phan tu con cua endpoint thi khong bo chon va khong dieu huong
-    if (e.target?.closest?.('[data-endpoint]')) return;
-
-    // Neu click trung vung (zone) hoac tay nam co gian thi khong bo chon va khong dieu huong
-    if (e.target?.closest?.('[data-zone]') || e.target?.closest?.('.zone-resize-handles')) return;
-
-    const pt = getSvgPointFromClient(e.clientX, e.clientY);
-    const svgX = pt.x;
-    const svgY = pt.y;
-
-    // === POLYGON DRAW MODE (giong AdminPhysicalMapTab) ===
-    if (zoneDrawType && zoneDrawShape === 'polygon') {
-      if (svgX < 50 || svgX > 950 || svgY < 40 || svgY > 580) return;
-      const p = svgToMeter(svgX, svgY);
-      const vertices = zoneDraft?.vertices || [];
-      // Double-click hoac click vao diem dau tien (snap radius 15px): hoan thanh polygon
-      if (vertices.length >= 3) {
-        const firstSvg = meterToSvg(vertices[0].x, vertices[0].y);
-        const dist = Math.hypot(svgX - firstSvg.x, svgY - firstSvg.y);
-        if (dist < 15 || e.detail >= 2) {
-          finishPolygon();
-          return;
+    if (e.target?.closest?.('[data-endpoint]') && !zoneDrawType) return;
+    if (isMapEditing && !zoneDrawType && e.target?.closest?.('[data-zone]')) return;
+    const { x: svgX, y: svgY } = getSvgPointFromClient(e.clientX, e.clientY);
+    if (svgX < 35 || svgX > 525 || svgY < 35 || svgY > 350) return;
+    const meter = svgToMeter(svgX, svgY);
+    if (isMapEditing) {
+      if (zoneDrawType && zoneDrawShape === 'polygon') {
+        const vertices = zoneDraft?.vertices || [];
+        if (vertices.length >= 3) {
+          const first = meterToSvg(vertices[0].x, vertices[0].y);
+          if (Math.hypot(svgX - first.x, svgY - first.y) < 6 || e.detail >= 2) {
+            finishPolygon();
+            return;
+          }
         }
-      }
-      setZoneDraft({ type: zoneDrawType, vertices: [...vertices, p], cursor: p });
-      return;
-    }
-
-    if (isZoneEditMode || selectedZone || isEndpointEditMode || selectedEndpoint) {
-      if (selectedZone) {
+        if (vertices.length >= MAX_ZONE_VERTICES) return;
+        setZoneDraft({ type: zoneDrawType, vertices: [...vertices, meter], cursor: meter });
+      } else {
         setSelectedZone(null);
-      }
-      if (selectedEndpoint) {
+        setSelectedZoneVertex(null);
         setSelectedEndpoint(null);
       }
-      setIsZoneEditMode(false);
-      setIsEndpointEditMode(false);
       return;
     }
-
-    // Chi tiep nhan click trong pham vi sanh (X 50..950, Y 40..580 chuan 10m x 6m)
-    if (svgX < 50 || svgX > 950 || svgY < 40 || svgY > 580) return;
-
-    const meter = svgToMeter(svgX, svgY);
-
-    // Kiem tra an toan Zone tai toa do nguoi dung click
-    const clickedZone = getActiveSimulatorZone(meter.x, meter.y, zonesRef.current);
-    if (clickedZone && clickedZone.type === 'KEEP_OUT') {
-      const msg = `Vị trí (${meter.x.toFixed(1)}m, ${meter.y.toFixed(1)}m) thuộc Vùng cấm vào "${clickedZone.name}". Robot không được phép di chuyển vào đây!`;
-      setZoneAlert({ type: 'error', message: msg });
-      onNotify(msg, 'warning');
-      return;
-    }
-
-    const currentRobotPt = { x: robotPoseRef.current.x, y: robotPoseRef.current.y };
-    const passthrough = resolveNoStopPassthrough(currentRobotPt, meter, zonesRef.current);
-    if (passthrough.isNoStop) {
-      const safePt = passthrough.safePoint;
-      onNotify(
-        `Điểm chọn (${meter.x}m, ${meter.y}m) nằm trong Vùng cấm dừng "${passthrough.zone.name}". Robot tự động đi xuyên qua vùng cấm đến vị trí an toàn (${safePt.x}m, ${safePt.y}m).`,
-        'info'
-      );
-      handleNavigateToGoal(safePt.x, safePt.y, `Thoát vùng cấm dừng (${safePt.x}m, ${safePt.y}m)`);
-      return;
-    }
-
     handleNavigateToGoal(meter.x, meter.y, `${meter.x}m, ${meter.y}m`);
   };
 
@@ -2105,7 +2034,7 @@ export const WorkflowSimulatorStudio = ({
 
                 {/* TAB 1: VÙNG QUY ĐỊNH */}
                 {mapMenuTab === 'ZONES' && (
-                  <div className="space-y-2.5">
+                  <fieldset disabled={!isMapEditing} className="space-y-2.5 disabled:opacity-45">
                     {/* Bật/Tắt hiển thị & Kéo thả (Gọn gàng không chèn icon) */}
                     <div className="space-y-1">
                       <button
@@ -2123,22 +2052,7 @@ export const WorkflowSimulatorStudio = ({
                         </span>
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => setIsZoneEditMode((prev) => !prev)}
-                        className={`w-full px-2.5 py-1.5 rounded-lg border flex items-center justify-between font-semibold cursor-pointer transition-colors text-left text-xs ${isZoneEditMode
-                            ? 'bg-amber-50 text-amber-900 border-amber-300'
-                            : 'hover:bg-[#F2EFE9] text-[#262626] border-[#E9E5DC]'
-                          }`}
-                      >
-                        <span>Kéo thả & Co giãn Vùng</span>
-                        <span
-                          className={`text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded ${isZoneEditMode ? 'bg-amber-200 text-amber-900' : 'bg-[#E9E5DC] text-[#8C8C8C]'
-                            }`}
-                        >
-                          {isZoneEditMode ? 'BẬT' : 'TẮT'}
-                        </span>
-                      </button>
+
                     </div>
 
                     {/* Thêm Vùng mới */}
@@ -2270,12 +2184,12 @@ export const WorkflowSimulatorStudio = ({
                         <span>Đặt lại</span>
                       </button>
                     </div>
-                  </div>
+                  </fieldset>
                 )}
 
                 {/* TAB 2: ĐIỂM ĐÍCH (ENDPOINTS) */}
                 {mapMenuTab === 'ENDPOINTS' && (
-                  <div className="space-y-2.5">
+                  <fieldset disabled={!isMapEditing} className="space-y-2.5 disabled:opacity-45">
                     {/* Thêm Endpoint Mới */}
                     <div className="space-y-1">
                       <div className="text-[10px] font-bold uppercase tracking-wider text-[#8C8C8C]">
@@ -2339,7 +2253,7 @@ export const WorkflowSimulatorStudio = ({
                         <span>Đặt lại</span>
                       </button>
                     </div>
-                  </div>
+                  </fieldset>
                 )}
               </div>
             )}
@@ -2887,6 +2801,17 @@ export const WorkflowSimulatorStudio = ({
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-stone-300 px-3 py-1.5 shrink-0">
+        <SimulatorMapMode mode={interactionMode} onChange={handleInteractionModeChange}
+          busy={isPlaying || Boolean(currentPath && !currentPath.preview)} language={language} showZones={showZones}
+          onToggleZones={() => setShowZones((value) => !value)} />
+        <span className="text-[11px] text-stone-500">
+          {language === 'VI'
+            ? (isMapEditing ? 'Chọn hoặc kéo vùng/điểm để sửa. Click sàn không di chuyển robot.' : 'Click sàn hoặc endpoint để điều hướng. Vùng và điểm đã khóa chỉnh sửa.')
+            : (isMapEditing ? 'Select or drag a zone/endpoint to edit. Floor clicks do not move the robot.' : 'Click the floor or an endpoint to navigate. Zone and endpoint editing is locked.')}
+        </span>
+      </div>
+
       <SimulatorGuestControls simulation={simulatedGuest} language={language} isPlaying={isPlaying}
         isPaused={isPaused} isCharging={isChargeRoutineRunning} promotionInterrupted={promotionInterrupted}
         ticket={guestRequest.ticket} />
@@ -2974,7 +2899,7 @@ export const WorkflowSimulatorStudio = ({
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-xs text-xs font-medium backdrop-blur-xs"
               style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
             >
-              {isZoneEditMode || selectedZone ? (
+              {isMapEditing ? (
                 <span title="Chế độ sửa Vùng (Kéo thả & Định vị)">
                   <Move className="w-3.5 h-3.5 text-amber-700" />
                 </span>
@@ -2988,7 +2913,7 @@ export const WorkflowSimulatorStudio = ({
                 style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
                 title="Tọa độ Robot hiện tại (X, Y)"
               >
-                {robotPose.x}m, {robotPose.y}m
+                {robotPose.x}m, {robotPose.y}m · {linearSpeed.toFixed(2)} m/s
               </span>
               <span
                 className={`font-mono font-bold px-1.5 py-0.5 rounded border text-[11px] ${batteryGuard.mode === BATTERY_MODE.CRITICAL
@@ -3058,6 +2983,7 @@ export const WorkflowSimulatorStudio = ({
             {/* Toast Cảnh Báo An Toàn Vùng (Nổi khi vi phạm hoặc click vùng cấm) */}
             {zoneAlert && (
               <div
+                role="status"
                 className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-md text-xs font-semibold animate-fadeIn max-w-md"
                 style={{
                   backgroundColor: zoneAlert.type === 'error' ? '#FEF2F2' : '#FFFBEB',
@@ -3070,6 +2996,7 @@ export const WorkflowSimulatorStudio = ({
                 <button
                   type="button"
                   onClick={() => setZoneAlert(null)}
+                  aria-label={language === 'VI' ? 'Đóng thông báo' : 'Dismiss notification'}
                   className="p-1 rounded hover:bg-black/5 cursor-pointer shrink-0"
                 >
                   <X className="w-3 h-3" />
@@ -3196,10 +3123,10 @@ export const WorkflowSimulatorStudio = ({
                 const ZoneShape = isPolygonZone(zone) ? 'polygon' : 'rect';
                 const shapeProps = isPolygonZone(zone)
                   ? { points: zone.vertices.map((p) => `${35 + p.x * 25},${35 + (12.60 - p.y) * 25}`).join(' ') }
-                  : rect;
+                  : { ...rect, transform: `rotate(${-Number(zone.yaw || 0)}, ${rect.x + rect.width / 2}, ${rect.y + rect.height / 2})` };
                 const isKeepOut = zone.type === 'KEEP_OUT';
                 const isSpeed = zone.type === 'SPEED_ZONE' || zone.type === 'SLOW_SPEED';
-                const isSelected = selectedZone?.id === zone.id;
+                const isSelected = isMapEditing && selectedZone?.id === zone.id;
                 const isDraggingThis = dragState?.zoneId === zone.id;
 
                 const fillPattern = isKeepOut
@@ -3216,7 +3143,7 @@ export const WorkflowSimulatorStudio = ({
                     : 'rgba(244, 63, 94, 0.05)';
 
 
-                const isZoneInteractable = !zoneDrawType;
+                const isZoneInteractable = isMapEditing && !zoneDrawType;
 
                 return (
                   <g
@@ -3232,7 +3159,7 @@ export const WorkflowSimulatorStudio = ({
                       handleSvgPointerUp(e);
                     }}
                     onClick={(e) => handleZoneClick(e, zone)}
-                    className={`select-none transition-opacity ${zoneDrawType
+                    className={`select-none transition-opacity ${!isZoneInteractable
                         ? 'pointer-events-none'
                         : isDraggingThis
                           ? 'cursor-grabbing opacity-90 pointer-events-auto'
@@ -3245,7 +3172,7 @@ export const WorkflowSimulatorStudio = ({
                     <ZoneShape
                       {...shapeProps}
                       fill={bgTint}
-                      style={{ pointerEvents: zoneDrawType ? 'none' : 'all' }}
+                      style={{ pointerEvents: isZoneInteractable ? 'all' : 'none' }}
                     />
                     {/* Lop hoa van pattern */}
                     <ZoneShape
@@ -3267,15 +3194,14 @@ export const WorkflowSimulatorStudio = ({
                     {/* Chú thích vùng bằng ICON và MÀU RIÊNG ở góc trên bên phải của vùng (Click vao Icon de chon va sua Vung) */}
                     <g
                       transform={`translate(${rect.x + rect.width - (isSpeed ? 26 : 16)}, ${rect.y + 4})`}
-                      className="pointer-events-auto select-none cursor-pointer group"
+                      className="select-none cursor-pointer group"
+                      style={{ pointerEvents: isZoneInteractable ? 'auto' : 'none' }}
                       onClick={(e) => {
+                        if (!isZoneInteractable || e.shiftKey) return;
                         e.stopPropagation();
                         const nextSelected = isSelected ? null : zone;
                         setSelectedZone(nextSelected);
                         setIsZoneEditMode(Boolean(nextSelected));
-                        if (nextSelected) {
-                          onNotify(`Chế độ sửa vùng: Đã chọn "${zone.name}".`, 'info');
-                        }
                       }}
                       title={`Click vào Icon để chọn và chỉnh sửa Vùng: ${zone.name}`}
                     >
@@ -3321,12 +3247,11 @@ export const WorkflowSimulatorStudio = ({
                     {/* TAY NAM GOC VUONG MINI FIGMA/CAD (6x6px trang vien xam dam, thanh lich, khong hinh tron, khong hao quang) */}
                     {isSelected && !isPolygonZone(zone) && (
                       <g className="zone-resize-handles">
-                        {[
-                          { cx: rect.x, cy: rect.y, type: 'RESIZE_NW', cursor: 'cursor-nwse-resize' },
-                          { cx: rect.x + rect.width, cy: rect.y, type: 'RESIZE_NE', cursor: 'cursor-nesw-resize' },
-                          { cx: rect.x, cy: rect.y + rect.height, type: 'RESIZE_SW', cursor: 'cursor-nesw-resize' },
-                          { cx: rect.x + rect.width, cy: rect.y + rect.height, type: 'RESIZE_SE', cursor: 'cursor-nwse-resize' },
-                        ].map((handle) => (
+                        {Object.entries(zoneCorners(zone)).map(([corner, position]) => {
+                          const point = meterToSvg(position.x, position.y);
+                          const handle = { cx: point.x, cy: point.y, type: `RESIZE_${corner.toUpperCase()}`,
+                            cursor: ['nw', 'se'].includes(corner) ? 'cursor-nwse-resize' : 'cursor-nesw-resize' };
+                          return (
                           <g key={handle.type}>
                             {/* Vung nhan click tang hinh de de trỏ chuot */}
                             <rect
@@ -3354,7 +3279,7 @@ export const WorkflowSimulatorStudio = ({
                               className={`pointer-events-none ${handle.cursor}`}
                             />
                           </g>
-                        ))}
+                        ); })}
                       </g>
                     )}
 
@@ -3464,7 +3389,7 @@ export const WorkflowSimulatorStudio = ({
               })}
 
             {/* POLYGON DRAFT: Hien thi cac dinh da chon khi dang ve da giac */}
-            {zoneDrawType && zoneDrawShape === 'polygon' && zoneDraft?.vertices && (() => {
+            {isMapEditing && zoneDrawType && zoneDrawShape === 'polygon' && zoneDraft?.vertices && (() => {
               const ZONE_COLORS = { KEEP_OUT: '#F87171', SPEED_ZONE: '#FBBF24', NO_STOP: '#FB7185' };
               const color = ZONE_COLORS[zoneDrawType] || '#22D3EE';
               const toSvg = (p) => meterToSvg(p.x, p.y);
@@ -3515,7 +3440,7 @@ export const WorkflowSimulatorStudio = ({
                 currentPath?.targetPoint &&
                 Math.abs(currentPath.targetPoint.x - ep.x) < 0.25 &&
                 Math.abs(currentPath.targetPoint.y - ep.y) < 0.25;
-              const isSelected = selectedEndpoint?.id === ep.id;
+              const isSelected = isMapEditing && selectedEndpoint?.id === ep.id;
               const isDraggingThis = dragEndpointState?.endpointId === ep.id;
               const isHovered = hoveredEndpointId === ep.id;
               const showLabel = isSelected || isDraggingThis || isHovered;
@@ -3537,25 +3462,20 @@ export const WorkflowSimulatorStudio = ({
                   onMouseEnter={() => setHoveredEndpointId(ep.id)}
                   onMouseLeave={() => setHoveredEndpointId((prev) => (prev === ep.id ? null : prev))}
                   onPointerDown={(e) => handleEndpointPointerDown(e, ep)}
-                  onPointerUp={(e) => {
-                    if (!wasDraggingRef.current) {
+                  onPointerUp={(e) => { if (isMapEditing) handleSvgPointerUp(e); }}
+                  onClick={(e) => {
+                    if (zoneDrawType || e.shiftKey) return;
+                    e.stopPropagation();
+                    if (wasDraggingRef.current) return;
+                    if (isMapEditing) {
                       setSelectedEndpoint(ep);
                       setSelectedZone(null);
                       setIsEndpointEditMode(true);
+                    } else {
+                      handleNavigateToGoal(ep.x, ep.y, ep.name);
                     }
-                    handleSvgPointerUp(e);
                   }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (wasDraggingRef.current) return;
-                    setSelectedEndpoint(ep);
-                    setSelectedZone(null);
-                    setIsEndpointEditMode(true);
-                  }}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    handleNavigateToGoal(ep.x, ep.y, ep.name);
-                  }}
+                  style={{ pointerEvents: zoneDrawType ? 'none' : 'auto' }}
                   className={`select-none ${isDraggingThis ? 'cursor-grabbing' : 'cursor-pointer'} group`}
                 >
                   {/* 1. Vung nhan dien Pointer va Halo khi duoc chon */}
@@ -3854,7 +3774,7 @@ export const WorkflowSimulatorStudio = ({
           </svg>
 
           {/* FLOATING ACTION BAR TINH GON O DUOI DAY SA BAN (EDIT ZONE & DRAG/RESIZE) */}
-          {selectedZone && (
+          {isMapEditing && selectedZone && (
             <div
               className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center flex-nowrap whitespace-nowrap gap-2 px-3.5 py-1.5 rounded-xl border shadow-2xl backdrop-blur-md animate-fadeIn text-xs max-w-[95%] overflow-x-auto select-none"
               style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
@@ -4039,7 +3959,7 @@ export const WorkflowSimulatorStudio = ({
           )}
 
           {/* FLOATING ACTION BAR TINH GON O DUOI DAY SA BAN (EDIT ENDPOINT: DAT TEN, LOAI, TOA DO, DIEN DEN, XOA) */}
-          {selectedEndpoint && (
+          {isMapEditing && selectedEndpoint && (
             <div
               className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center flex-nowrap whitespace-nowrap gap-2 px-3.5 py-1.5 rounded-xl border shadow-2xl backdrop-blur-md animate-fadeIn text-xs max-w-[95%] overflow-x-auto select-none"
               style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
@@ -4087,16 +4007,6 @@ export const WorkflowSimulatorStudio = ({
                   ({Number(selectedEndpoint.x).toFixed(2)}m, {Number(selectedEndpoint.y).toFixed(2)}m)
                 </span>
               </div>
-
-              {/* 4. Nut Dieu huong toi day (Pure Icon Button) */}
-              <button
-                type="button"
-                onClick={() => handleNavigateToGoal(selectedEndpoint.x, selectedEndpoint.y, selectedEndpoint.name)}
-                className="p-1.5 rounded-lg border text-[#262626] bg-[#F2EFE9] hover:bg-[#FAF8F5] border-[#BFBFBD] cursor-pointer transition-colors shrink-0 flex items-center justify-center"
-                title="Điều hướng Robot chạy tới điểm này"
-              >
-                <Navigation className="w-3.5 h-3.5" />
-              </button>
 
               {/* 5. Nut Xoa Endpoint */}
               <button

@@ -17,6 +17,18 @@ export function hasSimulatedGuest(workflow, chargeRoutineId) {
     (workflow?.steps || []).some((step) => INTERACTION_TYPES.has(step.type));
 }
 
+function guestPickupTarget(step, endpoints = []) {
+  if (step?.type !== 'MOVE') return null;
+  const params = step.params || {};
+  const target = resolveMoveTarget(step, endpoints);
+  const keys = [params.target_waypoint_id, params.target_value, target.id, target.key];
+  const isEntrance = keys.some((key) => ['MAIN_ENTRANCE', 'ZONE_LOBBY'].includes(key)) ||
+    target.role === 'entrance' || distance(target, GAZEBO_LOBBY_WAYPOINTS.MAIN_ENTRANCE) < 0.15;
+  // A composed/copied workflow uses the same pickup destination as the robot.
+  // Never anchor the waiting guest to the robot's departure pose.
+  return isEntrance ? { ...point(target), yaw: 0 } : null;
+}
+
 export function guestActivity(workflow, step, endpoints = []) {
   if (!step) return 'waiting';
   if (step.type === 'SHOW') return ({
@@ -36,7 +48,7 @@ export function guestActivity(workflow, step, endpoints = []) {
   if (['STANDBY', 'CHARGER', 'PARK'].includes(params.target_type) ||
       ['PARK', 'CHARGER'].includes(target?.type) ||
       /^(ROBOT_STANDBY|CHARGER_STATION|DOCK_.*)$/.test(key)) return 'leaving';
-  if (workflow?.id === 'wf-01-welcome' || ['MAIN_ENTRANCE', 'ZONE_LOBBY'].includes(key)) return 'waiting';
+  if (guestPickupTarget(step, endpoints)) return 'waiting';
   if (workflow?.id === 'wf-06-idle-promo') return 'waiting';
   return 'following';
 }
@@ -88,25 +100,34 @@ export function updateGuestActivity(guest, { workflow, step, robot, endpoints })
   }
   if (activity === 'following') {
     guest.followed = true;
+    guest.meetingAnchor = null;
     guest.mode = 'following';
     routeTo(guest, robot);
     guest.lastRobot = point(robot);
     return;
   }
-  if (guest.mode === 'following') {
+  const pickup = guestPickupTarget(step, endpoints);
+  if (!pickup && ['following', 'catching-up'].includes(guest.mode)) {
     // Keep the remaining breadcrumb route; do not cut across a corner at the end of MOVE.
     guest.mode = 'catching-up';
     return;
   }
+  const anchor = pickup || robot;
+  // Keep a chosen meeting point across GREET/SHOW/CHOICE steps and robot turns.
+  // Otherwise every step can make the guest reverse direction around a stationary robot.
+  if (guest.meetingAnchor && distance(guest.meetingAnchor, anchor) < 0.4 &&
+      ['approaching', 'waiting', 'interacting'].includes(guest.mode)) {
+    if (guest.mode !== 'approaching') guest.mode = activity === 'waiting' ? 'waiting' : 'interacting';
+    return;
+  }
   if (distance(guest.pose, robot) < 2.0 && activity !== 'waiting') {
     guest.mode = 'interacting';
+    guest.meetingAnchor = point(robot);
     guest.route = [];
     return;
   }
-  const anchor = activity === 'waiting' && step?.type === 'MOVE' && workflow?.id === 'wf-01-welcome'
-    ? { ...resolveMoveTarget(step, endpoints), yaw: 0 }
-    : robot;
   routeTo(guest, guestMeetingPoint(anchor));
+  guest.meetingAnchor = point(anchor);
   guest.mode = 'approaching';
 }
 
@@ -149,6 +170,7 @@ export function advanceSimulatedGuest(guest, robot, seconds) {
   }
   if (guest.mode === 'catching-up' && remainingGuestRoute(guest) <= FOLLOW_DISTANCE + 0.01) {
     guest.mode = 'interacting';
+    guest.meetingAnchor = point(robot);
     guest.route = [];
   }
   if (!guest.route.length) {

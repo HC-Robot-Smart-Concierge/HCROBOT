@@ -117,3 +117,51 @@ Toàn bộ logic xử lý hình học đa giác từ `AdminPhysicalMapTab.jsx` �
 
 Khách này chỉ là lớp trực quan trên web; chưa tạo mô hình người hoặc vật cản cho LiDAR trong Gazebo.
 
+## 7. Sửa Chuyển Động Khách Trong WF09 — 15/11/2026
+
+* Nguyên nhân: bước ra cửa đón khách của WF09 được nhận diện là chờ, nhưng điểm chờ chỉ lấy theo đích robot cho WF01. Khách của WF09 đi tới điểm `(8.4, 9.6)` gần vị trí xuất phát của robot rồi quay lại cửa khi chuyển sang chào hỏi.
+* Sửa điểm chờ theo đích của bước đón khách, dùng chung cho WF01, WF09 và workflow sao chép; không phụ thuộc mã WF01.
+* Giữ điểm gặp ổn định khi chuyển giữa chào hỏi, chọn ngôn ngữ, menu và lựa chọn. Giữ đường đi còn lại khi khách đang theo kịp robot, kể cả khi workflow chuyển sang màn hình thông báo hoặc hỏi thêm.
+* Kiểm tra logic trực tiếp bằng định nghĩa WF09 hiện tại: đón khách, chuyển các bước tương tác, nhánh bản đồ, vòng hỏi thêm, nhánh dẫn đường và quay về trạm. Không tạo file test.
+* Kiểm tra UI: Stop/Reset rồi chạy lại WF09. Khách phải chờ gần cửa khi robot tới đón; chọn **Show me the map** thì khách đứng tại chỗ, chọn **Walk me there** thì khách mới đi theo robot.
+
+
+## 8. Tách Chế Độ Sa Bàn Và Kiểm Tra Quy Tắc Vùng — 15/11/2026
+
+### Thao tác trên UI
+
+- Mặc định **Robot control / Điều khiển robot**: click sàn hoặc endpoint để điều hướng; không chọn, kéo hoặc xóa vùng/đỉnh. Icon trên vùng cũng không mở trình sửa.
+- **Edit zones / endpoints / Sửa zone / endpoint**: chọn và kéo đối tượng, thêm/xóa đỉnh, vẽ polygon, sửa và lưu cấu hình. Click sàn trong chế độ này không gửi goal.
+- Không chuyển sang Edit khi workflow đang chạy, đang Pause hoặc robot còn lộ trình di chuyển. Bấm Stop trước; chạy workflow tự chuyển về Control và xóa lựa chọn/draft đang vẽ.
+- **Show zones / Hiện vùng** chỉ đổi lớp hiển thị; ẩn vùng không vô hiệu hóa quy tắc.
+- Polygon tự cắt, vùng kéo ra ngoài sảnh và endpoint kéo vào KEEP_OUT/NO_STOP bị từ chối. Lỗi lưu vùng giữ trạng thái chưa lưu và báo lỗi thật.
+
+### Quy định và lỗi đã sửa
+
+| Vùng | Quy định | Xử lý hiện tại |
+|---|---|---|
+| KEEP_OUT | Không đi vào, không đặt đích/endpoint trong vùng | Web kiểm tra toàn bộ đoạn đường, có khoảng cách đệm 0.2 m; tìm đường vòng theo lưới 0.2 m, báo không có đường nếu bị chặn. Trước đây chỉ kiểm tra vài waypoint nên bỏ sót đoạn cắt qua vùng. |
+| SPEED_ZONE | Tốc độ không vượt giới hạn khi đi trong vùng | Animation web dùng quãng đường/tốc độ thật thay cho thời lượng cố định 2.5–12 giây. Tách đường tại biên vùng, lấy giới hạn thấp nhất khi chồng vùng, kể cả chồng NO_STOP. HUD hiển thị m/s; 1x/2x/4x là tốc độ đồng hồ mô phỏng. |
+| NO_STOP | Được đi qua, không chọn đích/endpoint hoặc thực hiện bước chờ trong vùng | Chọn điểm bên ngoài vùng để đi xuyên. Không tự sửa đích sang tọa độ suy đoán. Stop/Pause luôn được ưu tiên; không ép robot chạy khi người vận hành yêu cầu dừng. |
+
+- Hình học polygon lõm và chữ nhật xoay được dùng khi kiểm tra đường đi; hình chữ nhật xoay và tay nắm resize được hiển thị theo cùng góc.
+- `robot/scripts/autonomous_navigator.py` (được `launch_gazebo.sh` và `launch_autonomous_demo.sh` khởi chạy): giới hạn tốc độ được tính độc lập với nhãn vùng ưu tiên, lấy mức thấp nhất; giới hạn cả lệnh sau bộ lọc làm mượt. STOP/STANDBY không còn tự chạy 0.18 m/s trong NO_STOP. Không kết thúc goal ở trong NO_STOP chỉ vì đã lọt vào bán kính tới đích; tuần tra bỏ bước chờ ở vùng này.
+- Nút Stop/Pause của simulator gửi `/nav_mode: STOP` cho navigator demo cùng lệnh vận tốc 0. Khi đang nối Gazebo, Stop không đặt lại tọa độ web giả; vị trí lấy từ telemetry.
+- Backend đã có kiểm tra goal/endpoint KEEP_OUT và NO_STOP. Nav2 có KeepoutFilter và SpeedFilter, mask polygon và lấy giới hạn tốc độ thấp nhất; **NO_STOP là quy tắc đích/chờ, không phải một Nav2 costmap filter riêng**.
+- `start_sim_foxglove.sh` với bản đồ đã lưu dùng Nav2 và mask theo map. Không đồng nhất chế độ này với navigator demo nhận `/hotel_zones`; cần đúng map và lưu/tải mask trước khi kiểm tra Nav2.
+
+### Kiểm tra đã thực hiện và giới hạn
+
+- Chạy trực tiếp trong bộ nhớ, không tạo file test: 9 nhóm kiểm tra đường cắt KEEP_OUT, đường bị chặn hoàn toàn, endpoint mặc định hợp lệ, polygon lõm, tốc độ/thời gian, vùng chồng nhau, vùng rất mỏng, chữ nhật xoay, NO_STOP và biên bản đồ.
+- Thực thi các handler tương tác thật trong bộ nhớ: Control khóa edit, click Edit không phát goal, khóa chuyển mode khi chạy, xóa draft khi đổi mode. Kiểm tra polygon thêm/xóa đỉnh tiếp tục dùng hình học chung.
+- Python: kiểm tra giới hạn tốc độ chồng vùng; thực thi nhánh STANDBY của `control_loop` khi ở NO_STOP; chạy các hàm sinh mask backend với đầu ra giữ trong bộ nhớ để kiểm tra polygon và speed overlap. Không ghi bản đồ, không gửi ROS goal, không tạo ticket.
+- Frontend build thành công. Chưa chạy robot/Gazebo thực tế hoặc thao tác UI trực tiếp trong lượt sửa này; cần khởi động lại navigator demo để Python mới có hiệu lực. Chưa commit/push phần sửa này.
+
+### Các bước người dùng kiểm tra UI
+
+1. Mở Workflow Step Management → Simulation, chọn **Robot control**. Click một điểm trống rồi click vùng: robot điều hướng hoặc báo vi phạm; không hiện tay nắm sửa.
+2. Bấm Stop → **Edit zones / endpoints**. Kéo endpoint, kéo đỉnh, click cạnh thêm đỉnh, chọn đỉnh rồi Delete; robot không di chuyển.
+3. Vẽ KEEP_OUT chắn giữa hai điểm trống, lưu rồi về Control: robot phải đi vòng; nếu chắn hết đường thì phải báo không có lộ trình.
+4. Vẽ SPEED_ZONE 0.10 m/s cắt đường đi, để 1x: khi qua vùng, tốc độ trên HUD không vượt 0.10. Chồng thêm vùng 0.05: phần giao áp dụng 0.05. Tắt Show zones rồi thử lại vẫn phải có hiệu lực.
+5. Vẽ NO_STOP tại đoạn trống không chứa endpoint. Click trong vùng phải bị từ chối; chọn đích ngoài phía bên kia thì robot đi xuyên. Stop/Pause phải dừng, không tự chạy tiếp.
+6. Với Gazebo demo đã khởi động lại: bật kết nối ROS, lưu zones, lặp lại bước 3–5 và đối chiếu chuyển động/telemetry. Với Nav2 bản đồ đã lưu, kiểm tra mask của đúng map riêng.

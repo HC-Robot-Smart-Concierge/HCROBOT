@@ -17,9 +17,9 @@ import subprocess
 import urllib.request
 import threading
 try:
-    from .zone_geometry import distance_to_zone, zone_points
+    from .zone_geometry import distance_to_zone, zone_points, effective_speed_limit
 except ImportError:
-    from zone_geometry import distance_to_zone, zone_points
+    from zone_geometry import distance_to_zone, zone_points, effective_speed_limit
 
 import rclpy
 from rclpy.node import Node
@@ -822,6 +822,7 @@ class AutonomousNavigator(Node):
 
         now = time.time()
         active_zone = self.get_active_zone(self.current_x, self.current_y)
+        speed_limit = effective_speed_limit(self.current_x, self.current_y, self.zones)
 
         # Định kỳ publish telemetry vùng (2Hz)
         if now - self.last_zone_telemetry_time > 0.5:
@@ -831,39 +832,26 @@ class AutonomousNavigator(Node):
                 "zone_id": active_zone.get("id") if active_zone else None,
                 "zone_name": active_zone.get("name") if active_zone else None,
                 "zone_type": active_zone.get("type") if active_zone else None,
-                "speed_limit": float(active_zone.get("speed_limit") or 0.20) if active_zone and active_zone.get("type") in ("SPEED_ZONE", "SLOW_SPEED") else None,
+                "speed_limit": speed_limit,
                 "violation": self.zone_violation_msg,
             }
             tel_msg = String()
             tel_msg.data = json.dumps(z_tel)
             self.zone_telemetry_pub.publish(tel_msg)
 
-        # 1. Xử lý chế độ STANDBY
+        # STOP/STANDBY always wins over NO_STOP: never move without an active goal.
         if self.mode == "STANDBY":
-            # Nếu đang nằm trong NO_STOP zone, robot không được dừng lại hẳn mà phải tự động di chuyển thoát khỏi vùng
+            self.clearing_no_stop = False
             if active_zone and active_zone.get("type") == "NO_STOP":
-                if not self.clearing_no_stop:
-                    self.clearing_no_stop = True
-                    self.get_logger().warn(
-                        f"[NO-STOP ZONE] Robot nhận lệnh dừng nhưng đang ở trong '{active_zone.get('name')}'. Tự động di chuyển thoát khỏi vùng cấm dừng..."
-                    )
-                cmd = Twist()
-                cmd.linear.x = 0.18
-                cmd.angular.z = 0.0
-                self.cmd_pub.publish(cmd)
-                self.publish_joint_states(cmd.linear.x, cmd.angular.z)
-                return
-            else:
-                self.clearing_no_stop = False
-                if not self.standby_stopped:
-                    self.publish_stop()
-                    self.standby_stopped = True
-                if now - self.last_log_time > 4.0:
-                    self.last_log_time = now
-                    self.get_logger().info(f"[STANDBY] Sẵn sàng tại ({self.current_x:.2f}, {self.current_y:.2f})")
-                return
+                self.zone_violation_msg = f"Stopped in NO_STOP zone '{active_zone.get('name')}'; waiting for a safe goal."
+            if not self.standby_stopped:
+                self.publish_stop()
+                self.standby_stopped = True
+            if now - self.last_log_time > 4.0:
+                self.last_log_time = now
+                self.get_logger().info(f"[STANDBY] Sẵn sàng tại ({self.current_x:.2f}, {self.current_y:.2f})")
+            return
 
-        cmd = Twist()
         if self.mode == "POINT_TO_POINT" and self.custom_goal:
             tx, ty, name = self.custom_goal
         else:
@@ -898,7 +886,9 @@ class AutonomousNavigator(Node):
                     self.print_next_target()
 
         # 3. Đã tới đích (< 0.35m)
-        if dist_to_target < 0.35:
+        in_no_stop = active_zone and active_zone.get("type") == "NO_STOP"
+        final_goal = self.mode == "POINT_TO_POINT" and len(self.sub_waypoints) <= 1
+        if dist_to_target < 0.35 and not (final_goal and in_no_stop):
             if self.mode == "POINT_TO_POINT":
                 if len(self.sub_waypoints) > 1:
                     self.get_logger().info(f"==> Đã qua điểm trung gian: {name}, tiếp tục hành trình...")
@@ -918,6 +908,11 @@ class AutonomousNavigator(Node):
                     self.mode = "STANDBY"
                     self.pause_until = 0.0
                     return
+            elif in_no_stop:
+                self.target_idx = (self.target_idx + 1) % len(WAYPOINTS)
+                self.pause_until = 0.0
+                self.print_next_target()
+                return
             else:
                 self.get_logger().info(f"==> ĐÃ ĐẾN NƠI: {name}! Tạm dừng 2s tiếp nhận...")
                 self.publish_stop()
@@ -972,16 +967,14 @@ class AutonomousNavigator(Node):
 
         # 5. Áp dụng Giới Hạn Tốc Độ (Speed Zone) - Tốc độ an toàn giúp LiDAR quét nét ổn định
         max_allowed_linear = 0.22
-        if active_zone and active_zone.get('type') in ('SPEED_ZONE', 'SLOW_SPEED'):
-            zone_limit = float(active_zone.get('speed_limit') or 0.15)
-            max_allowed_linear = min(max_allowed_linear, zone_limit)
-            if self.last_speed_zone_log_id != active_zone.get('id'):
-                self.last_speed_zone_log_id = active_zone.get('id')
-                self.get_logger().info(f"[SPEED ZONE] Đi vào '{active_zone.get('name')}': Giới hạn tốc độ {zone_limit:.2f} m/s")
-        else:
-            if self.last_speed_zone_log_id is not None:
-                self.get_logger().info(f"[NORMAL ZONE] Đã ra khỏi khu vực giới hạn tốc độ, khôi phục tốc độ {max_allowed_linear:.2f} m/s")
-                self.last_speed_zone_log_id = None
+        if speed_limit is not None:
+            max_allowed_linear = min(max_allowed_linear, speed_limit)
+            if self.last_speed_zone_log_id != speed_limit:
+                self.last_speed_zone_log_id = speed_limit
+                self.get_logger().info(f"[SPEED ZONE] Giới hạn hiệu lực {speed_limit:.2f} m/s")
+        elif self.last_speed_zone_log_id is not None:
+            self.get_logger().info(f"[NORMAL ZONE] Khôi phục tốc độ {max_allowed_linear:.2f} m/s")
+            self.last_speed_zone_log_id = None
 
         # 6. Tính toán vận tốc mượt mà (Smooth Velocity Profile)
         # Nếu robot xâm nhập sâu vào Keep-out Zone -> Lùi xe thoát ngay lập tức
@@ -1024,6 +1017,7 @@ class AutonomousNavigator(Node):
         alpha_lin = 0.35
         alpha_ang = 0.40
         self.cmd_linear_x = (1.0 - alpha_lin) * self.cmd_linear_x + alpha_lin * target_linear
+        self.cmd_linear_x = max(-max_allowed_linear, min(max_allowed_linear, self.cmd_linear_x))
         self.cmd_angular_z = (1.0 - alpha_ang) * self.cmd_angular_z + alpha_ang * target_angular
 
         cmd = Twist()

@@ -78,16 +78,21 @@ def sanitize_user_input(prompt: Optional[str]) -> str:
 def get_rejection_reply(lang_code: Optional[str] = "vi-VN") -> str:
     """
     Tra ve phan hoi tu choi lich su, chuan phong cach 5 sao khi phat hien Injection.
+    Tu dong dong bo theo cau hinh Persona (ten robot, ten khach san).
     """
-    if lang_code and (lang_code == "en-US" or "en" in lang_code.lower()):
+    try:
+        from app.services.ai.persona_service import persona_service
+        return persona_service.get_out_of_scope_reply(lang_code)
+    except Exception:
+        if lang_code and (lang_code == "en-US" or "en" in lang_code.lower()):
+            return (
+                "I am Rora, your AI Concierge at Aurora Grand Hotel. "
+                "I can only assist you with hotel amenities, services, and inquiries regarding your stay."
+            )
         return (
-            "I am Rora, your AI Concierge at Aurora Grand Hotel. "
-            "I can only assist you with hotel amenities, services, and inquiries regarding your stay."
+            "Dạ Rora là trợ lý robot phục vụ tại khách sạn Aurora Grand Hotel và chỉ có thể hỗ trợ "
+            "các thông tin, dịch vụ liên quan đến kỳ nghỉ của quý khách thôi ạ."
         )
-    return (
-        "Dạ Rora là trợ lý robot phục vụ tại khách sạn Aurora Grand Hotel và chỉ có thể hỗ trợ "
-        "các thông tin, dịch vụ liên quan đến kỳ nghỉ của quý khách thôi ạ."
-    )
 
 
 def get_immutability_directives(lang_code: Optional[str] = "vi-VN") -> str:

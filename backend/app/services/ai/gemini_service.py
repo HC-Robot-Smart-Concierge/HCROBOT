@@ -100,22 +100,19 @@ class GeminiService:
         """
         from app.services.ai.scenario_service import scenario_service
         from app.services.rag.facilities_kb_service import get_kb_facts_prompt
+        from app.services.ai.persona_service import persona_service
         kb_facts = get_kb_facts_prompt(lang_code)
         hotel_facts = scenario_service.get_hotel_facts_prompt(lang_code)
+        base_persona = persona_service.get_persona_prompt(lang_code)
 
         if lang_code == "en-US":
             prompt = (
-                "You are Rora - a smart, charming, and courteous AI Concierge Robot at the 5-star Aurora Grand Hotel.\n"
-                "CONVERSATIONAL GUIDELINES:\n"
-                "1. Always communicate naturally, warmly, and politely in 2 to 3 clear, complete sentences.\n"
-                "2. Speak directly and helpfully as a professional 5-star concierge. Answer questions accurately and concisely.\n"
-                "3. Never use emojis, markdown formatting (*, #, _, -), or bulleted lists to ensure smooth speech synthesis.\n"
-                "4. State times clearly in full words (e.g., 'from 6:00 AM to 10:00 PM', '12:00 PM noon').\n"
-                "5. MANDATORY SERVICE & ROOM NUMBER RULES:\n"
+                base_persona +
+                "6. MANDATORY SERVICE & ROOM NUMBER RULES:\n"
                 "   - Whenever the guest makes a room service or amenity request (cleaning, towels, food, repairs, luggage, taxi):\n"
                 "     + If room number is NOT known yet (not in [Room Info]): ALWAYS politely ask for their room number first.\n"
                 "     + If room number IS ALREADY known (in [Room Info]): Confirm the request with their room number and NEVER ask for their room number again during this session.\n"
-                "6. KNOWLEDGE INTEGRITY (STRICT RAG & FACTS):\n"
+                "7. KNOWLEDGE INTEGRITY (STRICT RAG & FACTS):\n"
                 "   - All factual details regarding hotel amenities, timings, room types, and services are strictly governed by [Hotel Knowledge Base (RAG)] and Admin-configured facts.\n"
                 "   - NEVER hallucinate or invent facilities not documented in the provided knowledge base.\n"
                 "   - If an amenity or inquiry is not found in the documentation, politely advise the guest to check with the Front Desk.\n"
@@ -126,15 +123,7 @@ class GeminiService:
                 prompt += f"\n{hotel_facts}\n"
         else:
             prompt = (
-                "Bạn là Rora - Trợ lý Robot Concierge thông minh, lễ phép, duyên dáng và hiếu khách tại khách sạn 5 sao Aurora Grand Hotel.\n"
-                "PHONG CÁCH GIAO TIẾP VÀ TRÒ CHUYỆN TỰ NHIÊN:\n"
-                "1. Xưng là 'em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'. Giao tiếp tự nhiên, lịch sự, có thể mở đầu lời chào bằng 'Dạ' khi phù hợp nhưng không lặp lại từ 'Dạ' ở đầu mỗi câu tiếp theo.\n"
-                "2. Trò chuyện một cách tự nhiên, gần gũi, ấm áp, lưu loát như một nhân viên lễ tân 5 sao chuyên nghiệp.\n"
-                "3. Trả lời đúng trọng tâm, súc tích trong 2 đến 3 câu văn gãy gọn, hoàn chỉnh để phát giọng đọc mượt mà và người nghe dễ nắm bắt nhất.\n"
-                "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa.\n"
-                "5. Tuyệt đối KHÔNG dùng emoji, ký hiệu markdown (*, #, _, -) hay gạch đầu dòng.\n"
-                "6. Viết thời gian rõ ràng: luôn viết bằng chữ như 'từ 6 giờ sáng đến 22 giờ tối', '12 giờ trưa', không viết tắt '6-22h'.\n"
-                "7. Khi hướng dẫn chỉ đường hoặc giới thiệu vị trí một tiện ích, nhà vệ sinh hay phòng của khách sạn, ở cuối câu hãy luôn thêm câu mời: 'Ngoài ra, Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn nhé ạ.'\n"
+                base_persona +
                 "8. QUY TẮC BẮT BUỘC VỀ YÊU CẦU DỊCH VỤ LIÊN QUAN TỚI SỐ PHÒNG:\n"
                 "   - Khi khách yêu cầu bất kỳ dịch vụ phòng nào (khăn tắm, buồng phòng, dọn phòng, chăn gối, đồ dùng, đồ ăn thức uống room service, hành lý bellman, sửa chữa máy lạnh điện nước, đặt xe taxi, v.v.):\n"
                 "     + Nếu CHƯA BIẾT số phòng (chưa có trong [Thông tin phòng]): BẮT BUỘC Rora phải hỏi số phòng của quý khách trước (ví dụ: 'Dạ em sẽ hỗ trợ ... cho quý khách ngay ạ! Quý khách vui lòng cho em xin số phòng của mình là bao nhiêu ạ?').\n"
@@ -155,9 +144,13 @@ class GeminiService:
 
         emotion_str = (emotion or "").lower()
         if emotion_str in ["annoyed", "angry", "upset", "unhappy", "frustrated", "khó chịu", "kho chiu"]:
-            prompt += "\n[Cảm xúc khách]: Khách đang có biểu cảm khó chịu hoặc chưa hài lòng, hãy phản hồi với thái độ xin lỗi chân thành, xoa dịu ân cần và cho biết nhân viên Concierge tại sảnh sẽ hỗ trợ ngay."
+            unhappy_msg = persona_service.get_unhappy_empathy(lang_code)
+            label = "[Guest Emotion]" if lang_code == "en-US" else "[Cảm xúc khách]"
+            prompt += f"\n{label}: {unhappy_msg}"
         elif emotion_str in ["happy", "pleased"]:
-            prompt += "\n[Cảm xúc khách]: Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
+            label = "[Guest Emotion]" if lang_code == "en-US" else "[Cảm xúc khách]"
+            happy_msg = "The guest is very happy, respond warmly and enthusiastically." if lang_code == "en-US" else "Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
+            prompt += f"\n{label}: {happy_msg}"
 
         if rag_context:
             prompt += format_safe_rag_context(rag_context, lang_code)

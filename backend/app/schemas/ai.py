@@ -85,6 +85,36 @@ class VoiceSettingsResponse(BaseModel):
     en_voice: str = Field("en-US-JennyNeural", description="Giọng tiếng Anh đang dùng")
 
 
+class PersonaSettingsRequest(BaseModel):
+    bot_name: Optional[str] = Field(None, description="Tên định danh của Robot")
+    hotel_name: Optional[str] = Field(None, description="Tên khách sạn")
+    star_rating: Optional[int] = Field(None, ge=1, le=7, description="Hạng sao khách sạn (1 - 7 sao)")
+    tone_style: Optional[str] = Field(None, description="Phong cách: 'luxury' | 'warm' | 'concise'")
+    pronoun_bot_vi: Optional[str] = Field(None, description="Cách Robot tự xưng trong tiếng Việt")
+    pronoun_guest_vi: Optional[str] = Field(None, description="Cách Robot gọi khách trong tiếng Việt")
+    qr_cta_vi: Optional[str] = Field(None, description="Câu mời quét mã QR chỉ đường (tiếng Việt)")
+    qr_cta_en: Optional[str] = Field(None, description="Câu mời quét mã QR chỉ đường (tiếng Anh)")
+    unhappy_empathy_vi: Optional[str] = Field(None, description="Chỉ thị xoa dịu khi khách khó chịu (tiếng Việt)")
+    unhappy_empathy_en: Optional[str] = Field(None, description="Chỉ thị xoa dịu khi khách khó chịu (tiếng Anh)")
+    out_of_scope_vi: Optional[str] = Field(None, description="Câu từ chối khi hỏi ngoài phạm vi (tiếng Việt)")
+    out_of_scope_en: Optional[str] = Field(None, description="Câu từ chối khi hỏi ngoài phạm vi (tiếng Anh)")
+
+
+class PersonaSettingsResponse(BaseModel):
+    bot_name: str
+    hotel_name: str
+    star_rating: int
+    tone_style: str
+    pronoun_bot_vi: str
+    pronoun_guest_vi: str
+    qr_cta_vi: str
+    qr_cta_en: str
+    unhappy_empathy_vi: str
+    unhappy_empathy_en: str
+    out_of_scope_vi: str
+    out_of_scope_en: str
+
+
 class FeedbackCreate(BaseModel):
     chat_session_id: Optional[str] = None
     rating: int = Field(5, ge=1, le=5, description="Số sao đánh giá từ 1 đến 5")

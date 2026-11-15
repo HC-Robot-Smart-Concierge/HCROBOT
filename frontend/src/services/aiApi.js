@@ -571,6 +571,68 @@ export const updateVoiceSettings = async ({ speech_rate, vi_voice, en_voice }) =
 };
 
 /**
+ * Lấy cấu hình Persona & Văn phong nói chuyện của Robot
+ */
+export const getPersonaSettings = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/persona-settings`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[AIApi] getPersonaSettings error:', err.message);
+    return {
+      bot_name: 'Rora',
+      hotel_name: 'Aurora Grand Hotel',
+      star_rating: 5,
+      tone_style: 'luxury',
+      pronoun_bot_vi: 'em hoặc Rora',
+      pronoun_guest_vi: 'quý khách hoặc anh/chị',
+      qr_cta_vi: 'Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ.',
+      qr_cta_en: 'In addition, you can scan the QR code on the screen to save the directions!',
+      unhappy_empathy_vi: 'Khách đang có biểu cảm khó chịu hoặc chưa hài lòng, hãy phản hồi với thái độ xin lỗi chân thành, xoa dịu ân cần và cho biết nhân viên Concierge tại sảnh sẽ hỗ trợ ngay.',
+      unhappy_empathy_en: 'The guest appears annoyed or dissatisfied. Respond with a sincere, caring apology and assure them that Concierge staff will assist right away.',
+      out_of_scope_vi: 'Dạ Rora là trợ lý robot phục vụ tại khách sạn Aurora Grand Hotel và chỉ có thể hỗ trợ các thông tin, dịch vụ liên quan đến kỳ nghỉ của quý khách thôi ạ.',
+      out_of_scope_en: 'I am Rora, your AI Concierge at Aurora Grand Hotel. I can only assist you with hotel amenities, services, and inquiries regarding your stay.',
+    };
+  }
+};
+
+/**
+ * Admin cập nhật cấu hình Persona & Văn phong
+ */
+export const updatePersonaSettings = async (data) => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/persona-settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[AIApi] updatePersonaSettings error:', err.message);
+    return data;
+  }
+};
+
+/**
+ * Khôi phục Persona mặc định
+ */
+export const resetPersonaSettings = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/persona-settings/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[AIApi] resetPersonaSettings error:', err.message);
+    return null;
+  }
+};
+
+/**
  * Phiên dịch nhanh câu nói trực tiếp trong cuộc gọi Video Call (Anh ⇄ Việt)
  * Tự động nhận diện ngôn ngữ và bỏ qua dịch nếu cùng ngôn ngữ đích
  */

@@ -17,6 +17,8 @@ from app.schemas.ai import (
     TTSResponse,
     VoiceSettingsRequest,
     VoiceSettingsResponse,
+    PersonaSettingsRequest,
+    PersonaSettingsResponse,
     FeedbackCreate,
     FeedbackResponse,
     QuickTranslateRequest,
@@ -187,6 +189,28 @@ async def update_robot_voice_settings(req: VoiceSettingsRequest):
         vi_voice=req.vi_voice,
         en_voice=req.en_voice,
     )
+
+
+@router.get("/persona-settings", response_model=PersonaSettingsResponse, summary="Lấy cấu hình Persona & Văn phong nói chuyện của Robot")
+async def get_robot_persona_settings():
+    """Lấy cấu hình tên robot, tên khách sạn, văn phong và câu gợi ý hiện tại."""
+    from app.services.ai.persona_service import persona_service
+    return persona_service.get_persona()
+
+
+@router.post("/persona-settings", response_model=PersonaSettingsResponse, summary="Admin cập nhật Persona & Văn phong của Robot")
+async def update_robot_persona_settings(req: PersonaSettingsRequest):
+    """Admin tùy biến tên robot, tên khách sạn, phong cách giao tiếp và các câu thoại hệ thống."""
+    from app.services.ai.persona_service import persona_service
+    updates = req.model_dump(exclude_unset=True)
+    return persona_service.update_persona(updates)
+
+
+@router.post("/persona-settings/reset", response_model=PersonaSettingsResponse, summary="Khôi phục Persona mặc định của Robot")
+async def reset_robot_persona_settings():
+    """Khôi phục các thông số Persona và câu thoại chuẩn ban đầu."""
+    from app.services.ai.persona_service import persona_service
+    return persona_service.reset_defaults()
 
 
 @router.websocket("/ws/pipecat")

@@ -172,6 +172,5 @@ export function usePhysicalMapLayoutLoader({
     return () => clearTimeout(timer);
   }, [zones, isRosConnected]);
 
-
   return { handleSelectMap };
 }

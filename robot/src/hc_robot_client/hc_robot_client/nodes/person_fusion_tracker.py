@@ -313,7 +313,7 @@ class PersonFusionTrackerNode(Node if Node is not object else object):
                     too_close_dist=self.too_close_dist,
                     hysteresis_margin=self.margin
                 )
-            
+
             sm = self.state_machines[p_id]
             old_state = sm.current_state
             new_state = sm.update(dist_m)

@@ -1,15 +1,11 @@
 import React, { useState } from 'react';
 import {
   Navigation,
-  Sparkles,
   MapPin,
   Clock,
   Footprints,
   Smartphone,
-  QrCode,
   Layers,
-  ChevronRight,
-  ExternalLink,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { HOTEL_DESTINATIONS, getMobileGuestMapUrl } from '../../../../components/robot/FloorMap';

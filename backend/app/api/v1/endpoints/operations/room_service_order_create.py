@@ -1,7 +1,7 @@
 import asyncio
 import random
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from fastapi import APIRouter, Depends, status
 from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from app.models import OrderItem as OrderItemModel, RoomServiceOrder, SupportReq
 from app.repositories import RoomServiceRepository, get_room_service_repository
 from app.schemas.operations import RoomServiceOrderCreate, RoomServiceOrderResponse
 from app.services.notification_manager import notification_manager
+from app.core.time import utc_now_naive
 from .shared import TAG_FB, create_department_notification
 
 router = APIRouter()
@@ -84,7 +85,7 @@ async def create_room_service_order(
 
     # Tra cứu thông tin khách và số điện thoại liên lạc từ phòng check-in
     raw_gn = order_in.guest_name
-    if not raw_gn or str(raw_gn).lower().strip() in ["quý khách", "hotel guest", "khách lưu trú", ""]:
+    if not raw_gn or raw_gn.lower().strip() in ["quý khách", "hotel guest", "khách lưu trú", ""]:
         guest_name_val = (room.current_guest_name if room else None) or raw_gn or f"Khách Phòng {order_in.room_number}"
     else:
         guest_name_val = raw_gn
@@ -93,7 +94,7 @@ async def create_room_service_order(
 
     # Phuong an A: Tu dong gop don neu phong nay da co don Pending trong vong 10 phut gan nhat
     clean_room = order_in.room_number.upper().replace("ROOM", "").strip()
-    merge_window_start = datetime.utcnow() - timedelta(minutes=10)
+    merge_window_start = utc_now_naive() - timedelta(minutes=10)
     existing_pending_stmt = (
         select(RoomServiceOrder)
         .options(selectinload(RoomServiceOrder.order_items))
@@ -112,10 +113,10 @@ async def create_room_service_order(
     existing_order = existing_res.scalars().first()
 
     if existing_order:
-        existing_order.total_amount = float(existing_order.total_amount or 0.0) + total_amount
+        existing_order.total_amount = (existing_order.total_amount or 0.0) + total_amount
 
-        if order_in.note and str(order_in.note).strip():
-            clean_new_note = str(order_in.note).strip()
+        if order_in.note and order_in.note.strip():
+            clean_new_note = order_in.note.strip()
             if existing_order.note:
                 if clean_new_note not in existing_order.note:
                     existing_order.note = f"{existing_order.note}; Gộp thêm: {clean_new_note}"
@@ -149,7 +150,7 @@ async def create_room_service_order(
                 db.add(order_item)
                 existing_items_map[key] = order_item
 
-        existing_order.updated_at = datetime.utcnow()
+        existing_order.updated_at = utc_now_naive()
 
         sr = await db.get(SupportRequest, existing_order.id)
         if not sr and existing_order.support_request_id:
@@ -169,7 +170,7 @@ async def create_room_service_order(
 
             sr.items = [{"name": k, "qty": v} for k, v in sr_items_dict.items()]
             sr.description = ", ".join([f"{v}x {k}" if v > 1 else k for k, v in sr_items_dict.items()])
-            sr.updated_at = datetime.utcnow()
+            sr.updated_at = utc_now_naive()
 
         dept_target = "Kitchen" if not order_in.is_service_request else "Room Service"
         await create_department_notification(
@@ -211,8 +212,8 @@ async def create_room_service_order(
             "is_service_request": existing_order.is_service_request,
             "is_merged": True,
             "image_url": existing_order.image_url,
-            "created_at": existing_order.created_at.isoformat() if existing_order.created_at else datetime.utcnow().isoformat(),
-            "updated_at": existing_order.updated_at.isoformat() if existing_order.updated_at else datetime.utcnow().isoformat(),
+            "created_at": existing_order.created_at.isoformat() if existing_order.created_at else utc_now_naive().isoformat(),
+            "updated_at": existing_order.updated_at.isoformat() if existing_order.updated_at else utc_now_naive().isoformat(),
             "guest_name": existing_order.guest_name,
             "guestName": existing_order.guest_name,
             "guest_phone": existing_order.guest_phone,
@@ -254,7 +255,7 @@ async def create_room_service_order(
         total_amount=total_amount,
         items=items_payload,
         extra_data={
-            "is_service_request": bool(order_in.is_service_request),
+            "is_service_request": order_in.is_service_request,
             "image_url": order_in.image_url,
             "guest_phone": guest_phone_val,
             "room_phone": room_phone_val,
@@ -343,7 +344,7 @@ async def create_room_service_order(
         "items": items_payload,
         "is_service_request": order_in.is_service_request,
         "image_url": order_in.image_url,
-        "created_at": new_order.created_at.isoformat() if new_order.created_at else datetime.utcnow().isoformat(),
+        "created_at": new_order.created_at.isoformat() if new_order.created_at else utc_now_naive().isoformat(),
         "guest_name": guest_name_val,
         "guestName": guest_name_val,
         "guest_phone": guest_phone_val,

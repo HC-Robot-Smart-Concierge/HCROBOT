@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, or_, select
@@ -12,6 +12,7 @@ from app.schemas.operations import (
     RoomServiceCatalogItemResponse,
     RoomServiceCatalogItemUpdate,
 )
+from app.core.time import utc_now_naive
 from .shared import TAG_ROOM_SERVICE
 
 router = APIRouter()
@@ -293,7 +294,7 @@ async def create_room_service_service(
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    ten_seconds_ago = datetime.utcnow() - timedelta(seconds=10)
+    ten_seconds_ago = utc_now_naive() - timedelta(seconds=10)
     check_stmt = select(RoomServiceCatalogItem).where(
         RoomServiceCatalogItem.name.ilike(service_in.name.strip()),
         RoomServiceCatalogItem.created_at >= ten_seconds_ago,
@@ -338,7 +339,7 @@ async def update_room_service_service(
     item = await _get_rs_catalog_item_or_404(db, service_id)
     for field, value in service_in.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
-    item.updated_at = datetime.utcnow()
+    item.updated_at = utc_now_naive()
     await db.commit()
     await db.refresh(item)
     return item
@@ -373,7 +374,7 @@ async def toggle_room_service_service(
     """Chuyển đổi trạng thái is_available của dịch vụ phòng (Đang phục vụ / Tạm ngưng)."""
     item = await _get_rs_catalog_item_or_404(db, service_id)
     item.is_available = not item.is_available
-    item.updated_at = datetime.utcnow()
+    item.updated_at = utc_now_naive()
     await db.commit()
     await db.refresh(item)
     return item

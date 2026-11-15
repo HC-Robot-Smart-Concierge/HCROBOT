@@ -167,4 +167,3 @@ export const transformCanvasToWorld = (canvasX, canvasY, canvasWidth, canvasHeig
 
   return { worldX, worldY, scale };
 };
-

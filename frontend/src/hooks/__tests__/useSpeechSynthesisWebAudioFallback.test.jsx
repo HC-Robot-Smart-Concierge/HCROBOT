@@ -53,4 +53,3 @@ describe('Speech Synthesis Voice Consistency & Web Audio API Fallback Tests', ()
     expect(robotScreenContent).toContain('preloadedQrAudio || null');
   });
 });
-

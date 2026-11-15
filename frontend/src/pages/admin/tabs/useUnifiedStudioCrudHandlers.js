@@ -280,8 +280,6 @@ export const useUnifiedStudioCrudHandlers = ({
     setDeleteConfirmTarget(null);
   };
 
-
-
   // Add Selected Waypoint directly to Active Workflow as a MOVE step
   const handleAddWaypointToWorkflow = (wp) => {
     if (!activeWf) return;
@@ -396,7 +394,6 @@ export const useUnifiedStudioCrudHandlers = ({
       showNotification('Lỗi khi tạo kịch bản mới: ' + err.message);
     }
   };
-
 
   return {
     loadAll,

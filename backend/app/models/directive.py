@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import String, Integer, DateTime, Boolean, ForeignKey
+from sqlalchemy import String, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.time import utc_now_naive
 
 if TYPE_CHECKING:
     from app.models.account import Account
@@ -20,7 +21,7 @@ class ManagementDirective(Base):
     priority: Mapped[str] = mapped_column(String(50), default="URGENT") # 'URGENT', 'PENDING', 'IN PROGRESS'
     location: Mapped[str] = mapped_column(String(100), default="Main Entrance")
     reported_time_label: Mapped[str] = mapped_column(String(50), default="Reported 2m ago")
-    
+
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="Unassigned") # 'Unassigned', 'In Progress', 'Completed'
 
@@ -30,17 +31,16 @@ class ManagementDirective(Base):
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     assigned_eta: Mapped[Optional[str]] = mapped_column(String(20), nullable=True) # e.g. '5m'
     assigned_staff_avatar: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    
+
     type: Mapped[str] = mapped_column(String(50), default="spill") # 'spill', 'room_service', 'towels', 'directive'
     created_by: Mapped[str] = mapped_column(String(100), default="System Administrator")
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
 
     # Relationships
     assigned_account: Mapped[Optional["Account"]] = relationship("Account", foreign_keys=[assigned_account_id])
     created_by_account: Mapped[Optional["Account"]] = relationship("Account", foreign_keys=[created_by_account_id])
-
 
 
 # Backward compatibility alias

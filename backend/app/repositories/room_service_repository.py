@@ -1,8 +1,7 @@
 import re
 from typing import Optional, List, Sequence, Tuple
-from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, or_, func
+from sqlalchemy import select, desc, or_
 from sqlalchemy.orm import selectinload
 
 from app.models.room_service import RoomServiceOrder, OrderItem
@@ -161,7 +160,7 @@ class RoomServiceRepository(BaseRepository[RoomServiceOrder]):
             conditions.append(RoomServiceOrder.support_request_id == support_request_id)
             conditions.append(RoomServiceOrder.id == support_request_id)
         if order_identifier:
-            raw_id = str(order_identifier).strip()
+            raw_id = order_identifier.strip()
             conditions.append(RoomServiceOrder.order_number == raw_id)
             conditions.append(RoomServiceOrder.id == raw_id)
             clean_num = re.sub(r"^(REQ-)?(ORD-)?", "", raw_id, flags=re.IGNORECASE).strip()

@@ -1,7 +1,6 @@
 import pytest
 from app.services.ai.scenario_service import scenario_service
 from app.models.support_request import SupportRequest
-from app.schemas.operations import TaxiRequestCreate
 from app.api.v1.endpoints.operations.taxi import _format_taxi_request
 
 
@@ -61,7 +60,7 @@ async def test_taxi_request_unauthenticated_prompts_for_pin():
     - pending_service_action phai la 'book_taxi'.
     """
     from app.services.ai.concierge_graph import concierge_graph
-    
+
     sid = "test-taxi-unauth-test"
     res = await concierge_graph.ainvoke(
         {
@@ -88,11 +87,11 @@ async def test_taxi_request_authenticated_provides_2_options_without_pin():
     """
     from app.services.ai.concierge_graph import concierge_graph
     from app.services.ai.session_manager import session_manager
-    
+
     sid = "test-taxi-auth-test"
     session_manager.set_room_authenticated(sid, "301")
     session_manager.set_room_number(sid, "301")
-    
+
     res = await concierge_graph.ainvoke(
         {
             "prompt": "tôi muốn đặt taxi cho phòng 301",

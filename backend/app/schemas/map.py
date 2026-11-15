@@ -88,5 +88,3 @@ class NavigationResponse(BaseModel):
     message: str
     target_x: float
     target_y: float
-
-

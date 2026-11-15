@@ -244,4 +244,3 @@ export const calculateSafeWaypoints = (from, to) => {
 
   return filtered;
 };
-

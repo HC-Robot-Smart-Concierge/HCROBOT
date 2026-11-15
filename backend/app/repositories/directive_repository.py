@@ -1,5 +1,4 @@
-from typing import Optional, List, Sequence
-from datetime import datetime
+from typing import Optional, Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_
 

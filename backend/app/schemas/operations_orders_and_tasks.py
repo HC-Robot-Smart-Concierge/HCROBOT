@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
+from pydantic import BaseModel, Field, ConfigDict
 
 from .operations_concierge import StaffResponse
 
@@ -349,7 +349,6 @@ class InventoryStockResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-
 # ---------------------------------------------------------
 # Full Department Dashboard Responses (Matching UI perfectly)
 # ---------------------------------------------------------
@@ -376,5 +375,3 @@ class MaintenanceDashboardResponse(BaseModel):
     requests: List[MaintenanceRequestResponse]
     staff_availability: List[Dict[str, Any]]
     facility_map: Dict[str, Any]
-
-

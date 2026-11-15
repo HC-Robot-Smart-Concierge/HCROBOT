@@ -6,7 +6,6 @@ import {
   Trash2,
   Plus,
   Power,
-  Layers,
 } from 'lucide-react';
 import {
   fetchWorkflows,

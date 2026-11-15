@@ -345,7 +345,6 @@ export function usePhysicalMapEntities({
     setNavStatus(`Đã xóa vùng "${target?.name || id}"`);
   };
 
-
   return {
     rejectZoneRule,
     handleAddEndpoint,

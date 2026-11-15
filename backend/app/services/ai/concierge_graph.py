@@ -3,10 +3,8 @@ Concierge Graph: LangGraph-powered Agent Harness for HCRobot Concierge.
 Quan ly luong xu ly tinh gon (Fast-Path -> Direct Conversational Generator).
 """
 
-from datetime import datetime, timezone
 import logging
-import re
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, cast
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -15,51 +13,18 @@ from langgraph.graph.state import CompiledStateGraph
 from app.services.ai.concierge_fast_path_node import fast_path_node
 from app.services.ai.concierge_fsm_node import service_fsm_node
 from app.services.ai.concierge_intent_router_node import intent_router_node
-from app.services.ai.concierge_order_status_db import query_room_order_status_db
+from app.services.ai.concierge_order_status_db import query_room_order_status_db as query_room_order_status_db
 from app.services.ai.concierge_state import ConciergeState
-from app.services.ai.constants import (
-    BELLMAN_MENU_TRIGGER_KEYWORDS,
-    HOUSEKEEPING_REGEX,
-    MAINTENANCE_MENU_TRIGGER_KEYWORDS,
-    MAINTENANCE_REGEX,
-    ROOM_SERVICE_FOOD_REGEX,
-    SERVICE_KEYWORDS,
-    contains_keyword,
-    is_lost_found_text,
-)
 from app.services.ai.ollama_service import ollama_service
-from app.services.ai.session_manager import extract_room_number, session_manager
-from app.services.bell_request_service import bell_status_reply, classify_bell_request, is_bell_inquiry
-from app.services.maintenance_request_service import is_fault_report
+from app.services.ai.session_manager import session_manager as session_manager
 
 logger = logging.getLogger(__name__)
 
 
 async def retrieval_node(state: ConciergeState) -> Dict[str, Any]:
     """
-
-
-
-
-
-
-
     Node 3: Context Retrieval & Pruning (Tối ưu hóa Context cho LLM).
-
-
-
-
-
-
-
     Truy vấn ChromaDB Vector Store lấy ngữ cảnh tri thức phù hợp nhất bằng Hybrid Search.
-
-
-
-
-
-
-
     """
     # Nếu client đã gửi kèm rag_context sẵn thì giữ nguyên
     existing_ctx = state.get("rag_context")
@@ -79,29 +44,8 @@ async def retrieval_node(state: ConciergeState) -> Dict[str, Any]:
 
 async def generator_node(state: ConciergeState) -> Dict[str, Any]:
     """
-
-
-
-
-
-
-
     Node 2: Conversational Generator Node.
-
-
-
-
-
-
-
     Chạy suy luận ngôn ngữ tự nhiên tức thì với Qwen 3B, không phụ thuộc RAG hay ticket router.
-
-
-
-
-
-
-
     """
     prompt = state.get("prompt", "")
     lang_code = state.get("lang_code", "vi-VN")

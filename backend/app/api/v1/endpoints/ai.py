@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, UploadFile, File, Form, Query
 from fastapi.responses import StreamingResponse
@@ -32,10 +31,11 @@ from app.services.ai.ai_ticket_service import (
 from app.services.ai.feedback_service import submit_guest_feedback, get_feedbacks
 from app.services.ai.websocket_pipeline import handle_pipecat_websocket
 from app.services.ai.session_manager import session_manager
-from app.services.ai.stt_service import transcribe_audio_wav, transcribe_audio_wav_detailed
+from app.services.ai.stt_service import transcribe_audio_wav_detailed
 from app.services.ai.tts_service import tts_service
 from app.services.ai.ollama_service import ollama_service
 from app.services.ai.translation_service import translation_service
+from app.core.time import utc_now_naive
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -52,14 +52,14 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
     """
     try:
         with open("ai_chat_debug.log", "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.utcnow().isoformat()}] INCOMING CHAT: prompt='{request.prompt}', session='{request.session_id}', room='{request.room_number}'\n")
+            f.write(f"[{utc_now_naive().isoformat()}] INCOMING CHAT: prompt='{request.prompt}', session='{request.session_id}', room='{request.room_number}'\n")
         res = await process_chat_request(db=db, request=request)
         with open("ai_chat_debug.log", "a", encoding="utf-8") as f:
-            f.write(f"[{datetime.utcnow().isoformat()}] OK CHAT: action='{res.action}', resp_len={len(res.response or '')}\n")
+            f.write(f"[{utc_now_naive().isoformat()}] OK CHAT: action='{res.action}', resp_len={len(res.response or '')}\n")
         return res
     except Exception as e:
         import traceback
-        err_detail = f"[{datetime.utcnow().isoformat()}] AIChat Error: {str(e)}\n{traceback.format_exc()}\n"
+        err_detail = f"[{utc_now_naive().isoformat()}] AIChat Error: {str(e)}\n{traceback.format_exc()}\n"
         with open("ai_chat_debug.log", "a", encoding="utf-8") as f:
             f.write(err_detail)
         logger.error(f"[AIChat Error] {str(e)}")

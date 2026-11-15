@@ -1,7 +1,7 @@
-import { useStaffText, staffStatusLabel } from '../../context/StaffLanguage';
+import { useStaffText } from '../../context/StaffLanguage';
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw, Clock, CheckCircle2, Check, User, ChefHat, Sparkles, ClipboardList } from 'lucide-react';
+import { Search, RefreshCw, Clock, CheckCircle2, User, ChefHat, Sparkles, ClipboardList } from 'lucide-react';
 import {
   fetchUnifiedRequests,
   updateGenericRequestStatus,
@@ -10,7 +10,6 @@ import {
   isTaskAssignedToMeFn,
   isDirectServiceOrder,
   isFoodOrder,
-  isTaskPending,
   isTaskCompleted,
   isTaskInProgress,
   buildKitchenSteps,
@@ -287,8 +286,6 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
     onNotify(statusMessages[nextStatus] || st("Request #{0} updated: {1}", reqId, nextStatus));
   };
 
-
-
   return (
     <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-[#FAF8F5] font-sans">
       <div className="staff-page-container max-w-7xl mx-auto space-y-6">
@@ -420,7 +417,6 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
             ))}
           </div>
         </div>
-
 
         <MyTasksListSection
           isLoading={isLoading}

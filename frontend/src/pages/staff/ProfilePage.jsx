@@ -1,4 +1,4 @@
-import { KeyRound, LogOut, Save, Edit3 } from 'lucide-react';
+import { KeyRound, LogOut, Edit3 } from 'lucide-react';
 import {
   ProfileEditFormSection,
   ProfileShiftAndRobotCards,

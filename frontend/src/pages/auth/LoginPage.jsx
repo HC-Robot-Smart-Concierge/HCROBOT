@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, UserCheck } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { loginUser } from '../../services/authApi';
 
 export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }) => {

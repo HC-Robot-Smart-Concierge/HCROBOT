@@ -7,16 +7,13 @@ from typing import List, Dict, Any, Optional, Union
 
 logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select
 from app.services.notification_manager import notification_manager
 from app.models import (
-    Staff,
-    ManagementDirective,
     Notification,
     SupportRequest,
-    ServiceType,
-    Department,
 )
+from app.core.time import utc_now_naive
 
 # =====================================================================
 # TAG CONSTANTS FOR SWAGGER UI DOCS
@@ -43,7 +40,6 @@ TAG_ACCOUNT: List[Union[str, Enum]] = TAG_STAFF
 TAG_OPS: List[Union[str, Enum]] = ["14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
 TAG_ADMIN: List[Union[str, Enum]] = ["15. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
 TAG_NOTIF: List[Union[str, Enum]] = ["16. Thông báo Hệ thống (Notifications)"]
-
 
 
 async def create_department_notification(
@@ -73,7 +69,7 @@ async def create_department_notification(
 
     # Broadcast real-time qua WebSocket Hub (không chặn tiến trình DB)
     notif_data = {
-        "id": str(notif.id) if notif.id else f"NOTIF-{random.randint(1000, 9999)}",
+        "id": notif.id if notif.id else f"NOTIF-{random.randint(1000, 9999)}",
         "department": notif.department,
         "title": notif.title,
         "description": notif.description,
@@ -81,7 +77,7 @@ async def create_department_notification(
         "request_type": notif.request_type,
         "type": notif.type,
         "is_read": False,
-        "created_at": datetime.utcnow().isoformat(),
+        "created_at": utc_now_naive().isoformat(),
     }
     asyncio.create_task(
         notification_manager.broadcast_notification(notif_data, department=department)
@@ -140,14 +136,14 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
                 tbl_type = "support_request"
 
             raw_ticket = sr.ticket_code or sr.id
-            ticket_display = f"REQ-{raw_ticket}" if not str(raw_ticket).startswith("REQ-") else raw_ticket
+            ticket_display = f"REQ-{raw_ticket}" if not raw_ticket.startswith("REQ-") else raw_ticket
 
             room_str = sr.room_number or "Main Lobby"
             loc_label = f"ROOM {room_str}" if room_str.isdigit() else room_str
 
             room_obj = rooms_map.get(sr.room_number) if sr.room_number else None
             raw_guest = sr.guest_name
-            if not raw_guest or str(raw_guest).lower().strip() in ["quý khách", "hotel guest", "khách lưu trú", "khách", ""]:
+            if not raw_guest or raw_guest.lower().strip() in ["quý khách", "hotel guest", "khách lưu trú", "khách", ""]:
                 guest_display = (room_obj.current_guest_name if room_obj else None) or raw_guest or "Quý Khách"
             else:
                 guest_display = raw_guest
@@ -231,8 +227,6 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error fetching ManagementDirectives: {e}")
 
-
     # Sort all by created_at descending (latest first)
     unified.sort(key=lambda x: x.get("created_at") or datetime.min, reverse=True)
     return unified
-

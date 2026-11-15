@@ -1,21 +1,13 @@
 import asyncio
-import datetime
-import json
 import logging
 import re
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import ollama
 
 from app.core.config import settings
 from app.services.ai.ollama_groq_and_intent_mixin import OllamaGroqAndIntentMixin
-from app.services.ai.ollama_prompt_fastpath_mixin import (
-    COMMON_EN_WORDS,
-    COMMON_VI_WORDS,
-    EN_SUBSTRING_PATTERNS,
-    OllamaPromptFastpathMixin,
-)
-from app.services.ai.scenario_service import scenario_service
+from app.services.ai.ollama_prompt_fastpath_mixin import OllamaPromptFastpathMixin
 
 logger = logging.getLogger(__name__)
 

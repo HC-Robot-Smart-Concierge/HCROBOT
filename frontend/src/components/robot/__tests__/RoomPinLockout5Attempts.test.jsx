@@ -18,7 +18,6 @@ global.window.sessionStorage = mockSessionStorage;
 global.sessionStorage = mockSessionStorage;
 
 import {
-  RoomPinModal,
   PIN_LOCKOUT_MAX_ATTEMPTS,
   PIN_LOCKOUT_DURATION_SEC,
   DEFAULT_WRONG_PIN_ERROR_MSG,
@@ -100,8 +99,9 @@ describe('RoomPinModal 5-Attempt Failure Limit & 1-Minute Lockout Tests', () => 
   });
 
   it('verifies backend reception.py enforces 5-attempt limit and 1-minute lockout', () => {
-    const backendPath = path.resolve(__dirname, '../../../../../backend/app/api/v1/endpoints/operations/reception.py');
-    const content = fs.readFileSync(backendPath, 'utf8');
+    const receptionPath = path.resolve(__dirname, '../../../../../backend/app/api/v1/endpoints/operations/reception.py');
+    const receptionAuthPath = path.resolve(__dirname, '../../../../../backend/app/api/v1/endpoints/operations/reception_auth.py');
+    const content = `${fs.readFileSync(receptionPath, 'utf8')}\n${fs.readFileSync(receptionAuthPath, 'utf8')}`;
 
     expect(content).toContain('ROOM_PIN_ATTEMPTS');
     expect(content).toContain('PIN_LOCKOUT_MAX_ATTEMPTS = 5');
@@ -118,6 +118,7 @@ describe('RoomPinModal 5-Attempt Failure Limit & 1-Minute Lockout Tests', () => 
       path.resolve(__dirname, '../RoomPinViews.jsx'),
       path.resolve(__dirname, '../../../services/operationsApi.js'),
       path.resolve(__dirname, '../../../../../backend/app/api/v1/endpoints/operations/reception.py'),
+      path.resolve(__dirname, '../../../../../backend/app/api/v1/endpoints/operations/reception_auth.py'),
     ];
 
     const emojiRegex = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;

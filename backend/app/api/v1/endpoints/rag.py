@@ -37,7 +37,6 @@ def _trigger_background_room_sync():
         logging.getLogger(__name__).warning(f"Không thể kích hoạt đồng bộ phòng từ RAG: {e}")
 
 
-
 @router.get("/facilities", response_model=RAGFacilitiesResponse, summary="Danh sách cơ sở vật chất & tiện ích trích xuất trực tiếp từ Knowledge Base")
 def get_rag_facilities(lang: str = Query("vi", description="Ngôn ngữ tài liệu: vi hoặc en")):
     """
@@ -114,7 +113,7 @@ def get_rag_sources():
                     sections = [c for c in re.split(r"\n(?=#+ )", raw_text) if len(c.strip()) > 30]
                     chunks_count = max(len(sections), 1)
 
-                    # Tự động nhận diện ngôn ngữ: 
+                    # Tự động nhận diện ngôn ngữ:
                     # 1. Hậu tố tên file
                     if "_vi" in fname.lower():
                         detected_lang = "vi"
@@ -291,18 +290,20 @@ def list_rag_documents():
         collection = get_concierge_collection("concierge_kb")
         data = collection.get()
 
+        ids = (data.get("ids") or []) if data else []
+        docs = (data.get("documents") or []) if data else []
+        metas = (data.get("metadatas") or []) if data else []
         items = []
-        count = len(data["ids"]) if data and "ids" in data else 0
-        for i in range(count):
+        for i, doc_id in enumerate(ids):
             items.append(
                 RAGDocumentItem(
-                    id=data["ids"][i],
-                    document=data["documents"][i],
-                    metadata=data["metadatas"][i] if data["metadatas"] else {},
+                    id=doc_id,
+                    document=docs[i] if i < len(docs) and docs[i] is not None else "",
+                    metadata=dict(metas[i]) if i < len(metas) and metas[i] else {},
                 )
             )
 
-        return RAGDocumentListResponse(total=count, documents=items)
+        return RAGDocumentListResponse(total=len(ids), documents=items)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -370,6 +371,3 @@ def sync_obsidian_vault():
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi khi đồng bộ Obsidian Vault: {str(e)}",
         )
-
-
-

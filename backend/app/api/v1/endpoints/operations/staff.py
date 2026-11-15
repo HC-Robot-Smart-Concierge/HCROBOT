@@ -1,35 +1,22 @@
-from datetime import datetime
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
 
 from app.core.security import hash_password
-from app.models import Staff, Department, ServiceType
+from app.models import Staff, Department
 from app.repositories import StaffRepository, get_staff_repository
 from app.schemas.operations import (
     StaffResponse,
     StaffCreate,
     StaffUpdate,
-    DepartmentResponse,
-    DepartmentDetailResponse,
-    DepartmentCreate,
-    DepartmentUpdate,
-    ServiceTypeResponse,
 )
+from app.core.time import utc_now_naive
 from .shared import TAG_STAFF
 
 router = APIRouter()
 
 
-from .staff_departments import (
-    create_department,
-    delete_department,
-    get_department_detail,
-    list_departments,
-    list_service_types,
-    router as staff_departments_router,
-    update_department,
-)
+from .staff_departments import router as staff_departments_router
 
 router.include_router(staff_departments_router)
 
@@ -85,7 +72,7 @@ async def list_staff(
     """
     ### Mô tả nghiệp vụ:
     Truy vấn danh bạ tài khoản nhân sự toàn khách sạn, tích hợp liên kết trực tiếp với bảng `departments`.
-    
+
     ### Tính năng bộ lọc:
     - **department_id**: Lọc chính xác theo khóa ngoại phòng ban.
     - **department**: Lọc tương thích ngược theo tên chuỗi phòng ban.
@@ -343,7 +330,7 @@ async def update_staff(
     for field, value in update_data.items():
         setattr(staff, field, value)
 
-    staff.updated_at = datetime.utcnow()
+    staff.updated_at = utc_now_naive()
     await repo.commit()
     await repo.refresh(staff)
     await repo.refresh(staff, attribute_names=["department_rel"])
@@ -393,5 +380,3 @@ async def delete_staff(
         "status": staff.status,
         "message": f"Đã vô hiệu hóa thành công tài khoản {staff.full_name}",
     }
-
-

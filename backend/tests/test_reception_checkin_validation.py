@@ -62,4 +62,3 @@ async def test_checkin_identity_number_digits_only_validation():
         data = res_valid.json()
         assert data["pin_code"] == "9988"
         assert data["status"] == "OCCUPIED"
-

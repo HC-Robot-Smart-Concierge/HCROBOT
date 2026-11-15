@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import pytest
 from app.api.v1.endpoints.map import (
     GAZEBO_WAYPOINT_POOL,
     _get_material_for_type,

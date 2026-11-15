@@ -1,5 +1,4 @@
 import React from 'react';
-import { Gauge, Ban } from 'lucide-react';
 import { isPolygonZone } from '../physicalMapZones';
 import { getEndpointTemplateInfo } from '../studio/studioConstants';
 import { meterToSvg, zoneToSvgRect } from './workflowSimulatorUtils';
@@ -71,7 +70,6 @@ export const WorkflowSvgZonesAndEndpoints = ({
             : isSpeed
             ? 'rgba(245, 158, 11, 0.05)'
             : 'rgba(244, 63, 94, 0.05)';
-
 
           const isZoneInteractable = isZoneEditMode || isSelected;
 

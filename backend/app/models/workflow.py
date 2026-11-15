@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional, List, Any
-from sqlalchemy import String, Float, DateTime, Boolean, JSON, Text
+from sqlalchemy import String, DateTime, Boolean, JSON, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -9,6 +9,7 @@ from app.core.database import Base
 
 # Backward compatibility aliases
 from app.models.map import Endpoint as RobotWaypoint, Zone as RobotZone
+from app.core.time import utc_now_naive
 
 
 class RobotWorkflow(Base):
@@ -21,7 +22,8 @@ class RobotWorkflow(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     steps: Mapped[List[Any]] = mapped_column(JSON, default=list)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
 
 
+__all__ = ["RobotWorkflow", "RobotWaypoint", "RobotZone"]

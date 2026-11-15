@@ -11,34 +11,13 @@ from app.services.ai.constants import (
     is_lost_found_text,
 )
 from app.services.ai.session_manager import session_manager
-from app.services.bell_request_service import bell_status_reply, classify_bell_request, is_bell_inquiry
+from app.services.bell_request_service import classify_bell_request
 
 
 async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
     """
-
-
-
-
-
-
-
     Node 4: Service FSM (Finite State Machine Slot-Filling).
-
-
-
-
-
-
-
     Xử lý nghiệp vụ yêu cầu dịch vụ khách sạn. Kiểm tra ràng buộc số phòng.
-
-
-
-
-
-
-
     """
     session_id = state.get("session_id") or "default_session"
     action = state.get("action") or "room_service"

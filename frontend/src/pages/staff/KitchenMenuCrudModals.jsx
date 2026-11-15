@@ -1,7 +1,7 @@
 import React from 'react';
 import { ChefHat, BookOpen, X } from 'lucide-react';
 import { handleNumberInputBlockExponent } from '../../utils/numberInputHelper';
-import { FOOD_CATEGORIES, MENU_CATEGORIES } from './kitchenMenuUtils';
+import { MENU_CATEGORIES } from './kitchenMenuUtils';
 
 export const KitchenMenuCrudModals = ({
   foodModalOpen,

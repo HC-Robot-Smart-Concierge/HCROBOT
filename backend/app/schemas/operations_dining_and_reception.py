@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any, Literal
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
@@ -103,14 +103,13 @@ class FoodItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-
 class MenuItemCreate(BaseModel):
     menu_id: str
     food_item_id: Optional[str] = None
     price: Optional[float] = None
     display_order: int = 0
     is_available: bool = True
-    
+
     # Hỗ trợ tạo nhanh món chưa có trong catalog
     name: Optional[str] = None
     currency: Optional[str] = "VND"
@@ -240,7 +239,6 @@ class AdminTaskDispatchCreate(BaseModel):
     description: Optional[str] = Field("", description="Chi tiết nội dung chỉ đạo / yêu cầu")
     assigned_staff_name: Optional[str] = Field(None, description="Tên nhân viên phụ trách ban đầu")
     assigned_robot_code: Optional[str] = Field(None, description="Mã Robot điều động")
-
 
 
 # ---------------------------------------------------------

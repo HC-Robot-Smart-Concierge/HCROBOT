@@ -5,6 +5,7 @@ from sqlalchemy import String, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.time import utc_now_naive
 
 if TYPE_CHECKING:
     from app.models.account import Account
@@ -14,22 +15,22 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"NOTIF-{uuid.uuid4().hex[:8].upper()}")
-    
+
     # Target Account (Optional: can be specific account or entire department)
     account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="CASCADE"), nullable=True, index=True)
     department: Mapped[str] = mapped_column(String(50), nullable=False, index=True) # e.g. 'F&B', 'Housekeeping', 'Bell Services', 'Maintenance', 'Reception', 'All'
-    
+
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(String(1000), nullable=False)
-    
+
     request_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # ID of the related order/request
     request_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # 'room_service', 'housekeeping', 'bell_service', 'maintenance', 'reception', 'robot', 'directive'
-    
+
     type: Mapped[str] = mapped_column(String(50), default="Request") # 'Request', 'Warning', 'Robot', 'Directive', 'Info'
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
 
     # Relationships
     account: Mapped[Optional["Account"]] = relationship("Account", back_populates="notifications")

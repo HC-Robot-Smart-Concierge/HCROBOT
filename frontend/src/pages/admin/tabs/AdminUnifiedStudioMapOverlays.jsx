@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getEndpointTemplateInfo, getZoneTemplateInfo } from './unifiedStudioTemplates';
 
 export const AdminUnifiedStudioMapOverlays = ({

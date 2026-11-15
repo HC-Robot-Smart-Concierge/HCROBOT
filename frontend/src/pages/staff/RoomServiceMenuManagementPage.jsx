@@ -497,4 +497,3 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
     </div>
   );
 };
-

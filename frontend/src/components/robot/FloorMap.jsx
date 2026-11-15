@@ -193,7 +193,6 @@ export const FloorMap = ({
 
   return (
     <div className={`relative bg-[#F5F2EB] rounded-2xl md:rounded-3xl overflow-hidden border border-[#E3DFD5] shadow-xl flex flex-col ${className || 'w-[720px] h-[558px] shrink-0'}`}>
-      
 
       <FloorMapHeaderBar
         isDestSelectorOpen={isDestSelectorOpen}

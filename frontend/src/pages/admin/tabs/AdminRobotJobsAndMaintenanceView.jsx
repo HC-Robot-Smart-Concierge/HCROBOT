@@ -1,5 +1,5 @@
 import React from 'react';
-import { History, Plus, CheckCircle2, Play, Trash2, Edit3, Eye, AlertTriangle, Clock } from 'lucide-react';
+import { Plus, CheckCircle2, Play, Trash2, Edit3, Eye, AlertTriangle, Clock } from 'lucide-react';
 import { COMPONENT_OPTIONS } from './adminRobotManagementUtils';
 
 export const AdminRobotJobsAndMaintenanceView = ({

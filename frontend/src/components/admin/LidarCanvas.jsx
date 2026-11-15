@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { isPointInZone } from '../../pages/admin/tabs/physicalMapZones';
 import { drawLidarScene } from './lidarCanvasRenderer';
-import { ZoomIn, ZoomOut, RotateCcw, Crosshair, Trash2, RotateCw } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Crosshair } from 'lucide-react';
 
 export const LidarCanvas = ({
   scanPoints = [],

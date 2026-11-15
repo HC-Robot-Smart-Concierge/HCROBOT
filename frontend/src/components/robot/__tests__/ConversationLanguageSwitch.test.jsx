@@ -53,4 +53,3 @@ describe('Conversation Voice Language Switching Tests', () => {
     expect(useSpeechContent).toContain('if (liveRef.current && langChanged)');
   });
 });
-

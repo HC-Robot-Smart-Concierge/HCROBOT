@@ -74,4 +74,3 @@ async def test_maintenance_catalog_crud_and_status():
         assert "in_progress_count" in status_data
         assert "completed_count" in status_data
         assert isinstance(status_data["requests"], list)
-

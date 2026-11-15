@@ -49,11 +49,16 @@ def upgrade_legacy_move_step(step: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     params = step.get("params") or {}
     raw_key = params.get("target_waypoint_id") or params.get("target_value")
+    if not isinstance(raw_key, str):
+        return None
     key = _LEGACY_TARGET_ALIASES.get(raw_key, raw_key)
     if key not in LOBBY_WAYPOINTS:
         return None
+    raw_x, raw_y = params.get("target_x"), params.get("target_y")
+    if raw_x is None or raw_y is None:
+        return None
     try:
-        x, y = float(params.get("target_x")), float(params.get("target_y"))
+        x, y = float(raw_x), float(raw_y)
     except (TypeError, ValueError):
         return None
     old_points = _LEGACY_TARGET_POINTS.get(key, []) + [(0.0, 0.0)]
@@ -98,7 +103,7 @@ def upgrade_guest_service_steps(workflow_id, steps):
     return result
 
 
-CORE_WORKFLOWS = [
+CORE_WORKFLOWS: list[dict] = [
     {
         "id": "wf-01-welcome",
         "name": "Workflow 1: Đón tiếp và Chào mừng khách tại Cửa Sảnh",

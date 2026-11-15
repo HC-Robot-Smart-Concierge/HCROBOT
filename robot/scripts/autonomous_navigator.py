@@ -103,7 +103,7 @@ ALL_GAZEBO_MARKERS = [
 class AutonomousNavigator(Node):
     def __init__(self):
         super().__init__('autonomous_navigator')
-        
+
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
         self.joint_pub = self.create_publisher(JointState, '/joint_states', 10)
         self.status_pub = self.create_publisher(String, '/goal_reached', 10)
@@ -132,24 +132,24 @@ class AutonomousNavigator(Node):
         self.marker_timer = self.create_timer(1.0, self.publish_all_markers)
         self.fetch_backend_zones_async()
         self.fetch_backend_waypoints_async()
-        
+
         # Robot position & orientation (Khoi tao tai Goc Tren Ben Phai Lobby: 3.7, 5.0, -90°)
         self.current_x = SPAWN_X
         self.current_y = SPAWN_Y
         self.current_yaw = SPAWN_YAW
         self.odom_received = False
-        
+
         # Wheel rotation states for RViz2 RobotModel
         self.wheel_l_pos = 0.0
         self.wheel_r_pos = 0.0
         self.wheel_radius = 0.033
-        
+
         # 360 LiDAR Sectors
         self.min_front_dist = 10.0
         self.min_left_dist = 10.0
         self.min_right_dist = 10.0
         self.lidar_ray_count = 0
-        
+
         # Navigation state: "STANDBY" (túc trực chờ lệnh từ Web/Kiosk) hoặc "POINT_TO_POINT" hoặc "PATROL"
         self.mode = "STANDBY"
         self.standby_stopped = False
@@ -162,10 +162,10 @@ class AutonomousNavigator(Node):
         self.cmd_linear_x = 0.0           # Filtered smooth linear velocity
         self.cmd_angular_z = 0.0          # Filtered smooth angular velocity
         self.last_log_time = 0.0
-        
+
         # Control Loop 20Hz (50ms)
         self.timer = self.create_timer(0.05, self.control_loop)
-        
+
         self.get_logger().info("==========================================================")
         self.get_logger().info(" HC-ROBOT AUTONOMOUS LIDAR NAVIGATION (10m x 6m LOBBY)   ")
         self.get_logger().info(" Standby tai Goc Tren Ben Phai Lobby (X=3.70, Y=5.00)     ")
@@ -407,7 +407,7 @@ class AutonomousNavigator(Node):
         """Goi truc tiep dich vu Gazebo set_pose de di chuyen model tren sa ban 3D."""
         if not model_name:
             return
-        
+
         req_str = f'name: "{model_name}", position: {{x: {x:.2f}, y: {y:.2f}, z: {z:.2f}}}'
         bash_cmd = (
             "source /opt/ros/jazzy/setup.bash && "
@@ -717,10 +717,10 @@ class AutonomousNavigator(Node):
         wheel_sep = 0.297
         v_l = linear_vel - (angular_vel * wheel_sep / 2.0)
         v_r = linear_vel + (angular_vel * wheel_sep / 2.0)
-        
+
         self.wheel_l_pos += (v_l / self.wheel_radius) * dt
         self.wheel_r_pos += (v_r / self.wheel_radius) * dt
-        
+
         js = JointState()
         js.header.stamp = self.get_clock().now().to_msg()
         js.header.frame_id = 'base_link'
@@ -790,7 +790,7 @@ class AutonomousNavigator(Node):
     def scan_callback(self, msg: LaserScan):
         if not msg.ranges:
             return
-            
+
         self.lidar_ray_count = len(msg.ranges)
         front_ranges = []
         left_ranges = []
@@ -868,11 +868,11 @@ class AutonomousNavigator(Node):
             tx, ty, name = self.custom_goal
         else:
             tx, ty, name = WAYPOINTS[self.target_idx][:3]
-        
+
         dx = tx - self.current_x
         dy = ty - self.current_y
         dist_to_target = math.hypot(dx, dy)
-        
+
         if now - self.last_log_time > 1.5:
             self.last_log_time = now
             zone_tag = f" | [Zone: {active_zone['name']}]" if active_zone else ""
@@ -999,7 +999,7 @@ class AutonomousNavigator(Node):
                 heading_factor = 0.15
             else:
                 heading_factor = max(0.20, math.cos(angle_diff))
-            
+
             clearance_factor = max(0.25, min(1.0, (self.min_front_dist - d_stop) / (d_safe - d_stop)))
             target_linear = max_allowed_linear * heading_factor * clearance_factor
             target_angular = max(min(1.35 * angle_diff, 0.85), -0.85)
@@ -1055,4 +1055,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-

@@ -16,6 +16,7 @@ from app.repositories import (
     get_support_session_repository,
 )
 from app.services.cloudinary_service import cloudinary_service
+from app.core.time import utc_now_naive
 from .concierge_sessions_ws import RecordingUploadResponse
 from .shared import TAG_CONCIERGE
 
@@ -181,7 +182,7 @@ async def sync_cloudinary_recordings(
                 recording_duration=duration or 0,
                 thumbnail_url=sec_url.rsplit(".", 1)[0] + ".jpg" if "." in sec_url else sec_url,
                 recording_status="ready",
-                created_at=created_dt or datetime.utcnow(),
+                created_at=created_dt or utc_now_naive(),
             )
             await session_repo.create(new_session)
             sessions.append(new_session)
@@ -214,7 +215,7 @@ async def sync_cloudinary_recordings(
                         recording_duration=0,
                         thumbnail_url=None,
                         recording_status="ready",
-                        created_at=datetime.utcnow(),
+                        created_at=utc_now_naive(),
                     )
                     await session_repo.create(new_local_session)
                     sessions.append(new_local_session)
@@ -292,7 +293,7 @@ async def upload_call_recording(
         h_session.recording_status = "saving"
 
     h_session.recording_duration = duration
-    h_session.call_ended_at = datetime.utcnow()
+    h_session.call_ended_at = utc_now_naive()
 
     if messages:
         try:

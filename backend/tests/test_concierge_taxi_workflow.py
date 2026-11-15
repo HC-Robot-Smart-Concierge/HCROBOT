@@ -1,9 +1,11 @@
+from typing import cast
 import pytest
 from unittest.mock import AsyncMock, patch
-from datetime import datetime
 from app.models.support_request import SupportRequest
 from app.schemas.operations import TaxiRequestStatusUpdate
 from app.api.v1.endpoints.operations.taxi import update_taxi_request_status, get_taxi_dashboard
+from app.services.ai.concierge_state import ConciergeState
+from app.core.time import utc_now_naive
 
 
 @pytest.mark.asyncio
@@ -23,7 +25,7 @@ async def test_concierge_receive_taxi_request_transitions_to_calling():
         progress=0,
         department_id="DEP-CONCIERGE",
         service_type_id="ST-TAXI",
-        created_at=datetime.utcnow(),
+        created_at=utc_now_naive(),
     )
 
     mock_repo = AsyncMock()
@@ -62,7 +64,7 @@ async def test_concierge_complete_taxi_request_transitions_to_completed():
         progress=50,
         department_id="DEP-CONCIERGE",
         service_type_id="ST-TAXI",
-        created_at=datetime.utcnow(),
+        created_at=utc_now_naive(),
     )
 
     mock_repo = AsyncMock()
@@ -92,9 +94,9 @@ async def test_taxi_dashboard_kpis_reflect_concierge_calling_workflow():
     - callingRequests / activeTrips: So yeu cau dang duoc Concierge goi xe
     - completedTrips: So yeu cau da goi thanh cong
     """
-    req1 = SupportRequest(id="1", ticket_code="TX-1", status="Pending", department_id="DEP-CONCIERGE", service_type_id="ST-TAXI", created_at=datetime.utcnow())
-    req2 = SupportRequest(id="2", ticket_code="TX-2", status="Calling", department_id="DEP-CONCIERGE", service_type_id="ST-TAXI", created_at=datetime.utcnow())
-    req3 = SupportRequest(id="3", ticket_code="TX-3", status="Completed", department_id="DEP-CONCIERGE", service_type_id="ST-TAXI", created_at=datetime.utcnow())
+    req1 = SupportRequest(id="1", ticket_code="TX-1", status="Pending", department_id="DEP-CONCIERGE", service_type_id="ST-TAXI", created_at=utc_now_naive())
+    req2 = SupportRequest(id="2", ticket_code="TX-2", status="Calling", department_id="DEP-CONCIERGE", service_type_id="ST-TAXI", created_at=utc_now_naive())
+    req3 = SupportRequest(id="3", ticket_code="TX-3", status="Completed", department_id="DEP-CONCIERGE", service_type_id="ST-TAXI", created_at=utc_now_naive())
 
     mock_sr_repo = AsyncMock()
     mock_sr_repo.get_recent_by_department.return_value = [req1, req2, req3]
@@ -146,7 +148,7 @@ async def test_robot_inquiry_for_taxi_calling_status():
             "is_authenticated": True,
             "language": "vi",
         }
-        res = await service_fsm_node(state)
+        res = await service_fsm_node(cast(ConciergeState, state))
         resp_text = res.get("response", "")
 
         assert "Concierge" in resp_text
@@ -187,7 +189,7 @@ async def test_robot_inquiry_for_taxi_completed_status():
             "is_authenticated": True,
             "language": "vi",
         }
-        res = await service_fsm_node(state)
+        res = await service_fsm_node(cast(ConciergeState, state))
         resp_text = res.get("response", "")
 
         assert "Concierge" in resp_text

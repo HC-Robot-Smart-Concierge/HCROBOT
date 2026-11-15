@@ -271,7 +271,7 @@ def _send_gz_pose_wsl(model_name: str, x: float, y: float, z: float) -> bool:
 
 def _get_material_for_type(wp_type: str):
     """Trả về màu sắc material tương ứng với loại Waypoint."""
-    tp = str(wp_type or "").upper()
+    tp = (wp_type or "").upper()
     if tp in ("PARK", "PARKING_SPOT"):
         return (0.38, 0.65, 0.98, 0.9), (0.25, 0.50, 0.80, 1.0)
     elif tp in ("CHARGER", "DOCKING_TARGET"):

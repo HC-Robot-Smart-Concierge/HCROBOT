@@ -252,7 +252,6 @@ export function usePhysicalMapPointerMoveUp({
     setPoseDraft(null);
   };
 
-
   return {
     handleCanvasMouseMove,
     handleCanvasMouseUp,

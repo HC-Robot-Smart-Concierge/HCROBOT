@@ -49,7 +49,6 @@ class LogEvent(Base):
     service_request_id = Column(String(100), nullable=True, index=True)
     conversation_id = Column(String(100), nullable=True, index=True)
 
-
     # Tracing & Correlation
     correlation_id = Column(String(100), nullable=True, index=True)
     request_id = Column(String(100), nullable=True)
@@ -85,10 +84,10 @@ class AuditLog(Base):
     action = Column(String(100), nullable=False, index=True) # LOGIN, LOGOUT, CREATE, UPDATE, DELETE, CONFIG_CHANGED, KB_UPDATED
     resource_type = Column(String(100), nullable=False, index=True) # STAFF, ACCOUNT, KNOWLEDGE_DOCUMENT, SETTING, SERVICE_REQUEST
     resource_id = Column(String(100), nullable=True, index=True)
-    
+
     before_state = Column(JSONB, nullable=True)
     after_state = Column(JSONB, nullable=True)
-    
+
     correlation_id = Column(String(100), nullable=True, index=True)
     ip_address = Column(String(50), nullable=True)
     user_agent = Column(String(255), nullable=True)

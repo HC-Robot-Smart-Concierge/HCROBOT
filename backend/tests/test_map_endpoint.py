@@ -228,4 +228,3 @@ async def test_hotel_zone_rules_and_navigation_rejection():
         )
         assert wp_nostop.status_code == 400
         assert "Khu vực cấm dừng" in wp_nostop.json()["detail"]
-

@@ -104,4 +104,3 @@ async def test_graph_uses_explicit_kb_rag_context_without_fastpath_override():
         mock_gen.assert_awaited_once()
         passed_kwargs = mock_gen.call_args.kwargs
         assert "06:00 - 22:00" in (passed_kwargs.get("rag_context") or "")
-

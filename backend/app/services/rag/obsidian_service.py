@@ -118,8 +118,8 @@ class ObsidianRAGService:
         return chunks
 
     def sync_vault_to_chroma(
-        self, 
-        vault_dir: Optional[str] = None, 
+        self,
+        vault_dir: Optional[str] = None,
         collection_name: str = "concierge_kb"
     ) -> Dict[str, Any]:
         """
@@ -170,7 +170,7 @@ class ObsidianRAGService:
             from app.services.rag.chroma import get_chroma_client
             client = get_chroma_client()
             collection = get_concierge_collection(collection_name)
-            
+
             # Xóa các tài liệu cũ trong collection để đảm bảo khi xóa file .md trên Obsidian thì ChromaDB cũng sạch
             try:
                 existing = collection.get()
@@ -193,7 +193,6 @@ class ObsidianRAGService:
                 metadatas=all_metadatas
             )
             logger.info(f"Đã đồng bộ {len(all_ids)} chunks từ {total_files} file Obsidian vào ChromaDB!")
-
 
         return {
             "status": "success",

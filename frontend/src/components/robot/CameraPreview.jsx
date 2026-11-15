@@ -2,7 +2,6 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   detectPerson,
   loadPersonDetector,
-  getDetectorStatus,
 } from '../../services/personDetector';
 import {
   CameraPreviewViewport,

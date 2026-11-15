@@ -165,4 +165,3 @@ async def test_robot_profile_job_history_and_maintenance_crud():
                 async with AsyncSessionLocal() as s:
                     await s.execute(delete(Job).where(Job.id.in_(created_job_ids)))
                     await s.commit()
-

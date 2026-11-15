@@ -1,5 +1,4 @@
 import React from 'react';
-import { Check } from 'lucide-react';
 import { HOTEL_DESTINATIONS } from '../../components/robot/FloorMap';
 import { sendChatPrompt } from '../../services/aiApi';
 import { WorkflowGuestRequestPanel } from '../admin/tabs/workflow/WorkflowGuestRequestPanel';

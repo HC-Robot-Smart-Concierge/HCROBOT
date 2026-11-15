@@ -1,6 +1,6 @@
 import { useStaffText } from '../../context/StaffLanguage';
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { Phone, User, ConciergeBell, MapPin } from 'lucide-react';
+import { ConciergeBell, MapPin } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
 import { RejectReasonModal } from '../../components/dashboard/RejectReasonModal';
 import { INITIAL_ROOM_SERVICE_DATA } from '../../data/mockHotelData';
@@ -453,4 +453,3 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
     </div>
   );
 };
-

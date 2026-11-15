@@ -64,4 +64,3 @@ describe('RoomServiceMenuManagementPage Component & Contract Tests', () => {
     expect(content).toContain('<Pagination');
   });
 });
-

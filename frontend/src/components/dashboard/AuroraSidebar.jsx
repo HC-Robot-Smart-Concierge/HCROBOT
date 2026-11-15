@@ -220,4 +220,3 @@ export const AuroraSidebar = ({
     </aside>
   );
 };
-

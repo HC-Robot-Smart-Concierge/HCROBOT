@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { History } from 'lucide-react';
 import {
   fetchRobotProfile,
   updateRobotProfile,

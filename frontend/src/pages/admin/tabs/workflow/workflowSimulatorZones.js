@@ -388,4 +388,3 @@ export const svgToMeter = (svgX, svgY) => {
 // THUAT TOAN DINH TUYEN NE TUONG VA VAT CAN TRONG SANH 19.60m x 12.60m
 // Graph-based roadmap + Line-of-sight collision checking + String-pulling shortcut smoothing
 // ========================================================
-

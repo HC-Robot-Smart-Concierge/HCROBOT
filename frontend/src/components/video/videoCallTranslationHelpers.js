@@ -270,4 +270,3 @@ export function encodeWavBlobFromFloat32(chunks, sampleRate = 16000) {
 
   return new Blob([buffer], { type: 'audio/wav' });
 }
-

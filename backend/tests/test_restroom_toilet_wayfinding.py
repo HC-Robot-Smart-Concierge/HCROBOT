@@ -51,4 +51,3 @@ def test_scenario_service_toilet_fast_path(query, expected_dest):
 def test_detect_destination_poi_toilet_variants(query, expected_dest):
     dest = _detect_destination_poi(query, "Dạ nhà vệ sinh ở sảnh chính tầng 1 ạ.")
     assert dest == expected_dest
-

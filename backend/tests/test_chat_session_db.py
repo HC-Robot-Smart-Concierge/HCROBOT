@@ -31,7 +31,7 @@ async def test_chat_session_db_persistence_and_api():
     """Test ChatSession & ChatMessage persistence in Database and REST API"""
     await init_db()
     sid = f"test_db_session_{uuid.uuid4()}"
-    
+
     try:
         async with AsyncSessionLocal() as db_session:
             await session_manager.save_turn_to_db(db_session, sid, "user", "Khách sạn có hồ bơi không?", room_number="502")

@@ -1,6 +1,6 @@
-from typing import Optional, List, Dict, Any, Literal
+from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
+from pydantic import BaseModel, Field, ConfigDict
 
 
 # ---------------------------------------------------------
@@ -108,10 +108,6 @@ class StaffUpdate(BaseModel):
     phone: Optional[str] = Field(None, description="Số điện thoại mới", json_schema_extra={"example": "+84 90 987 6543"})
     avatar_url: Optional[str] = Field(None, description="URL ảnh đại diện mới")
     is_fallback_agent: Optional[bool] = Field(None, description="Cấu hình tiếp nhận escalation từ Robot")
-
-
-
-
 
 
 # ---------------------------------------------------------
@@ -250,5 +246,3 @@ class ConciergeEmotionAlertResponse(BaseModel):
     duplicate: bool = False
 
     model_config = ConfigDict(from_attributes=True)
-
-

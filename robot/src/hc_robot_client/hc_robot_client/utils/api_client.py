@@ -79,7 +79,7 @@ class BackendAPIClient:
                 response = await client.post(url, json=payload)
                 if response.status_code == 200:
                     return response.json()
-                
+
                 error_msg = f"API chat failed with status code {response.status_code}: {response.text}"
                 logger.error(error_msg)
                 return {"response": "Rất tiếc, server đang bận. Vui lòng thử lại sau.", "error": error_msg}
@@ -101,7 +101,7 @@ class BackendAPIClient:
                 response = await client.post(url, json=payload)
                 if response.status_code == 200:
                     return response.json()
-                
+
                 error_msg = f"API intent failed with status code {response.status_code}: {response.text}"
                 logger.error(error_msg)
                 return {"action": "unknown", "error": error_msg}

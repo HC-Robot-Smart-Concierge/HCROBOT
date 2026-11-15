@@ -8,7 +8,7 @@ export const FloorMapContentViews = ({
   <>
       {/* 2. CHẾ ĐỘ 1: BẢN ĐỒ (activeMode === 'map') */}
       {activeMode === 'map' && (
-        <div 
+        <div
           className="w-full h-full flex-1 relative bg-[#F8F6F1] overflow-hidden flex items-center justify-center select-none touch-none"
           onMouseEnter={() => setIsHovering(true)}
           onMouseLeave={() => setIsHovering(false)}

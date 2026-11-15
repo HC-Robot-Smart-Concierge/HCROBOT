@@ -242,7 +242,6 @@ export const AppRoutes = () => {
       <Route path="/map" element={<GuestMapPage />} />
       <Route path="/guest/map" element={<GuestMapPage />} />
 
-
       {/* 4. Admin Command Portal & LiDAR */}
       <Route
         path="/admin/portal"

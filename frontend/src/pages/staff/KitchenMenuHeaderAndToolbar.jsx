@@ -6,7 +6,6 @@ import {
   RefreshCw,
   BookOpen,
   Layers,
-  Filter,
 } from 'lucide-react';
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import { FOOD_CATEGORIES } from './kitchenMenuUtils';

@@ -194,7 +194,6 @@ export function PhysicalMapCanvasViewport({
             </div>
           )}
 
-
           {children}
         </div>
   );

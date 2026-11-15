@@ -314,4 +314,3 @@ export const HOTEL_KEY_FACILITIES = [
   { key: 'front_desk', name: 'Quầy Lễ Tân & Sảnh', floor: 'TẦNG TRỆT' },
   { key: 'parking_car', name: 'Bãi Đỗ Xe & Sạc EV', floor: 'HẦM B2' },
 ];
-

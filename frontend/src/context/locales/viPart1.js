@@ -301,7 +301,6 @@ export const viPart1 = {
     deptNotifyDeactivated: 'Đã vô hiệu hóa bộ phận {name}',
     deptNotifyDeactivateError: 'Lỗi khi vô hiệu hóa: {msg}',
 
-
     // Admin Logs Tab
     logsTabTitle: 'Nhật Ký Hệ Thống & Kiểm Toán',
     logsTabSubtitle: 'Truy vết trực tiếp từ cơ sở dữ liệu về sự kiện hội thoại AI, điều phối và kiểm toán bảo mật Robot',

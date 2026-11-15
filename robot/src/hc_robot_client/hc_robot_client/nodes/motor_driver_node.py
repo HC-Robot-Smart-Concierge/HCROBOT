@@ -44,7 +44,7 @@ class MotorDriverNode(Node):
                     invert_right_direction = gpio_cfg.get(
                         'invert_right_direction', invert_right_direction
                     )
-                    
+
                     topics_cfg = config.get('topics', {})
                     cmd_vel_topic = topics_cfg.get('cmd_vel', cmd_vel_topic)
             except Exception as e:
@@ -105,7 +105,6 @@ class MotorDriverNode(Node):
             if os.path.exists(path):
                 return path
         return candidates[0]
-
 
     def on_twist_received(self, msg: Twist):
         """Callback xử lý tin nhắn vận tốc dạng Twist."""

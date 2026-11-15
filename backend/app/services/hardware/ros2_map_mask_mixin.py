@@ -7,6 +7,7 @@ import logging
 import math
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from app.services.zone_geometry import zone_points, points_bounds, distance_to_polygon
 
@@ -28,6 +29,12 @@ class Ros2RuntimeError(RuntimeError):
 
 class Ros2MapMaskMixin:
     """Mixin providing PGM stats/JSON export and Nav2 keepout/speed mask generation."""
+
+    if TYPE_CHECKING:
+        maps_dir: Path
+        project_root: Path
+
+        def normalize_map_name(self, raw_name: str) -> str: ...
 
     @staticmethod
     def _read_pgm_stats(pgm_path: Path) -> dict:

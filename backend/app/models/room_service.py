@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional, List, Dict, Any
-from sqlalchemy import String, Integer, Float, DateTime, Boolean, Text, JSON, ForeignKey
+from sqlalchemy import String, Integer, Float, DateTime, Boolean, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.time import utc_now_naive
 
 if TYPE_CHECKING:
     from app.models.account import Account
@@ -27,11 +28,11 @@ class RoomServiceOrder(Base):
     guest_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     guest_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     room_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    
+
     room_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
     account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     support_request_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("support_requests.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+
     status: Mapped[str] = mapped_column(String(50), default="Pending") # 'Pending', 'Cooking', 'Ready', 'Delivering', 'Completed', 'Cancelled'
     note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -42,8 +43,8 @@ class RoomServiceOrder(Base):
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     total_amount: Mapped[float] = mapped_column(Float, default=0.0)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
 
     # Relationships
     room: Mapped[Optional["Room"]] = relationship("Room")
@@ -78,7 +79,6 @@ class RoomServiceOrder(Base):
         pass
 
 
-
 class OrderItem(Base):
     """
     Model lưu chi tiết từng món ăn trong một đơn hàng phục vụ phòng (Order Item).
@@ -90,13 +90,13 @@ class OrderItem(Base):
     order_id: Mapped[str] = mapped_column(String(50), ForeignKey("room_service_orders.id", ondelete="CASCADE"), nullable=False, index=True)
     menu_item_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("menu_items.id", ondelete="SET NULL"), nullable=True, index=True)
     food_item_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("food_items.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+
     item_name: Mapped[str] = mapped_column(String(150), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     unit_price: Mapped[float] = mapped_column(Float, default=0.0)
     subtotal: Mapped[float] = mapped_column(Float, default=0.0)
     notes: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     # Relationships
     order: Mapped["RoomServiceOrder"] = relationship("RoomServiceOrder", back_populates="order_items")
@@ -123,5 +123,5 @@ class RoomServiceCatalogItem(Base):
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
     display_order: Mapped[int] = mapped_column(Integer, default=0)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)

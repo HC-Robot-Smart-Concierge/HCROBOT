@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Building,
   CheckCircle2,
   Clock,
   Edit3,
@@ -13,7 +12,6 @@ import { createBellRequest, fetchRoomBellStatus } from '../../services/operation
 import {
   BELL_SERVICE_OPTIONS,
   GROUPS,
-  BAG_OPTIONS,
   TIME_OPTIONS,
   bellServiceLabel,
   bellRequestMessage,

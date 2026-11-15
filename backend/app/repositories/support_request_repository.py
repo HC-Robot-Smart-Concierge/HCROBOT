@@ -2,12 +2,12 @@ from typing import Optional, List, Sequence, Tuple
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_, and_, func
-from sqlalchemy.orm import selectinload
 
 from app.models.support_request import SupportRequest
 from app.models.service_type import ServiceType
 from app.models.department import Department
 from app.repositories.base import BaseRepository
+from app.core.time import utc_now_naive
 
 
 class SupportRequestRepository(BaseRepository[SupportRequest]):
@@ -163,7 +163,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
     ) -> int:
         """Closes pending live-call requests older than cutoff_time (excludes emotion alerts)."""
         from sqlalchemy import update
-        now = datetime.utcnow()
+        now = utc_now_naive()
         dept_cond = (
             and_(
                 SupportRequest.department_id.in_(department_ids),
@@ -199,7 +199,7 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
     ) -> int:
         """Closes stuck in-progress/connected live calls older than cutoff_time (excludes emotion alerts)."""
         from sqlalchemy import update
-        now = datetime.utcnow()
+        now = utc_now_naive()
         dept_cond = (
             and_(
                 SupportRequest.department_id.in_(department_ids),
@@ -390,4 +390,4 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
             .order_by(desc(SupportRequest.created_at))
         )
         res = await self.db.execute(stmt)
-        return res.all()
+        return [(row[0], row[1], row[2]) for row in res.all()]

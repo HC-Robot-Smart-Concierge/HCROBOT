@@ -3,7 +3,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { describe, it, expect, vi } from 'vitest';
 import {
-  handleNumericKeyDown,
   handleNumberInputBlockExponent,
   sanitizeDigitsOnly,
   sanitizePhoneNumber,

@@ -1,24 +1,12 @@
 """Dialogue scenario service and in-memory fast-path cache."""
 
-import datetime
 import logging
-import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.scenario import DialogueScenario
-from app.schemas.scenario import DialogueScenarioCreate, DialogueScenarioUpdate
-from app.services.ai.constants import (
-    FOOD_MENU_TRIGGER_KEYWORDS,
-    MAINTENANCE_MENU_TRIGGER_KEYWORDS,
-    MAINTENANCE_REGEX,
-    ORDER_OR_SERVICE_EXCLUSION_REGEX,
-    ROOM_SERVICE_MENU_TRIGGER_KEYWORDS,
-    SERVICE_KEYWORDS,
-    STATUS_QUERY_REGEX,
-)
 from app.services.ai.scenario_crud_mixin import ScenarioCrudMixin
 from app.services.ai.scenario_matching_mixin import ScenarioMatchingMixin
 from app.services.ai.scenario_seed_part1 import SEED_SCENARIOS_PART_1
@@ -26,12 +14,11 @@ from app.services.ai.scenario_seed_part2 import SEED_SCENARIOS_PART_2
 from app.services.ai.scenario_seed_part3 import SEED_SCENARIOS_PART_3
 from app.services.ai.scenario_seed_part4 import SEED_SCENARIOS_PART_4
 from app.services.ai.scenario_seed_part5 import SEED_SCENARIOS_PART_5
-from app.services.ai.session_manager import extract_room_number, is_valid_hotel_room
 
 logger = logging.getLogger(__name__)
 
 # Danh muc kich ban mac dinh ban dau (Seed Scenarios)
-DEFAULT_SEED_SCENARIOS = [
+DEFAULT_SEED_SCENARIOS: List[Dict[str, Any]] = [
     *SEED_SCENARIOS_PART_1,
     *SEED_SCENARIOS_PART_2,
     *SEED_SCENARIOS_PART_3,
@@ -117,7 +104,7 @@ class ScenarioService(ScenarioMatchingMixin, ScenarioCrudMixin):
                 "tự giới thiệu", "tu gioi thieu", "giới thiệu rora", "gioi thieu rora",
                 "introduce yourself", "tell me about yourself", "can you introduce yourself"
             ]
-            records_by_id = {r.id: r for r in records}
+            records_by_id: Dict[Any, DialogueScenario] = {r.id: r for r in records}
             has_db_updates = False
 
             # B. Phân định quyền giữa Database và Code (System vs Custom Scenarios):

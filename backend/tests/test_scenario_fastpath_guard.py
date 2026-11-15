@@ -1,4 +1,3 @@
-import pytest
 from app.services.ai.scenario_service import scenario_service
 from app.services.ai.ai_chat_service import _detect_destination_poi
 
@@ -28,7 +27,7 @@ def test_fastpath_matches_genuine_hotel_facilities():
     pool_hit = scenario_service.match_fast_path("Cho tôi hỏi hồ bơi ở đâu")
     assert pool_hit is not None
     assert pool_hit[3] == "show_map"
-    assert pool_hit[4].get("destination_key") == "infinity_pool"
+    assert pool_hit[4] is not None and pool_hit[4].get("destination_key") == "infinity_pool"
 
     pool_hours_hit = scenario_service.match_fast_path("Hồ bơi vô cực mở cửa lúc mấy giờ")
     assert pool_hours_hit is not None
@@ -37,12 +36,12 @@ def test_fastpath_matches_genuine_hotel_facilities():
     gym_hit = scenario_service.match_fast_path("Chỉ đường lên phòng gym")
     assert gym_hit is not None
     assert gym_hit[3] == "show_map"
-    assert gym_hit[4].get("destination_key") == "gym"
+    assert gym_hit[4] is not None and gym_hit[4].get("destination_key") == "gym"
 
     room_hit = scenario_service.match_fast_path("Phòng 401 ở đâu")
     assert room_hit is not None
     assert room_hit[3] == "show_map"
-    assert room_hit[4].get("destination_key") == "room_401"
+    assert room_hit[4] is not None and room_hit[4].get("destination_key") == "room_401"
 
 
 def test_detect_destination_poi_general_knowledge_guard():
@@ -50,4 +49,3 @@ def test_detect_destination_poi_general_knowledge_guard():
     assert _detect_destination_poi("vận động viên bơi lội nổi tiếng nhất hiện nay là ai") is None
     assert _detect_destination_poi("ai là người bơi giỏi nhất", "Michael Phelps là kình ngư vĩ đại.") is None
     assert _detect_destination_poi("cầu thủ bóng đá xuất sắc nhất hiện nay") is None
-

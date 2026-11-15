@@ -1,5 +1,5 @@
 import React from 'react';
-import { Zap, Trash2, Layers, X, FileCode, File, Check, BookOpen, Copy } from 'lucide-react';
+import { Zap, Trash2, Layers, X, FileCode, Check, BookOpen, Copy } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 
 export const AdminKnowledgeGuideAndDeleteModals = ({

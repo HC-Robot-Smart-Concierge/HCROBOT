@@ -1,42 +1,21 @@
-import asyncio
 import logging
 import random
 import re
-from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, or_
 
 from app.core.database import get_db
-from app.services.notification_manager import notification_manager
-from app.models import (
-    Staff,
-    ManagementDirective,
-    HumanSupportSession,
-    ChatSession,
-    ChatMessage,
-    SupportRequest,
-    RoomServiceOrder,
-)
+from app.models import ManagementDirective, SupportRequest
 from app.schemas.operations import (
     AdminOperationsSummary,
     AdminTaskDispatchCreate,
-    HumanSupportSessionResponse,
     DirectiveCreate,
     DirectiveResponse,
 )
 from app.repositories import (
-    SupportRequestRepository,
-    get_support_request_repository,
     DirectiveRepository,
     get_directive_repository,
-    RoomServiceRepository,
-    get_room_service_repository,
-    StaffRepository,
-    get_staff_repository,
-    SupportSessionRepository,
-    get_support_session_repository,
 )
 from .shared import TAG_ADMIN, TAG_OPS, _fetch_all_raw_requests, create_department_notification
 
@@ -363,11 +342,7 @@ async def dispatch_admin_task(
     }
 
 
-from .admin_ops_task_updates import (
-    router as admin_ops_task_updates_router,
-    update_generic_request_status,
-    update_task_status,
-)
+from .admin_ops_task_updates import router as admin_ops_task_updates_router
 
 router.include_router(admin_ops_task_updates_router)
 
@@ -401,11 +376,6 @@ async def create_operational_directive(
     return new_dir
 
 
-from .admin_ops_analytics import (
-    get_admin_conversation_detail,
-    get_admin_conversations,
-    get_analytics_summary,
-    router as admin_ops_analytics_router,
-)
+from .admin_ops_analytics import router as admin_ops_analytics_router
 
 router.include_router(admin_ops_analytics_router)

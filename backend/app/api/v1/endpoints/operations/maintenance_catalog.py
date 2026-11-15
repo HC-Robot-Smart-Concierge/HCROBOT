@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -12,6 +11,7 @@ from app.schemas.operations import (
     MaintenanceCatalogItemResponse,
     MaintenanceCatalogItemUpdate,
 )
+from app.core.time import utc_now_naive
 from .shared import TAG_MNT
 
 router = APIRouter()
@@ -219,8 +219,8 @@ async def get_maintenance_catalog(
         return [
             {
                 **item,
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
+                "created_at": utc_now_naive(),
+                "updated_at": utc_now_naive(),
             }
             for item in filtered
         ]
@@ -271,7 +271,7 @@ async def update_maintenance_catalog_item(
     item = await _get_catalog_item_or_404(db, item_id)
     for field, val in item_in.model_dump(exclude_unset=True).items():
         setattr(item, field, val)
-    item.updated_at = datetime.utcnow()
+    item.updated_at = utc_now_naive()
     await db.commit()
     await db.refresh(item)
     return item
@@ -306,7 +306,7 @@ async def toggle_maintenance_catalog_item(
     """Chuyển đổi trạng thái is_active giữa True và False."""
     item = await _get_catalog_item_or_404(db, item_id)
     item.is_active = not item.is_active
-    item.updated_at = datetime.utcnow()
+    item.updated_at = utc_now_naive()
     await db.commit()
     await db.refresh(item)
     return item

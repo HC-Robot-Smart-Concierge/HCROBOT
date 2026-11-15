@@ -1,6 +1,5 @@
 import pytest
 from app.services.ai.scenario_service import scenario_service
-from app.services.ai.ollama_service import ollama_service
 from app.services.ai.concierge_graph import fast_path_node, intent_router_node
 from app.services.ai.session_manager import session_manager
 
@@ -8,7 +7,7 @@ from app.services.ai.session_manager import session_manager
 async def test_cho_toi_khan_tam_bypasses_static_fast_path():
     """Kiểm tra câu 'cho tôi khăn tắm' không bị kịch bản FAQ tĩnh nuốt mất."""
     prompt = "cho tôi khăn tắm"
-    
+
     # 1. match_fast_path trực tiếp từ scenario_service
     match_result = scenario_service.match_fast_path(prompt, "vi-VN")
     assert match_result is None, f"Expected None but got: {match_result}"
@@ -40,4 +39,3 @@ async def test_hoi_thong_tin_khan_tam_still_matches_faq():
     match_result = scenario_service.match_fast_path(prompt, "vi-VN")
     assert match_result is not None
     assert "khăn tắm" in match_result[0].lower()
-

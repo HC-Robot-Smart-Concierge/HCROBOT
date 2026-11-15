@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, CheckCircle, Info, X } from 'lucide-react';
+import { Sparkles, X } from 'lucide-react';
 
 export const ToastNotification = ({ message, onClose }) => {
   if (!message) return null;

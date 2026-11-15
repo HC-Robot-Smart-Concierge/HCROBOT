@@ -1,44 +1,28 @@
 import asyncio
-import random
-import uuid
-from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc, or_
-from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.services.notification_manager import notification_manager
 from app.models import (
-    Staff,
     SupportRequest,
-    MenuItem,
-    FoodItem,
     Room,
     RoomServiceOrder,
     OrderItem as OrderItemModel,
-    RoomServiceCatalogItem,
 )
 from app.schemas.operations import (
-    RoomServiceOrderCreate,
-    RoomServiceOrderStatusUpdate,
     RoomServiceOrderResponse,
     RoomServiceDashboardResponse,
     OrderItemResponse,
     RoomOrderedItemSummary,
     RoomOrdersHistoryResponse,
-    RoomServiceCatalogItemCreate,
-    RoomServiceCatalogItemUpdate,
-    RoomServiceCatalogItemResponse,
 )
 from app.repositories import (
     RoomServiceRepository,
     get_room_service_repository,
-    SupportRequestRepository,
-    get_support_request_repository,
 )
-from .shared import TAG_ROOM_SERVICE, TAG_FB, create_department_notification
+from .shared import TAG_FB
 
 router = APIRouter()
 
@@ -61,7 +45,7 @@ async def get_room_service_dashboard(
 
     # Phân loại và cô lập triệt để đơn hàng: Món ăn chỉ gửi Bếp, Dịch vụ chỉ gửi Room Service
     if is_service_request is not None:
-        orders = [o for o in all_orders if bool(o.is_service_request) == is_service_request]
+        orders = [o for o in all_orders if o.is_service_request == is_service_request]
     elif type == "food" or department == "kitchen":
         orders = [o for o in all_orders if not o.is_service_request]
     elif type == "service" or department == "room_service":
@@ -96,12 +80,11 @@ async def get_room_service_dashboard(
 
 
 from .room_service_order_create import (
-    create_room_service_order,
+    create_room_service_order as create_room_service_order,
     router as room_service_order_create_router,
 )
 
 router.include_router(room_service_order_create_router)
-
 
 
 @router.get(
@@ -133,7 +116,7 @@ async def get_room_orders_history(
     """
     orders = await rs_repo.list_orders_by_room(room_number)
 
-    total_amount = sum(float(o.total_amount or 0.0) for o in orders)
+    total_amount = sum(o.total_amount or 0.0 for o in orders)
 
     # Gom nhóm và tính toán tổng số lượng từng món phòng đã đặt
     items_map: Dict[str, Dict[str, Any]] = {}
@@ -259,7 +242,6 @@ async def list_all_order_items(
     )
 
 
-
 @router.delete(
     "/room-service/orders/clear-all",
     tags=TAG_FB,
@@ -287,14 +269,6 @@ async def clear_all_room_service_orders(
     return {"status": "success", "message": "Đã xóa sạch toàn bộ đơn món ăn bên bộ phận bếp."}
 
 
-from .room_service_catalog import (
-    DEFAULT_ROOM_SERVICE_CATALOG,
-    create_room_service_service,
-    delete_room_service_service,
-    get_room_service_catalog,
-    router as room_service_catalog_router,
-    toggle_room_service_service,
-    update_room_service_service,
-)
+from .room_service_catalog import router as room_service_catalog_router
 
 router.include_router(room_service_catalog_router)

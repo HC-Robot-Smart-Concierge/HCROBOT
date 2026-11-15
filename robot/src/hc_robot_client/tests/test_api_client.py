@@ -160,4 +160,3 @@ def test_telemetry_node_syncs_profile_on_status_and_heartbeat():
             is_online=True,
             robot_id=node.robot_id,
         )
-

@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional, List
-from sqlalchemy import String, Integer, DateTime, Boolean, Text, ForeignKey
+from sqlalchemy import String, DateTime, Boolean, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.time import utc_now_naive
 
 if TYPE_CHECKING:
     from app.models.department import Department
@@ -20,10 +21,10 @@ class Account(Base):
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. 'MS', 'JD', 'ER', 'MV'
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
     role: Mapped[str] = mapped_column(String(50), default="STAFF") # 'ADMIN', 'STAFF', 'MANAGER', 'GUEST'
-    
+
     # Foreign key to Department
     department_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+
     default_dashboard: Mapped[str] = mapped_column(String(50), default="room_service") # 'reception', 'room_service', 'housekeeping', 'bell_services', 'maintenance', 'admin_map'
     location: Mapped[str] = mapped_column(String(100), default="Main Hotel") # e.g. 'Floor 3', 'Lobby', 'Floor 5'
     status: Mapped[str] = mapped_column(String(50), default="available") # 'available', 'busy', 'off_shift'
@@ -32,9 +33,9 @@ class Account(Base):
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="+84 90 123 4567")
     is_fallback_agent: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
 
     # Relationships
     department_rel: Mapped[Optional["Department"]] = relationship("Department", back_populates="accounts", lazy="selectin")

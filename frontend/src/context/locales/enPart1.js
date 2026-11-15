@@ -302,7 +302,6 @@ export const enPart1 = {
     deptNotifyDeactivated: 'Deactivated department: {name}',
     deptNotifyDeactivateError: 'Error deactivating: {msg}',
 
-
     // Admin Logs Tab
     logsTabTitle: 'System Logs & Audit Trail',
     logsTabSubtitle: 'Direct database tracking of AI chat sessions, dispatches, and robot security audits',

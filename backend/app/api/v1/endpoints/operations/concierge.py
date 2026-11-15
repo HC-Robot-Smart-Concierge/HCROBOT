@@ -1,27 +1,10 @@
-import os
-import json
 import logging
 import random
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    status,
-    WebSocket,
-    WebSocketDisconnect,
-    Query,
-    UploadFile,
-    File,
-    Form,
-    BackgroundTasks,
-)
-from fastapi.responses import FileResponse
-from pydantic import BaseModel, ConfigDict
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
 from app.core.database import get_db
 from app.models import SupportRequest
@@ -41,24 +24,13 @@ from app.repositories import (
     SupportSessionRepository,
     get_support_session_repository,
 )
-from app.services.cloudinary_service import cloudinary_service
 from app.services.video_call_manager import video_call_manager
 from .shared import TAG_CONCIERGE, create_department_notification
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
-from .concierge_sessions_ws import (
-    HumanSupportSessionItem,
-    RecordingUploadResponse,
-    get_human_support_session_detail,
-    get_human_support_sessions,
-    get_video_calls_metrics,
-    get_video_rooms_status,
-    router as concierge_sessions_ws_router,
-    video_call_signaling_endpoint,
-)
+from .concierge_sessions_ws import router as concierge_sessions_ws_router
 
 
 # =====================================================================
@@ -399,13 +371,7 @@ async def update_concierge_emotion_alert(
     return req
 
 
-from .concierge_recordings import (
-    _background_upload_video,
-    get_local_recording,
-    router as concierge_recordings_router,
-    sync_cloudinary_recordings,
-    upload_call_recording,
-)
+from .concierge_recordings import router as concierge_recordings_router
 
 router.include_router(concierge_sessions_ws_router)
 router.include_router(concierge_recordings_router)

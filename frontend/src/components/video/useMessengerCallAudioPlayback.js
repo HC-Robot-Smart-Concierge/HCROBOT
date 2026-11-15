@@ -324,7 +324,6 @@ export function useMessengerCallAudioPlayback({
     playInterpreterAudioRef.current = playInterpreterAudio;
   }, [playInterpreterAudio]);
 
-
   return {
     getOrCreateAudioContext,
     primeAudioContext,

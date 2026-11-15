@@ -1,6 +1,5 @@
 import React from 'react';
-import { Clock, Check, MapPin, ChefHat, ConciergeBell, Phone } from 'lucide-react';
-import { staffDepartmentLabel, staffStatusLabel } from '../../context/StaffLanguage';
+import { Clock, Check, MapPin, ChefHat, ConciergeBell } from 'lucide-react';
 
 export const MyTasksDetailModal = ({
   selectedDetailReq, setSelectedDetailReq, isDirectServiceOrder, isFoodOrder, SERVICE_STEPS, FOOD_STEPS, getDirectServiceStage, getFoodOrderStage, isTaskCompleted, canUserActOnStage, staffName, handleUpdateTaskStatus, st,

@@ -61,4 +61,3 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </LanguageProvider>
   </ErrorBoundary>,
 );
-

@@ -4,15 +4,7 @@ import hashlib
 import logging
 import os
 import re
-import urllib.parse
 from typing import Optional, Tuple, Dict, Any
-
-import httpx
-
-try:
-    import edge_tts
-except ImportError:
-    edge_tts = None
 
 from app.core.config import settings
 from app.services.ai.tts_providers_mixin import TTSProvidersMixin
@@ -32,11 +24,11 @@ class TTSService(TTSProvidersMixin):
         self.default_en_voice = "en-US-JennyNeural"
         self.current_rate: float = 1.0
         self.current_rate_str: str = "+0%"
-        
+
         # 1. Memory LRU/Cache
         self._memory_cache: Dict[str, str] = {}
         self._inflight_tasks: Dict[str, asyncio.Task] = {}
-        
+
         # 2. Disk Cache Directory: backend/static/audio_cache
         current_dir = os.path.dirname(os.path.abspath(__file__))
         self._cache_dir = os.path.join(current_dir, "..", "..", "..", "static", "audio_cache")
@@ -57,7 +49,7 @@ class TTSService(TTSProvidersMixin):
         """
         if not text:
             return ""
-        t = re.sub(r'[*#_`\[\]()~]', '', str(text))
+        t = re.sub(r'[*#_`\[\]()~]', '', text)
         t = re.sub(r'[\U00010000-\U0010ffff]', '', t)
         t = re.sub(r'^[\s*•\-–—]+\s*', '', t, flags=re.MULTILINE)
         t = re.sub(r':\s*', ', ', t)
@@ -71,7 +63,7 @@ class TTSService(TTSProvidersMixin):
     @staticmethod
     def rate_float_to_percentage(rate: float) -> str:
         """Chuyển đổi tốc độ float (0.5 - 2.0) sang chuỗi phần trăm EdgeTTS (+10%, -15%, +0%)"""
-        clamped = max(0.5, min(2.0, float(rate)))
+        clamped = max(0.5, min(2.0, rate))
         diff = round((clamped - 1.0) * 100)
         return f"+{diff}%" if diff >= 0 else f"{diff}%"
 
@@ -92,7 +84,7 @@ class TTSService(TTSProvidersMixin):
         en_voice: Optional[str] = None,
     ) -> dict:
         """Cập nhật tốc độ đọc và giọng nói của robot trên toàn hệ thống"""
-        clamped_rate = max(0.5, min(2.0, float(speech_rate)))
+        clamped_rate = max(0.5, min(2.0, speech_rate))
         self.current_rate = clamped_rate
         rate_str = self.rate_float_to_percentage(clamped_rate)
         self.current_rate_str = rate_str
@@ -138,7 +130,7 @@ class TTSService(TTSProvidersMixin):
         # 1. Kiểm tra RAM cache trước (< 0.1ms)
         if cache_key in self._memory_cache:
             return self._memory_cache[cache_key]
-        
+
         # 2. Kiểm tra Disk cache (< 2ms)
         disk_path = os.path.join(self._cache_dir, f"{cache_key}.mp3")
         if os.path.isfile(disk_path):

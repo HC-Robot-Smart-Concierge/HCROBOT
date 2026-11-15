@@ -1,7 +1,7 @@
 import logging
 import random
 from typing import Optional, Tuple
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.support_request import SupportRequest
@@ -166,9 +166,9 @@ async def create_live_call_session(
 
 
 async def auto_create_ticket(
-    db: AsyncSession,
+    db: Optional[AsyncSession],
     action: str,
-    room_number: str,
+    room_number: Optional[str],
     items: str
 ) -> str:
     """
@@ -176,7 +176,7 @@ async def auto_create_ticket(
     và gửi Notification tới phòng ban phụ trách cùng Lễ tân.
     """
     code = f"AUTO-{random.randint(1000, 99999)}"
-    if not room_number:
+    if not room_number or db is None:
         logger.warning(f"[AITicketService] auto_create_ticket skipped: missing room_number for action '{action}'.")
         return ""
     rm = room_number.strip()

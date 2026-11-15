@@ -1,4 +1,3 @@
-import pytest
 from app.services.ai.ai_chat_service import _detect_destination_poi
 
 

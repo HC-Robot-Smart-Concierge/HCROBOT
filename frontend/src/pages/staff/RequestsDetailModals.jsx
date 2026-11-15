@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, CheckCircle2, Check, User, MapPin, ChefHat, ConciergeBell, Phone } from 'lucide-react';
+import { Clock, CheckCircle2, Check, User, MapPin, ChefHat, ConciergeBell } from 'lucide-react';
 import { useStaffText, staffStatusLabel } from '../../context/StaffLanguage';
 import { NewDirectiveModal } from '../../components/dashboard/Modals';
 import {

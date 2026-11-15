@@ -1,6 +1,6 @@
 import React from 'react';
 import { FloorMap } from './FloorMap';
-import { X, Map as MapIcon, Globe, Check } from 'lucide-react';
+import { X, Globe, Check } from 'lucide-react';
 
 export const MobileRobotLanguageModal = ({
   isLangMenuOpen,

@@ -9,7 +9,6 @@ import {
   FileText,
   FileCode,
   Folder,
-  File,
   Check,
   Database,
 } from 'lucide-react';

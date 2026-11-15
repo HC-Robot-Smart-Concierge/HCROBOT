@@ -109,7 +109,6 @@ export const RobotBackgroundAndMobileLayer = ({
     visible={false}
   />
 
-
   <MobileRobotScreen
     isKioskCameraActive={isKioskCameraActive}
     onStartKioskCamera={startKioskCamera}

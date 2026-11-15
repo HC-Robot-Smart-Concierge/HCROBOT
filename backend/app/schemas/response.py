@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Dict, Optional, Union
 from pydantic import BaseModel, Field
 
 
@@ -41,7 +41,7 @@ class InternalServerErrorSchema(ErrorResponseSchema):
 # ---------------------------------------------------------------------------
 
 # 1. Cấp Toàn cục (Global): Chỉ khai báo lỗi 500 do GlobalExceptionMiddleware quản lý
-GLOBAL_RESPONSES = {
+GLOBAL_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
     500: {
         "model": InternalServerErrorSchema,
         "description": "Lỗi máy chủ nội bộ không mong muốn (Internal Server Error)",
@@ -49,7 +49,7 @@ GLOBAL_RESPONSES = {
 }
 
 # 2. Cấp Xác thực (Dành cho các router/endpoint có kiểm tra JWT Token & Phân quyền)
-AUTH_RESPONSES = {
+AUTH_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
     401: {
         "model": UnauthorizedResponseSchema,
         "description": "Chưa xác thực hoặc Token hết hạn (Unauthorized)",
@@ -61,7 +61,7 @@ AUTH_RESPONSES = {
 }
 
 # 3. Cấp Nghiệp vụ (Dành cho các endpoint xử lý dữ liệu có điều kiện)
-BUSINESS_ERROR_RESPONSES = {
+BUSINESS_ERROR_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
     400: {
         "model": ErrorResponseSchema,
         "description": "Yêu cầu không hợp lệ / Sai dữ liệu nghiệp vụ (Bad Request)",
@@ -69,7 +69,7 @@ BUSINESS_ERROR_RESPONSES = {
 }
 
 # 4. Cấp Tra cứu theo ID (Dành cho các endpoint GET/PUT/DELETE theo {id})
-NOT_FOUND_RESPONSES = {
+NOT_FOUND_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
     404: {
         "model": NotFoundResponseSchema,
         "description": "Không tìm thấy tài nguyên theo định danh yêu cầu (Not Found)",
@@ -77,7 +77,7 @@ NOT_FOUND_RESPONSES = {
 }
 
 # Tổng hợp tiện ích cho các CRUD Route có xác thực (400, 401, 403, 404)
-SECURED_CRUD_RESPONSES = {
+SECURED_CRUD_RESPONSES: Dict[Union[int, str], Dict[str, Any]] = {
     **AUTH_RESPONSES,
     **BUSINESS_ERROR_RESPONSES,
     **NOT_FOUND_RESPONSES,

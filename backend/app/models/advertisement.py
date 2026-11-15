@@ -5,6 +5,7 @@ from sqlalchemy import String, Integer, DateTime, Boolean, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+from app.core.time import utc_now_naive
 
 
 class Advertisement(Base):
@@ -23,5 +24,5 @@ class Advertisement(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True) # Bật / Tắt quảng cáo
     display_location: Mapped[str] = mapped_column(String(50), default="ALL") # 'ALL', 'IDLE_STANDBY', 'WORKFLOW'
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)

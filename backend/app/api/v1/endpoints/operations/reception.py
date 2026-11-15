@@ -1,6 +1,5 @@
-import time
 import random
-from typing import Optional, List, Dict, Any
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,18 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models import SupportRequest
 from app.models.hotel import Room
-from app.services.maintenance_request_service import get_or_create_maintenance_request, duplicate_maintenance_message, merged_maintenance_message
-from app.services.bell_request_service import (
-    BELL_DEPARTMENT_ID, BELL_SERVICE_TYPE_ID, bell_request_message, get_or_create_bell_request,
-)
-from app.services.ai.constants import is_lost_found_text
 from app.schemas.operations import (
     ReceptionRequestCreate,
     ReceptionRequestResponse,
     ReceptionDashboardResponse,
-    RoomPinVerifyRequest,
-    RoomPinVerifyResponse,
-    RoomNfcVerifyRequest,
     RoomCheckInRequest,
     RoomInfoResponse,
 )
@@ -27,13 +18,11 @@ from app.repositories import SupportRequestRepository, get_support_request_repos
 from .shared import TAG_REC, create_department_notification
 
 from .reception_auth import (
-    PIN_LOCKOUT_DURATION_SEC,
-    PIN_LOCKOUT_MAX_ATTEMPTS,
-    ROOM_PIN_ATTEMPTS,
-    normalize_nfc_uid,
+    PIN_LOCKOUT_DURATION_SEC as PIN_LOCKOUT_DURATION_SEC,
+    PIN_LOCKOUT_MAX_ATTEMPTS as PIN_LOCKOUT_MAX_ATTEMPTS,
+    ROOM_PIN_ATTEMPTS as ROOM_PIN_ATTEMPTS,
     router as reception_auth_router,
-    verify_room_nfc,
-    verify_room_pin,
+    verify_room_pin as verify_room_pin,
 )
 
 router = APIRouter()
@@ -61,7 +50,7 @@ async def get_reception_dashboard(
     - Hỗ trợ đặt phòng (Room Booking / Reservations)
     - Thủ tục Check-in / Check-out / Gia hạn lưu trú
     - Đổi phòng và thông tin dịch vụ lưu trú
-    
+
     Dữ liệu được truy vấn chuẩn hóa từ bảng `support_requests` có `department_id = 'DEP-RECEPTION'` hoặc `service_type_id = 'ST-RECEPTION'`.
     """
     current_req = await repo.get_active_by_department(
@@ -102,12 +91,12 @@ async def create_reception_request(
     - Đặt phòng mới hoặc giữ chỗ phòng nghỉ
     - Yêu cầu check-in sớm / check-out muộn
     - Hỗ trợ thủ tục hóa đơn hoặc đổi phòng
-    
+
     Hệ thống tự động gắn mã dịch vụ `ST-RECEPTION` và phòng ban `DEP-RECEPTION`.
     """
     code_num = random.randint(1000, 99999)
     ticket_code = f"REC-{code_num}"
-    
+
     new_request = SupportRequest(
         ticket_code=ticket_code,
         title=request_in.title,
@@ -297,5 +286,3 @@ async def check_out_room(
     await db.commit()
     await db.refresh(room)
     return room
-
-

@@ -1,26 +1,23 @@
 import asyncio
-import json
 import logging
 import re
 import time
-from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.ai import ChatRequest, ChatResponse
 from langchain_core.runnables import RunnableConfig
 from app.services.ai.session_manager import session_manager, extract_room_number, is_valid_hotel_room
-from app.services.ai.concierge_graph import concierge_graph, intent_router_node, service_fsm_node, retrieval_node
+from app.services.ai.concierge_graph import concierge_graph
 from app.services.ai.tts_service import tts_service
 from app.services.ai.ollama_service import ollama_service
-from app.services.ai.ai_ticket_service import create_live_call_session, background_extract_and_create_ticket, create_bell_voice_ticket, create_maintenance_voice_ticket
+from app.services.ai.ai_ticket_service import create_live_call_session, background_extract_and_create_ticket
 from app.services.ai.ai_chat_helpers import (
     _detect_destination_poi,
     _submit_bell_for_chat,
     _submit_maintenance_for_chat,
 )
-from app.services.ai.ai_chat_stream_service import generate_chat_stream
-from app.services.bell_request_service import bell_request_message
-from app.services.maintenance_request_service import duplicate_maintenance_message, is_fault_report, merged_maintenance_message
+from app.services.ai.ai_chat_stream_service import generate_chat_stream as generate_chat_stream
+from app.services.maintenance_request_service import is_fault_report
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)

@@ -1,5 +1,4 @@
-from typing import Optional, List, Sequence
-from datetime import datetime
+from typing import Any, Optional, Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import selectinload
@@ -8,6 +7,7 @@ from app.models.staff import Staff
 from app.models.department import Department
 from app.models.service_type import ServiceType
 from app.repositories.base import BaseRepository
+from app.core.time import utc_now_naive
 
 
 class StaffRepository(BaseRepository[Staff]):
@@ -20,9 +20,9 @@ class StaffRepository(BaseRepository[Staff]):
 
     # ---------------- Staff Members ----------------
 
-    async def get_by_id(self, staff_id: str, load_department: bool = True) -> Optional[Staff]:
+    async def get_by_id(self, id: Any, load_department: bool = True) -> Optional[Staff]:
         """Fetch staff member by ID with optional department eager loading."""
-        stmt = select(Staff).where(Staff.id == staff_id.strip())
+        stmt = select(Staff).where(Staff.id == str(id).strip())
         if load_department:
             stmt = stmt.options(selectinload(Staff.department_rel))
         res = await self.db.execute(stmt)
@@ -104,7 +104,7 @@ class StaffRepository(BaseRepository[Staff]):
             return None
         staff.is_active = False
         staff.status = "inactive"
-        staff.updated_at = datetime.utcnow()
+        staff.updated_at = utc_now_naive()
         await self.db.commit()
         await self.db.refresh(staff)
         return staff
@@ -184,7 +184,7 @@ class StaffRepository(BaseRepository[Staff]):
         if not dept:
             return None
         dept.is_active = False
-        dept.updated_at = datetime.utcnow()
+        dept.updated_at = utc_now_naive()
         await self.db.commit()
         await self.db.refresh(dept)
         return dept

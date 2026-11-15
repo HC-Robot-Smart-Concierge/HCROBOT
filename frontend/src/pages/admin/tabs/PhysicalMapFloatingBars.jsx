@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigation, Save, Trash2, Check, X, Square } from 'lucide-react';
+import { Navigation, Save, Trash2, Check, Square } from 'lucide-react';
 import { normalizeZoneYaw, isPolygonZone } from './physicalMapZones';
 import { OTTO_ENDPOINT_TEMPLATES, getEndpointTemplateInfo } from './studio/studioConstants';
 

@@ -10,7 +10,6 @@ import {
   RotateCcw,
   ShieldCheck,
   Battery,
-  X,
   Crosshair,
   Home,
   ShieldBan,

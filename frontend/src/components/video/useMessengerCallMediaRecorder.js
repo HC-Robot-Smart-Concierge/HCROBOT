@@ -260,7 +260,6 @@ export function useMessengerCallMediaRecorder({
     setIsAudioBlocked(false);
   };
 
-
   return {
     acquireLocalMedia,
     startRecording,

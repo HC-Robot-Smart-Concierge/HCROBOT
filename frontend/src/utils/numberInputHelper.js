@@ -106,4 +106,3 @@ export function sanitizePhoneNumber(val, maxLength = 15) {
   const result = hasPlus ? `+${digits}` : digits;
   return maxLength ? result.slice(0, maxLength) : result;
 }
-

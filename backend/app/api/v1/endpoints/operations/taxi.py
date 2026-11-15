@@ -1,11 +1,10 @@
 import random
-from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models import Staff, SupportRequest
+from app.models import SupportRequest
 from app.schemas.operations import (
     TaxiRequestCreate,
     TaxiRequestStatusUpdate,
@@ -18,6 +17,7 @@ from app.repositories import (
     StaffRepository,
     get_staff_repository,
 )
+from app.core.time import utc_now_naive
 from .shared import TAG_TAXI, create_department_notification
 
 router = APIRouter()
@@ -64,7 +64,7 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
         assigned_driver=req.assigned_staff_name,
         license_plate="43A-888.99" if req.assigned_staff_name else None,
         notes=desc_str,
-        created_at=req.created_at or datetime.utcnow(),
+        created_at=req.created_at or utc_now_naive(),
     )
 
 
@@ -344,8 +344,7 @@ async def update_taxi_request_status(
         clean_note = update_in.note.strip()
         req.description = f"{req.description or ''} | Ghi chú: {clean_note}".strip(" |")
 
-    req.updated_at = datetime.utcnow()
+    req.updated_at = utc_now_naive()
     await sr_repo.commit()
     await sr_repo.refresh(req)
     return _format_taxi_request(req)
-

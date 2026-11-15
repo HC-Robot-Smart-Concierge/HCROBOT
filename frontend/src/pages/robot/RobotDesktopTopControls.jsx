@@ -163,7 +163,6 @@ export const RobotDesktopTopControls = ({
             <span className="w-1.5 h-1.5 rounded-full bg-stone-500" />
           </div>
 
-
           {/* 2. Cơ Sở Vật Chất & Tiện Ích 5 Sao */}
           <button
             type="button"

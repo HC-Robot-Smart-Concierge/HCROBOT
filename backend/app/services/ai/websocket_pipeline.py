@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 async def handle_pipecat_websocket(websocket: WebSocket, session_id: str = "pipecat_kiosk"):
     """
     Unified WebSocket Streaming Pipeline — STT Streaming + LLM Token Stream + TTS Audio Chunks.
-    
+
     Events:
     - event="stt_interim": Client gửi interim transcript -> Server echo lại để hiển thị UI
     - event="stt_final": Client gửi final transcript -> Server trigger full AI pipeline streaming
@@ -69,7 +69,9 @@ async def handle_pipecat_websocket(websocket: WebSocket, session_id: str = "pipe
                 chunk_type = chunk.get("type")
 
                 if chunk_type == "audio_chunk":
-                    await websocket.send_bytes(chunk["data"])
+                    audio_data = chunk.get("data")
+                    if isinstance(audio_data, bytes):
+                        await websocket.send_bytes(audio_data)
                 elif chunk_type == "token":
                     await websocket.send_json({
                         "event": "token",

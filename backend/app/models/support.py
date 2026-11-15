@@ -1,10 +1,11 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
-from sqlalchemy import Boolean, DateTime, JSON, String, ForeignKey, Integer, Text
+from sqlalchemy import DateTime, JSON, String, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.time import utc_now_naive
 
 if TYPE_CHECKING:
     from app.models.account import Account
@@ -20,7 +21,7 @@ class HumanSupportSession(Base):
     session_code: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     room_number: Mapped[str] = mapped_column(String(50), nullable=False) # e.g. 'Room 302', 'Room 402'
     guest_name: Mapped[str] = mapped_column(String(100), default="Hotel Guest")
-    
+
     category: Mapped[str] = mapped_column(String(50), default="Escort Request") # 'Escort Request', 'Maintenance', 'Housekeeping', 'Luggage Assist'
     origin_robot_code: Mapped[str] = mapped_column(String(50), default="RC-001 (Main Lobby)")
     sentiment: Mapped[str] = mapped_column(String(50), default="Neutral") # 'Impatient', 'Neutral', 'Positive', 'Frustrated'
@@ -29,7 +30,7 @@ class HumanSupportSession(Base):
     linked_request_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # e.g. 'REQ-1042'
     chat_session_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+
     # Dual-track multilingual message history
     # Each item: { "id", "speaker", "speaker_name", "raw_transcript", "languages_detected": [...], "translations": { "vi", "en" }, "timestamp", "intent_payload" }
     messages: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
@@ -43,9 +44,9 @@ class HumanSupportSession(Base):
     call_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     call_ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=utc_now_naive, onupdate=utc_now_naive
     )
 
     # Relationships

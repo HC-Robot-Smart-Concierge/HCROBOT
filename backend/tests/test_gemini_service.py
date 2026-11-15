@@ -17,7 +17,7 @@ def test_gemini_service_initialization():
 def test_gemini_detect_language():
     """Kiểm tra khả năng nhận diện tiếng Việt và tiếng Anh của GeminiService."""
     service = GeminiService()
-    
+
     name, code = service.detect_language("Khách sạn có dịch vụ dọn phòng không?")
     assert name == "Tiếng Việt" and code == "vi-VN"
 

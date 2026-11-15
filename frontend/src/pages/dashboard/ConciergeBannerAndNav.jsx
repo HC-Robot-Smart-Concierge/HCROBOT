@@ -1,11 +1,9 @@
 import React from 'react';
 import {
   PhoneCall,
-  Video,
   Plus,
   RefreshCw,
   Car,
-  Navigation,
   Film,
   Star,
   AlertTriangle,

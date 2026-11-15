@@ -38,4 +38,3 @@ describe('RobotFace Component UI rendering tests', () => {
     expect(processingElement.props['data-testid']).toBe('robot-face-processing');
   });
 });
-

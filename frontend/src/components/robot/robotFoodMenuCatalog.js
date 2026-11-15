@@ -14,10 +14,8 @@ export const INITIAL_MENU_CATEGORIES = [
   { id: 'drinks', name: 'Đồ uống', icon: '' },
 ];
 
-
 export const INITIAL_FOOD_ITEMS = [...FOOD_ITEMS_PART_1, ...FOOD_ITEMS_PART_2];
 
 export const formatCurrency = (amount) => {
   return new Intl.NumberFormat('vi-VN').format(amount || 0);
 };
-

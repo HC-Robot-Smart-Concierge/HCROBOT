@@ -175,7 +175,6 @@ export const useRoomPinNfc = ({
 
   handleVerifyNfcRef.current = handleVerifyNfc;
 
-
   useEffect(() => {
     if (isOpen) {
       setNfcStatus('idle');
@@ -216,7 +215,6 @@ export const useRoomPinNfc = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, activeTab]);
-
 
   return {
     nfcStatus,

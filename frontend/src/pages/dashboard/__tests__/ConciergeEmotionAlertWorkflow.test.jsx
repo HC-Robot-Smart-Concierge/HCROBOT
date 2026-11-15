@@ -78,4 +78,3 @@ describe('Concierge Unpleasant Guest Emotion Alert Workflow Tests', () => {
     expect(robotScreenContent).not.toContain("request_type: 'emotion_alert'");
   });
 });
-

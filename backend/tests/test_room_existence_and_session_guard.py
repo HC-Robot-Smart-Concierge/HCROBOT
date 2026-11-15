@@ -93,4 +93,3 @@ def test_detect_destination_poi_guards_invalid_rooms():
     assert _detect_destination_poi("chỉ đường đến phòng 310") == "room_310"
     assert _detect_destination_poi("chỉ đường đến phòng 402") == "room_402"
     assert _detect_destination_poi("chỉ đường đến phòng 410") == "room_410"
-

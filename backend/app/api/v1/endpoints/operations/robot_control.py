@@ -10,14 +10,6 @@ from app.interceptors import RouteInterceptor, audit_action, measure_performance
 from app.repositories import RobotRepository, get_robot_repository
 from app.repositories.robot_repository import DEFAULT_ROBOT_ID
 from app.schemas.robot import (
-    RobotJobCreate,
-    RobotJobDetailResponse,
-    RobotJobHistoryListResponse,
-    RobotJobResponse,
-    RobotMaintenanceListResponse,
-    RobotMaintenanceScheduleCreate,
-    RobotMaintenanceScheduleResponse,
-    RobotMaintenanceScheduleUpdate,
     RobotProfileResponse,
     RobotProfileUpdate,
 )
@@ -163,16 +155,7 @@ async def update_robot_profile(
     return _build_profile_payload(robot, counts)
 
 
-from .robot_jobs_and_maintenance import (
-    create_robot_job,
-    create_robot_maintenance,
-    delete_robot_maintenance,
-    get_robot_job_detail,
-    list_robot_jobs,
-    list_robot_maintenance,
-    router as robot_jobs_and_maintenance_router,
-    update_robot_maintenance,
-)
+from .robot_jobs_and_maintenance import router as robot_jobs_and_maintenance_router
 
 router.include_router(robot_jobs_and_maintenance_router)
 
@@ -203,7 +186,7 @@ async def control_robot_movement(cmd: RobotMoveCommand):
 
         # Nếu truyền kèm tham số speed:
         if cmd.speed is not None:
-            spd_val = max(20, min(100, int(cmd.speed)))
+            spd_val = max(20, min(100, cmd.speed))
             sock.sendto(f"speed:{spd_val}".encode("utf-8"), (target_host, target_port))
 
         if raw_cmd.startswith("speed:") or raw_cmd.startswith("speed_"):
@@ -378,5 +361,3 @@ async def proxy_pi5_hardware_api(request: Request, path: str):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Không thể kết nối tới Pi 5 API ({target_url}): {exc}",
         )
-
-

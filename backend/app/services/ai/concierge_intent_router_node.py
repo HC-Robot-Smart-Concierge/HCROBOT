@@ -19,29 +19,8 @@ logger = logging.getLogger(__name__)
 
 async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
     """
-
-
-
-
-
-
-
     Node 2: Fast Intent Router & Slot Extractor (0ms).
-
-
-
-
-
-
-
     Phân loại ý định khách hàng tức thì, bóc tách số phòng và quản lý pending intent dịch vụ.
-
-
-
-
-
-
-
     """
     import re
     session_id = state.get("session_id") or "default_session"
@@ -155,17 +134,17 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
         }
     # 3. Phân loại Category & FAQ / Facility / Nearby Exploration Keywords (KHÔNG BAO GIỜ HỎI SỐ PHÒNG NẾU LÀ CÂU HỎI THÔNG TIN)
     faq_keywords = [
-        "ở đâu", "mấy giờ", "bao nhiêu", "giá", "thế nào", "có không", 
-        "where", "when", "how", "what", "giờ nào", "tầng mấy", "bao xa", 
+        "ở đâu", "mấy giờ", "bao nhiêu", "giá", "thế nào", "có không",
+        "where", "when", "how", "what", "giờ nào", "tầng mấy", "bao xa",
         "chỉ đường", "đường nào", "hướng nào", "đi vệ sinh", "nhà vệ sinh",
         "đi tới", "di toi", "đi đến", "di den", "tới", "đến", "dẫn đường", "dan duong",
         "lối đi", "loi di", "lối lên", "loi len", "lối xuống", "đường đến", "duong den",
-        "đường đi", "duong di", "đường ra", "vị trí", "vi tri", "chỉ tôi", "dẫn tôi", "cách đi", "làm sao để đến", 
+        "đường đi", "duong di", "đường ra", "vị trí", "vi tri", "chỉ tôi", "dẫn tôi", "cách đi", "làm sao để đến",
         "toilet", "wc", "restroom", "washroom", "phòng vệ sinh",
         "có món gì", "có những gì", "gồm những gì", "những món nào", "xem thực đơn", "xem menu",
         "thực đơn", "menu", "có dịch vụ gì", "chi phí thế nào", "bảng giá", "quy định", "chính sách",
         # Từ khóa khám phá xung quanh, ngoại khu, chợ đêm, danh thắng
-        "gần đây", "xung quanh", "quanh đây", "gần khách sạn", "ngoại khu", "chợ đêm", "chợ", 
+        "gần đây", "xung quanh", "quanh đây", "gần khách sạn", "ngoại khu", "chợ đêm", "chợ",
         "bãi biển", "biển", "tắm biển", "cầu rồng", "hội an", "bà nà", "ngũ hành sơn", "sơn trà",
         "có gì", "có gì chơi", "chơi gì", "ăn gì", "đi đâu", "tham quan", "du lịch", "địa điểm",
         "chỗ nào", "quán ăn", "quán hải sản", "ăn hải sản", "mua sắm", "check in", "checkin", "ngắm cảnh",

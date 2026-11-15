@@ -48,7 +48,6 @@ export function usePhysicalMapRealtime({
               setHardwareInfo((prev) => ({ ...prev, battery: data.battery }));
             }
 
-
             if (data.hardware_info) {
               setHardwareInfo((prev) => ({
                 ...prev,
@@ -383,7 +382,6 @@ export function usePhysicalMapRealtime({
       transformCanvasToWorld(canvasX, canvasY, canvasWidth, canvasHeight, viewConfig),
     [viewConfig]
   );
-
 
   return { handleStartNav2, worldToCanvas, canvasToWorld };
 }

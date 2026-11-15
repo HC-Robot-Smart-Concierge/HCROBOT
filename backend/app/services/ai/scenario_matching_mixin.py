@@ -1,9 +1,9 @@
 """Fast-path matching logic for ScenarioService."""
 
-import datetime
+from datetime import datetime
 import logging
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from app.services.ai.constants import (
     MAINTENANCE_REGEX,
@@ -18,15 +18,15 @@ logger = logging.getLogger(__name__)
 class ScenarioMatchingMixin:
     """Provides sub-millisecond fast-path scenario matching."""
 
+    if TYPE_CHECKING:
+        _cache: List[Dict[str, Any]]
+
     def match_fast_path(
         self, prompt: str, lang_code: str = "vi-VN"
     ) -> Optional[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]:
         """
-
         Doi soat nhanh (<1ms) cau hoi cua khach voi danh sach kich ban trong In-Memory RAM.
-
         Tra ve: (response_text, lang_name, lang_code, action_type, action_payload) neu khop.
-
         """
         if not prompt or not prompt.strip():
             return None
@@ -232,7 +232,7 @@ class ScenarioMatchingMixin:
                 return resp_text, lang_name, lang_code, action_type, action_payload
 
         # 3. Kiem tra loi chao theo buoi (Dynamic Time Greeting)
-        hour = datetime.datetime.now().hour
+        hour = datetime.now().hour
         if re.search(r"^(xin chào|chào bạn|chào em|hello|hi|good morning|good afternoon|good evening)[\?\.\!\s]*$", normalized, re.IGNORECASE):
             if 5 <= hour < 11:
                 reply = "Good morning! Welcome to Aurora Grand Hotel. How may I assist you today?" if is_en else "Dạ em chào buổi sáng quý khách! Chúc quý khách một ngày mới tốt lành tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"

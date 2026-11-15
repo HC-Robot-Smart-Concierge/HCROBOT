@@ -6,7 +6,7 @@ import logging
 import os
 import re
 import urllib.parse
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Any, Optional, Tuple
 
 import httpx
 
@@ -22,6 +22,27 @@ logger = logging.getLogger(__name__)
 
 class TTSProvidersMixin:
     """Provider backends, chunk streaming synthesis, and warm-up helpers for TTSService."""
+
+    if TYPE_CHECKING:
+        _memory_cache: dict[str, str]
+        _cache_dir: str
+        _inflight_tasks: dict[str, Any]
+
+        def clean_text_for_tts(self, text: str) -> str: ...
+        def _resolve_voice_and_lang(self, clean_text: str, language: Optional[str], voice: Optional[str]) -> Tuple[str, str]: ...
+        def _get_cache_key(self, text: str, provider: str, voice: str, rate: str = "+0%") -> str: ...
+        def _save_to_cache(self, cache_key: str, audio_b64: str) -> None: ...
+        def _get_from_cache(self, cache_key: str) -> Optional[str]: ...
+        async def synthesize(
+            self,
+            text: str,
+            provider: Optional[str] = None,
+            voice: Optional[str] = None,
+            language: Optional[str] = None,
+            rate: Optional[str] = None,
+        ) -> Tuple[str, str, str]: ...
+        async def _synthesize_edge_tts(self, clean_text: str, voice: str, rate: str) -> Optional[str]: ...
+        async def _synthesize_edge_tts_detailed(self, clean_text: str, voice: str, rate: str) -> Tuple[Optional[str], Optional[str], Optional[str]]: ...
 
     async def _synthesize_and_cache_edge_tts_detailed(
         self, clean_text: str, voice: str, rate: str, cache_key: str
@@ -140,7 +161,7 @@ class TTSProvidersMixin:
             return base64.b64encode(combined_bytes).decode("utf-8")
         return None
 
-    async def synthesize_chunk(self, text: str, voice: str = None, language: str = None) -> bytes:
+    async def synthesize_chunk(self, text: str, voice: Optional[str] = None, language: Optional[str] = None) -> bytes:
         """
         Tổng hợp giọng nói cho đoạn text ngắn (1 mệnh đề) -> trả raw audio bytes.
         Tối ưu cho Streaming Pipeline: không encode Base64, gửi thẳng qua WebSocket Binary Frame.
@@ -209,7 +230,7 @@ class TTSProvidersMixin:
         headers = {
             "Accept": "audio/mpeg",
             "Content-Type": "application/json",
-            "xi-api-key": settings.ELEVENLABS_API_KEY,
+            "xi-api-key": settings.ELEVENLABS_API_KEY or "",
         }
         payload = {
             "text": text,

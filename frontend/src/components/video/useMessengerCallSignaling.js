@@ -167,7 +167,6 @@ export function useMessengerCallSignaling({
         }
       };
 
-
       ws.onmessage = createCallSignalingOnMessage({
         pc,
         ws,
@@ -209,7 +208,6 @@ export function useMessengerCallSignaling({
         ttsActiveUntilRef,
         wsRef,
       });
-
 
       ws.onerror = (err) => {
         console.error('[VideoCall] WS Signaling Error:', err);
@@ -271,6 +269,5 @@ export function useMessengerCallSignaling({
       if (callTimer) clearInterval(callTimer);
     };
   }, [callStatus]);
-
 
 }

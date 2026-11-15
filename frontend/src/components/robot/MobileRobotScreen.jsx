@@ -118,7 +118,6 @@ export const MobileRobotScreen = ({
     }, 2000);
   }, [onLogout]);
 
-
   // Tự động mở khóa audio khi người dùng chạm lần đầu (tuân thủ iOS Audio Gesture Policy)
   const hasPrimedAudioRef = useRef(false);
   useEffect(() => {
@@ -140,7 +139,6 @@ export const MobileRobotScreen = ({
       window.removeEventListener('click', handleFirstTouch);
     };
   }, [onPrime]);
-
 
   return (
     <section
@@ -454,4 +452,3 @@ export const MobileRobotScreen = ({
     </section>
   );
 };
-

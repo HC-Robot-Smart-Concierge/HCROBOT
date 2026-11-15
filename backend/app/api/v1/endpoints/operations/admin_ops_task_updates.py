@@ -1,6 +1,5 @@
 import asyncio
 import re
-from datetime import datetime
 from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,6 +16,7 @@ from app.repositories import (
     get_support_request_repository,
 )
 from app.services.notification_manager import notification_manager
+from app.core.time import utc_now_naive
 from .shared import TAG_OPS, create_department_notification
 
 router = APIRouter()
@@ -167,7 +167,7 @@ async def update_task_status(
         elif is_pending and target_status:
             sr.account_id = None
 
-        sr.updated_at = datetime.utcnow()
+        sr.updated_at = utc_now_naive()
 
         # Đồng bộ sang RoomServiceOrder nếu là đơn hàng ẩm thực
         rs_order = await rs_repo.find_order_by_linked_or_number(sr.id, raw_id)
@@ -186,7 +186,7 @@ async def update_task_status(
                 rs_order.assigned_staff_name = None if str(target_assigned_to).lower() in ("", "null", "none") else target_assigned_to
             elif is_pending and target_status:
                 rs_order.assigned_staff_name = None
-            rs_order.updated_at = datetime.utcnow()
+            rs_order.updated_at = utc_now_naive()
 
         # Tự động gửi thông báo liên phòng ban theo chu trình Room Service & Kitchen
         ticket_label = sr.ticket_code or sr.id
@@ -309,7 +309,7 @@ async def update_task_status(
                     sr_linked.description = str(target_note).strip()
                     if target_status and target_status.lower() in ["rejected", "cancelled"]:
                         _mark_extra_data_reject(sr_linked, str(target_note).strip())
-                sr_linked.updated_at = datetime.utcnow()
+                sr_linked.updated_at = utc_now_naive()
 
         await db.commit()
         await db.refresh(rso)

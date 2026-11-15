@@ -130,7 +130,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
   const handleComplete = async () => {
     if (!activeRequest) return;
     const currentTicket = activeRequest.ticketCode;
-    
+
     // Đánh dấu hoàn tất trên server
     await updateReceptionRequest(
       activeRequest.ticketCode || activeRequest.id,
@@ -419,4 +419,3 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
     </div>
   );
 };
-

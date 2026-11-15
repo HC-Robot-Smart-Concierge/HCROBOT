@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, Menu, X, PhoneCall, Map as MapIcon, Utensils, Building, Check, ChevronRight, ConciergeBell, Sparkles, Car, Wrench, Luggage } from 'lucide-react';
+import { Clock, X, PhoneCall, Map as MapIcon, Utensils, Building, ChevronRight, ConciergeBell, Sparkles, Car, Wrench, Luggage } from 'lucide-react';
 
 export const MobileRobotUtilitiesMenu = ({
   isUtilitiesMenuOpen, setIsUtilitiesMenuOpen, isEn, isSpeaking, isProcessing, isListening, isBusy, setIsMapManualOpen, onOpenFacilities, onOpenFoodMenu, onOpenRoomService, onOpenBellman, onOpenMaintenance, onOpenTaxiBooking, onOpenOrderStatus, onOpenServiceStatus, onOpenMaintenanceStatus, onCallStaff,

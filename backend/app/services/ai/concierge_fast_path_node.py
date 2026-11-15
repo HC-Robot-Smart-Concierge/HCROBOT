@@ -14,37 +14,9 @@ logger = logging.getLogger(__name__)
 
 async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
     """
-
-
-
-
-
-
-
     Node 1: Dynamic Fast-Path Rule Engine.
-
-
-
-
-
-
-
     Kiểm tra nhanh các câu hỏi thường gặp, lời chào, pass wifi, tiện ích từ RAM Cache (<1ms).
-
-
-
-
-
-
-
     Do Admin cấu hình động qua API Scenarios. Không gọi LLM.
-
-
-
-
-
-
-
     """
     prompt = state.get("prompt", "")
     language = state.get("language")

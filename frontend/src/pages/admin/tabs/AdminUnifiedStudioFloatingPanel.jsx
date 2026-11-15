@@ -317,7 +317,6 @@ export const AdminUnifiedStudioFloatingPanel = ({
             </div>
           )}
 
-
           <AdminUnifiedStudioWaypointsZonesTabs
             sideTab={sideTab}
             waypoints={waypoints}

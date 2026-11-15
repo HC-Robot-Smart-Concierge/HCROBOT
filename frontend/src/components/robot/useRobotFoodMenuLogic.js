@@ -302,7 +302,6 @@ export function useRobotFoodMenuLogic({
     }
   };
 
-
   return {
     selectedCategory,
     searchQuery,

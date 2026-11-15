@@ -1,5 +1,5 @@
 import React from 'react';
-import { PhoneCall, AlertTriangle, Radio, ShieldAlert, UserCheck, Phone, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Radio, ShieldAlert, UserCheck, Phone, CheckCircle2 } from 'lucide-react';
 
 export const KioskStaffAlert = ({ activeStep }) => {
   const params = activeStep?.params || {};

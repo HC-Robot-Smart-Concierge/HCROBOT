@@ -12,12 +12,12 @@ for model in world.findall('model'):
     name = model.get('name')
     pose = model.find('pose')
     pose_str = pose.text if pose is not None else "no pose"
-    
+
     # Check sizes
     boxes = [b.text for b in model.findall('.//box/size')]
     cylinders = [(c.find('radius').text, c.find('length').text) for c in model.findall('.//cylinder') if c.find('radius') is not None and c.find('length') is not None]
     meshes = [m.text for m in model.findall('.//mesh/scale')]
-    
+
     print(f"\nModel: {name} (Pose: {pose_str})")
     if boxes:
         print(f"  Box sizes: {boxes[:3]}")

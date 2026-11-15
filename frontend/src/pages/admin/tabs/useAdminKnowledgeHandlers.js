@@ -326,7 +326,6 @@ ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here
     }
   };
 
-
   const handleCopyStarterTemplate = () => {
     navigator.clipboard.writeText(buildStarterKnowledgeTemplate(isEN));
     setIsTemplateCopied(true);
@@ -433,7 +432,6 @@ ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here
   const handleDeleteScenario = (id, title) => {
     setDeleteConfirmTarget({ type: 'scenario', id, title });
   };
-
 
   return {
     handleOpenVoiceModal,

@@ -50,7 +50,6 @@ export function usePhysicalMapCanvasRender({
     viewConfig,
   ]);
 
-
   // Lan chuot tren map = zoom quanh con tro. Gan listener thuong (passive: false) vi onWheel cua
   // React la passive -> khong chan duoc cuon trang.
   useEffect(() => {

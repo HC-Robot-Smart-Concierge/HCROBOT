@@ -1,4 +1,3 @@
-import pytest
 from collections import defaultdict
 from app.services.ai.scenario_service import scenario_service, DEFAULT_SEED_SCENARIOS
 
@@ -30,12 +29,12 @@ def test_pool_and_gym_scenarios_are_distinct():
     res_pool = scenario_service.match_fast_path("Hồ bơi ở đâu", lang_code="vi-VN")
     assert res_pool is not None
     assert res_pool[3] == "show_map"
-    assert res_pool[4].get("destination_key") == "infinity_pool"
+    assert res_pool[4] is not None and res_pool[4].get("destination_key") == "infinity_pool"
 
     res_gym = scenario_service.match_fast_path("Phòng gym ở đâu", lang_code="vi-VN")
     assert res_gym is not None
     assert res_gym[3] == "show_map"
-    assert res_gym[4].get("destination_key") == "gym"
+    assert res_gym[4] is not None and res_gym[4].get("destination_key") == "gym"
 
 
 def test_gift_shop_prioritized_over_night_market():
@@ -47,7 +46,7 @@ def test_gift_shop_prioritized_over_night_market():
     res_gift = scenario_service.match_fast_path("Tôi muốn mua quà lưu niệm", lang_code="vi-VN")
     assert res_gift is not None
     assert res_gift[3] == "show_map"
-    assert res_gift[4].get("destination_key") == "gift_shop"
+    assert res_gift[4] is not None and res_gift[4].get("destination_key") == "gift_shop"
 
     res_night = scenario_service.match_fast_path("Chợ đêm Sơn Trà", lang_code="vi-VN")
     assert res_night is not None
@@ -63,7 +62,7 @@ def test_front_desk_and_video_call_intent_separation():
     res_fd = scenario_service.match_fast_path("Tôi muốn gặp lễ tân", lang_code="vi-VN")
     assert res_fd is not None
     assert res_fd[3] == "show_map"
-    assert res_fd[4].get("destination_key") == "front_desk"
+    assert res_fd[4] is not None and res_fd[4].get("destination_key") == "front_desk"
 
     res_vc = scenario_service.match_fast_path("Gọi video lễ tân giúp tôi", lang_code="vi-VN")
     assert res_vc is not None
@@ -84,4 +83,3 @@ def test_food_menu_vs_robot_chitchat():
     assert res_robot is not None
     assert res_robot[3] == "none"
     assert "điện năng" in res_robot[0].lower() or "dien nang" in res_robot[0].lower()
-

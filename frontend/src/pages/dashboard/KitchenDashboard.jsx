@@ -13,7 +13,6 @@ import { useStaffText } from '../../context/StaffLanguage';
 import {
   normalizeOrder,
   normalizeFleet,
-  normalizeStock,
   matchesOrder,
   KitchenKpiGrid,
   KitchenOrdersToolbar,

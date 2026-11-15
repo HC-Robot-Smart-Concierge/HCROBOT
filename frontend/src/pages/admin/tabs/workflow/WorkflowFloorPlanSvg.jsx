@@ -1,5 +1,4 @@
 import React from 'react';
-import { X } from 'lucide-react';
 import { LobbyFloorPlan } from './LobbyFloorPlan';
 import { meterToSvg } from './workflowSimulatorUtils';
 import { WorkflowSvgZonesAndEndpoints } from './WorkflowSvgZonesAndEndpoints';

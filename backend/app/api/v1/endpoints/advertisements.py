@@ -1,7 +1,6 @@
 import logging
 import uuid
 from typing import List, Optional
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
@@ -12,16 +11,15 @@ from app.schemas.advertisement import (
     AdvertisementResponse,
     AdvertisementCreate,
     AdvertisementUpdate,
-    AdvertisementPushRequest,
 )
 from app.services.cloudinary_service import cloudinary_service
-from app.services.notification_manager import NotificationConnectionManager
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # Notification manager instance for broadcasting ad push events
 from app.api.v1.endpoints.operations.shared import notification_manager
+from app.core.time import utc_now_naive
 
 
 @router.get("", response_model=List[AdvertisementResponse], summary="Lấy danh sách tất cả quảng cáo (Admin)")
@@ -106,8 +104,8 @@ async def upload_advertisement(
             priority=priority,
             is_active=is_active,
             display_location=display_location,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=utc_now_naive(),
+            updated_at=utc_now_naive(),
         )
 
         db.add(new_ad)
@@ -146,8 +144,8 @@ async def create_advertisement(
             priority=payload.priority,
             is_active=payload.is_active,
             display_location=payload.display_location,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=utc_now_naive(),
+            updated_at=utc_now_naive(),
         )
 
         db.add(new_ad)
@@ -193,7 +191,7 @@ async def update_advertisement(
             if value is not None:
                 setattr(ad, key, value)
 
-        ad.updated_at = datetime.utcnow()
+        ad.updated_at = utc_now_naive()
         await db.commit()
         await db.refresh(ad)
         logger.info(f"Updated advertisement: {ad.id}")
@@ -262,7 +260,7 @@ async def push_advertisement_to_robot(
                 "thumbnail_url": ad.thumbnail_url,
                 "duration_seconds": ad.duration_seconds,
             },
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utc_now_naive().isoformat(),
         }
 
         # Broadcast qua WebSocket notification_manager tới toàn bộ màn hình Robot

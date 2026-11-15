@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import logging
-import math
 import os
 import re
 import socket
@@ -16,12 +14,8 @@ from pathlib import Path
 from typing import Optional
 
 from app.services.hardware.ros2_map_mask_mixin import (
-    KEEPOUT_NEAR_M,
-    KEEPOUT_SOFT_BAND_M,
-    KEEPOUT_SOFT_DECAY,
     Ros2MapMaskMixin,
     Ros2RuntimeError,
-    ZONE_HARD_MARGIN_M,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,7 +110,7 @@ class Ros2RuntimeService(Ros2MapMaskMixin):
                 stdout_handle.close()
                 stderr_handle.close()
 
-        return int(self._launcher.pid)
+        return self._launcher.pid
 
     def start_mapping(self) -> dict:
         # "Bắt đầu quét map" phải là một phiên SLAM mới. Không đi qua wrapper

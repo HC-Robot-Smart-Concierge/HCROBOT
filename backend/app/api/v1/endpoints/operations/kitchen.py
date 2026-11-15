@@ -1,25 +1,17 @@
-from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from sqlalchemy.orm import selectinload
 
-from app.core.database import get_db
 from app.models import Menu, MenuItem, FoodItem
 from app.schemas.operations import (
     MenuCreate,
     MenuUpdate,
     MenuResponse,
-    MenuItemCreate,
-    MenuItemUpdate,
-    MenuItemResponse,
     FoodItemCreate,
     FoodItemUpdate,
     FoodItemResponse,
-    AssignFoodToMenuRequest,
 )
 from app.repositories import KitchenRepository, get_kitchen_repository
+from app.core.time import utc_now_naive
 from .shared import TAG_KITCHEN_FOOD_CATALOG, TAG_KITCHEN_MENU
 
 router = APIRouter()
@@ -125,11 +117,11 @@ async def update_kitchen_food_item(
     update_data = food_in.model_dump(exclude_unset=True)
     if "name" in update_data and update_data["name"]:
         update_data["name"] = update_data["name"].strip()
-    
+
     for key, value in update_data.items():
         setattr(food, key, value)
-    
-    food.updated_at = datetime.utcnow()
+
+    food.updated_at = utc_now_naive()
     await repo.commit()
     await repo.refresh(food)
     return food
@@ -297,7 +289,7 @@ async def update_kitchen_menu(
     for k, v in update_data.items():
         setattr(menu, k, v)
 
-    menu.updated_at = datetime.utcnow()
+    menu.updated_at = utc_now_naive()
     await repo.commit()
     return await repo.get_menu_by_id(menu.id)
 
@@ -321,13 +313,6 @@ async def delete_kitchen_menu(
     return {"detail": "Đã xóa thực đơn thành công", "id": menu_id}
 
 
-from .kitchen_menu_items import (
-    assign_kitchen_food_item_to_menu,
-    create_kitchen_menu_item,
-    get_kitchen_menu_items,
-    remove_kitchen_item_from_menu,
-    router as kitchen_menu_items_router,
-    update_kitchen_menu_item,
-)
+from .kitchen_menu_items import router as kitchen_menu_items_router
 
 router.include_router(kitchen_menu_items_router)

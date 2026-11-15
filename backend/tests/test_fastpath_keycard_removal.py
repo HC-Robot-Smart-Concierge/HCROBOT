@@ -1,5 +1,4 @@
 import re
-import pytest
 from app.services.ai.scenario_service import scenario_service, DEFAULT_SEED_SCENARIOS
 from app.services.ai.constants import SERVICE_KEYWORDS
 
@@ -42,7 +41,7 @@ def test_lost_key_routes_to_pin_or_front_desk():
     hit = scenario_service.match_fast_path("tôi bị mất chìa khóa phòng")
     assert hit is not None
     assert hit[3] == "show_map"
-    assert hit[4].get("destination_key") == "front_desk"
+    assert hit[4] is not None and hit[4].get("destination_key") == "front_desk"
     assert "mã pin" in hit[0].lower()
 
 

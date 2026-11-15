@@ -1,12 +1,10 @@
 import React from 'react';
 import {
   Trash2,
-  Server,
   Save,
   FolderOpen,
   FileText,
   Download,
-  Lock,
 } from 'lucide-react';
 import { describeExploreResult } from './exploreResult';
 

@@ -1,4 +1,3 @@
-import pytest
 from app.services.ai.stt_service import normalize_hotel_stt_transcript, HOTEL_STT_INITIAL_PROMPT
 
 
@@ -41,4 +40,3 @@ def test_stt_initial_prompt_contains_hotel_entities():
     assert "301" in HOTEL_STT_INITIAL_PROMPT
     assert "410" in HOTEL_STT_INITIAL_PROMPT
     assert "Aurora Grand" in HOTEL_STT_INITIAL_PROMPT
-

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bot, Cpu, History, Wrench, Save, RotateCw, X, Wifi, WifiOff } from 'lucide-react';
+import { Bot, Cpu, History, Wrench, RotateCw, X, Wifi, WifiOff } from 'lucide-react';
 import { COMPONENT_OPTIONS, MAINTENANCE_TYPE_OPTIONS } from './adminRobotManagementUtils';
 
 export const AdminRobotManagementModals = ({

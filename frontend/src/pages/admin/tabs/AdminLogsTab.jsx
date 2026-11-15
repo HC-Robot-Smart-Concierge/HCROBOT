@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {  } from 'lucide-react';
 import { useLanguage } from '../../../context/LanguageContext';
 import {
@@ -95,7 +95,6 @@ export const AdminLogsTab = ({ subTabProp, onSelectSubTab }) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
   };
-
 
   const formatLogMessage = (msg) => formatLogMessageText(msg, language);
   useEffect(() => {
@@ -269,7 +268,6 @@ export const AdminLogsTab = ({ subTabProp, onSelectSubTab }) => {
     const start = (currentPage - 1) * pageSize;
     return filteredChatSessions.slice(start, start + pageSize);
   }, [filteredChatSessions, currentPage, pageSize]);
-
 
   const formatTimestamp = (ts) => formatTimestampText(ts, language);
 

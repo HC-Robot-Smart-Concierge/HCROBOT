@@ -77,4 +77,3 @@ async def test_room_service_catalog_crud():
         # Thử toggle hoặc update lại mục đã xóa -> 404
         toggle_deleted = await ac.patch(f"/api/v1/operations/room-service/services/{svc_id}/toggle")
         assert toggle_deleted.status_code == 404
-

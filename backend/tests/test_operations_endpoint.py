@@ -275,5 +275,3 @@ async def test_analytics_summary_period_filters():
 
         bad_res = await ac.get("/api/v1/operations/analytics/summary?period=yearly")
         assert bad_res.status_code == 422
-
-

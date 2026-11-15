@@ -1,4 +1,3 @@
-from datetime import datetime
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
@@ -11,6 +10,7 @@ from app.schemas.operations import (
     DepartmentUpdate,
     ServiceTypeResponse,
 )
+from app.core.time import utc_now_naive
 from .shared import TAG_STAFF
 
 router = APIRouter()
@@ -181,7 +181,7 @@ async def update_department(
     for field, val in update_data.items():
         setattr(dept, field, val)
 
-    dept.updated_at = datetime.utcnow()
+    dept.updated_at = utc_now_naive()
     await repo.commit()
     await repo.refresh(dept)
     return _to_department_detail(dept)

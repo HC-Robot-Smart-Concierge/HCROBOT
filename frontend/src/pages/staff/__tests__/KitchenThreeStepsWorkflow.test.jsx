@@ -82,4 +82,3 @@ describe('Kitchen 3-Step Lifecycle Workflow Tests (RequestsPage & MyTasksPage)',
     expect(requestsPageContent).toContain('label: st("Completed")');
   });
 });
-

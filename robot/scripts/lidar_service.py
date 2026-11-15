@@ -1251,8 +1251,6 @@ free_thresh: 0.196
                                 self._update_grid_from_scan(corrected_x, corrected_y, corrected_batch)
                         current_scan_batch.clear()
 
-
-
         except Exception as e:
             logger.error(f"Lỗi scan loop: {e}")
             self.last_error = f"Lỗi scan loop: {e}"
@@ -2794,7 +2792,7 @@ async def load_overlay(req: OverlayLoadRequest):
     if safe_name.endswith("_overlay"):
         base_name = safe_name[:-8]
         candidates.append(os.path.join(MAPS_DIR, f"{base_name}.json"))
-    
+
     overlay_path = None
     for c in candidates:
         if os.path.exists(c):

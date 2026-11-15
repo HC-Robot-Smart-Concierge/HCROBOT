@@ -1,6 +1,6 @@
 """Order status inquiry handler extracted from service_fsm_node."""
 
-import datetime
+from datetime import datetime
 import re
 from typing import Any, Dict, Optional
 

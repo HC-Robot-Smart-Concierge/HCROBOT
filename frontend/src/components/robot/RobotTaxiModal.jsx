@@ -433,7 +433,6 @@ export const RobotTaxiModal = ({
             </div>
           )}
 
-
           <RobotTaxiViews
             mode={mode}
             setMode={setMode}

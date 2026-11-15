@@ -203,6 +203,5 @@ export function usePhysicalMapPointerDown({
     isDraggingRef.current = true;
   };
 
-
   return { handleCanvasMouseDown };
 }

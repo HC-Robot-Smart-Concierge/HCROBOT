@@ -3,7 +3,6 @@ import {
   Phone,
   MoreVertical,
   Bot,
-  User,
   Clock,
   CheckCircle2,
   AlertCircle,
@@ -14,7 +13,6 @@ import {
   Eye,
   RefreshCw,
   HelpCircle,
-  CornerDownRight,
 } from 'lucide-react';
 import { fetchAdminConversations } from '../../../services/operationsApi';
 

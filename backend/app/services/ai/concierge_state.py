@@ -6,21 +6,7 @@ from typing_extensions import TypedDict
 
 class ConciergeState(TypedDict, total=False):
     """
-
-
-
-
-
-
-
     Trạng thái hội thoại trung tâm (Central Agent State) do LangGraph Harness quản lý.
-
-
-
-
-
-
-
     """
     session_id: str
     prompt: str

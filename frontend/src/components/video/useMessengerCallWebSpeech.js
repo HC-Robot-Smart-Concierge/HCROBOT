@@ -316,5 +316,4 @@ export function useMessengerCallWebSpeech({
     };
   }, [callStatus, isMicMuted, startSpeechRecognition, startCallAudioSttAdapter, stopCallAudioSttAdapter]);
 
-
 }

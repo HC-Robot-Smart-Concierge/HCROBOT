@@ -9,9 +9,9 @@ import React from 'react';
  * - 'processing': Vòng tròn 12 chấm loading dots xoay mờ dần (RT-04)
  * - 'sleeping': Mắt nhắm nằm ngang (RT-01: Snooze / Sleeping - Giữ nguyên không đổi)
  */
-export const RobotFace = ({ 
-  mode = 'welcome', 
-  compact = false, 
+export const RobotFace = ({
+  mode = 'welcome',
+  compact = false,
   size = null,
   isSpeakingActive = false,
   eyeExpression = null,
@@ -54,21 +54,21 @@ export const RobotFace = ({
 
     const sizeClass = isMiniSize
       ? 'w-8 h-8 sm:w-9 sm:h-9'
-      : isCompactSize 
-        ? 'w-[170px] h-[170px]' 
-        : isMobileSize 
-          ? 'w-[280px] h-[280px] sm:w-[340px] sm:h-[340px] max-h-[65vh]' 
+      : isCompactSize
+        ? 'w-[170px] h-[170px]'
+        : isMobileSize
+          ? 'w-[280px] h-[280px] sm:w-[340px] sm:h-[340px] max-h-[65vh]'
           : 'w-[440px] h-[440px] sm:w-[500px] sm:h-[500px] md:w-[580px] md:h-[580px] lg:w-[640px] lg:h-[640px]';
 
     return (
-      <div 
+      <div
         className={`relative flex flex-col items-center justify-center select-none ${sizeClass} ${className}`}
         data-testid="robot-face-processing"
       >
-        <svg 
-          viewBox="0 0 200 200" 
-          width={spinnerSize} 
-          height={spinnerSize} 
+        <svg
+          viewBox="0 0 200 200"
+          width={spinnerSize}
+          height={spinnerSize}
           className="animate-spin text-[#4A4A4A]"
           style={{ animationDuration: '1.1s' }}
         >
@@ -97,10 +97,10 @@ export const RobotFace = ({
   const color = isHappy ? '#10b981' : isListening ? '#A0A0A0' : '#4A4A4A';
   const sizeClass = isMiniSize
     ? 'w-8 h-8 sm:w-9 sm:h-9'
-    : isCompactSize 
-      ? 'w-[170px] h-[170px]' 
-      : isMobileSize 
-        ? 'w-[280px] h-[280px] sm:w-[340px] sm:h-[340px] max-h-[65vh]' 
+    : isCompactSize
+      ? 'w-[170px] h-[170px]'
+      : isMobileSize
+        ? 'w-[280px] h-[280px] sm:w-[340px] sm:h-[340px] max-h-[65vh]'
         : 'w-[440px] h-[440px] sm:w-[500px] sm:h-[500px] md:w-[580px] md:h-[580px] lg:w-[640px] lg:h-[640px]';
 
   // Xác định transform cho mắt theo biểu cảm
@@ -118,7 +118,7 @@ export const RobotFace = ({
   }
 
   return (
-    <div 
+    <div
       className={`relative flex items-center justify-center select-none transition-all duration-300 ${sizeClass} ${className}`}
       data-testid={`robot-face-${mode}`}
     >
@@ -192,85 +192,85 @@ export const RobotFace = ({
         }
       `}</style>
 
-      <svg 
-        viewBox="0 0 1000 1000" 
+      <svg
+        viewBox="0 0 1000 1000"
         className={`w-full h-full transition-colors duration-300 block ${isListening ? 'animate-pulse' : ''}`}
         style={{ animationDuration: isListening ? '2.5s' : undefined }}
       >
         {/* Nhóm hai mắt chuyển động theo biểu cảm - Tăng kích thước mắt to rõ, cân đối với mặt ngủ */}
-        <g 
+        <g
           className={`robot-eyes-group ${eyesAnimationClass}`}
           style={{ transform: eyesAnimationClass ? undefined : eyesTransform }}
         >
           {/* Mắt Trái */}
-          <g 
+          <g
             className={`robot-eye-left ${isWelcome && !activeEye ? 'robot-blink-left' : ''}`}
             style={{ transformOrigin: '261px 500px' }}
           >
-            <rect 
-              x="213" 
-              y="310" 
-              width="96" 
-              height="380" 
-              rx="32" 
-              ry="32" 
-              fill={color} 
+            <rect
+              x="213"
+              y="310"
+              width="96"
+              height="380"
+              rx="32"
+              ry="32"
+              fill={color}
               className="transition-all duration-300"
             />
           </g>
 
           {/* Mắt Phải */}
-          <g 
+          <g
             className={`robot-eye-right ${isWelcome && !activeEye ? 'robot-blink-right' : ''}`}
             style={{ transformOrigin: '739px 500px' }}
           >
-            <rect 
-              x="691" 
-              y="310" 
-              width="96" 
-              height="380" 
-              rx="32" 
-              ry="32" 
-              fill={color} 
+            <rect
+              x="691"
+              y="310"
+              width="96"
+              height="380"
+              rx="32"
+              ry="32"
+              fill={color}
               className="transition-all duration-300"
             />
           </g>
         </g>
 
         {/* Miệng Robot: Kích thước to rõ hơn, nụ cười và khẩu hình mở rộng cân xứng với khuôn mặt */}
-        
+
         {/* 1. Miệng Listening / Happy: Nụ cười cong to rõ */}
-        <path 
-          d="M 280 730 Q 500 850 720 730" 
-          fill="none" 
-          stroke={color} 
-          strokeWidth="30" 
-          strokeLinecap="round" 
+        <path
+          d="M 280 730 Q 500 850 720 730"
+          fill="none"
+          stroke={color}
+          strokeWidth="30"
+          strokeLinecap="round"
           className="robot-mouth-transition"
           style={{
             transformOrigin: '500px 760px',
             opacity: (isListening || isHappy) ? 1 : 0,
-            transform: (isListening || isHappy) 
-              ? 'scale(1) translateY(0)' 
+            transform: (isListening || isHappy)
+              ? 'scale(1) translateY(0)'
               : 'scale(0.6) translateY(24px)',
             pointerEvents: (isListening || isHappy) ? 'auto' : 'none',
           }}
         />
 
         {/* 2. Miệng Speaking: Miệng hé bán nguyệt to rõ, mấp máy sinh động khi nói */}
-        <path 
-          d="M 290 740 L 710 740 Q 500 870 290 740 Z" 
-          fill="none" 
-          stroke={color} 
-          strokeWidth="30" 
-          strokeLinejoin="round" 
+        <path
+          d="M 290 740 L 710 740 Q 500 870 290 740 Z"
+          fill="none"
+          stroke={color}
+          strokeWidth="30"
+          strokeLinejoin="round"
           strokeLinecap="round"
           className={`robot-mouth-transition ${isSpeakingActive ? 'robot-talking-mouth' : ''}`}
           style={{
             transformOrigin: '500px 760px',
             opacity: isSpeaking ? 1 : 0,
-            transform: isSpeaking 
-              ? 'scale(1) translateY(0)' 
+            transform: isSpeaking
+              ? 'scale(1) translateY(0)'
               : 'scale(0.6) translateY(24px)',
             pointerEvents: isSpeaking ? 'auto' : 'none',
           }}

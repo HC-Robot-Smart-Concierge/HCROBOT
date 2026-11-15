@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -10,6 +9,7 @@ from app.schemas.operations import (
     MenuItemResponse,
     MenuItemUpdate,
 )
+from app.core.time import utc_now_naive
 from .shared import TAG_KITCHEN_MENU
 
 router = APIRouter()
@@ -191,7 +191,7 @@ async def update_kitchen_menu_item(
     if item_in.is_available is not None:
         item.is_available = item_in.is_available
 
-    item.updated_at = datetime.utcnow()
+    item.updated_at = utc_now_naive()
     await repo.commit()
     return await repo.get_menu_item_by_id(item.id, load_food=True)
 

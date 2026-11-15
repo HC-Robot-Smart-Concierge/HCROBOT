@@ -4,6 +4,8 @@ from pathlib import Path
 
 _path = Path(__file__).resolve().parents[3] / 'robot' / 'scripts' / 'zone_geometry.py'
 _spec = importlib.util.spec_from_file_location('hcrobot_zone_geometry', _path)
+if _spec is None or _spec.loader is None:
+    raise ImportError(f"Cannot load zone geometry module from {_path}")
 _geometry = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_geometry)
 

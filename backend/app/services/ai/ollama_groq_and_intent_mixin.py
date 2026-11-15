@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from app.core.config import settings
 from app.services.ai.scenario_service import scenario_service
@@ -14,6 +14,11 @@ logger = logging.getLogger(__name__)
 
 class OllamaGroqAndIntentMixin:
     """Groq cloud fallback, offline fallback response, intent extraction, and embeddings."""
+
+    if TYPE_CHECKING:
+        _client: Any
+        model: str
+        embed_model: Optional[str]
 
     async def _call_groq(self, messages: List[Dict[str, str]], json_mode: bool = False, max_tokens: int = 150) -> Optional[str]:
         """

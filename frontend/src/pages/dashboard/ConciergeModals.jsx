@@ -7,7 +7,6 @@ import {
   ExternalLink,
   Star,
   AlertTriangle,
-  User,
   X,
 } from 'lucide-react';
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';

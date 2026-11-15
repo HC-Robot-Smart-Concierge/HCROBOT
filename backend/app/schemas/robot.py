@@ -169,4 +169,3 @@ class RobotMaintenanceListResponse(BaseModel):
     completed: int
     overdue: int
     items: List[RobotMaintenanceScheduleResponse]
-

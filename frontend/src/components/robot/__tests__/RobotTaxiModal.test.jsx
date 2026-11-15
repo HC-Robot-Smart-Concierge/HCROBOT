@@ -5,7 +5,6 @@ import { describe, it, expect } from 'vitest';
 import {
   AUTO_CLOSE_SECONDS,
   CONFIRMED_AUTO_CLOSE_SECONDS,
-  POPULAR_DESTINATIONS,
   TAXI_PARTNERS,
   isDismissVoiceIntent,
   isSelfBookingVoiceIntent,

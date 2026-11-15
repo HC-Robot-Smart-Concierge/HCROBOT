@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Check, Bot, User, MapPin, Sparkles, Navigation, Layers, ShieldCheck } from 'lucide-react';
+import { X, Check, Bot, User, Sparkles, Navigation, Layers } from 'lucide-react';
 
 // 1. Modal: Phân công nhân sự hoặc Robot HCRobot
 export const AssignStaffModal = ({

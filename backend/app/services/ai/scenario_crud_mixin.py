@@ -1,8 +1,8 @@
 """Database CRUD and hotel-facts prompt helpers for ScenarioService."""
 
-import datetime
+from datetime import datetime, timezone
 import logging
-from typing import List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,13 +16,16 @@ logger = logging.getLogger(__name__)
 class ScenarioCrudMixin:
     """Provides CRUD operations and hotel facts summary generation."""
 
+    if TYPE_CHECKING:
+        _cache: List[Dict[str, Any]]
+
+        async def initialize_cache(self, db: AsyncSession) -> None: ...
+        async def get_scenario(self, db: AsyncSession, scenario_id: str) -> Optional[DialogueScenario]: ...
+
     def get_hotel_facts_prompt(self, lang_code: str = "vi-VN") -> str:
         """
-
         Sinh prompt thong tin tien ich dong tu In-Memory Cache de nhồi vao System Prompt cua Ollama.
-
         Khong can hardcode trong code Python.
-
         """
         is_en = (lang_code == "en-US")
         active_facts = []
@@ -135,7 +138,7 @@ class ScenarioCrudMixin:
             update_dict["is_custom_edited"] = True
             for k, v in update_dict.items():
                 setattr(item, k, v)
-            item.updated_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+            item.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
             await db.commit()
             await db.refresh(item)
             # Đồng bộ trực tiếp vào In-Memory Cache tức thì (<0.1ms)

@@ -1,11 +1,10 @@
 import pytest
-import random
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy import select
 
 from app.main import app
 from app.core.database import AsyncSessionLocal
-from app.models.hotel import Hotel, Floor, Room
+from app.models.hotel import Room
 from app.services.rag.room_sync_service import parse_rooms_from_rag_files, sync_rooms_with_rag
 
 
@@ -87,4 +86,3 @@ async def test_api_reception_rooms_and_sync_rag():
         # Kiểm tra hiển thị floor: Tầng 3 và Tầng 4
         assert room_map["305"]["floor"] == "Tầng 3"
         assert room_map["405"]["floor"] == "Tầng 4"
-

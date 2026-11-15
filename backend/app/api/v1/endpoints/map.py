@@ -17,46 +17,19 @@ from app.services.hardware.ros2_runtime_service import (
     ros2_runtime_service,
 )
 from .map_defaults_gazebo import (
-    DEFAULT_WAYPOINTS,
-    DEFAULT_ZONES,
-    GAZEBO_WAYPOINT_POOL,
-    NO_ENDPOINT_ZONE_TYPES,
+    GAZEBO_WAYPOINT_POOL as GAZEBO_WAYPOINT_POOL,
     Ros2ExploreRequest,
     Ros2MapRequest,
-    _find_hotel_world_path,
-    _get_material_for_type,
-    _send_gz_pose_wsl,
+    _find_hotel_world_path as _find_hotel_world_path,
+    _get_material_for_type as _get_material_for_type,
     _waypoint_zone_violation,
     _zone_endpoint_conflict,
     current_robot_pose,
-    ensure_default_waypoints,
     ensure_default_zones,
-    is_point_in_zone,
     sync_all_waypoints_from_db_to_world_and_sim,
 )
-from .map_files_router import (
-    _read_map_layout,
-    delete_saved_map,
-    download_map_file,
-    generate_pgm_bytes,
-    get_map_layout_image,
-    get_robot_maps_dir,
-    get_static_maps_dir,
-    list_map_layouts,
-    list_saved_maps,
-    load_saved_map,
-    router as map_files_router,
-)
-from .map_hardware_ws import (
-    connect_lidar_hardware,
-    map_websocket_endpoint,
-    navigate_to_target,
-    reset_map,
-    router as map_hardware_ws_router,
-    toggle_map_lock,
-    trigger_scan_360,
-    trigger_teleop,
-)
+from .map_files_router import router as map_files_router
+from .map_hardware_ws import router as map_hardware_ws_router
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -168,7 +141,7 @@ async def save_waypoint(wp: Waypoint, repo: MapRepository = Depends(get_map_repo
         yaw=wp.yaw,
         floor=wp.floor,
         type=wp.type or "WAYPOINT",
-        description=wp.description,
+        description=wp.description or "",
         map_id=wp.map_id,
     )
     all_wps = await repo.list_waypoints()
@@ -194,7 +167,7 @@ async def update_waypoint(waypoint_id: str, wp: Waypoint, repo: MapRepository = 
         yaw=wp.yaw,
         floor=wp.floor,
         type=wp.type or "WAYPOINT",
-        description=wp.description,
+        description=wp.description or "",
         map_id=wp.map_id,
     )
     all_wps = await repo.list_waypoints()
@@ -237,9 +210,9 @@ async def save_zone(zone: ZoneSchema, repo: MapRepository = Depends(get_map_repo
         height=zone.height,
         yaw=zone.yaw,
         vertices=[p.model_dump() for p in zone.vertices] if zone.vertices is not None else None,
-        speed_limit=zone.speed_limit,
+        speed_limit=zone.speed_limit if zone.speed_limit is not None else 0.3,
         floor=zone.floor,
-        description=zone.description,
+        description=zone.description or "",
         map_id=zone.map_id,
     )
     return _zone_out(saved)
@@ -264,9 +237,9 @@ async def update_zone(zone_id: str, zone: ZoneSchema, repo: MapRepository = Depe
         height=zone.height,
         yaw=zone.yaw,
         vertices=[p.model_dump() for p in zone.vertices] if zone.vertices is not None else None,
-        speed_limit=zone.speed_limit,
+        speed_limit=zone.speed_limit if zone.speed_limit is not None else 0.3,
         floor=zone.floor,
-        description=zone.description,
+        description=zone.description or "",
         map_id=zone.map_id,
     )
     return _zone_out(saved)

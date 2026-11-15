@@ -37,7 +37,6 @@ export function useMessengerCallAudioAdapter({
     }
   }, []);
 
-
   // Chốt câu nói hoàn chỉnh và gửi sang luồng dịch (mọi nhánh bỏ qua đều ghi log reason rõ ràng)
   const commitSpokenText = useCallback((text, meta = {}) => {
     const sttEngine = meta.engine || 'web_speech';
@@ -271,7 +270,6 @@ export function useMessengerCallAudioAdapter({
       console.warn(`[VideoCall STT] [${role}] Cannot initialize Audio Stream STT Adapter:`, adapterErr);
     }
   }, [role, commitSpokenText, stopCallAudioSttAdapter]);
-
 
   return {
     stopCallAudioSttAdapter,

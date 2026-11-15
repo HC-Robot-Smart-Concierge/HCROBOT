@@ -381,5 +381,3 @@ export class RosbridgeClient {
     return this.publish('/robot/pause_map', 'std_msgs/Empty', {});
   }
 }
-
-

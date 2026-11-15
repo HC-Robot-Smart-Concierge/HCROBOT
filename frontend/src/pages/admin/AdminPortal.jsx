@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Settings, LogOut, Sparkles, Bell, Activity, User, Menu } from 'lucide-react';
+import { Settings, LogOut, Bell, Menu } from 'lucide-react';
 import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminRobotControlTab } from './tabs/AdminRobotControlTab';

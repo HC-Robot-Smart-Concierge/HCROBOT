@@ -1,19 +1,19 @@
 import os
 import sys
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator, Dict
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
-connect_args = {}
+connect_args: Dict[str, Any] = {}
 # Supabase Pooler (Transaction Mode port 6543 / PgBouncer) requires statement_cache_size=0 for asyncpg
-if "6543" in str(settings.async_database_url) or "pooler.supabase.com" in str(settings.async_database_url):
+if "6543" in settings.async_database_url or "pooler.supabase.com" in settings.async_database_url:
     connect_args["statement_cache_size"] = 0
 
 # In tests or CI, use NullPool so connections aren't tied to closed event loops
-engine_kwargs = {
+engine_kwargs: Dict[str, Any] = {
     "echo": False,
     "future": True,
     "connect_args": connect_args,
@@ -91,5 +91,3 @@ async def init_db() -> None:
             await conn.execute(text("DROP TABLE IF EXISTS maps CASCADE;"))
         except Exception:
             pass
-
-

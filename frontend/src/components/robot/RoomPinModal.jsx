@@ -8,7 +8,6 @@ import {
   getRoomLockoutState,
   setRoomLockoutState,
   clearRoomLockoutState,
-  OFFICIAL_ROOMS,
 } from './roomPinLockoutUtils';
 import { useRoomPinNfc } from './useRoomPinNfc';
 import { RoomPinViews } from './RoomPinViews';
@@ -79,7 +78,6 @@ export const RoomPinModal = ({
     }, 1000);
     return () => clearInterval(timer);
   }, [lockoutRemaining, selectedRoom]);
-
 
   useRoomPinNfc({
     isOpen,

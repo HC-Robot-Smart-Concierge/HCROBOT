@@ -446,4 +446,3 @@ class ObstacleSafetyController:
     @property
     def speed(self) -> int:
         return getattr(self.motor, "speed", 100)
-

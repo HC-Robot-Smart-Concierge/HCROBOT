@@ -77,5 +77,3 @@ class RAGFacilitiesResponse(BaseModel):
     language: str = "vi"
     categories: List[str] = Field(default_factory=list)
     facilities: List[RAGFacilityItem] = Field(default_factory=list)
-
-

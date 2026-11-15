@@ -1,14 +1,10 @@
 import random
-import uuid
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete, or_, func
+from sqlalchemy import select, or_, func
 
 from app.core.database import get_db
 from app.models import Staff, SupportRequest
-from app.models.maintenance import MaintenanceCatalogItem
 from app.services.maintenance_request_service import get_or_create_maintenance_request, maintenance_room_filter, normalize_room, maintenance_queue_order, TERMINAL_STATUSES
 from app.api.v1.endpoints.auth import get_current_user
 from app.schemas.operations import (
@@ -17,9 +13,6 @@ from app.schemas.operations import (
     MaintenanceRequestPriorityUpdate,
     MaintenanceRequestResponse,
     MaintenanceDashboardResponse,
-    MaintenanceCatalogItemCreate,
-    MaintenanceCatalogItemUpdate,
-    MaintenanceCatalogItemResponse,
     RoomMaintenanceStatusResponse,
     RoomMaintenanceRequestItem,
 )
@@ -30,19 +23,11 @@ from app.repositories import (
     get_staff_repository,
 )
 from .shared import TAG_MNT, create_department_notification
-from app.schemas.response import NotFoundResponseSchema
+from app.core.time import utc_now_naive
 
 router = APIRouter()
 
-from .maintenance_catalog import (
-    DEFAULT_MAINTENANCE_CATALOG,
-    create_maintenance_catalog_item,
-    delete_maintenance_catalog_item,
-    get_maintenance_catalog,
-    router as maintenance_catalog_router,
-    toggle_maintenance_catalog_item,
-    update_maintenance_catalog_item,
-)
+from .maintenance_catalog import router as maintenance_catalog_router
 
 
 # =====================================================================
@@ -224,7 +209,7 @@ async def update_maintenance_request_status(
     if update_in.assigned_to or update_in.assigned_technician:
         req.assigned_staff_name = update_in.assigned_to or update_in.assigned_technician
 
-    req.updated_at = datetime.utcnow()
+    req.updated_at = utc_now_naive()
     await sr_repo.commit()
     await sr_repo.refresh(req)
     return req
@@ -252,7 +237,7 @@ async def update_maintenance_request_priority(
         raise HTTPException(status_code=409, detail="This repair request is already closed")
     req.priority = update_in.priority
     req.extra_data = {**(req.extra_data or {}), "priority_set_by": current_user.id}
-    req.updated_at = datetime.utcnow()
+    req.updated_at = utc_now_naive()
     await sr_repo.commit()
     await sr_repo.refresh(req)
     return req
@@ -302,7 +287,7 @@ async def get_room_maintenance_status(
             status=r.status or "Pending",
             priority=r.priority or "Normal",
             assigned_to=r.assigned_staff_name,
-            created_at=r.created_at or datetime.utcnow(),
+            created_at=r.created_at or utc_now_naive(),
             est_completion=r.est_completion or "15 mins",
             description=r.description,
         )

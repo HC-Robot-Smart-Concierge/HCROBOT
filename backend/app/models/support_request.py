@@ -5,6 +5,7 @@ from sqlalchemy import String, DateTime, Text, ForeignKey, JSON, Float, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.core.time import utc_now_naive
 
 if TYPE_CHECKING:
     from app.models.account import Account
@@ -22,12 +23,12 @@ class SupportRequest(Base):
     ticket_code: Mapped[str] = mapped_column(String(30), unique=True, index=True) # e.g. 'HK-1042', 'BS-501', 'MN-401', 'REQ-101'
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    
+
     # Classification & Assignment
     service_type_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("service_types.id", ondelete="SET NULL"), nullable=True, index=True)
     department_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
     account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
-    
+
     # Location & Context
     room_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
     room_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True) # e.g. 'Room 412', 'Lobby', or None
@@ -37,7 +38,7 @@ class SupportRequest(Base):
     source: Mapped[str] = mapped_column(String(50), default="From HCRobot") # 'From HCRobot', 'Front Desk', 'Guest App'
     priority: Mapped[str] = mapped_column(String(50), default="Normal") # 'Low', 'Normal', 'High', 'Urgent'
     status: Mapped[str] = mapped_column(String(50), default="Pending") # 'Pending', 'In Progress', 'Completed', 'Cancelled'
-    
+
     # Assignment fields
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("robots.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -49,8 +50,8 @@ class SupportRequest(Base):
     est_completion: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # e.g. '12m', '4 mins'
     extra_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, default=dict, nullable=True) # For taxi details, custom payloads
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
 
     # Relationships
     service_type: Mapped[Optional["ServiceType"]] = relationship("ServiceType", back_populates="support_requests")
@@ -59,7 +60,6 @@ class SupportRequest(Base):
     assigned_robot: Mapped[Optional["Robot"]] = relationship("Robot")
     room: Mapped[Optional["Room"]] = relationship("Room", back_populates="support_requests")
     room_service_order: Mapped[Optional["RoomServiceOrder"]] = relationship("RoomServiceOrder", back_populates="support_request", uselist=False)
-
 
     def __init__(self, **kwargs):
         # Normalize legacy field aliases
@@ -136,9 +136,9 @@ class SupportRequest(Base):
 
     @is_service_request.setter
     def is_service_request(self, val: bool):
-        if not self.extra_data:
-            self.extra_data = {}
-        self.extra_data["is_service_request"] = val
+        extra = dict(self.extra_data or {})
+        extra["is_service_request"] = val
+        self.extra_data = extra
 
     @property
     def image_url(self) -> Optional[str]:
@@ -148,9 +148,9 @@ class SupportRequest(Base):
 
     @image_url.setter
     def image_url(self, val: Optional[str]):
-        if not self.extra_data:
-            self.extra_data = {}
-        self.extra_data["image_url"] = val
+        extra = dict(self.extra_data or {})
+        extra["image_url"] = val
+        self.extra_data = extra
 
     @property
     def location(self) -> str:
@@ -186,10 +186,10 @@ class SupportRequest(Base):
             return self._request_type
         if isinstance(self.extra_data, dict) and self.extra_data.get("request_type"):
             return str(self.extra_data["request_type"])
-        if str(self.ticket_code or "").upper().startswith("EA-"):
+        if (self.ticket_code or "").upper().startswith("EA-"):
             return "emotion_alert"
-        st = str(self.service_type_id or "").upper()
-        dep = str(self.department_id or "").upper()
+        st = (self.service_type_id or "").upper()
+        dep = (self.department_id or "").upper()
         text_blob = f"{self.title or ''} {self.description or ''}".lower()
         if "BELL" in st or "LUGGAGE" in st or "BELL" in dep:
             if any(k in text_blob for k in ["thất lạc", "quên đồ", "mất đồ", "rơi đồ", "lost", "missing", "forgot"]):
@@ -231,7 +231,7 @@ class SupportRequest(Base):
         if getattr(self, "_category", None):
             return self._category
         if self.service_type_id:
-            st = str(self.service_type_id).upper()
+            st = self.service_type_id.upper()
             if "BELL" in st:
                 return "Bell Services"
             elif "HOUSEKEEPING" in st:
@@ -289,5 +289,4 @@ HousekeepingRequest = SupportRequest
 BellRequest = SupportRequest
 MaintenanceRequest = SupportRequest
 ReceptionRequest = SupportRequest
-from app.models.room_service import RoomServiceOrder, OrderItem
-
+from app.models.room_service import RoomServiceOrder

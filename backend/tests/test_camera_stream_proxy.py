@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from httpx import AsyncClient, ASGITransport, Response
+from httpx import AsyncClient, ASGITransport
 from app.main import app
 from app.core.database import init_db
 
@@ -125,4 +125,3 @@ async def test_pi5_proxy_endpoint():
             data = res.json()
             assert data["status"] == "SUCCESS"
             assert data["power"]["battery"] == 92
-

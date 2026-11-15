@@ -47,5 +47,19 @@ describe('Speech Synthesis Voice Consistency & Web Audio API Fallback Tests', ()
     expect(robotScreenContent).toContain('preloadedStep2Audio || null');
     expect(robotScreenContent).toContain('preloadedQrAudio || null');
   });
+
+  it('supports real-time dynamic voice synchronization across tabs with viVoice and enVoice', () => {
+    expect(useSpeechSynthesisContent).toContain('viVoice');
+    expect(useSpeechSynthesisContent).toContain('enVoice');
+    expect(useSpeechSynthesisContent).toContain('updateVoiceSettings');
+    expect(useSpeechSynthesisContent).toContain('event.data.vi_voice');
+    expect(useSpeechSynthesisContent).toContain('event.data.en_voice');
+  });
+
+  it('dynamically uses active voice rather than hardcoding female voice for Vietnamese EdgeTTS', () => {
+    expect(useSpeechSynthesisContent).not.toContain("const edgeVoice = langTag.startsWith('vi') ? 'vi-VN-HoaiMyNeural' : 'en-US-JennyNeural';");
+    expect(useSpeechSynthesisContent).toContain('activeVoice');
+    expect(useSpeechSynthesisContent).toContain('isMaleVoice');
+  });
 });
 

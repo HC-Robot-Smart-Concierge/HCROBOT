@@ -236,6 +236,7 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
     speak(sampleText, {
       rate: tempRate,
       lang: isEN ? 'en-US' : 'vi-VN',
+      voice: tempVoice,
       onEnd: () => setIsTestSpeaking(false),
       onError: () => setIsTestSpeaking(false),
     });

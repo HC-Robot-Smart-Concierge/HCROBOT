@@ -403,7 +403,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const [showWorkflowMenu, setShowWorkflowMenu] = useState(false);
 
   // Hooks
-  const { speak, prime, cancel: stopSpeaking, isSpeaking, speechRate, updateSpeechRate } = useSpeechSynthesis();
+  const {
+    speak,
+    prime,
+    cancel: stopSpeaking,
+    isSpeaking,
+    speechRate,
+    updateSpeechRate,
+    viVoice,
+    enVoice,
+    updateVoiceSettings,
+  } = useSpeechSynthesis();
   const isSpeakingRef = useRef(false);
   useEffect(() => {
     isSpeakingRef.current = isSpeaking;
@@ -537,12 +547,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   useEffect(() => {
     getVoiceSettings()
       .then((data) => {
-        if (data?.speech_rate) {
-          updateSpeechRate(data.speech_rate);
+        if (data) {
+          if (updateVoiceSettings) {
+            updateVoiceSettings(data);
+          } else if (data.speech_rate) {
+            updateSpeechRate(data.speech_rate);
+          }
         }
       })
       .catch((err) => console.warn('Could not fetch voice settings:', err));
-  }, []);
+  }, [updateVoiceSettings, updateSpeechRate]);
 
   // Workflow Native Runner Hook (tích hợp Micro & Loa máy tính)
   const {
@@ -2011,12 +2025,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           let preloadedStep2Audio = null;
           let preloadedQrAudio = null;
 
-          // Preload background EdgeTTS (vi-VN-HoaiMyNeural) ngay khi Chặng 1 bắt đầu (cửa sổ 10 giây)
+          // Preload background EdgeTTS ngay khi Chặng 1 bắt đầu (cửa sổ 10 giây)
           // Triệt tiêu 100% rủi ro đổi sang giọng Safari Linh trên iPhone XR do mất gesture sau setTimeout
           if (destObj.isDifferentFloor && cleanStep2) {
             synthesizeSpeech(step2Speech, {
               language: isEn ? 'en-US' : 'vi-VN',
-              voice: isEn ? 'en-US-JennyNeural' : 'vi-VN-HoaiMyNeural'
+              voice: isEn ? (enVoice || 'en-US-JennyNeural') : (viVoice || 'vi-VN-NamMinhNeural')
             })
               .then((res) => {
                 if (res?.audio_base64 && currentChatId === activeChatRequestIdRef.current) {
@@ -2028,7 +2042,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
           synthesizeSpeech(qrVoicePrompt, {
             language: isEn ? 'en-US' : 'vi-VN',
-            voice: isEn ? 'en-US-JennyNeural' : 'vi-VN-HoaiMyNeural'
+            voice: isEn ? (enVoice || 'en-US-JennyNeural') : (viVoice || 'vi-VN-NamMinhNeural')
           })
             .then((res) => {
               if (res?.audio_base64 && currentChatId === activeChatRequestIdRef.current) {

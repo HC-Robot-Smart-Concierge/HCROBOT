@@ -371,7 +371,7 @@ export const useSpeechSynthesis = () => {
     }
 
     // 1. ƯU TIÊN GỌI Backend EdgeTTS Neural theo cấu hình giọng của Robot
-    const isSupportedEdgeLang = langTag.startsWith('vi') || langTag.startsWith('en');
+    const isSupportedEdgeLang = (langTag.startsWith('vi') || langTag.startsWith('en')) && !options?.skipRemoteTts;
     if (isSupportedEdgeLang) {
       const edgeVoice = activeVoice;
       const edgeLang = langTag.startsWith('vi') ? 'vi-VN' : 'en-US';
@@ -592,6 +592,21 @@ export const useSpeechSynthesis = () => {
           finishOnce();
         }
       }, maxMs);
+
+      // Auto-release dự phòng khi trình duyệt thiếu voice engine tiếng Việt (ví dụ Chrome trên Windows)
+      if (!selectedVoice && langTag.startsWith('vi')) {
+        setTimeout(() => {
+          if (!hasFinished && (!speechId || speechId === activeSpeechIdRef.current)) {
+            if (onStartCallback) onStartCallback();
+          }
+        }, 120);
+        const fallbackReadMs = Math.min(Math.max(wordCount * 280, 2500), 5500);
+        setTimeout(() => {
+          if (!hasFinished && (!speechId || speechId === activeSpeechIdRef.current)) {
+            finishOnce();
+          }
+        }, fallbackReadMs);
+      }
 
       window.speechSynthesis.speak(utterance);
     } catch (err) {

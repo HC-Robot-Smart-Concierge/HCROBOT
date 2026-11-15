@@ -608,7 +608,7 @@ class OllamaService:
         if provider not in ["gemini", "ollama"] and bool(settings.GROQ_API_KEY):
             try:
                 logger.info(f"[AI Tier 1] Gửi Groq Cloud (model: {settings.GROQ_MODEL})...")
-                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=150)
+                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=80)
                 if groq_reply and groq_reply.strip():
                     reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
                     if lang_code == "en-US" and not re.search(r"[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]", reply, re.IGNORECASE):
@@ -656,7 +656,7 @@ class OllamaService:
                         "temperature": 0.7,
                         "top_p": 0.9,
                         "num_ctx": 1024,
-                        "num_predict": 70,
+                        "num_predict": 45,
                         "num_thread": 8,
                         "repeat_penalty": 1.1,
                     },

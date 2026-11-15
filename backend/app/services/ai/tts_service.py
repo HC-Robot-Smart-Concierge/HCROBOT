@@ -219,7 +219,7 @@ class TTSService:
         voice: Optional[str] = None,
         language: Optional[str] = None,
         rate: Optional[str] = None,
-        timeout: float = 6.0,
+        timeout: float = 3.5,
         allow_fallback: bool = True,
     ) -> Dict[str, Any]:
         """
@@ -438,8 +438,19 @@ class TTSService:
         last_err_detail = f"EdgeTTS returned 0 bytes for voice={voice}"
 
         for attempt in range(2):
+            # Attempt 0: Thu giong yeu cau (vi du: vi-VN-NamMinhNeural)
+            # Attempt 1: Neu attempt 0 loi (vi du NoAudioReceived tren Azure TTS), tu dong thu giong Neural con lai
+            current_voice = voice
+            if attempt == 1:
+                if "NamMinh" in voice:
+                    current_voice = "vi-VN-HoaiMyNeural"
+                    logger.info(f"[TTSService] EdgeTTS attempt 2: Switch fallback voice to {current_voice}")
+                elif "HoaiMy" in voice:
+                    current_voice = "vi-VN-NamMinhNeural"
+                    logger.info(f"[TTSService] EdgeTTS attempt 2: Switch fallback voice to {current_voice}")
+
             try:
-                communicate = _edge_tts.Communicate(clean_text, voice, rate=selected_rate)
+                communicate = _edge_tts.Communicate(clean_text, current_voice, rate=selected_rate)
                 audio_bytes = b""
                 async for chunk in communicate.stream():
                     if chunk.get("type") == "audio":
@@ -447,13 +458,13 @@ class TTSService:
                 if audio_bytes and len(audio_bytes) > 100:
                     return base64.b64encode(audio_bytes).decode("utf-8"), None, None
                 last_err_code = "TTS_AUDIO_EMPTY"
-                last_err_detail = f"EdgeTTS returned {len(audio_bytes)} bytes (voice={voice}, attempt={attempt + 1})"
+                last_err_detail = f"EdgeTTS returned {len(audio_bytes)} bytes (voice={current_voice}, attempt={attempt + 1})"
             except Exception as e:
                 last_err_code = "TTS_PROVIDER_ERROR"
-                last_err_detail = f"{type(e).__name__}: {e} (voice={voice}, attempt={attempt + 1})"
+                last_err_detail = f"{type(e).__name__}: {e} (voice={current_voice}, attempt={attempt + 1})"
                 logger.warning(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
             if attempt == 0:
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.1)
 
         return None, last_err_code, last_err_detail
 
@@ -465,7 +476,7 @@ class TTSService:
     async def _synthesize_google_tts(self, text: str, lang_short: str = "vi") -> Optional[str]:
         """
         Dự phòng tổng hợp âm thanh MP3 qua Google Translate TTS endpoint khi EdgeTTS bị nghẽn hoặc lỗi.
-        Chia nhỏ câu nếu dài quá 180 ký tự.
+        Chia nhỏ câu nếu dài quá 180 ký tự, giới hạn tối đa 2 đoạn để phản hồi dưới 0.6s.
         """
         clean = self.clean_text_for_tts(text)
         if not clean:
@@ -489,8 +500,8 @@ class TTSService:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
-        async with httpx.AsyncClient(timeout=3.0, headers=headers) as client:
-            for seg in segments[:4]:
+        async with httpx.AsyncClient(timeout=2.0, headers=headers) as client:
+            for seg in segments[:2]:
                 q = urllib.parse.quote(seg)
                 url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl={tl}&q={q}"
                 resp = await client.get(url)

@@ -2154,6 +2154,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           return;
         }
 
+        const hasAudio = Boolean(chatRes.audio_base64 && chatRes.audio_base64.length > 50);
+
         let hasRenderedText = false;
         const revealSubtitle = () => {
           if (!hasRenderedText && currentChatId === activeChatRequestIdRef.current) {
@@ -2161,13 +2163,21 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             stopListening();
             resetTranscript();
             setAiResponseText(replyText);
+            setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
           }
         };
 
-        // Fallback an toàn: nếu sau 2.0s âm thanh chưa kịp bắn onplay (ví dụ mạng chậm hoặc audio bị block), hiển thị phụ đề để không trễ
+        // Nếu backend không có audio (ví dụ timeout/lỗi mạng), hiển thị phụ đề và thoát trạng thái xoay RT-04 ngay lập tức
+        if (!hasAudio) {
+          revealSubtitle();
+          isProcessingRef.current = false;
+          setIsProcessing(false);
+        }
+
+        // Fallback an toàn: nếu sau 1.5s âm thanh chưa kịp bắn onplay, hiển thị phụ đề để không trễ
         const textSafetyTimer = setTimeout(() => {
           revealSubtitle();
-        }, 2000);
+        }, hasAudio ? 1500 : 0);
 
         const speechStartTimestamp = Date.now();
 
@@ -2289,7 +2299,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           },
           chatRes.audio_base64,
           null,
-          { skipRemoteTts: false }
+          { skipRemoteTts: !hasAudio }
         );
       };
 

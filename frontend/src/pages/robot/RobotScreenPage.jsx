@@ -922,7 +922,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, [isVideoCallOpen, isPinModalOpen, requestPhase, stopSpeaking, stopListening]);
 
-  // Tự động gửi AI khi người dùng ngừng nói đủ lâu (VAD Silence Detection tự nhiên: 1800ms)
+  // Tự động gửi AI khi người dùng ngừng nói đủ lâu (Semantic Silence Debounce)
   // Tránh ngắt lời khi khách đang dừng lấy hơi hoặc suy nghĩ giữa câu
   useEffect(() => {
     if (
@@ -937,15 +937,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       transcript &&
       transcript.trim().length > 0
     ) {
-      // Nếu âm lượng micro cho thấy khách vẫn đang phát ra tiếng nói -> hủy ngay timer đếm im lặng
-      if (volumeLevel >= 6) {
-        if (silenceTimerRef.current) {
-          clearTimeout(silenceTimerRef.current);
-          silenceTimerRef.current = null;
-        }
-        return;
-      }
-
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       const dynamicDebounceMs = getSemanticSilenceDebounce(transcript, true);
       silenceTimerRef.current = setTimeout(() => {
@@ -957,7 +948,31 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     };
-  }, [transcript, currentState, isListening, isSpeaking, isProcessing, isVideoCallOpen, volumeLevel]);
+  }, [transcript, currentState, isListening, isSpeaking, isProcessing, isVideoCallOpen]);
+
+  // Bộ đếm thời gian im lặng khi không có tiếng nói (No-Speech Timeout: 8s)
+  // Tránh tình trạng robot treo vĩnh viễn ở trạng thái "Đang lắng nghe..." khi khách không nói gì
+  useEffect(() => {
+    if (
+      currentState === 'RT-03' &&
+      isListening &&
+      !isSpeaking &&
+      !isSpeakingRef.current &&
+      !isProcessing &&
+      !isProcessingRef.current &&
+      !isVideoCallOpen &&
+      !isPinModalOpen &&
+      (!transcript || transcript.trim().length === 0)
+    ) {
+      const noSpeechTimer = setTimeout(() => {
+        if (!transcript || transcript.trim().length === 0) {
+          stopListening();
+          setCurrentState('RT-02');
+        }
+      }, 8000);
+      return () => clearTimeout(noSpeechTimer);
+    }
+  }, [currentState, isListening, isSpeaking, isProcessing, isVideoCallOpen, isPinModalOpen, transcript, stopListening]);
 
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = () => {

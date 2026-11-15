@@ -85,6 +85,17 @@ describe('Speech Recognition Silence Duration & Anti-Cutoff Tests', () => {
     });
   });
 
+  it('verifies RobotScreenPage silence detection is not blocked by mic volume fluctuations', () => {
+    const filePath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
+
+    // Không còn dòng volumeLevel >= 6 gây cancel timer khi có tạp âm nền
+    expect(content).not.toContain('if (volumeLevel >= 6) {');
+    // Có bộ đếm 8s no-speech timeout thoát RT-03 về RT-02
+    expect(content).toContain('noSpeechTimer = setTimeout');
+    expect(content).toContain('}, 8000);');
+  });
+
   it('ensures no emojis exist in modified speech recognition files', () => {
     const files = [
       path.resolve(__dirname, '../../../hooks/useSpeechRecognition.js'),

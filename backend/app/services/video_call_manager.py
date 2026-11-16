@@ -37,6 +37,18 @@ def get_lan_ip() -> str:
     return get_host_ips()[0]
 
 
+def is_private_or_tailscale_ip(ip_str: Optional[str]) -> bool:
+    """Kiểm tra IP có phải là IP mạng nội bộ (LAN 192.168.x.x, 10.x.x.x, 172.16.x.x) hoặc Tailscale (100.x.x.x) hay không."""
+    if not ip_str:
+        return False
+    try:
+        import ipaddress
+        ip = ipaddress.ip_address(ip_str)
+        return ip.is_private or ip_str.startswith("100.")
+    except Exception:
+        return False
+
+
 class VideoCallManager:
     """
     Quản lý phòng gọi và WebSocket Signaling Hub cho WebRTC Video Call 2 chiều
@@ -192,16 +204,13 @@ class VideoCallManager:
                     # Chon tap IP phu hop cua nguoi gui de de-anonymize .local
                     target_ips = []
                     client_host = websocket.client.host if websocket.client else None
-                    is_local_sender = (
-                        client_host in ("127.0.0.1", "localhost", "::1")
-                        or (client_host and client_host in get_host_ips())
-                    )
 
-                    if is_local_sender and sender_role == "staff":
-                        # Staff chay tren may local Laptop -> de-anonymize bang LAN IP may chu
+                    if sender_role == "staff":
+                        # Staff luon la AdminStaff tren Laptop may chu -> luon de-anonymize bang LAN IP & Tailscale IP cua Laptop
                         target_ips = get_host_ips()
-                    elif client_host and not client_host.startswith("127.") and not client_host.startswith("104.23.") and not client_host.startswith("172.64."):
-                        # Client ket noi truc tiep qua Wi-Fi LAN hoac Tailscale
+                    elif is_private_or_tailscale_ip(client_host):
+                        # Guest chi de-anonymize neu client_host la IP noi bo thuc su (Wi-Fi LAN 192.168.x.x hoac Tailscale 100.x.x.x)
+                        # Tuyet doi khong dung IP proxy Cloudflare (162.x, 172.x, 104.x)
                         target_ips = [client_host]
 
                     import re

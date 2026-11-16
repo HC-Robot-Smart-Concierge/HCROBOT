@@ -55,6 +55,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   const [robotSubTab, setRobotSubTab] = useState('lidar');
   const [manageRobotSubTab, setManageRobotSubTab] = useState('robot_profile');
   const [knowledgeSubTab, setKnowledgeSubTab] = useState('sources');
+  const [logsSubTab, setLogsSubTab] = useState('operational');
 
   // Real-time Notifications Center State
   const [notifications, setNotifications] = useState([]);
@@ -373,6 +374,42 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                       </button>
                     </div>
                   )}
+
+                  {/* Logs sub-items */}
+                  {item.id === 'Logs' && activeMenu === 'Logs' && (
+                    <div className="ml-3 pl-3 border-l my-0.5 space-y-0.5" style={{ borderColor: '#262626' }}>
+                      <button
+                        onClick={() => setLogsSubTab('operational')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: logsSubTab === 'operational' ? '#262626' : 'transparent',
+                          color: logsSubTab === 'operational' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('logsTabOperational')}
+                      </button>
+                      <button
+                        onClick={() => setLogsSubTab('audit')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: logsSubTab === 'audit' ? '#262626' : 'transparent',
+                          color: logsSubTab === 'audit' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('logsTabAudit')}
+                      </button>
+                      <button
+                        onClick={() => setLogsSubTab('conversations')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: logsSubTab === 'conversations' ? '#262626' : 'transparent',
+                          color: logsSubTab === 'conversations' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('logsTabAiChat')}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -609,7 +646,11 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           )}
 
           {activeMenu === 'Logs' && (
-            <AdminLogsTab currentUser={currentUser} />
+            <AdminLogsTab
+              currentUser={currentUser}
+              subTabProp={logsSubTab}
+              onSelectSubTab={setLogsSubTab}
+            />
           )}
 
           {(activeMenu === 'Advertisements' || activeMenu === 'Hotel Content') && (

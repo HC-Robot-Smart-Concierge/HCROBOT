@@ -116,7 +116,7 @@ async def get_robot_profile(
     repo: RobotRepository = Depends(get_robot_repository),
 ):
     robot = await repo.get_by_id_or_code(robot_id)
-    if not robot and robot_id == DEFAULT_ROBOT_ID:
+    if not robot and robot_id in (DEFAULT_ROBOT_ID, "hc_pi5_01"):
         robot = await repo.ensure_default_robot()
     if not robot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Không tìm thấy hồ sơ robot '{robot_id}'")
@@ -138,7 +138,7 @@ async def update_robot_profile(
     repo: RobotRepository = Depends(get_robot_repository),
 ):
     robot = await repo.get_by_id_or_code(robot_id)
-    if not robot and robot_id == DEFAULT_ROBOT_ID:
+    if not robot and robot_id in (DEFAULT_ROBOT_ID, "hc_pi5_01"):
         robot = await repo.ensure_default_robot()
     if not robot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Không tìm thấy hồ sơ robot '{robot_id}'")

@@ -1,5 +1,7 @@
 import asyncio
+import json
 import os
+from typing import Optional
 import yaml
 
 import rclpy
@@ -48,6 +50,8 @@ class TelemetryNode(Node):
         # Timer định kỳ gửi heartbeat (mỗi 10 giây)
         self.heartbeat_timer = self.create_timer(10.0, self.send_heartbeat)
         self.current_status = "IDLE"
+        self.battery_level: Optional[int] = None
+        self.current_location: Optional[str] = None
 
         self.get_logger().info(f"TelemetryNode khởi chạy cho Robot ID '{robot_id}'. Heartbeat interval: 10s")
 
@@ -77,10 +81,56 @@ class TelemetryNode(Node):
 
     def on_status_updated(self, msg: String):
         """
-        Cập nhật trạng thái hiện tại của Robot khi có message từ Topic.
+        Cập nhật trạng thái hiện tại của Robot khi có message từ Topic (hỗ trợ chuỗi thuần hoặc JSON).
+        Đồng bộ ngay telemetry lên Backend Server.
         """
-        self.current_status = msg.data
-        self.get_logger().info(f"Cập nhật trạng thái Robot: {self.current_status}")
+        raw_data = (msg.data or "").strip()
+        if raw_data:
+            parsed = None
+            if raw_data.startswith("{"):
+                try:
+                    parsed = json.loads(raw_data)
+                except ValueError:
+                    parsed = None
+
+            if isinstance(parsed, dict):
+                if parsed.get("status") is not None:
+                    self.current_status = str(parsed["status"])
+                if parsed.get("battery_level") is not None:
+                    try:
+                        self.battery_level = int(parsed["battery_level"])
+                    except (TypeError, ValueError):
+                        self.get_logger().warning(f"Giá trị battery_level không hợp lệ: {parsed.get('battery_level')}")
+                if parsed.get("current_location") is not None:
+                    self.current_location = str(parsed["current_location"])
+            else:
+                self.current_status = raw_data
+
+        self.get_logger().info(
+            f"Cập nhật trạng thái Robot: status={self.current_status}, "
+            f"battery={self.battery_level}, location={self.current_location}"
+        )
+        self._dispatch_sync_profile()
+
+    def _dispatch_sync_profile(self):
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._sync_profile())
+        except RuntimeError:
+            asyncio.run(self._sync_profile())
+
+    async def _sync_profile(self) -> bool:
+        try:
+            return await self.api_client.update_robot_profile(
+                status=self.current_status,
+                battery_level=self.battery_level,
+                current_location=self.current_location,
+                is_online=True,
+                robot_id=self.robot_id,
+            )
+        except Exception as e:
+            self.get_logger().error(f"Lỗi đồng bộ telemetry robot lên Backend: {e}")
+            return False
 
     def send_heartbeat(self):
         """
@@ -91,7 +141,10 @@ class TelemetryNode(Node):
     async def _do_send_heartbeat(self):
         is_alive = await self.api_client.check_health()
         if is_alive:
-            self.get_logger().debug(f"Heartbeat thành công tới Laptop Server. Robot status: {self.current_status}")
+            synced = await self._sync_profile()
+            self.get_logger().debug(
+                f"Heartbeat thành công tới Laptop Server. Robot status: {self.current_status}, synced: {synced}"
+            )
         else:
             self.get_logger().warning("Cảnh báo: Không kết nối được tới Laptop Server qua Heartbeat!")
 

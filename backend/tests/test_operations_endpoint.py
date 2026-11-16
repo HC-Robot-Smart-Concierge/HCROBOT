@@ -261,3 +261,92 @@ async def test_all_operations_dashboards_and_endpoints():
         assert done_em.json()["status"] == "Completed"
 
 
+@pytest.mark.asyncio
+async def test_analytics_summary_period_filters():
+    from datetime import datetime, timedelta
+    import uuid
+    from sqlalchemy import delete
+    from app.core.database import AsyncSessionLocal
+    from app.models.directive import ManagementDirective
+    from app.models.chat_session import ChatSession, ChatMessage
+
+    await init_db()
+    now = datetime.utcnow()
+    suffix = uuid.uuid4().hex[:8]
+    dir_ids = [f"DIR-PER-{suffix}-1", f"DIR-PER-{suffix}-2", f"DIR-PER-{suffix}-3"]
+    sess_ids = [f"sess-per-{suffix}-1", f"sess-per-{suffix}-2", f"sess-per-{suffix}-3"]
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        base_weekly = (await ac.get("/api/v1/operations/analytics/summary?period=weekly")).json()
+        base_monthly = (await ac.get("/api/v1/operations/analytics/summary?period=monthly")).json()
+        base_all = (await ac.get("/api/v1/operations/analytics/summary?period=all")).json()
+
+        bad_res = await ac.get("/api/v1/operations/analytics/summary?period=yearly")
+        assert bad_res.status_code == 422
+
+        async with AsyncSessionLocal() as db:
+            timestamps = [
+                now - timedelta(hours=2),   # in weekly + monthly + all
+                now - timedelta(days=15),   # in monthly + all only
+                now - timedelta(days=45),   # in all only
+            ]
+            for idx, ts in enumerate(timestamps):
+                db.add(
+                    ManagementDirective(
+                        id=dir_ids[idx],
+                        code=f"PER{suffix[:4]}{idx}",
+                        title=f"Period Test Directive {idx}",
+                        department="Housekeeping",
+                        status="Completed" if idx == 0 else "Unassigned",
+                        created_at=ts,
+                        updated_at=ts,
+                    )
+                )
+                db.add(
+                    ChatSession(
+                        id=sess_ids[idx],
+                        room_number="301",
+                        guest_name="Test Guest",
+                        is_active=True,
+                        created_at=ts,
+                        updated_at=ts,
+                    )
+                )
+                db.add(
+                    ChatMessage(
+                        session_id=sess_ids[idx],
+                        sender="user",
+                        text=f"Message {idx}",
+                        created_at=ts,
+                    )
+                )
+            await db.commit()
+
+        try:
+            weekly = (await ac.get("/api/v1/operations/analytics/summary?period=weekly")).json()
+            monthly = (await ac.get("/api/v1/operations/analytics/summary?period=monthly")).json()
+            all_time = (await ac.get("/api/v1/operations/analytics/summary?period=all")).json()
+
+            assert weekly["period"] == "weekly"
+            assert monthly["period"] == "monthly"
+            assert all_time["period"] == "all"
+
+            assert weekly["total_tasks"] - base_weekly["total_tasks"] == 1
+            assert monthly["total_tasks"] - base_monthly["total_tasks"] == 2
+            assert all_time["total_tasks"] - base_all["total_tasks"] == 3
+
+            assert weekly["total_sessions"] - base_weekly["total_sessions"] == 1
+            assert monthly["total_sessions"] - base_monthly["total_sessions"] == 2
+            assert all_time["total_sessions"] - base_all["total_sessions"] == 3
+
+            assert weekly["total_messages"] - base_weekly["total_messages"] == 1
+            assert monthly["total_messages"] - base_monthly["total_messages"] == 2
+            assert all_time["total_messages"] - base_all["total_messages"] == 3
+        finally:
+            async with AsyncSessionLocal() as db:
+                await db.execute(delete(ChatMessage).where(ChatMessage.session_id.in_(sess_ids)))
+                await db.execute(delete(ChatSession).where(ChatSession.id.in_(sess_ids)))
+                await db.execute(delete(ManagementDirective).where(ManagementDirective.id.in_(dir_ids)))
+                await db.commit()
+
+

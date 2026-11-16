@@ -1,4 +1,3 @@
-from typing import cast
 import pytest
 from app.services.ai.scenario_service import scenario_service
 from app.services.rag.chroma import query_rag_context
@@ -20,12 +19,12 @@ async def test_maintenance_scenario_fastpath_matching():
     res_hu = scenario_service.match_fast_path("phòng tôi bị hư", lang_code="vi-VN")
     assert res_hu is not None
     assert res_hu[3] == "open_maintenance_menu"
-    assert res_hu[4] is not None and res_hu[4].get("trigger_menu") == "maintenance"
+    assert res_hu[4].get("trigger_menu") == "maintenance"
 
     res_hu_room = scenario_service.match_fast_path("phòng 301 bị hư", lang_code="vi-VN")
     assert res_hu_room is not None
     assert res_hu_room[3] == "open_maintenance_menu"
-    assert res_hu_room[4] is not None and res_hu_room[4].get("trigger_menu") == "maintenance"
+    assert res_hu_room[4].get("trigger_menu") == "maintenance"
     assert res_hu_room[4].get("target_room_number") == "301"
 
     # 2. English fastpath matching
@@ -62,7 +61,7 @@ async def test_maintenance_rag_retrieval():
 
 @pytest.mark.asyncio
 async def test_maintenance_graph_missing_room():
-    state = cast(ConciergeState, {
+    state: ConciergeState = {
         "current_query": "sửa điều hòa tới đâu rồi",
         "session_id": "test_mnt_sess_1",
         "language_code": "vi-VN",
@@ -72,8 +71,9 @@ async def test_maintenance_graph_missing_room():
         "chat_history": [],
         "context": {},
         "rag_context": "",
-    })
+    }
     result = await service_fsm_node(state)
     assert result.get("missing_room_number") is True
     assert "phòng bao nhiêu" in result.get("response", "").lower()
     assert any(k in result.get("response", "").lower() for k in ["sửa chữa", "bảo trì"])
+

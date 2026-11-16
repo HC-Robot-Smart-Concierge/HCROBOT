@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Film, Image as ImageIcon, Clock, Sparkles, Volume2, VolumeX, Tag } from 'lucide-react';
+import { Film, Image as ImageIcon, Clock, Sparkles, Volume2, VolumeX, Maximize2, Tag } from 'lucide-react';
 
 const DEFAULT_PROMO_IMAGE =
   'https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&w=1200&q=80';

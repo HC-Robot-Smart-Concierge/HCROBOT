@@ -2,13 +2,13 @@
 import hashlib
 import re
 import unicodedata
+from datetime import datetime
 
 from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.maintenance import MaintenanceCatalogItem
 from app.models.support_request import SupportRequest
-from app.core.time import utc_now_naive
 
 
 TERMINAL_STATUSES = (
@@ -37,7 +37,7 @@ DEVICE_PATTERNS = {
 
 
 def normalize_text(value: str) -> str:
-    value = unicodedata.normalize("NFKD", (value or "").casefold().replace("đ", "d"))
+    value = unicodedata.normalize("NFKD", str(value or "").casefold().replace("đ", "d"))
     value = "".join(char for char in value if not unicodedata.combining(char))
     return " ".join(re.findall(r"[a-z0-9]+", value))
 
@@ -61,7 +61,7 @@ SYMPTOM_PATTERN = re.compile(
 
 def is_fault_report(text: str) -> bool:
     """A named device plus a symptom is a repair report, not an amenity question."""
-    if not text or not SYMPTOM_PATTERN.search(text.lower()):
+    if not text or not SYMPTOM_PATTERN.search(str(text).lower()):
         return False
     normalized = normalize_text(text)
     return any(re.search(pattern, normalized) for pattern in DEVICE_PATTERNS.values())
@@ -135,7 +135,7 @@ async def get_or_create_maintenance_request(
     including the first request when no ticket row exists yet. It is released
     on commit/rollback, and works across backend processes/devices.
     """
-    room = normalize_room(request.room_number or "")
+    room = normalize_room(request.room_number)
     if not room:
         raise ValueError("A room is required for a maintenance request")
     lock_key = int.from_bytes(hashlib.sha256(f"maintenance:{room}".encode()).digest()[:8], "big", signed=True)
@@ -175,7 +175,7 @@ async def get_or_create_maintenance_request(
             previous = existing.description or existing.title or ""
             incoming = request.description or request.title or ""
             existing.description = f"{previous}\n• {incoming}"
-            existing.updated_at = utc_now_naive()
+            existing.updated_at = datetime.utcnow()
             # Keep status, assigned technician, priority and creation time.
             await db.flush()
             return existing, False, True

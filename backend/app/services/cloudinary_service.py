@@ -16,9 +16,9 @@ class CloudinaryService:
     def _init_cloudinary(self):
         """Khởi tạo cấu hình Cloudinary từ biến môi trường."""
         try:
-            import cloudinary  # type: ignore[import-not-found]
-            import cloudinary.uploader  # type: ignore[import-not-found]
-            import cloudinary.api  # type: ignore[import-not-found]
+            import cloudinary
+            import cloudinary.uploader
+            import cloudinary.api
 
             if settings.CLOUDINARY_URL:
                 cloudinary.config()
@@ -67,7 +67,7 @@ class CloudinaryService:
 
         if self._is_configured:
             try:
-                import cloudinary.uploader  # type: ignore[import-not-found]
+                import cloudinary.uploader
 
                 def _do_upload():
                     file_io = io.BytesIO(file_bytes)
@@ -84,7 +84,7 @@ class CloudinaryService:
                 secure_url = res.get("secure_url", "")
                 public_id = res.get("public_id", "")
                 calc_duration = int(res.get("duration") or duration or 0)
-
+                
                 # Cloudinary tự sinh thumbnail từ video bằng cách đổi đuôi sang .jpg
                 thumbnail_url = secure_url.rsplit(".", 1)[0] + ".jpg" if "." in secure_url else secure_url
 
@@ -119,7 +119,7 @@ class CloudinaryService:
         target_folder = folder or settings.CLOUDINARY_FOLDER or "hcrobot/call_recordings"
 
         def _do_list():
-            import cloudinary.api  # type: ignore[import-not-found]
+            import cloudinary.api
             try:
                 # 1. Quét video theo target_folder (ví dụ hcrobot/call_recordings)
                 res = cloudinary.api.resources(
@@ -201,6 +201,7 @@ class CloudinaryService:
             "storage_provider": "local",
         }
 
+
     async def upload_ad_media(
         self,
         file_bytes: bytes,
@@ -221,7 +222,7 @@ class CloudinaryService:
 
         if self._is_configured:
             try:
-                import cloudinary.uploader  # type: ignore[import-not-found]
+                import cloudinary.uploader
 
                 def _do_upload():
                     file_io = io.BytesIO(file_bytes)
@@ -307,7 +308,7 @@ class CloudinaryService:
         import asyncio
 
         try:
-            import cloudinary.uploader  # type: ignore[import-not-found]
+            import cloudinary.uploader
 
             res_type = "video" if media_type.lower() == "video" else "image"
             result = await asyncio.to_thread(
@@ -323,3 +324,4 @@ class CloudinaryService:
 
 
 cloudinary_service = CloudinaryService()
+

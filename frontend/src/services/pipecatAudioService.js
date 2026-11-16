@@ -383,7 +383,7 @@ class PipecatAudioClient {
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         this.audioRef = audio;
-
+        
         const onFallbackEnded = () => {
           URL.revokeObjectURL(url);
           advanceNext();

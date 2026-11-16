@@ -37,7 +37,7 @@ class RedisService:
 
     def get_client(self) -> Optional[Any]:
         """Khởi tạo hoặc trả về client async Redis với connection pool tối ưu."""
-        if not self.enabled or not HAS_REDIS or aioredis is None:
+        if not self.enabled or not HAS_REDIS:
             return None
 
         if self._client is None and self.redis_url:

@@ -80,7 +80,7 @@ def check_lidar_corridor_clearance(
         return "EMERGENCY_STOP", round(min_front_dist, 3), f"OBSTACLE_FRONT_{int(min_front_dist*100)}CM"
     elif min_front_dist <= warning_m:
         return "SLOWDOWN", round(min_front_dist, 3), f"WARNING_FRONT_{int(min_front_dist*100)}CM"
-
+    
     return "SAFE", round(min_front_dist, 3), "CLEAR"
 
 

@@ -10,7 +10,7 @@ from app.services.ai.constants import (
     STATUS_QUERY_REGEX,
     ORDER_OR_SERVICE_EXCLUSION_REGEX,
 )
-from app.services.ai.scenario_service import DEFAULT_SEED_SCENARIOS
+from app.services.ai.scenario_service import scenario_service, DEFAULT_SEED_SCENARIOS
 from app.models.scenario import DialogueScenario
 
 
@@ -43,7 +43,7 @@ class TestArchitectureHardening:
         assert mnt_scn["match_keywords"] == MAINTENANCE_MENU_TRIGGER_KEYWORDS
         assert mnt_scn.get("is_system") is True
         assert mnt_scn.get("is_custom_edited") is False
-        assert (mnt_scn.get("priority") or 0) >= 98
+        assert mnt_scn.get("priority") >= 98
 
         fnb_scn = next(s for s in DEFAULT_SEED_SCENARIOS if s["id"] == "scn-room-service-menu")
         assert fnb_scn["match_keywords"] == FOOD_MENU_TRIGGER_KEYWORDS
@@ -91,3 +91,4 @@ class TestArchitectureHardening:
 
         assert custom_scn.is_custom_edited is True
         assert custom_scn.is_system is True
+

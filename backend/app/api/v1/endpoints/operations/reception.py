@@ -1,5 +1,6 @@
+import time
 import random
-from typing import List
+from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,25 +8,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models import SupportRequest
 from app.models.hotel import Room
+from app.services.maintenance_request_service import get_or_create_maintenance_request, duplicate_maintenance_message, merged_maintenance_message
+from app.services.bell_request_service import (
+    BELL_DEPARTMENT_ID, BELL_SERVICE_TYPE_ID, bell_request_message, get_or_create_bell_request,
+)
+from app.services.ai.constants import is_lost_found_text
 from app.schemas.operations import (
     ReceptionRequestCreate,
     ReceptionRequestResponse,
     ReceptionDashboardResponse,
+    RoomPinVerifyRequest,
+    RoomPinVerifyResponse,
+    RoomNfcVerifyRequest,
     RoomCheckInRequest,
     RoomInfoResponse,
 )
 from app.repositories import SupportRequestRepository, get_support_request_repository
 from .shared import TAG_REC, create_department_notification
 
-from .reception_auth import (
-    PIN_LOCKOUT_DURATION_SEC as PIN_LOCKOUT_DURATION_SEC,
-    PIN_LOCKOUT_MAX_ATTEMPTS as PIN_LOCKOUT_MAX_ATTEMPTS,
-    ROOM_PIN_ATTEMPTS as ROOM_PIN_ATTEMPTS,
-    router as reception_auth_router,
-    verify_room_pin as verify_room_pin,
-)
+# Anti-bruteforce: Khoa 1 phut (60s) sau 5 lan nhap sai ma PIN
+ROOM_PIN_ATTEMPTS: Dict[str, Dict[str, Any]] = {}
+PIN_LOCKOUT_MAX_ATTEMPTS = 5
+PIN_LOCKOUT_DURATION_SEC = 60
 
 router = APIRouter()
+
+
+def normalize_nfc_uid(uid: Optional[str]) -> str:
+    """Chuẩn hóa mã UID thẻ NFC: xóa dấu :, gạch ngang, khoảng trắng và chuyển chữ thường."""
+    if not uid:
+        return ""
+    return uid.replace(":", "").replace("-", "").replace(" ", "").strip().lower()
 
 
 # =====================================================================
@@ -50,7 +63,7 @@ async def get_reception_dashboard(
     - Hỗ trợ đặt phòng (Room Booking / Reservations)
     - Thủ tục Check-in / Check-out / Gia hạn lưu trú
     - Đổi phòng và thông tin dịch vụ lưu trú
-
+    
     Dữ liệu được truy vấn chuẩn hóa từ bảng `support_requests` có `department_id = 'DEP-RECEPTION'` hoặc `service_type_id = 'ST-RECEPTION'`.
     """
     current_req = await repo.get_active_by_department(
@@ -91,12 +104,12 @@ async def create_reception_request(
     - Đặt phòng mới hoặc giữ chỗ phòng nghỉ
     - Yêu cầu check-in sớm / check-out muộn
     - Hỗ trợ thủ tục hóa đơn hoặc đổi phòng
-
+    
     Hệ thống tự động gắn mã dịch vụ `ST-RECEPTION` và phòng ban `DEP-RECEPTION`.
     """
     code_num = random.randint(1000, 99999)
     ticket_code = f"REC-{code_num}"
-
+    
     new_request = SupportRequest(
         ticket_code=ticket_code,
         title=request_in.title,
@@ -149,7 +162,386 @@ async def get_reception_request(
     return request
 
 
-router.include_router(reception_auth_router)
+# =====================================================================
+# 1. ROOM PIN VERIFICATION & GUEST AUTHENTICATION (XÁC THỰC MÃ PIN PHÒNG)
+# =====================================================================
+
+@router.post(
+    "/rooms/verify-pin",
+    response_model=RoomPinVerifyResponse,
+    tags=TAG_REC,
+    summary="Xác thực mã PIN hoặc 4 số cuối CCCD của khách tại phòng",
+)
+async def verify_room_pin(
+    payload: RoomPinVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Xác thực khách hàng trước khi robot tạo đơn phục vụ:
+    - So khớp mã PIN 4 số của phòng HOẶC 4 số cuối của CCCD/Hộ chiếu.
+    - Nếu hợp lệ: Tự động khởi tạo ticket SupportRequest tương ứng.
+    """
+    now_ts = time.time()
+    clean_room = payload.room_number.replace("Phòng", "").replace("phòng", "").replace("Room", "").replace("room", "").strip()
+
+    # Kiem tra lockout neu phong da bi khoa do nhap sai qua 5 lan
+    attempt_info = ROOM_PIN_ATTEMPTS.get(clean_room, {"count": 0, "locked_until": 0.0})
+    if attempt_info.get("locked_until", 0.0) > now_ts:
+        remaining_sec = int(attempt_info["locked_until"] - now_ts) + 1
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau ({remaining_sec}s).",
+        )
+    stmt = select(Room).where(Room.room_number == clean_room)
+    res = await db.execute(stmt)
+    room = res.scalars().first()
+
+    if not room:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Phòng {payload.room_number} không tồn tại trên hệ thống khách sạn."
+        )
+
+    if room.status != "OCCUPIED":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "message": f"Dạ phòng {room.room_number} hiện chưa làm thủ tục nhận phòng. Quý khách vui lòng qua quầy Lễ tân để check-in rồi mới được đặt món nhé ạ.",
+                "not_checked_in": True,
+                "room_number": room.room_number,
+                "destination_key": "front_desk",
+            }
+        )
+
+    entered_pin = (payload.pin or "").strip()
+    tag_input = (payload.tag_code or payload.nfc_card_uid or entered_pin).strip()
+    norm_input = normalize_nfc_uid(tag_input)
+    room_tag = normalize_nfc_uid(room.tag_code)
+
+    is_pin_matched = bool(room.pin_code and entered_pin == room.pin_code.strip())
+    identity_num = getattr(room, 'identity_number', None)
+    is_cccd_matched = bool(identity_num and (entered_pin == identity_num.strip()[-4:] or entered_pin == identity_num.strip()[-6:]))
+    is_nfc_matched = bool(room_tag and norm_input and (norm_input == room_tag or norm_input == normalize_nfc_uid(room.room_number)))
+
+    if not (is_pin_matched or is_cccd_matched or is_nfc_matched):
+        attempt_info["count"] = attempt_info.get("count", 0) + 1
+        if attempt_info["count"] >= PIN_LOCKOUT_MAX_ATTEMPTS:
+            attempt_info["locked_until"] = now_ts + PIN_LOCKOUT_DURATION_SEC
+            ROOM_PIN_ATTEMPTS[clean_room] = attempt_info
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau.",
+            )
+        ROOM_PIN_ATTEMPTS[clean_room] = attempt_info
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mã PIN phòng không chính xác. Quý khách vui lòng thử lại sau.",
+        )
+
+    # Đăng nhập thành công -> Xóa lịch sử nhập sai
+    ROOM_PIN_ATTEMPTS.pop(clean_room, None)
+
+    verification_type = "NFC" if is_nfc_matched else ("CCCD" if is_cccd_matched else "PIN")
+
+    # Khởi tạo ticket SupportRequest nếu có action / items và không có cờ bỏ qua tạo ticket
+    ticket_code = None
+    duplicate = False
+    merged = False
+    bell_ticket = None
+    should_create_ticket = (
+        not getattr(payload, "skip_ticket_creation", False)
+        and getattr(payload, "create_ticket", True) is not False
+        and bool(payload.action)
+        and payload.action not in [
+            "chitchat", "conversation", "faq", "unknown",
+            "verify_only", "auth_only", "food_menu", "food_order",
+            "room_service", "room_service_menu", "amenity_order",
+            "taxi", "book_taxi", "taxi_booking",
+            "query_order_status", "query_service_status", "query_taxi_status"
+        ]
+    )
+    if should_create_ticket:
+        code_num = random.randint(1000, 99999)
+        act_lower = (payload.action or "").lower()
+        if any(k in act_lower for k in ["maintenance", "bảo trì", "sửa", "hong"]):
+            dept_id = "DEP-MAINTENANCE"
+            svc_id = "ST-MAINTENANCE"
+            prefix = "MN"
+            dept_name_str = "Maintenance"
+            req_type_str = "maintenance"
+        elif any(k in act_lower for k in ["room", "fb", "food", "dining"]):
+            dept_id = "DEP-ROOMSERVICE"
+            svc_id = "ST-ROOM-SERVICE"
+            prefix = "ORD"
+            dept_name_str = "Room Service"
+            req_type_str = "room_service"
+        elif any(k in act_lower for k in ["bell", "hành lý", "hành lí", "thất lạc", "mất đồ", "quên đồ", "lost"]):
+            dept_id = BELL_DEPARTMENT_ID
+            svc_id = BELL_SERVICE_TYPE_ID
+            prefix = "BS"
+            dept_name_str = "Bell Services"
+            items_check = f"{act_lower} {(payload.items or payload.note or '').lower()}"
+            req_type_str = "lost_found" if is_lost_found_text(items_check) else "luggage"
+        else:
+            dept_id = "DEP-HOUSEKEEPING"
+            svc_id = "ST-HOUSEKEEPING"
+            prefix = "REQ"
+            dept_name_str = "Housekeeping"
+            req_type_str = "housekeeping"
+        ticket_code = f"{prefix}-{code_num}"
+
+        items_str = payload.items or payload.note or "Yêu cầu dịch vụ phòng qua Kiosk"
+        req_title = (
+            f"Báo cáo đồ thất lạc Phòng {room.room_number}: {items_str}"
+            if req_type_str == "lost_found"
+            else f"Hỗ trợ hành lý Phòng {room.room_number}: {items_str}"
+            if dept_id == "DEP-BELL"
+            else f"Yêu cầu từ Kiosk (Phòng {room.room_number})"
+        )
+        new_req = SupportRequest(
+            ticket_code=ticket_code,
+            title=req_title,
+            description=items_str,
+            department_id=dept_id,
+            service_type_id=svc_id,
+            room_id=room.id,
+            room_number=room.room_number,
+            guest_name=room.current_guest_name or "Hotel Guest",
+            source=f"Robot Kiosk ({verification_type} Verified)",
+            status="Pending",
+            request_type=req_type_str,
+        )
+        if dept_id == "DEP-MAINTENANCE":
+            new_req, created, merged = await get_or_create_maintenance_request(db, new_req)
+            duplicate = not created and not merged
+            ticket_code = new_req.ticket_code
+        elif dept_id == BELL_DEPARTMENT_ID and req_type_str != "lost_found":
+            # Notifies Bell Services itself; a repeated open request returns its ticket.
+            new_req, created = await get_or_create_bell_request(
+                db, room_number=room.room_number, description=items_str,
+                source=f"Robot Kiosk ({verification_type} Verified)",
+                guest_name=room.current_guest_name, room_id=room.id,
+            )
+            duplicate, bell_ticket, ticket_code = not created, new_req, new_req.ticket_code
+        else:
+            db.add(new_req)
+            await db.flush()
+
+        if not duplicate and not bell_ticket:
+            await create_department_notification(
+                db,
+                department=dept_name_str,
+                title=f"Bổ sung sự cố #{ticket_code}" if merged else f"Đơn mới #{ticket_code} (Đã xác thực {verification_type})",
+                description=f"Phòng {room.room_number} ({room.current_guest_name}): {items_str}",
+                request_id=new_req.id,
+                request_type=req_type_str,
+            )
+        await db.commit()
+
+    session_id = getattr(payload, "session_id", None)
+    if session_id:
+        from app.services.ai.session_manager import session_manager
+        session_manager.set_room_authenticated(session_id, room.room_number)
+        session_manager.set_room_number(session_id, room.room_number)
+
+    is_no_ticket = (
+        getattr(payload, "skip_ticket_creation", False)
+        or not should_create_ticket
+        or payload.action in [
+            "taxi", "book_taxi", "taxi_booking",
+            "query_order_status", "query_service_status", "query_taxi_status",
+            "food_menu", "room_service_menu", "verify_only", "auth_only"
+        ]
+    )
+    pin_success_msg = f"Xác thực phòng {room.room_number} thành công!" if is_no_ticket else f"Xác thực phòng {room.room_number} thành công! Yêu cầu đã được chuyển tới bộ phận liên quan."
+
+    return RoomPinVerifyResponse(
+        verified=True,
+        success=True,
+        room_number=room.room_number,
+        guest_name=room.current_guest_name,
+        ticket_code=ticket_code,
+        verification_type=verification_type,
+        tagCode=room.tag_code,
+        duplicate=duplicate,
+        merged=merged,
+        message=(
+            bell_request_message(bell_ticket, created=not duplicate) if bell_ticket
+            else merged_maintenance_message(ticket_code or "") if merged
+            else duplicate_maintenance_message(ticket_code or "") if duplicate else pin_success_msg
+        )
+    )
+
+
+@router.post(
+    "/rooms/verify-nfc",
+    response_model=RoomPinVerifyResponse,
+    tags=TAG_REC,
+    summary="Xác thực tự động bằng quét thẻ NFC / NDEF tagCode (Tự động nhận diện số phòng)",
+)
+async def verify_room_nfc(
+    payload: RoomNfcVerifyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Quẹt thẻ NFC / Đọc NDEF tagCode tại Robot Kiosk:
+    - Nhận diện tag_code (chuỗi NDEF record hoặc UID phần cứng).
+    - Tự động tra cứu phòng tương ứng đang lưu trú.
+    - Tự động tạo ticket dịch vụ SupportRequest nếu có action / items.
+    """
+    tag_input = (payload.tag_code or payload.nfc_card_uid or "").strip()
+    norm_entered = normalize_nfc_uid(tag_input)
+    if not norm_entered:
+        raise HTTPException(status_code=400, detail="Dữ liệu thẻ NFC (tagCode/NDEF) không hợp lệ.")
+
+    # Tìm phòng có tag_code hoặc room_number khớp (tìm trên toàn bộ phòng đang lưu trú)
+    stmt = select(Room).where(Room.status == "OCCUPIED")
+    res = await db.execute(stmt)
+    rooms = res.scalars().all()
+
+    matched_room = None
+    for r in rooms:
+        norm_room_tag = normalize_nfc_uid(r.tag_code)
+        norm_room_num = normalize_nfc_uid(r.room_number)
+        # So khớp tag_code (UID / NDEF record) HOẶC so khớp trực tiếp số phòng
+        if (norm_room_tag and norm_entered == norm_room_tag) or (norm_room_num and norm_entered == norm_room_num) or (norm_room_tag and (norm_entered in norm_room_tag or norm_room_tag in norm_entered)):
+            matched_room = r
+            break
+
+    if not matched_room:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Mã thẻ (tagCode: '{tag_input}') không tồn tại trên hệ thống hoặc phòng chưa được check-in."
+        )
+
+    # Khởi tạo ticket SupportRequest nếu có action / items và không có cờ bỏ qua tạo ticket
+    ticket_code = None
+    duplicate = False
+    merged = False
+    bell_ticket = None
+    should_create_ticket = (
+        not getattr(payload, "skip_ticket_creation", False)
+        and getattr(payload, "create_ticket", True) is not False
+        and bool(payload.action)
+        and payload.action not in [
+            "chitchat", "conversation", "faq", "unknown",
+            "verify_only", "auth_only", "food_menu", "food_order",
+            "room_service", "room_service_menu", "amenity_order",
+            "taxi", "book_taxi", "taxi_booking",
+            "query_order_status", "query_service_status", "query_taxi_status"
+        ]
+    )
+    if should_create_ticket:
+        code_num = random.randint(1000, 99999)
+        act_lower = (payload.action or "").lower()
+        if any(k in act_lower for k in ["maintenance", "bảo trì", "sửa", "hong"]):
+            dept_id = "DEP-MAINTENANCE"
+            svc_id = "ST-MAINTENANCE"
+            prefix = "MN"
+            dept_name_str = "Maintenance"
+            req_type_str = "maintenance"
+        elif any(k in act_lower for k in ["room", "fb", "food", "dining"]):
+            dept_id = "DEP-ROOMSERVICE"
+            svc_id = "ST-ROOM-SERVICE"
+            prefix = "ORD"
+            dept_name_str = "Room Service"
+            req_type_str = "room_service"
+        elif any(k in act_lower for k in ["bell", "hành lý", "hành lí", "thất lạc", "mất đồ", "quên đồ", "lost"]):
+            dept_id = BELL_DEPARTMENT_ID
+            svc_id = BELL_SERVICE_TYPE_ID
+            prefix = "BS"
+            dept_name_str = "Bell Services"
+            items_check = f"{act_lower} {(payload.items or payload.note or '').lower()}"
+            req_type_str = "lost_found" if is_lost_found_text(items_check) else "luggage"
+        else:
+            dept_id = "DEP-HOUSEKEEPING"
+            svc_id = "ST-HOUSEKEEPING"
+            prefix = "REQ"
+            dept_name_str = "Housekeeping"
+            req_type_str = "housekeeping"
+        ticket_code = f"{prefix}-{code_num}"
+
+        items_str = payload.items or payload.note or "Yêu cầu dịch vụ phòng qua Kiosk (Thẻ NFC)"
+        req_title_nfc = (
+            f"Báo cáo đồ thất lạc Phòng {matched_room.room_number} (NFC): {items_str}"
+            if req_type_str == "lost_found"
+            else f"Hỗ trợ hành lý Phòng {matched_room.room_number} (NFC): {items_str}"
+            if dept_id == "DEP-BELL"
+            else f"Yêu cầu từ Kiosk (Phòng {matched_room.room_number} - Thẻ NFC)"
+        )
+        new_req = SupportRequest(
+            ticket_code=ticket_code,
+            title=req_title_nfc,
+            description=items_str,
+            department_id=dept_id,
+            service_type_id=svc_id,
+            room_id=matched_room.id,
+            room_number=matched_room.room_number,
+            guest_name=matched_room.current_guest_name or "Hotel Guest",
+            source="Robot Kiosk (NFC Verified)",
+            status="Pending",
+            request_type=req_type_str,
+        )
+        if dept_id == "DEP-MAINTENANCE":
+            new_req, created, merged = await get_or_create_maintenance_request(db, new_req)
+            duplicate = not created and not merged
+            ticket_code = new_req.ticket_code
+        elif dept_id == BELL_DEPARTMENT_ID and req_type_str != "lost_found":
+            # Notifies Bell Services itself; a repeated open request returns its ticket.
+            new_req, created = await get_or_create_bell_request(
+                db, room_number=matched_room.room_number, description=items_str,
+                source="Robot Kiosk (NFC Verified)",
+                guest_name=matched_room.current_guest_name, room_id=matched_room.id,
+            )
+            duplicate, bell_ticket, ticket_code = not created, new_req, new_req.ticket_code
+        else:
+            db.add(new_req)
+            await db.flush()
+
+        if not duplicate and not bell_ticket:
+            await create_department_notification(
+                db,
+                department=dept_name_str,
+                title=f"Bổ sung sự cố #{ticket_code}" if merged else f"Đơn mới #{ticket_code} (Đã quẹt thẻ NFC)",
+                description=f"Phòng {matched_room.room_number} ({matched_room.current_guest_name}): {items_str}",
+                request_id=new_req.id,
+                request_type=req_type_str,
+            )
+        await db.commit()
+
+    session_id = getattr(payload, "session_id", None)
+    if session_id:
+        from app.services.ai.session_manager import session_manager
+        session_manager.set_room_authenticated(session_id, matched_room.room_number)
+        session_manager.set_room_number(session_id, matched_room.room_number)
+
+    is_no_ticket_nfc = (
+        getattr(payload, "skip_ticket_creation", False)
+        or not should_create_ticket
+        or payload.action in [
+            "taxi", "book_taxi", "taxi_booking",
+            "query_order_status", "query_service_status", "query_taxi_status",
+            "food_menu", "room_service_menu", "verify_only", "auth_only"
+        ]
+    )
+    nfc_success_msg = f"Xác thực thẻ phòng {matched_room.room_number} thành công!" if is_no_ticket_nfc else f"Xác thực thẻ phòng {matched_room.room_number} thành công! Yêu cầu đã được chuyển tới bộ phận liên quan."
+
+    return RoomPinVerifyResponse(
+        verified=True,
+        success=True,
+        room_number=matched_room.room_number,
+        guest_name=matched_room.current_guest_name,
+        ticket_code=ticket_code,
+        verification_type="NFC",
+        tagCode=matched_room.tag_code,
+        duplicate=duplicate,
+        merged=merged,
+        message=(
+            bell_request_message(bell_ticket, created=not duplicate) if bell_ticket
+            else merged_maintenance_message(ticket_code or "") if merged
+            else duplicate_maintenance_message(ticket_code or "") if duplicate else nfc_success_msg
+        )
+    )
 
 
 @router.get(
@@ -286,3 +678,5 @@ async def check_out_room(
     await db.commit()
     await db.refresh(room)
     return room
+
+

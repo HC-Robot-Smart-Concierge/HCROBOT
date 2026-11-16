@@ -144,3 +144,6 @@ async def health_check():
         "ollama_host": settings.OLLAMA_HOST,
         "ollama_model": settings.OLLAMA_MODEL,
     }
+
+
+

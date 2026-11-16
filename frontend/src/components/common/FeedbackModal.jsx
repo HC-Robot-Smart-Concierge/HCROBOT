@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Star, X, Check, RefreshCw } from 'lucide-react';
+import { Star, MessageSquare, X, Check, RefreshCw } from 'lucide-react';
 import { submitFeedback, fetchFeedbacks } from '../../services/aiApi';
 
 export const FeedbackModal = ({ isOpen, onClose, onNotify = () => {}, sessionId = 'default_session', roomNumber = null }) => {

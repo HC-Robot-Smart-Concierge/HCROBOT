@@ -69,3 +69,4 @@ def test_euler_to_quaternion_math():
     q_90 = euler_to_quat(math.pi / 2.0)
     assert math.isclose(q_90['w'], math.cos(math.pi / 4.0), abs_tol=1e-4)
     assert math.isclose(q_90['z'], math.sin(math.pi / 4.0), abs_tol=1e-4)
+

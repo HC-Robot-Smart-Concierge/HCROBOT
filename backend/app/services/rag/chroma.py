@@ -3,24 +3,23 @@ import re
 import logging
 from typing import List, Dict, Any, Optional
 import chromadb
-from chromadb.api import ClientAPI
 from chromadb.config import Settings as ChromaSettings
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_chroma_client: Optional[ClientAPI] = None
+_chroma_client = None
 
 # Common stop words in Vietnamese and English to ignore during keyword scoring
 STOPWORDS = {
-    "cho", "tôi", "các", "có", "không", "ở", "gì", "là", "như", "thế", "nào",
+    "cho", "tôi", "các", "có", "không", "ở", "gì", "là", "như", "thế", "nào", 
     "được", "hay", "với", "và", "nhé", "ạ", "em", "ơi", "anh", "chị", "hãy",
     "của", "đến", "tại", "một", "những", "thì", "mà", "bị", "đã", "sẽ", "đang",
     "the", "a", "an", "is", "are", "to", "for", "in", "on", "at", "me", "you", "please", "tell", "what", "where"
 }
 
 
-def get_chroma_client() -> ClientAPI:
+def get_chroma_client() -> chromadb.PersistentClient:
     """Returns a singleton ChromaDB PersistentClient."""
     global _chroma_client
     if _chroma_client is None:
@@ -80,10 +79,10 @@ def _hybrid_rerank(
 
     scored_items = []
     for doc, meta, dist in zip(docs, metas, dists):
-        if not doc or not doc.strip():
+        if not doc or not str(doc).strip():
             continue
 
-        doc_str = doc.strip()
+        doc_str = str(doc).strip()
         doc_lower = doc_str.lower()
         sec_lower = (meta.get("section") or "").lower() if isinstance(meta, dict) else ""
 
@@ -127,7 +126,7 @@ async def query_rag_context(prompt: str, n_results: int = 4, collection_name: st
 
         def _sync_query() -> str:
             col = get_concierge_collection(collection_name)
-
+            
             total_docs = 10
             try:
                 c = col.count()
@@ -143,17 +142,10 @@ async def query_rag_context(prompt: str, n_results: int = 4, collection_name: st
             n_candidates = min(max(n_results * 3, 10), total_docs) if isinstance(total_docs, int) else n_results
             res = col.query(query_texts=[prompt.strip()], n_results=n_candidates)
 
-            raw_docs_batches = res.get("documents") if res else None
-            if raw_docs_batches:
-                raw_docs = list(raw_docs_batches[0])
-                raw_meta_batches = res.get("metadatas") if res else None
-                raw_metas: List[Dict[str, Any]] = (
-                    [dict(m) if m else {} for m in raw_meta_batches[0]]
-                    if raw_meta_batches
-                    else [{} for _ in raw_docs]
-                )
-                raw_dist_batches = res.get("distances") if res else None
-                raw_dists = list(raw_dist_batches[0]) if raw_dist_batches else [0.5] * len(raw_docs)
+            if res and res.get("documents") and len(res["documents"]) > 0:
+                raw_docs = res["documents"][0]
+                raw_metas = res.get("metadatas", [[]])[0] if res.get("metadatas") else [{}] * len(raw_docs)
+                raw_dists = res.get("distances", [[]])[0] if res.get("distances") else [0.5] * len(raw_docs)
 
                 best_docs = _hybrid_rerank(prompt.strip(), raw_docs, raw_metas, raw_dists, n_results=n_results)
                 if best_docs:

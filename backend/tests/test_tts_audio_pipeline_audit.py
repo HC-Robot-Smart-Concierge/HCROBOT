@@ -148,3 +148,4 @@ async def test_notification_websocket_endpoint_and_manager_lifecycle():
     # Verify socket was cleaned up on disconnect
     assert len(mgr.all_connections) == 0
     assert "All" not in mgr.department_connections
+

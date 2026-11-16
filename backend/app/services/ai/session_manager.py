@@ -29,7 +29,8 @@ def is_valid_hotel_room(room_number: Optional[str]) -> bool:
     """Kiểm tra xem số phòng có tồn tại hợp lệ trong danh mục phòng lưu trú của khách sạn hay không."""
     if not room_number:
         return False
-    return room_number.strip() in VALID_HOTEL_ROOMS
+    return str(room_number).strip() in VALID_HOTEL_ROOMS
+
 
 
 def extract_room_number(text: str, is_answering_room: bool = False) -> Optional[str]:
@@ -167,7 +168,7 @@ class SessionMemoryManager:
         if len(session["chat_history"]) > 20:
             session["chat_history"] = session["chat_history"][-20:]
 
-    async def flush_session_to_db(self, db, session_id: str, mark_inactive: bool = True) -> bool:
+    async def flush_session_to_db(self, db, session_id: str) -> bool:
         """
         Đóng gói toàn bộ hội thoại trong RAM của session và ghi xuống PostgreSQL một lần duy nhất (End-of-Session Bulk Persistence).
         Tiết kiệm tài nguyên DB, không gây độ trễ trong lúc robot đang hội thoại trực tiếp.
@@ -197,7 +198,7 @@ class SessionMemoryManager:
                     id=session_id,
                     room_number=room_num,
                     guest_name=guest_name,
-                    is_active=not mark_inactive,
+                    is_active=False,
                 )
                 db.add(db_session)
                 await db.flush()
@@ -206,8 +207,7 @@ class SessionMemoryManager:
                     db_session.room_number = room_num
                 if guest_name:
                     db_session.guest_name = guest_name
-                if mark_inactive:
-                    db_session.is_active = False
+                db_session.is_active = False
 
             # Lấy danh sách tin nhắn hiện có của session để tránh trùng lặp
             existing_res = await db.execute(select(ChatMessage.text, ChatMessage.sender).where(ChatMessage.session_id == session_id))
@@ -297,7 +297,7 @@ class SessionMemoryManager:
         if not room_number:
             return False
 
-        clean_room = room_number.strip()
+        clean_room = str(room_number).strip()
         # Chặn tuyệt đối không lưu phòng không tồn tại vào phiên hội thoại
         if not is_valid_hotel_room(clean_room):
             logger.warning(f"[SessionMemory] Refusing to set non-existent room '{clean_room}' in session '{session_id}'")
@@ -323,13 +323,13 @@ class SessionMemoryManager:
         if not auth_room or not is_auth:
             return False
         if room_number:
-            return str(auth_room).strip() == room_number.strip()
+            return str(auth_room).strip() == str(room_number).strip()
         return True
 
     def set_room_authenticated(self, session_id: str, room_number: str):
         """Đánh dấu phòng đã xác thực PIN thành công trong session."""
         session = self.get_session(session_id)
-        clean = room_number.strip()
+        clean = str(room_number).strip()
         session["authenticated_room"] = clean
         session["is_room_authenticated"] = True
         logger.info(f"[SessionMemory] Room '{clean}' authenticated in session '{session_id}'")
@@ -368,7 +368,7 @@ class SessionMemoryManager:
         """Cập nhật ngôn ngữ giao tiếp cho phiên hội thoại (VD: 'English', 'Tiếng Việt')."""
         if not language:
             return
-        clean_lang = language.strip()
+        clean_lang = str(language).strip()
         session = self.get_session(session_id)
         session["language"] = clean_lang
         logger.info(f"[SessionMemory] Session '{session_id}' language set to '{clean_lang}'")
@@ -383,11 +383,6 @@ class SessionMemoryManager:
         """Lấy danh sách các phiên hội thoại (Chat Sessions) đã lưu trong PostgreSQL."""
         from app.models.chat_session import ChatSession
         from sqlalchemy.future import select
-
-        # Đồng bộ các phiên đang hoạt động trong RAM xuống DB để Admin xem được ngay
-        for sid, sdata in list(self._sessions.items()):
-            if sdata.get("chat_history"):
-                await self.flush_session_to_db(db, sid, mark_inactive=False)
 
         result = await db.execute(select(ChatSession).order_by(ChatSession.updated_at.desc()))
         sessions = result.scalars().all()
@@ -407,9 +402,6 @@ class SessionMemoryManager:
         """Lấy chi tiết danh sách tin nhắn hội thoại của một phiên từ PostgreSQL."""
         from app.models.chat_session import ChatMessage
         from sqlalchemy.future import select
-
-        if session_id in self._sessions and self._sessions[session_id].get("chat_history"):
-            await self.flush_session_to_db(db, session_id, mark_inactive=False)
 
         result = await db.execute(select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.id.asc()))
         messages = result.scalars().all()

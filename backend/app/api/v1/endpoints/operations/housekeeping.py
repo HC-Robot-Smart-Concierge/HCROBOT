@@ -1,11 +1,14 @@
 import random
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models import SupportRequest
+from app.models import Staff, SupportRequest, ManagementDirective
 from app.schemas.operations import (
     HousekeepingRequestCreate,
+    HousekeepingAssignRequest,
     HousekeepingRequestResponse,
     HousekeepingDashboardResponse,
 )
@@ -57,7 +60,7 @@ async def get_housekeeping_dashboard(
     for h in hk_list:
         unified_hk.append(
             HousekeepingRequestResponse(
-                id=f"REQ-{h.ticket_code}" if not h.ticket_code.startswith("REQ-") else h.ticket_code,
+                id=f"REQ-{h.ticket_code}" if not str(h.ticket_code).startswith("REQ-") else h.ticket_code,
                 ticket_code=h.ticket_code,
                 source=h.source or "From HCRobot",
                 time_label=getattr(h, "time_label", None) or (h.created_at.strftime("%H:%M") if hasattr(h, "created_at") and h.created_at else "Recent"),
@@ -75,7 +78,7 @@ async def get_housekeeping_dashboard(
         room_num = d.location.replace("ROOM ", "").replace("Room ", "").replace("Phòng ", "").strip()
         unified_hk.append(
             HousekeepingRequestResponse(
-                id=f"REQ-{d.code}" if not d.code.startswith("REQ-") else d.code,
+                id=f"REQ-{d.code}" if not str(d.code).startswith("REQ-") else d.code,
                 ticket_code=d.code,
                 source="Operations Directive",
                 time_label=d.reported_time_label or "Today",
@@ -184,7 +187,7 @@ async def get_housekeeping_request(
     if not req:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Buồng phòng")
     return HousekeepingRequestResponse(
-        id=f"REQ-{req.ticket_code}" if not req.ticket_code.startswith("REQ-") else req.ticket_code,
+        id=f"REQ-{req.ticket_code}" if not str(req.ticket_code).startswith("REQ-") else req.ticket_code,
         ticket_code=req.ticket_code,
         source=req.source or "From HCRobot",
         time_label=req.created_at.strftime("%H:%M") if req.created_at else "Recent",
@@ -196,3 +199,4 @@ async def get_housekeeping_request(
         assigned_staff_name=req.assigned_staff_name,
         created_at=req.created_at,
     )
+

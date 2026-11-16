@@ -26,7 +26,7 @@ async def test_tts_service_fallback_execution():
 async def test_tts_service_voice_selection_by_language():
     """Unit test kiểm tra phân giải giọng đọc chuẩn xác theo language code"""
     service = TTSService(load_persisted=False)
-
+    
     # Text tiếng Anh có thể vô tình chứa từ tiếng Việt ("Aurora Hotel")
     en_key = service._get_cache_key("Welcome to Aurora Hotel", "edge", service.default_en_voice)
     vi_key = service._get_cache_key("Dạ em chào quý khách", "edge", service.default_vi_voice)
@@ -91,7 +91,7 @@ async def test_tts_service_structured_error_codes(monkeypatch):
     - TTS_AUDIO_EMPTY
     """
     service = TTSService()
-    monkeypatch.setattr(service, "_get_from_cache", lambda _k: None)
+    service._get_from_cache = lambda k: None
 
     # 1. TTS_INPUT_EMPTY
     res_empty = await service.synthesize_with_details("   ***   ", allow_fallback=False)

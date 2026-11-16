@@ -5,7 +5,6 @@ from sqlalchemy import String, Integer, Float, DateTime, Text, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.core.time import utc_now_naive
 
 
 class Zone(Base):
@@ -25,8 +24,8 @@ class Zone(Base):
     floor: Mapped[str] = mapped_column(String(50), default="Sảnh Tầng 1")
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Endpoint(Base):
@@ -42,8 +41,8 @@ class Endpoint(Base):
     type: Mapped[str] = mapped_column(String(50), default="standby") # 'dock', 'service', 'standby', 'room', 'elevator'
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     group_memberships: Mapped[List["EndpointGroupMember"]] = relationship("EndpointGroupMember", back_populates="endpoint", cascade="all, delete-orphan")
@@ -56,8 +55,8 @@ class EndpointGroup(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. "Nhóm Bàn Tiếp Khách", "Nhóm Cửa Thang Máy"
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     members: Mapped[List["EndpointGroupMember"]] = relationship("EndpointGroupMember", back_populates="endpoint_group", cascade="all, delete-orphan")
@@ -70,7 +69,7 @@ class EndpointGroupMember(Base):
     endpoint_id: Mapped[str] = mapped_column(String(50), ForeignKey("endpoints.id", ondelete="CASCADE"), nullable=False, index=True)
     endpoint_group_id: Mapped[str] = mapped_column(String(50), ForeignKey("endpoint_groups.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
     endpoint: Mapped["Endpoint"] = relationship("Endpoint", back_populates="group_memberships")

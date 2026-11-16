@@ -1,3 +1,4 @@
+import pytest
 from app.services.ai.scenario_service import scenario_service
 from app.services.ai.ollama_service import ollama_service
 
@@ -47,3 +48,4 @@ def test_general_knowledge_distinction():
     for q in general_queries:
         m = scenario_service.match_fast_path(q, "vi-VN")
         assert m is None, f"General knowledge query should not match fast path: '{q}'"
+

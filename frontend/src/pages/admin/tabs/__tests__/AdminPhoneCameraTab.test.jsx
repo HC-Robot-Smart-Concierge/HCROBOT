@@ -9,12 +9,8 @@ describe('AdminPhoneCameraTab Component & Minimal Expression Anchors & Rotation'
   });
 
   it('draws only ultra-minimal key expression anchors without clutter', () => {
-    const sourceCode = [
-      '../AdminPhoneCameraTab.jsx',
-      '../usePhoneCameraVision.js',
-      '../AdminPhoneCameraViewportPanel.jsx',
-      '../AdminPhoneCameraAnalyticsPanel.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf-8')).join('\n');
+    const filePath = path.resolve(__dirname, '../AdminPhoneCameraTab.jsx');
+    const sourceCode = fs.readFileSync(filePath, 'utf-8');
 
     // Kiem tra co tap hop cac diem neo toi gian nhat
     expect(sourceCode).toContain('MINIMAL_EXPRESSION_ANCHORS');
@@ -28,12 +24,8 @@ describe('AdminPhoneCameraTab Component & Minimal Expression Anchors & Rotation'
   });
 
   it('supports video orientation rotation for landscape phone placement', () => {
-    const sourceCode = [
-      '../AdminPhoneCameraTab.jsx',
-      '../usePhoneCameraVision.js',
-      '../AdminPhoneCameraViewportPanel.jsx',
-      '../AdminPhoneCameraAnalyticsPanel.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf-8')).join('\n');
+    const filePath = path.resolve(__dirname, '../AdminPhoneCameraTab.jsx');
+    const sourceCode = fs.readFileSync(filePath, 'utf-8');
 
     // Kiem tra co state videoRotation va nut xoay RotateCw
     expect(sourceCode).toContain('videoRotation');
@@ -42,12 +34,8 @@ describe('AdminPhoneCameraTab Component & Minimal Expression Anchors & Rotation'
   });
 
   it('removes emotion logs and history log block as requested', () => {
-    const sourceCode = [
-      '../AdminPhoneCameraTab.jsx',
-      '../usePhoneCameraVision.js',
-      '../AdminPhoneCameraViewportPanel.jsx',
-      '../AdminPhoneCameraAnalyticsPanel.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf-8')).join('\n');
+    const filePath = path.resolve(__dirname, '../AdminPhoneCameraTab.jsx');
+    const sourceCode = fs.readFileSync(filePath, 'utf-8');
 
     // Khong con emotionLogs state va khong con tieu de Expression History Log
     expect(sourceCode).not.toContain('emotionLogs');
@@ -56,12 +44,8 @@ describe('AdminPhoneCameraTab Component & Minimal Expression Anchors & Rotation'
   });
 
   it('displays detailed facial blendshapes diagnostics breakdown', () => {
-    const sourceCode = [
-      '../AdminPhoneCameraTab.jsx',
-      '../usePhoneCameraVision.js',
-      '../AdminPhoneCameraViewportPanel.jsx',
-      '../AdminPhoneCameraAnalyticsPanel.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf-8')).join('\n');
+    const filePath = path.resolve(__dirname, '../AdminPhoneCameraTab.jsx');
+    const sourceCode = fs.readFileSync(filePath, 'utf-8');
 
     expect(sourceCode).toContain('Facial Mesh & Blendshapes');
     expect(sourceCode).toContain('Mouth Corners (Smile L/R)');
@@ -71,12 +55,8 @@ describe('AdminPhoneCameraTab Component & Minimal Expression Anchors & Rotation'
   });
 
   it('complies with admin system palette, black buttons, and no emojis', () => {
-    const sourceCode = [
-      '../AdminPhoneCameraTab.jsx',
-      '../usePhoneCameraVision.js',
-      '../AdminPhoneCameraViewportPanel.jsx',
-      '../AdminPhoneCameraAnalyticsPanel.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf-8')).join('\n');
+    const filePath = path.resolve(__dirname, '../AdminPhoneCameraTab.jsx');
+    const sourceCode = fs.readFileSync(filePath, 'utf-8');
 
     // Theme mau beige he thong va nut den
     expect(sourceCode).toContain('#F2EFE9');
@@ -90,12 +70,8 @@ describe('AdminPhoneCameraTab Component & Minimal Expression Anchors & Rotation'
   });
 
   it('implements compound distress scoring and temporal confirmation filter to avoid false positives', () => {
-    const sourceCode = [
-      '../AdminPhoneCameraTab.jsx',
-      '../usePhoneCameraVision.js',
-      '../AdminPhoneCameraViewportPanel.jsx',
-      '../AdminPhoneCameraAnalyticsPanel.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf-8')).join('\n');
+    const filePath = path.resolve(__dirname, '../AdminPhoneCameraTab.jsx');
+    const sourceCode = fs.readFileSync(filePath, 'utf-8');
 
     expect(sourceCode).toContain('compoundDistress');
     expect(sourceCode).toContain('consecutiveUnhappyFramesRef');

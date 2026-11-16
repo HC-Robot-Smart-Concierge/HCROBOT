@@ -31,9 +31,9 @@ def main():
         try:
             with open(pwr_path, "r") as f:
                 pwr_str = f.read().strip()
-
+            
             pwr_num = int(pwr_str.replace("mA", "")) if "mA" in pwr_str else 0
-
+            
             prod = "Unknown"
             prod_path = os.path.join(d, "product")
             if os.path.exists(prod_path):

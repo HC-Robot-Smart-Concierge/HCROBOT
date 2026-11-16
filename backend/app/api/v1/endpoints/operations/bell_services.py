@@ -276,3 +276,5 @@ async def get_room_bell_status(room_number: str, db: AsyncSession = Depends(get_
         "completed_count": sum(s in ("completed", "resolved", "done") for s in statuses),
         "requests": room_reqs,
     }
+
+

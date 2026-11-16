@@ -1,10 +1,10 @@
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from datetime import datetime
+from typing import Callable, Optional, List, Sequence, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.models.workflow import RobotWorkflow
+from app.models.workflow import RobotWorkflow, RobotWaypoint
 from app.repositories.base import BaseRepository
-from app.core.time import utc_now_naive
 
 
 class WorkflowRepository(BaseRepository[RobotWorkflow]):
@@ -21,9 +21,9 @@ class WorkflowRepository(BaseRepository[RobotWorkflow]):
         res = await self.db.execute(stmt)
         return res.scalars().all()
 
-    async def get_by_id(self, id: Any) -> Optional[RobotWorkflow]:
+    async def get_by_id(self, workflow_id: str) -> Optional[RobotWorkflow]:
         """Fetch a single workflow by ID."""
-        stmt = select(RobotWorkflow).where(RobotWorkflow.id == str(id))
+        stmt = select(RobotWorkflow).where(RobotWorkflow.id == workflow_id)
         res = await self.db.execute(stmt)
         return res.scalar_one_or_none()
 
@@ -62,7 +62,7 @@ class WorkflowRepository(BaseRepository[RobotWorkflow]):
                 updated = upgrade_workflow(wf.id, updated)
             if updated != steps:
                 wf.steps = updated
-                wf.updated_at = utc_now_naive()
+                wf.updated_at = datetime.utcnow()
                 changed.append(wf.id)
         if changed:
             await self.db.commit()

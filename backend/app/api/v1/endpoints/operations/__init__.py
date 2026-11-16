@@ -6,6 +6,7 @@ from .shared import (
     TAG_HK,
     TAG_BELL,
     TAG_MNT,
+    TAG_KITCHEN,
     TAG_REST_BOOKING,
     TAG_REST_FOOD_CATALOG,
     TAG_REST_MENU,

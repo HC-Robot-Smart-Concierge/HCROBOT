@@ -1,11 +1,11 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from sqlalchemy import String, Float, Integer, DateTime, Boolean, Text, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.core.time import utc_now_naive
+
 
 
 class FoodItem(Base):
@@ -23,8 +23,8 @@ class FoodItem(Base):
     prep_time_minutes: Mapped[int] = mapped_column(Integer, default=15)
     is_available: Mapped[bool] = mapped_column(Boolean, default=True) # Bếp tổng còn phục vụ món này không
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     menu_items: Mapped[List["MenuItem"]] = relationship("MenuItem", back_populates="food_item", cascade="all, delete-orphan")
@@ -42,8 +42,8 @@ class Menu(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     items: Mapped[List["MenuItem"]] = relationship("MenuItem", back_populates="menu", cascade="all, delete-orphan")
@@ -73,8 +73,8 @@ class MenuItem(Base):
     category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     menu: Mapped["Menu"] = relationship("Menu", back_populates="items")

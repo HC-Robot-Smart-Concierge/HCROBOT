@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipForward, Volume2, VolumeX, Layers } from 'lucide-react';
+import { Play, Pause, SkipForward, Volume2, VolumeX, Square, Layers } from 'lucide-react';
 import { RobotFace } from '../../../../components/robot/RobotFace';
 import { AudioWave } from '../../../../components/robot/AudioWave';
 import { useSpeechSynthesis } from '../../../../hooks/useSpeechSynthesis';

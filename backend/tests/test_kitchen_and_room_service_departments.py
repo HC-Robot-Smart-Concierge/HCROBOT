@@ -1,8 +1,10 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import select, delete
 from app.main import app
 from app.core.database import AsyncSessionLocal
 from app.models.support_request import SupportRequest
+from app.models.room_service import RoomServiceOrder
 
 
 @pytest.mark.asyncio
@@ -71,6 +73,7 @@ async def test_service_order_assigned_to_room_service_department():
         assert target_task.get("department") == "Room Service"
         assert target_task.get("table_type") == "room_service"
         assert target_task.get("is_service_request") is True
+
 
 
 @pytest.mark.asyncio

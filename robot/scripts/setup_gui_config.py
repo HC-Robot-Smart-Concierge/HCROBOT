@@ -5,7 +5,7 @@ gui_config_path = os.path.expanduser('~/.gz/sim/8/gui.config')
 if os.path.exists(gui_config_path):
     with open(gui_config_path, 'r') as f:
         content = f.read()
-
+    
     if 'VisualizeLidar' not in content:
         plugin_xml = """
 <!-- LiDAR Rays Visualizer (Display 3D Laser Fan) -->

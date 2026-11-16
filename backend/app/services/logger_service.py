@@ -92,10 +92,11 @@ def log_event(
         module=module,
         message=message,
         actor_type=actor_type,
-        actor_id=actor_id if actor_id is not None else None,
+        actor_id=str(actor_id) if actor_id is not None else None,
         robot_id=robot_id or "RC-001",
         guest_id=guest_id,
-        service_request_id=service_request_id if service_request_id is not None else None,
+
+        service_request_id=str(service_request_id) if service_request_id is not None else None,
         conversation_id=conversation_id,
         correlation_id=correlation_id,
         request_id=request_id,
@@ -169,11 +170,11 @@ def audit(
     audit_entry = AuditLog(
         timestamp=datetime.datetime.now(datetime.timezone.utc),
         actor_type=actor_type,
-        actor_id=actor_id,
+        actor_id=str(actor_id),
         actor_name=actor_name,
         action=action.upper(),
         resource_type=resource_type.upper(),
-        resource_id=resource_id if resource_id is not None else None,
+        resource_id=str(resource_id) if resource_id is not None else None,
         before_state=before_state,
         after_state=after_state,
         correlation_id=correlation_id,
@@ -207,8 +208,8 @@ def audit(
 
     # Also log operational log with user-friendly message
     act_upper = action.upper()
-    act_name = actor_name or actor_id
-    is_robot = actor_id.lower().startswith("robot") or (actor_name and "robot" in actor_name.lower())
+    act_name = actor_name or str(actor_id)
+    is_robot = str(actor_id).lower().startswith("robot") or (actor_name and "robot" in actor_name.lower())
     prefix = "Robot" if is_robot else "Nhân viên"
     if act_upper == "LOGIN":
         vn_msg = f"{prefix} '{actor_id}' ({act_name}) đã đăng nhập thành công vào hệ thống."
@@ -230,7 +231,7 @@ def audit(
         module="app.core.audit",
         message=vn_msg,
         actor_type=actor_type,
-        actor_id=actor_id,
+        actor_id=str(actor_id),
         correlation_id=correlation_id,
         metadata={"resource_type": resource_type, "action": action},
         ip_address=ip_address,
@@ -364,4 +365,4 @@ async def get_trace_by_correlation_id_async(db: AsyncSession, correlation_id: st
         .where(LogEvent.correlation_id == correlation_id)
         .order_by(LogEvent.timestamp.asc())
     )
-    return list(res.scalars().all())
+    return res.scalars().all()

@@ -1,9 +1,9 @@
+import datetime
 import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text, ForeignKey
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
-from app.core.time import utc_now_naive
 
 
 class ChatSession(Base):
@@ -17,8 +17,8 @@ class ChatSession(Base):
     room_number = Column(String(20), nullable=True, index=True)
     guest_name = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=utc_now_naive)
-    updated_at = Column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
     # Relationships
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan", order_by="ChatMessage.id")
@@ -38,7 +38,7 @@ class ChatMessage(Base):
     text = Column(Text, nullable=False)
     language = Column(String(20), default="vi-VN")
     intent_action = Column(String(50), nullable=True)
-    created_at = Column(DateTime, default=utc_now_naive)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     # Relationships
     session = relationship("ChatSession", back_populates="messages")

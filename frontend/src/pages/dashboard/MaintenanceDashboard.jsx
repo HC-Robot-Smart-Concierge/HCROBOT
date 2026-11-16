@@ -411,3 +411,4 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
     </div>
   );
 };
+

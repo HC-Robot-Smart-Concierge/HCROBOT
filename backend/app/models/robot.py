@@ -66,3 +66,4 @@ class RobotMaintenanceSchedule(Base):
 
     # Relationships
     robot: Mapped["Robot"] = relationship("Robot", back_populates="maintenance_schedules")
+

@@ -441,3 +441,4 @@ def get_kb_facts_prompt(lang_code: str = "vi-VN", vault_dir: Optional[str] = Non
             f"- {fac['name']} ({fac['floor_level']}): {fac['hours']} | {fac['knowledge']['pricing']} | {fac['knowledge']['transit_hint']}"
         )
     return "\n".join(lines)
+

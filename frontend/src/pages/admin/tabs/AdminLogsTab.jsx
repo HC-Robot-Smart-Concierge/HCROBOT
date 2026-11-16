@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import {  } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { RotateCw } from 'lucide-react';
+import { Pagination } from '../../../components/common/Pagination';
 import { useLanguage } from '../../../context/LanguageContext';
 import {
   fetchLogs,
@@ -8,31 +9,14 @@ import {
   fetchAuditLogs,
   getLogExportUrl,
 } from '../../../services/logsApi';
-import {
-  fetchChatSessions,
-  fetchSessionMessages,
-} from '../../../services/aiApi';
-import {
-  formatLogMessageText,
-  formatTimestampText,
-  getLevelBadgeStyle,
-} from './adminLogsUtils';
-import { AdminLogsOperationalView } from './AdminLogsOperationalView';
-import { AdminLogsAuditAndChatViews } from './AdminLogsAuditAndChatViews';
-import { AdminLogsModals } from './AdminLogsModals';
 
-export const AdminLogsTab = ({ subTabProp, onSelectSubTab }) => {
+export const AdminLogsTab = () => {
   const { t, language } = useLanguage();
-  const [activeView, setActiveView] = useState(subTabProp || 'operational'); // 'operational' | 'audit' | 'conversations'
+  const [activeView, setActiveView] = useState('operational'); // 'operational' | 'audit'
   const [logs, setLogs] = useState([]);
   const [totalLogs, setTotalLogs] = useState(0);
   const [auditLogs, setAuditLogs] = useState([]);
   const [totalAudit, setTotalAudit] = useState(0);
-  const [chatSessions, setChatSessions] = useState([]);
-  const [chatSearchQuery, setChatSearchQuery] = useState('');
-  const [activeChatSession, setActiveChatSession] = useState(null);
-  const [chatMessages, setChatMessages] = useState([]);
-  const [isChatMessagesLoading, setIsChatMessagesLoading] = useState(false);
 
   const [statistics, setStatistics] = useState({
     total: 0,
@@ -96,20 +80,118 @@ export const AdminLogsTab = ({ subTabProp, onSelectSubTab }) => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const formatLogMessage = (msg) => formatLogMessageText(msg, language);
-  useEffect(() => {
-    if (subTabProp && subTabProp !== activeView) {
-      setActiveView(subTabProp);
-      setCurrentPage(1);
-    }
-  }, [subTabProp]);
+  const formatLogMessage = (msg) => {
+    if (!msg || typeof msg !== 'string') return '';
+    const isEN = language === 'EN';
 
-  const switchView = (view) => {
-    setActiveView(view);
-    setCurrentPage(1);
-    if (onSelectSubTab) {
-      onSelectSubTab(view);
+    // Helper: translate department or role strings
+    const translateDeptOrRole = (info) => {
+      if (!info) return '';
+      const map = {
+        'Bộ phận Quản trị': 'Operations Admin',
+        'Bộ Phận Quản Trị': 'Operations Admin',
+        'Bộ phận Bếp': 'Kitchen Dept',
+        'Bộ phận Hành lý': 'Bellman Dept',
+        'Bộ phận Nhà hàng': 'Restaurant Dept',
+        'Bộ phận Trợ lý Concierge & Đặt xe': 'Concierge & Taxi Booking',
+        'Bộ phận Buồng phòng': 'Housekeeping Dept',
+        'Bộ phận Lễ tân': 'Reception Dept',
+        'Bộ phận Phục vụ phòng': 'Room Service Dept',
+        'Bộ phận Kỹ thuật': 'Maintenance Dept',
+        'Bộ phận Y tế': 'Medical Dept',
+        'Bộ phận Hậu cần': 'Logistics Dept',
+        'Bộ phận An ninh': 'Security Dept',
+        'Bộ phận Dịch vụ khách hàng': 'Customer Service Dept',
+      };
+      return map[info.trim()] || info;
+    };
+
+    // 1. Raw pattern: [STAFF] admin performed LOGIN on SESSION:...
+    const staffMatch = msg.match(/^\[([A-Z_]+)\]\s+([\w\d_-]+)\s+performed\s+([A-Z_]+)(?:\s+on\s+([A-Z_]+):?([^\s]*))?/i);
+    if (staffMatch) {
+      const [, , actor, action, resource] = staffMatch;
+      const act = action.toUpperCase();
+      const isRobot = actor.toLowerCase().startsWith('robot');
+
+      if (isEN) {
+        const prefix = isRobot ? 'Robot' : 'Staff';
+        const resStr = resource ? ` (${resource})` : '';
+        if (act === 'LOGIN') return `${prefix} '${actor}' successfully logged into the system.`;
+        if (act === 'LOGOUT') return `${prefix} '${actor}' successfully logged out of the system.`;
+        if (act === 'CREATE') return `${prefix} '${actor}' created new data${resStr}.`;
+        if (act === 'UPDATE') return `${prefix} '${actor}' updated data${resStr}.`;
+        if (act === 'DELETE') return `${prefix} '${actor}' deleted data from the system${resStr}.`;
+        return `${prefix} '${actor}' performed ${action.toLowerCase()} action.`;
+      } else {
+        const prefix = isRobot ? 'Robot' : 'Nhân viên';
+        const resStr = resource ? ` (${resource})` : '';
+        if (act === 'LOGIN') return `${prefix} '${actor}' đã đăng nhập thành công vào hệ thống.`;
+        if (act === 'LOGOUT') return `${prefix} '${actor}' đã đăng xuất thành công khỏi hệ thống.`;
+        if (act === 'CREATE') return `${prefix} '${actor}' đã tạo mới dữ liệu${resStr}.`;
+        if (act === 'UPDATE') return `${prefix} '${actor}' đã cập nhật thông tin dữ liệu${resStr}.`;
+        if (act === 'DELETE') return `${prefix} '${actor}' đã xóa dữ liệu khỏi hệ thống${resStr}.`;
+        return `${prefix} '${actor}' đã thực hiện thao tác ${action.toLowerCase()}.`;
+      }
     }
+
+    // 2. Stored Vietnamese patterns:
+    // e.g. "Nhân viên 'admin' (Bộ phận Quản trị) đã đăng nhập thành công vào hệ thống."
+    //      "Nhân viên 'robot_01' (Robot Kiosk Unit 01) đã đăng nhập thành công vào hệ thống."
+    //      "Nhân viên 'bellman' (Bộ phận Hành lý) đã đăng xuất thành công khỏi hệ thống."
+    //      "Nhân viên 'admin' đã đăng nhập thành công vào hệ thống."
+    const vnStaffRegex = /^(?:Nhân viên|Robot)\s+'([^']+)'(?:\s+\(([^)]+)\))?\s+(.+)$/i;
+    const vnMatch = msg.match(vnStaffRegex);
+    if (vnMatch) {
+      const [, actor, info, actionText] = vnMatch;
+      const isRobot = actor.toLowerCase().startsWith('robot') || (info && info.toLowerCase().includes('robot'));
+
+      if (isEN) {
+        const prefix = isRobot ? 'Robot' : 'Staff';
+        const infoStr = info ? ` (${translateDeptOrRole(info)})` : '';
+
+        if (/đã đăng nhập thành công/i.test(actionText)) {
+          return `${prefix} '${actor}'${infoStr} successfully logged into the system.`;
+        }
+        if (/đã đăng xuất thành công/i.test(actionText)) {
+          return `${prefix} '${actor}'${infoStr} successfully logged out of the system.`;
+        }
+        if (/đã tạo mới dữ liệu/i.test(actionText)) {
+          const res = actionText.match(/\(([^)]+)\)/);
+          return `${prefix} '${actor}'${infoStr} created new data${res ? ` (${res[1]})` : ''}.`;
+        }
+        if (/đã cập nhật/i.test(actionText)) {
+          const res = actionText.match(/\(([^)]+)\)/);
+          return `${prefix} '${actor}'${infoStr} updated data${res ? ` (${res[1]})` : ''}.`;
+        }
+        if (/đã xóa dữ liệu/i.test(actionText)) {
+          const res = actionText.match(/\(([^)]+)\)/);
+          return `${prefix} '${actor}'${infoStr} deleted data from the system${res ? ` (${res[1]})` : ''}.`;
+        }
+        if (/đã thực hiện thao tác/i.test(actionText)) {
+          const actMatch = actionText.match(/đã thực hiện thao tác\s+([^\s.]+)/i);
+          return `${prefix} '${actor}'${infoStr} performed ${actMatch ? actMatch[1] : 'an'} action on the system.`;
+        }
+        return `${prefix} '${actor}'${infoStr} ${actionText}`;
+      } else {
+        if (isRobot && msg.startsWith('Nhân viên')) {
+          return msg.replace(/^Nhân viên/, 'Robot');
+        }
+        return msg;
+      }
+    }
+
+    // 3. Failed login attempt pattern
+    if (!isEN) {
+      const failedMatch = msg.match(/^Failed login attempt for username '([^']+)'/i);
+      if (failedMatch) {
+        return `Đăng nhập thất bại cho tài khoản '${failedMatch[1]}'`;
+      }
+    }
+
+    // 4. Session & token cleanup
+    const sessionText = isEN ? 'Session' : 'Phiên làm việc';
+    return msg.replace(/SESSION:[a-zA-Z0-9_\-]+/gi, sessionText)
+              .replace(/token:[a-zA-Z0-9_\-\.]+/gi, '***');
   };
 
   const loadLogsData = async () => {
@@ -130,7 +212,7 @@ export const AdminLogsTab = ({ subTabProp, onSelectSubTab }) => {
       } catch {
         // Fallback
       }
-    } else if (activeView === 'audit') {
+    } else {
       try {
         const res = await fetchAuditLogs({
           page: currentPage,
@@ -139,15 +221,6 @@ export const AdminLogsTab = ({ subTabProp, onSelectSubTab }) => {
         if (res && res.status === 'success') {
           setAuditLogs(res.items || []);
           setTotalAudit(res.total || 0);
-        }
-      } catch {
-        // Fallback
-      }
-    } else if (activeView === 'conversations') {
-      try {
-        const res = await fetchChatSessions();
-        if (Array.isArray(res)) {
-          setChatSessions(res);
         }
       } catch {
         // Fallback
@@ -239,37 +312,39 @@ export const AdminLogsTab = ({ subTabProp, onSelectSubTab }) => {
     }
   };
 
-  const handleOpenChatTranscript = async (session) => {
-    if (!session?.id) return;
-    setActiveChatSession(session);
-    setChatMessages([]);
-    setIsChatMessagesLoading(true);
+  const formatTimestamp = (ts) => {
+    if (!ts) return '--:--:--';
     try {
-      const msgs = await fetchSessionMessages(session.id);
-      setChatMessages(Array.isArray(msgs) ? msgs : []);
+      const d = new Date(ts);
+      const locale = language === 'EN' ? 'en-US' : 'vi-VN';
+      return d.toLocaleTimeString(locale, { hour12: false }) + ' ' + d.toLocaleDateString(locale);
     } catch {
-      showToast(language === 'EN' ? 'Failed to load AI chat transcript.' : 'Lỗi tải chi tiết hội thoại AI.');
-    } finally {
-      setIsChatMessagesLoading(false);
+      return ts;
     }
   };
 
-  const filteredChatSessions = useMemo(() => {
-    const q = chatSearchQuery.trim().toLowerCase();
-    if (!q) return chatSessions;
-    return chatSessions.filter((s) =>
-      String(s.id || '').toLowerCase().includes(q) ||
-      String(s.room_number || '').toLowerCase().includes(q) ||
-      String(s.guest_name || '').toLowerCase().includes(q)
-    );
-  }, [chatSessions, chatSearchQuery]);
-
-  const paginatedChatSessions = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredChatSessions.slice(start, start + pageSize);
-  }, [filteredChatSessions, currentPage, pageSize]);
-
-  const formatTimestamp = (ts) => formatTimestampText(ts, language);
+  const getLevelBadgeStyle = (level = '') => {
+    const l = level.toUpperCase();
+    if (l === 'CRITICAL' || l === 'ERROR') {
+      return {
+        backgroundColor: '#262626',
+        color: '#F2EFE9',
+        borderColor: '#262626',
+      };
+    }
+    if (l === 'WARNING') {
+      return {
+        backgroundColor: '#E9E5DC',
+        color: '#262626',
+        borderColor: '#BFBFBD',
+      };
+    }
+    return {
+      backgroundColor: '#FFFFFF',
+      color: '#8C8C8C',
+      borderColor: '#BFBFBD',
+    };
+  };
 
   return (
     <div className="w-full flex flex-col min-h-full pb-4" style={{ color: '#262626' }}>
@@ -302,28 +377,21 @@ export const AdminLogsTab = ({ subTabProp, onSelectSubTab }) => {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* Toggle Operational vs Audit vs AI Chat History */}
+          {/* Toggle Operational vs Audit */}
           <div className="flex rounded-lg border p-0.5" style={{ borderColor: '#BFBFBD', backgroundColor: '#E9E5DC' }}>
             <button
-              onClick={() => switchView('operational')}
+              onClick={() => { setActiveView('operational'); setCurrentPage(1); }}
               className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'operational' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
                 }`}
             >
               {t('logsTabOperational')}
             </button>
             <button
-              onClick={() => switchView('audit')}
+              onClick={() => { setActiveView('audit'); setCurrentPage(1); }}
               className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'audit' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
                 }`}
             >
               {t('logsTabAudit')}
-            </button>
-            <button
-              onClick={() => switchView('conversations')}
-              className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'conversations' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
-                }`}
-            >
-              {t('logsTabAiChat')}
             </button>
           </div>
 
@@ -395,69 +463,457 @@ export const AdminLogsTab = ({ subTabProp, onSelectSubTab }) => {
       </div>
 
       {activeView === 'operational' ? (
-        <AdminLogsOperationalView
-          language={language}
-          selectedLevel={selectedLevel}
-          setSelectedLevel={setSelectedLevel}
-          selectedCategory={selectedCategory}
-          setSelectedCategory={setSelectedCategory}
-          selectedDepartment={selectedDepartment}
-          setSelectedDepartment={setSelectedDepartment}
-          handleManualRefresh={handleManualRefresh}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-          handleSearchSubmit={handleSearchSubmit}
-          setCurrentPage={setCurrentPage}
-          isLoading={isLoading}
-          logs={logs}
-          setSelectedLog={setSelectedLog}
-          formatTimestamp={formatTimestamp}
-          getLevelBadgeStyle={getLevelBadgeStyle}
-          formatLogMessage={formatLogMessage}
-          handleOpenTrace={handleOpenTrace}
-          currentPage={currentPage}
-          totalLogs={totalLogs}
-          pageSize={pageSize}
-          handlePageChange={handlePageChange}
-        />
-      ) : (activeView === 'audit' || activeView === 'conversations') ? (
-        <AdminLogsAuditAndChatViews
-          activeView={activeView}
-          language={language}
-          auditLogs={auditLogs}
-          totalAudit={totalAudit}
-          currentPage={currentPage}
-          pageSize={pageSize}
-          handlePageChange={handlePageChange}
-          formatTimestamp={formatTimestamp}
-          chatSearchQuery={chatSearchQuery}
-          setChatSearchQuery={setChatSearchQuery}
-          setCurrentPage={setCurrentPage}
-          chatSessions={chatSessions}
-          filteredChatSessions={filteredChatSessions}
-          paginatedChatSessions={paginatedChatSessions}
-          handleManualRefresh={handleManualRefresh}
-          isLoading={isLoading}
-          handleOpenChatTranscript={handleOpenChatTranscript}
-        />
-      ) : null}
+        <>
+          {/* Filter Bar */}
+          <div
+            className="p-2.5 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-2.5"
+            style={{
+              backgroundColor: '#E9E5DC',
+              borderColor: '#BFBFBD',
+            }}
+          >
+            <form onSubmit={handleSearchSubmit} className="w-full sm:w-72">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t('logsSearchPlaceholder')}
+                className="w-full px-3 py-1.5 rounded-lg text-xs font-normal border focus:outline-none"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderColor: '#BFBFBD',
+                  color: '#262626',
+                }}
+              />
+            </form>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              {/* Nút làm mới icon xoay đặt bên trái Tất cả mức độ */}
+              <button
+                type="button"
+                onClick={handleManualRefresh}
+                disabled={isLoading}
+                title={t('logsRefreshTooltip')}
+                className="p-2 rounded-lg border text-xs font-medium cursor-pointer transition-all hover:bg-[#E9E5DC] active:scale-95 flex items-center justify-center shrink-0"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderColor: '#BFBFBD',
+                  color: '#262626',
+                }}
+              >
+                <RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+
+              <select
+                value={selectedLevel}
+                onChange={(e) => setSelectedLevel(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-medium border focus:outline-none cursor-pointer"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderColor: '#BFBFBD',
+                  color: '#262626',
+                }}
+              >
+                <option value="ALL">{t('logsAllLevels')}</option>
+                <option value="INFO">INFO</option>
+                <option value="WARNING">WARNING</option>
+                <option value="ERROR">ERROR</option>
+                <option value="CRITICAL">CRITICAL</option>
+              </select>
+
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-medium border focus:outline-none cursor-pointer"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderColor: '#BFBFBD',
+                  color: '#262626',
+                }}
+              >
+                <option value="ALL">{t('logsAllCategories')}</option>
+                <option value="AUDIT">{t('logsCatAudit')}</option>
+                <option value="SYSTEM">{t('logsCatSystem')}</option>
+                <option value="ROBOT">{t('logsCatRobot')}</option>
+                <option value="AI">{t('logsCatAi')}</option>
+                <option value="SERVICE">{t('logsCatService')}</option>
+              </select>
+
+              <select
+                value={selectedDepartment}
+                onChange={(e) => setSelectedDepartment(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-medium border focus:outline-none cursor-pointer"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderColor: '#BFBFBD',
+                  color: '#262626',
+                }}
+              >
+                <option value="ALL">{t('logsAllDepartments')}</option>
+                <option value="reception">{t('deptReception')}</option>
+                <option value="housekeeping">{t('deptHousekeeping')}</option>
+                <option value="room_service">{t('deptFB')}</option>
+                <option value="bell_services">{t('deptBell')}</option>
+                <option value="maintenance">{t('deptMaintenance')}</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Logs Table */}
+          <div
+            className="rounded-xl border overflow-hidden shadow-none"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+            }}
+          >
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr
+                    className="border-b text-[11px] font-semibold uppercase tracking-wider"
+                    style={{
+                      backgroundColor: '#E9E5DC',
+                      borderColor: '#BFBFBD',
+                      color: '#262626',
+                    }}
+                  >
+                    <th className="py-2 px-3 w-28">{t('logsColTime')}</th>
+                    <th className="py-2 px-3 w-24 text-center">{t('logsColLevel')}</th>
+                    <th className="py-2 px-3 w-32">{t('logsColCategory')}</th>
+                    <th className="py-2 px-3 w-32">{t('logsColActor')}</th>
+                    <th className="py-2 px-3">{t('logsColMessage')}</th>
+                    <th className="py-2 px-3 w-32 text-right">{t('logsColAction')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
+                  {isLoading && logs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
+                        {t('logsLoading')}
+                      </td>
+                    </tr>
+                  ) : logs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
+                        {t('logsEmpty')}
+                      </td>
+                    </tr>
+                  ) : (
+                    logs.map((item) => {
+                      const badgeStyle = getLevelBadgeStyle(item.level);
+                      return (
+                        <tr
+                          key={item.id}
+                          className="hover:bg-[#F2EFE9]/50 transition-colors"
+                          style={{ borderColor: '#E9E5DC' }}
+                        >
+                          <td className="py-2 px-3 font-mono text-[11px]" style={{ color: '#8C8C8C' }}>
+                            {formatTimestamp(item.timestamp)}
+                          </td>
+                          <td className="py-2 px-3 text-center">
+                            <span
+                              className="px-2 py-0.5 rounded text-[10px] font-semibold border"
+                              style={badgeStyle}
+                            >
+                              {item.level}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 font-semibold text-[11px]" style={{ color: '#262626' }}>
+                            {item.category}
+                          </td>
+                          <td className="py-2 px-3 font-mono text-[11px]" style={{ color: '#8C8C8C' }}>
+                            {item.actor_id || item.actor_type || 'N/A'}
+                          </td>
+                          <td className="py-2 px-3 font-medium text-[11px]" style={{ color: '#262626' }}>
+                            {formatLogMessage(item.message)}
+                          </td>
+                          <td className="py-2 px-3 text-right space-x-1.5">
+                            {item.correlation_id && (
+                              <button
+                                onClick={() => handleOpenTrace(item.correlation_id)}
+                                className="text-[11px] font-bold px-2 py-0.5 rounded border cursor-pointer hover:bg-stone-200"
+                                style={{
+                                  backgroundColor: '#E9E5DC',
+                                  borderColor: '#BFBFBD',
+                                  color: '#262626',
+                                }}
+                                title={t('logsActionTrace')}
+                              >
+                                {t('logsActionTrace')}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setSelectedLog(item)}
+                              className="text-[11px] font-bold px-2 py-0.5 rounded border cursor-pointer hover:bg-stone-200"
+                              style={{
+                                backgroundColor: '#E9E5DC',
+                                borderColor: '#BFBFBD',
+                                color: '#262626',
+                              }}
+                            >
+                              {t('logsActionView')}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              currentPage={currentPage}
+              totalItems={totalLogs}
+              pageSize={pageSize}
+              onPageChange={handlePageChange}
+              className="border-t px-3 py-2"
+            />
+          </div>
+        </>
+      ) : (
+        /* AUDIT TRAIL VIEW */
+        <div
+          className="rounded-xl border overflow-hidden shadow-none"
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderColor: '#BFBFBD',
+          }}
+        >
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr
+                  className="border-b text-[11px] font-semibold uppercase tracking-wider"
+                  style={{
+                    backgroundColor: '#E9E5DC',
+                    borderColor: '#BFBFBD',
+                    color: '#262626',
+                  }}
+                >
+                  <th className="py-2 px-3 w-32">{t('logsColTime')}</th>
+                  <th className="py-2 px-3 w-32">{t('logsColAction')}</th>
+                  <th className="py-2 px-3 w-36">{t('logsColActor')}</th>
+                  <th className="py-2 px-3 w-32">{t('logsColResource')}</th>
+                  <th className="py-2 px-3">{t('logsColChanges')}</th>
+                  <th className="py-2 px-3 w-28">{t('logsColIp')}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
+                {auditLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
+                      {t('logsAuditEmpty')}
+                    </td>
+                  </tr>
+                ) : (
+                  auditLogs.map((item) => (
+                    <tr key={item.id} className="hover:bg-[#F2EFE9]/50 transition-colors">
+                      <td className="py-2 px-3 font-mono text-[11px]" style={{ color: '#8C8C8C' }}>
+                        {formatTimestamp(item.timestamp)}
+                      </td>
+                      <td className="py-2 px-3 font-bold text-indigo-700">
+                        {item.action}
+                      </td>
+                      <td className="py-2 px-3 font-medium">
+                        {item.actor_name || item.actor_id || 'System'} ({item.actor_type})
+                      </td>
+                      <td className="py-2 px-3 font-mono text-[11px]">
+                        {item.resource_type} #{item.resource_id}
+                      </td>
+                      <td className="py-2 px-3 text-[11px] text-stone-700">
+                        {item.after_state ? JSON.stringify(item.after_state) : 'Action logged'}
+                      </td>
+                      <td className="py-2 px-3 font-mono text-[10px] text-stone-500">
+                        {item.ip_address || '127.0.0.1'}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <Pagination
+            currentPage={currentPage}
+            totalItems={totalAudit}
+            pageSize={pageSize}
+            onPageChange={handlePageChange}
+            className="border-t px-3 py-2"
+          />
+        </div>
+      )}
       </div>
 
-      <AdminLogsModals
-        language={language}
-        selectedLog={selectedLog}
-        setSelectedLog={setSelectedLog}
-        formatTimestamp={formatTimestamp}
-        formatLogMessage={formatLogMessage}
-        handleOpenTrace={handleOpenTrace}
-        activeTrace={activeTrace}
-        setActiveTrace={setActiveTrace}
-        isTraceLoading={isTraceLoading}
-        activeChatSession={activeChatSession}
-        setActiveChatSession={setActiveChatSession}
-        isChatMessagesLoading={isChatMessagesLoading}
-        chatMessages={chatMessages}
-      />
+      {/* MODAL: LOG DETAILS */}
+      {selectedLog && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div
+            className="max-w-xl w-full p-4 rounded-xl border shadow-xl space-y-3"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+            }}
+          >
+            <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#BFBFBD' }}>
+              <h3 className="text-xs font-bold" style={{ color: '#262626' }}>
+                {t('logsDetailTitle')} #{selectedLog.id}
+              </h3>
+              <button
+                onClick={() => setSelectedLog(null)}
+                className="text-xs font-bold px-2 py-0.5 rounded border cursor-pointer"
+                style={{
+                  backgroundColor: '#E9E5DC',
+                  borderColor: '#BFBFBD',
+                  color: '#262626',
+                }}
+              >
+                {t('logsDetailClose')}
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="p-2.5 rounded border space-y-1" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
+                <div className="font-semibold text-xs" style={{ color: '#262626' }}>
+                  {formatLogMessage(selectedLog.message)}
+                </div>
+                <div className="text-[10px] font-mono" style={{ color: '#8C8C8C' }}>
+                  {t('logsDetailTime')} {selectedLog.timestamp}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="p-2 rounded border" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
+                  <span style={{ color: '#8C8C8C' }}>{t('logsDetailLevel')} </span>
+                  <span className="font-bold" style={{ color: '#262626' }}>{selectedLog.level}</span>
+                </div>
+                <div className="p-2 rounded border" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
+                  <span style={{ color: '#8C8C8C' }}>{t('logsDetailCategory')} </span>
+                  <span className="font-bold" style={{ color: '#262626' }}>{selectedLog.category}</span>
+                </div>
+                <div className="p-2 rounded border" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
+                  <span style={{ color: '#8C8C8C' }}>{t('logsDetailActor')} </span>
+                  <span className="font-mono font-bold" style={{ color: '#262626' }}>
+                    {selectedLog.actor_id || selectedLog.actor_type || 'N/A'}
+                  </span>
+                </div>
+                <div className="p-2 rounded border" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
+                  <span style={{ color: '#8C8C8C' }}>{t('logsDetailModule')} </span>
+                  <span className="font-mono font-bold" style={{ color: '#262626' }}>{selectedLog.module || 'core'}</span>
+                </div>
+              </div>
+
+              {selectedLog.correlation_id && (
+                <div className="p-2 rounded border flex items-center justify-between" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
+                  <div>
+                    <span className="text-[10px] font-bold text-stone-500 block">{t('logsDetailCorrelation')}</span>
+                    <span className="font-mono text-xs font-bold text-stone-800">{selectedLog.correlation_id}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const corr = selectedLog.correlation_id;
+                      setSelectedLog(null);
+                      handleOpenTrace(corr);
+                    }}
+                    className="px-2.5 py-1 rounded bg-[#262626] text-white text-[11px] font-bold cursor-pointer"
+                  >
+                    {t('logsDetailViewFullTrace')}
+                  </button>
+                </div>
+              )}
+
+              {selectedLog.metadata && (
+                <div>
+                  <div className="text-[10px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>{t('logsDetailMetadata')}</div>
+                  <pre
+                    className="p-2.5 rounded border text-[11px] font-mono overflow-x-auto max-h-40"
+                    style={{
+                      backgroundColor: '#E9E5DC',
+                      borderColor: '#BFBFBD',
+                      color: '#262626',
+                    }}
+                  >
+                    {JSON.stringify(selectedLog.metadata, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t" style={{ borderColor: '#BFBFBD' }}>
+              <button
+                onClick={() => setSelectedLog(null)}
+                className="px-3 py-1.5 rounded text-xs font-semibold border cursor-pointer"
+                style={{
+                  backgroundColor: '#262626',
+                  borderColor: '#262626',
+                  color: '#F2EFE9',
+                }}
+              >
+                {t('logsDetailDone')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: TRANSACTION TRACE TIMELINE */}
+      {activeTrace && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="max-w-2xl w-full bg-white p-6 rounded-2xl border border-stone-200 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-stone-900">
+                  {t('logsTraceTitle')} #{activeTrace.correlation_id}
+                </h3>
+                <p className="text-[11px] text-stone-500">
+                  {t('logsTraceSteps').replace('{count}', activeTrace.total_steps || activeTrace.timeline?.length || 0)}
+                </p>
+              </div>
+              <button
+                onClick={() => setActiveTrace(null)}
+                className="w-7 h-7 rounded-full bg-stone-100 text-stone-600 hover:bg-stone-200 flex items-center justify-center font-bold text-xs cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1 text-xs">
+              {isTraceLoading ? (
+                <div className="py-10 text-center text-stone-400">{t('logsTraceLoading')}</div>
+              ) : activeTrace.timeline?.length === 0 ? (
+                <div className="py-10 text-center text-stone-400">{t('logsTraceEmpty')}</div>
+              ) : (
+                activeTrace.timeline?.map((step, idx) => (
+                  <div key={step.id || idx} className="p-3 bg-stone-50 rounded-xl border border-stone-200 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-[10px] text-indigo-600 font-bold">
+                        {t('logsTraceStep')} {idx + 1} • {step.event_type || step.category}
+                      </span>
+                      <span className="font-mono text-[10px] text-stone-400">
+                        {step.timestamp}
+                      </span>
+                    </div>
+                    <div className="font-semibold text-stone-900">{formatLogMessage(step.message)}</div>
+                    <div className="text-[10px] text-stone-500">
+                      Module: <span className="font-mono">{step.module}</span> • {t('logsColActor')}: <span className="font-mono">{step.actor_id || step.actor_type}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t">
+              <button
+                onClick={() => setActiveTrace(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-stone-900 text-white cursor-pointer"
+              >
+                {t('logsDetailClose')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -2,6 +2,7 @@ import { useStaffText, staffDepartmentLabel } from '../../context/StaffLanguage'
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import React, { useState, useEffect } from 'react';
 import {
+  Bell,
   CheckCheck,
   AlertTriangle,
   Bot,

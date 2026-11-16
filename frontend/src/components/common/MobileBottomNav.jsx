@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Inbox,
   ClipboardCheck,
+  History,
   Bell,
   User,
   PhoneCall,

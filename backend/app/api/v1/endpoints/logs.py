@@ -2,10 +2,11 @@ import io
 import csv
 import json
 import datetime
-from typing import Optional
+from typing import Optional, List, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.models.logging import LogEvent, AuditLog
@@ -51,7 +52,7 @@ def serialize_log(log: LogEvent) -> dict:
         "category": log.category.value if hasattr(log.category, "value") else str(log.category),
         "event_type": log.event_type,
         "module": log.module,
-        "message": clean_log_message(str(log.message) if log.message is not None else ""),
+        "message": clean_log_message(log.message),
         "actor_type": log.actor_type.value if hasattr(log.actor_type, "value") else str(log.actor_type),
         "actor_id": log.actor_id,
         "robot_id": log.robot_id,

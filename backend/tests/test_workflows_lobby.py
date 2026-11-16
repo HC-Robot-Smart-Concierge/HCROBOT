@@ -147,7 +147,6 @@ def test_upgrade_moves_untouched_legacy_targets():
                    "waypoint_name": "Trạm Sạc Robot Sảnh", "target_x": 3.2, "target_y": 2.8, "speed": 0.4},
     }
     upgraded = upgrade_legacy_move_step(old_return)
-    assert upgraded is not None
     assert upgraded["params"]["target_value"] == "ROBOT_STANDBY"
     assert (upgraded["params"]["target_x"], upgraded["params"]["target_y"]) == (7.2, 9.6)
     assert upgraded["params"]["speed"] == 0.4
@@ -155,9 +154,7 @@ def test_upgrade_moves_untouched_legacy_targets():
     assert old_return["params"]["target_x"] == 3.2  # bản gốc không bị sửa tại chỗ
 
     corner = {"type": "MOVE", "params": {"target_waypoint_id": "wp-reception", "target_x": 0.0, "target_y": 0.0}}
-    upgraded_corner = upgrade_legacy_move_step(corner)
-    assert upgraded_corner is not None
-    fixed = upgraded_corner["params"]
+    fixed = upgrade_legacy_move_step(corner)["params"]
     assert fixed["target_waypoint_id"] == "FRONT_DESK"
     assert (fixed["target_x"], fixed["target_y"]) == (11.44, 2.8)
 

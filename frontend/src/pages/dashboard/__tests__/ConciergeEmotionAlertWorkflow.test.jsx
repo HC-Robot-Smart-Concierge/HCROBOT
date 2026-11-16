@@ -8,16 +8,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe('Concierge Unpleasant Guest Emotion Alert Workflow Tests', () => {
-  const conciergeContent = [
-    '../ConciergeDashboard.jsx',
-    '../conciergeDashboardUtils.js',
-    '../ConciergeBannerAndNav.jsx',
-    '../ConciergeEmotionAlertsView.jsx',
-    '../ConciergeLiveCallAndRecordingsView.jsx',
-    '../ConciergeTaxiView.jsx',
-    '../ConciergeFeedbackView.jsx',
-    '../ConciergeModals.jsx',
-  ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+  const conciergePath = path.resolve(__dirname, '../ConciergeDashboard.jsx');
+  const conciergeContent = fs.readFileSync(conciergePath, 'utf8');
 
   const sidebarPath = path.resolve(__dirname, '../../../components/dashboard/AuroraSidebar.jsx');
   const sidebarContent = fs.readFileSync(sidebarPath, 'utf8');
@@ -31,13 +23,8 @@ describe('Concierge Unpleasant Guest Emotion Alert Workflow Tests', () => {
   const mobileNavPath = path.resolve(__dirname, '../../../components/common/MobileBottomNav.jsx');
   const mobileNavContent = fs.readFileSync(mobileNavPath, 'utf8');
 
-  const robotDir = path.resolve(__dirname, '../../robot');
-  const robotScreenContent = fs
-    .readdirSync(robotDir)
-    .filter((f) => /\.(js|jsx)$/.test(f))
-    .sort()
-    .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
-    .join('\n');
+  const robotScreenPath = path.resolve(__dirname, '../../robot/RobotScreenPage.jsx');
+  const robotScreenContent = fs.readFileSync(robotScreenPath, 'utf8');
 
   it('exports ConciergeDashboard and guarantees zero emoji characters', () => {
     expect(typeof ConciergeDashboard).toBe('function');
@@ -78,3 +65,4 @@ describe('Concierge Unpleasant Guest Emotion Alert Workflow Tests', () => {
     expect(robotScreenContent).not.toContain("request_type: 'emotion_alert'");
   });
 });
+

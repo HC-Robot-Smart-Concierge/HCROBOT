@@ -5,7 +5,6 @@ from sqlalchemy import String, Integer, DateTime, Text, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.core.time import utc_now_naive
 
 if TYPE_CHECKING:
     from app.models.account import Account
@@ -21,26 +20,26 @@ class Job(Base):
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"JOB-{uuid.uuid4().hex[:8].upper()}")
     job_code: Mapped[str] = mapped_column(String(30), unique=True, index=True) # e.g. 'JOB-20260929-001'
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-
+    
     # Associated Entities
     workflow_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("robot_workflows.id", ondelete="SET NULL"), nullable=True, index=True)
     chat_session_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     robot_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("robots.id", ondelete="SET NULL"), nullable=True, index=True)
     schedule_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("schedules.id", ondelete="SET NULL"), nullable=True, index=True)
     account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
-
+    
     trigger_type: Mapped[str] = mapped_column(String(50), default="MANUAL") # 'MANUAL', 'SCHEDULE', 'AUTO_DETECT', 'GUEST_TAP', 'VOICE'
     status: Mapped[str] = mapped_column(String(50), default="PENDING") # 'PENDING', 'RUNNING', 'PAUSED', 'COMPLETED', 'FAILED', 'CANCELLED'
-
+    
     current_step_index: Mapped[int] = mapped_column(Integer, default=0)
     total_steps: Mapped[int] = mapped_column(Integer, default=0)
-
+    
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, onupdate=utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     robot: Mapped[Optional["Robot"]] = relationship("Robot", back_populates="jobs")
@@ -61,7 +60,7 @@ class JobStep(Base):
     step_type: Mapped[str] = mapped_column(String(50), nullable=False) # 'MOVE', 'GREET', 'SPEAK', 'SHOW', 'LISTEN', 'RECOMMEND', 'CREATE_REQUEST', 'FEEDBACK'
     params: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(50), default="PENDING") # 'PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'SKIPPED'
-
+    
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     result_payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
@@ -79,8 +78,8 @@ class JobEvent(Base):
     message: Mapped[str] = mapped_column(Text, nullable=False)
     severity: Mapped[str] = mapped_column(String(20), default="INFO") # 'INFO', 'WARNING', 'ERROR'
     metadata_payload: Mapped[Dict[str, Any]] = mapped_column(JSON, default=dict)
-
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Relationships
     job: Mapped["Job"] = relationship("Job", back_populates="job_events")

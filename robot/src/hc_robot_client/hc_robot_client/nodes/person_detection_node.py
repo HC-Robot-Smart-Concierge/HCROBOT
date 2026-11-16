@@ -54,12 +54,12 @@ def compute_bearing_and_fov(
       - Trục Y hướng sang Trái (Left).
       - Góc dương (theta > 0) là bên TRÁI.
       - Góc âm (theta < 0) là bên PHẢI.
-
+    
     Args:
         bbox: Dict chứa {'x': int, 'y': int, 'width': int, 'height': int}
         frame_width: Độ rộng ảnh (pixel)
         hfov_deg: Góc mở ngang của camera (độ)
-
+        
     Returns:
         (bearing_deg, [theta_min_deg, theta_max_deg])
     """
@@ -162,7 +162,7 @@ class PersonDetectionNode(Node if Node is not object else object):
     def __init__(self):
         if Node is not object:
             super().__init__('person_detection_node')
-
+        
         self.config_path = self._get_config_path()
         self.config = self._load_config()
 
@@ -206,7 +206,7 @@ class PersonDetectionNode(Node if Node is not object else object):
         if Node is not object:
             self.detections_pub = self.create_publisher(String, self.detections_topic, 10)
             self.status_pub = self.create_publisher(String, self.vision_status_topic, 10)
-
+            
             # Timer chu kỳ xử lý frame
             timer_period = 1.0 / max(1, self.target_fps)
             self.timer = self.create_timer(timer_period, self.process_frame_cycle)
@@ -275,7 +275,7 @@ class PersonDetectionNode(Node if Node is not object else object):
                 return
             except Exception as e:
                 self._log_error(f"Khởi tạo Picamera2 thất bại: {e}. Thử chuyển sang OpenCV V4L2...")
-
+        
         # OpenCV fallback
         try:
             import cv2

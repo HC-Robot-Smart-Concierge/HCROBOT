@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { handleNumberInputBlockExponent, sanitizeDigitsOnly } from '../../utils/numberInputHelper';
 

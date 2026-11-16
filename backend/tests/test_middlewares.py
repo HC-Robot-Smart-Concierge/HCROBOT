@@ -2,7 +2,7 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 from fastapi import FastAPI
 from app.main import app
-from app.services.logger_service import log_event
+from app.services.logger_service import log_event, ctx_correlation_id, ctx_request_id
 
 
 @pytest.mark.asyncio
@@ -11,7 +11,7 @@ async def test_middleware_request_id_and_process_time():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/health")
         assert response.status_code == 200
-
+        
         # Headers phải tồn tại
         assert "x-request-id" in response.headers
         assert "x-correlation-id" in response.headers

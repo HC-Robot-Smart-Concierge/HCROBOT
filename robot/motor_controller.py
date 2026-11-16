@@ -669,6 +669,7 @@ def run_wasd_controller(controller: MotorController):
         controller.cleanup()
 
 
+
 def run_joystick_controller(controller: MotorController):
     """Vòng lặp điều khiển bằng Tay cầm Gamepad / Joystick vật lý (USB/Bluetooth)."""
     try:
@@ -860,3 +861,4 @@ def main():
 
 if __name__ == '__main__':
     raise SystemExit(main())
+

@@ -19,9 +19,9 @@ if os.path.exists(p):
                 skip = False
             continue
         cleaned.append(line)
-
+    
     text = '\n'.join(cleaned)
-
+    
     # Insert VisualizeLidar properly after MinimalScene or at the end
     plugin_xml = """
 <!-- LiDAR 360 Rays Visualizer -->

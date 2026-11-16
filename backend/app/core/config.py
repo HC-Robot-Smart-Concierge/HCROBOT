@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Optional
 from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -6,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "HC-Robot Concierge Backend"
-
+    
     # PostgreSQL Configuration (loaded from .env)
     POSTGRES_USER: str = ""
     POSTGRES_PASSWORD: str = ""
@@ -15,10 +16,11 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "postgres"
     DATABASE_URL: Optional[str] = None
     IS_CLOUD_DB: bool = False
-
+    
     # ChromaDB Configuration
     CHROMA_PERSIST_DIR: str = "./chroma_db"
     OBSIDIAN_VAULT_DIR: str = "./knowledge_vault"
+
 
     # LLM Engine Configuration ('gemini' or 'ollama')
     LLM_PROVIDER: str = "groq"
@@ -68,8 +70,8 @@ class Settings(BaseSettings):
     REDIS_CACHE_TTL: int = 86400  # Default 24 hours
 
     model_config = SettingsConfigDict(
-        env_file=(".env", "backend/.env"),
-        env_file_encoding="utf-8",
+        env_file=(".env", "backend/.env"), 
+        env_file_encoding="utf-8", 
         extra="ignore"
     )
 
@@ -105,6 +107,8 @@ class Settings(BaseSettings):
             return self.DATABASE_URL
         encoded_password = quote_plus(self.POSTGRES_PASSWORD)
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{encoded_password}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+
+
 
     @property
     def resolved_chroma_dir(self) -> str:

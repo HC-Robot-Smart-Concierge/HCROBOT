@@ -44,13 +44,8 @@ describe('Speech Recognition Silence Duration & Anti-Cutoff Tests', () => {
   });
 
   it('verifies RobotScreenPage silence debounce duration is increased to 1800ms', () => {
-    const robotDir = path.resolve(__dirname, '../../../pages/robot');
-    const content = fs
-      .readdirSync(robotDir)
-      .filter((f) => /\.(js|jsx)$/.test(f))
-      .sort()
-      .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
-      .join('\n');
+    const filePath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
 
     // Không còn dùng 650ms gây ngắt lời khách
     expect(content).not.toContain('}, 650);');
@@ -91,13 +86,8 @@ describe('Speech Recognition Silence Duration & Anti-Cutoff Tests', () => {
   });
 
   it('verifies RobotScreenPage silence detection is not blocked by mic volume fluctuations', () => {
-    const robotDir = path.resolve(__dirname, '../../../pages/robot');
-    const content = fs
-      .readdirSync(robotDir)
-      .filter((f) => /\.(js|jsx)$/.test(f))
-      .sort()
-      .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
-      .join('\n');
+    const filePath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
 
     // Không còn dòng volumeLevel >= 6 gây cancel timer khi có tạp âm nền
     expect(content).not.toContain('if (volumeLevel >= 6) {');
@@ -109,11 +99,7 @@ describe('Speech Recognition Silence Duration & Anti-Cutoff Tests', () => {
   it('ensures no emojis exist in modified speech recognition files', () => {
     const files = [
       path.resolve(__dirname, '../../../hooks/useSpeechRecognition.js'),
-      ...fs
-        .readdirSync(path.resolve(__dirname, '../../../pages/robot'))
-        .filter((f) => /\.(js|jsx)$/.test(f))
-        .sort()
-        .map((f) => path.resolve(__dirname, '../../../pages/robot', f)),
+      path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx'),
     ];
 
     const emojiRegex = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;

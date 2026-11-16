@@ -154,3 +154,4 @@ export const WAYFINDING_DESTINATIONS = [
   { key: 'parking_car', name: 'Bãi Đỗ Xe Ô Tô (Hầm B2)', floorLevel: 'HẦM B2', category: 'Bãi xe' },
   { key: 'gift_shop', name: 'Cửa Hàng Lưu Niệm (Tầng 6)', floorLevel: 'TẦNG 6', category: 'Mua sắm' },
 ];
+

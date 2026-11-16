@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Wrench, Plus, Edit2, Trash2, X, RefreshCw, AlertCircle } from 'lucide-react';
+import { Wrench, Plus, Edit2, Trash2, Check, X, RefreshCw, AlertCircle, Power } from 'lucide-react';
 import {
   fetchMaintenanceCatalog,
   createMaintenanceCatalogItem,
@@ -436,3 +436,4 @@ export const MaintenanceCatalogModal = ({ isOpen, onClose, onNotify = () => {} }
     </div>
   );
 };
+

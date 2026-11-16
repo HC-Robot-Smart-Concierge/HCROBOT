@@ -14,7 +14,7 @@ from app.middlewares.security import SecurityHeadersMiddleware
 def register_middlewares(app: FastAPI) -> None:
     """
     Đăng ký toàn bộ middleware cho ứng dụng FastAPI theo mô hình Onion (củ hành) của Starlette.
-
+    
     Thứ tự đăng ký:
     1. SecurityHeadersMiddleware (Trong cùng, ngay trước router)
     2. RequestLoggingMiddleware (Ghi log và đo process time)

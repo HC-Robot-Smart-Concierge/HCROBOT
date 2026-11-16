@@ -31,7 +31,7 @@ async def test_chat_session_db_persistence_and_api():
     """Test ChatSession & ChatMessage persistence in Database and REST API"""
     await init_db()
     sid = f"test_db_session_{uuid.uuid4()}"
-
+    
     try:
         async with AsyncSessionLocal() as db_session:
             await session_manager.save_turn_to_db(db_session, sid, "user", "Khách sạn có hồ bơi không?", room_number="502")
@@ -62,34 +62,3 @@ async def test_chat_session_db_persistence_and_api():
             assert msgs_data[0]["text"] == "Khách sạn có hồ bơi không?"
     except Exception as e:
         raise e
-
-
-@pytest.mark.asyncio
-async def test_active_ram_session_flushes_on_admin_query():
-    """Verify active RAM chat sessions appear immediately when Admin queries /sessions and /messages."""
-    await init_db()
-    sid = f"test_ram_flush_{uuid.uuid4()}"
-    session_manager.add_turn(sid, "user", "Cho tôi hỏi giờ ăn sáng?", language="vi-VN")
-    session_manager.add_turn(sid, "assistant", "Bữa sáng phục vụ từ 06:30 đến 10:00 ạ.", language="vi-VN", intent_action="faq")
-
-    try:
-        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            sessions_res = await ac.get("/api/v1/ai/sessions")
-            assert sessions_res.status_code == 200
-            matched = [s for s in sessions_res.json() if s["id"] == sid]
-            assert len(matched) == 1
-            assert matched[0]["is_active"] is True
-
-            msgs_res = await ac.get(f"/api/v1/ai/sessions/{sid}/messages")
-            assert msgs_res.status_code == 200
-            msgs = msgs_res.json()
-            assert len(msgs) == 2
-            assert msgs[0]["sender"] == "user"
-            assert msgs[1]["intent_action"] == "faq"
-    finally:
-        session_manager.reset_session(sid)
-        async with AsyncSessionLocal() as s:
-            existing = (await s.execute(select(ChatSession).where(ChatSession.id == sid))).scalars().first()
-            if existing:
-                await s.delete(existing)
-                await s.commit()

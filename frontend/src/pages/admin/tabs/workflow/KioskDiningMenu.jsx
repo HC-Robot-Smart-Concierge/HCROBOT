@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Utensils, Clock } from 'lucide-react';
+import { Utensils, Sparkles, ChefHat, Tag, Check, ShoppingBag, Clock } from 'lucide-react';
 import {
   INITIAL_MENU_CATEGORIES,
   INITIAL_FOOD_ITEMS,

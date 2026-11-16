@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from typing import Any, Dict, Optional
@@ -340,3 +341,4 @@ class PipecatPipelineService:
 
 # Singleton Instance
 pipecat_service = PipecatPipelineService()
+

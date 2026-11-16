@@ -2,9 +2,6 @@
 const CACHE_NAME = 'hc-robot-app-cache-v3';
 const ASSETS_TO_CACHE = [
   '/map.html',
-  '/map.css',
-  '/map-part1.js',
-  '/map-part2.js',
   '/manifest.json',
   '/manifest-login.json'
 ];

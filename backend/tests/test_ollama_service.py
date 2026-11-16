@@ -29,6 +29,7 @@ async def test_generate_response_success():
         assert mock_chat.called
 
 
+
 @pytest.mark.asyncio
 async def test_extract_intent_json_parsing():
     """Unit test kiểm tra hàm bóc tách intent JSON từ OllamaService"""
@@ -107,3 +108,4 @@ def test_bilingual_fast_path_responses():
     assert restroom_full is not None
     assert restroom_full[3] == "show_map"
     assert restroom_full[4] == {"destination_key": "restroom_ground"}
+

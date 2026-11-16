@@ -18,7 +18,7 @@ class AIBridgeNode(Node):
 
     def __init__(self):
         super().__init__('ai_bridge_node')
-
+        
         # Load cấu hình từ file settings.yaml
         config_path = self.get_config_path()
         server_host = "192.168.1.100"
@@ -77,6 +77,7 @@ class AIBridgeNode(Node):
             if os.path.exists(path):
                 return path
         return candidates[0]
+
 
     def on_speech_received(self, msg: String):
         """

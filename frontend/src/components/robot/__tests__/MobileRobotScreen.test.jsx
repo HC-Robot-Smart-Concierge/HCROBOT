@@ -14,23 +14,15 @@ describe('MobileRobotScreen Component & UX Tests', () => {
   });
 
   it('guarantees code has no emoji characters anywhere in MobileRobotScreen.jsx', () => {
-    const content = [
-      '../MobileRobotScreen.jsx',
-      '../MobileCinemaSubtitle.jsx',
-      '../MobileRobotLanguageAndMap.jsx',
-      '../MobileRobotUtilitiesMenu.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const filePath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
     const emojiRegex = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;
     expect(emojiRegex.test(content)).toBe(false);
   });
 
   it('replaces ambiguous "Khách mới" label with LogOut icon and "Thoát phiên" / "Exit"', () => {
-    const content = [
-      '../MobileRobotScreen.jsx',
-      '../MobileCinemaSubtitle.jsx',
-      '../MobileRobotLanguageAndMap.jsx',
-      '../MobileRobotUtilitiesMenu.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const filePath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
 
     // Không còn chữ "Khách mới" gây khó hiểu cho khách
     expect(content).not.toContain('Khách mới');
@@ -43,12 +35,8 @@ describe('MobileRobotScreen Component & UX Tests', () => {
   });
 
   it('enforces minimalist mobile header with black exit button, icon-only buttons, room number only, and large face scale', () => {
-    const content = [
-      '../MobileRobotScreen.jsx',
-      '../MobileCinemaSubtitle.jsx',
-      '../MobileRobotLanguageAndMap.jsx',
-      '../MobileRobotUtilitiesMenu.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const filePath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
 
     // Phòng chỉ hiện số phòng, không còn chấm màu xanh
     expect(content).not.toContain('bg-emerald-500 animate-pulse');
@@ -67,13 +55,8 @@ describe('MobileRobotScreen Component & UX Tests', () => {
   });
 
   it('enforces 30s session idle timeout and unblocked idle check in RobotScreenPage.jsx', () => {
-    const robotDir = path.resolve(__dirname, '../../../pages/robot');
-    const content = fs
-      .readdirSync(robotDir)
-      .filter((f) => /\.(js|jsx)$/.test(f))
-      .sort()
-      .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
-      .join('\n');
+    const filePath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
 
     // Timeout 30 giây rảnh rỗi tự động thoát phiên
     expect(content).toContain('CONVERSATION_IDLE_TIMEOUT_MS = 30000');
@@ -91,12 +74,8 @@ describe('MobileRobotScreen Component & UX Tests', () => {
   });
 
   it('renders large minimalist modal popup for language selector with flag icons only and concise labels', () => {
-    const content = [
-      '../MobileRobotScreen.jsx',
-      '../MobileCinemaSubtitle.jsx',
-      '../MobileRobotLanguageAndMap.jsx',
-      '../MobileRobotUtilitiesMenu.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const filePath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
 
     // Không còn dùng dropdown menu nhỏ w-44
     expect(content).not.toContain('w-44 rounded-2xl bg-stone-900/95');
@@ -122,12 +101,8 @@ describe('MobileRobotScreen Component & UX Tests', () => {
   });
 
   it('renders full-screen wayfinding map without redundant right column, step text, or duplicated QR card', () => {
-    const content = [
-      '../MobileRobotScreen.jsx',
-      '../MobileCinemaSubtitle.jsx',
-      '../MobileRobotLanguageAndMap.jsx',
-      '../MobileRobotUtilitiesMenu.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const filePath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
 
     // Không còn chia 2 cột với cột phải cồng kềnh
     expect(content).not.toContain('w-[310px] sm:w-[350px] md:w-[380px]');
@@ -150,24 +125,15 @@ describe('MobileRobotScreen Component & UX Tests', () => {
   });
 
   it('preserves active room session when closing map or when directions timer completes', () => {
-    const mobileContent = [
-      '../MobileRobotScreen.jsx',
-      '../MobileCinemaSubtitle.jsx',
-      '../MobileRobotLanguageAndMap.jsx',
-      '../MobileRobotUtilitiesMenu.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const mobileScreenPath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const mobileContent = fs.readFileSync(mobileScreenPath, 'utf8');
 
     // Mobile screen hỗ trợ onCloseDirections và không hủy session
     expect(mobileContent).toContain('onCloseDirections');
     expect(mobileContent).toContain('handleDismissMap');
 
-    const robotDir = path.resolve(__dirname, '../../../pages/robot');
-    const robotPageContent = fs
-      .readdirSync(robotDir)
-      .filter((f) => /\.(js|jsx)$/.test(f))
-      .sort()
-      .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
-      .join('\n');
+    const robotPagePath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
+    const robotPageContent = fs.readFileSync(robotPagePath, 'utf8');
 
     // Đóng bản đồ gọi handleCloseDirections, không xóa phòng
     expect(robotPageContent).toContain('handleCloseDirections');
@@ -176,23 +142,14 @@ describe('MobileRobotScreen Component & UX Tests', () => {
   });
 
   it('does not close wayfinding when switching to map mode from QR modal', () => {
-    const mobileContent = [
-      '../MobileRobotScreen.jsx',
-      '../MobileCinemaSubtitle.jsx',
-      '../MobileRobotLanguageAndMap.jsx',
-      '../MobileRobotUtilitiesMenu.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const mobileScreenPath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const mobileContent = fs.readFileSync(mobileScreenPath, 'utf8');
 
     // onCloseQrModal in FloorMap invocation does not invoke handleDismissMap directly
     expect(mobileContent).toContain('onCloseQrModal={onCloseQrModal || (() => {})}');
 
-    const robotDir = path.resolve(__dirname, '../../../pages/robot');
-    const robotPageContent = fs
-      .readdirSync(robotDir)
-      .filter((f) => /\.(js|jsx)$/.test(f))
-      .sort()
-      .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
-      .join('\n');
+    const robotPagePath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
+    const robotPageContent = fs.readFileSync(robotPagePath, 'utf8');
 
     // RobotScreenPage uses handleCloseQrModalOnly to preserve RT-05 state when viewing map
     expect(robotPageContent).toContain('handleCloseQrModalOnly');
@@ -200,12 +157,8 @@ describe('MobileRobotScreen Component & UX Tests', () => {
   });
 
   it('hỗ trợ tính năng đặt xe taxi trên màn hình mobile pwa robot và chỉ lưu phiên phòng sau khi xác thực PIN thành công', () => {
-    const mobileContent = [
-      '../MobileRobotScreen.jsx',
-      '../MobileCinemaSubtitle.jsx',
-      '../MobileRobotLanguageAndMap.jsx',
-      '../MobileRobotUtilitiesMenu.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const mobileScreenPath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const mobileContent = fs.readFileSync(mobileScreenPath, 'utf8');
 
     // Menu tiện ích có nút Đặt xe & Gọi taxi
     expect(mobileContent).toContain('onOpenTaxiBooking');
@@ -218,13 +171,8 @@ describe('MobileRobotScreen Component & UX Tests', () => {
     expect(mobileContent).not.toContain("taxiFlowStage === 'choosing_option'");
 
     // RobotScreenPage truyền các props đặt taxi sang MobileRobotScreen và dùng ref chống stale closure khi bật lại micro
-    const robotDir = path.resolve(__dirname, '../../../pages/robot');
-    const robotPageContent = fs
-      .readdirSync(robotDir)
-      .filter((f) => /\.(js|jsx)$/.test(f))
-      .sort()
-      .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
-      .join('\n');
+    const robotPagePath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
+    const robotPageContent = fs.readFileSync(robotPagePath, 'utf8');
     expect(robotPageContent).toContain('onOpenTaxiBooking={');
     expect(robotPageContent).toContain('taxiFlowStage={taxiFlowStage}');
     expect(robotPageContent).toContain('onSelectTaxiSelfBooking={handleSelectTaxiSelfBooking}');
@@ -245,18 +193,14 @@ describe('MobileRobotScreen Component & UX Tests', () => {
   });
 
   it('guarantees all lucide-react icons used in MobileRobotScreen JSX are properly imported', () => {
-    const content = [
-      '../MobileRobotScreen.jsx',
-      '../MobileCinemaSubtitle.jsx',
-      '../MobileRobotLanguageAndMap.jsx',
-      '../MobileRobotUtilitiesMenu.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const mobileScreenPath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(mobileScreenPath, 'utf8');
 
-    const lucideImportMatches = Array.from(content.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/g));
-    expect(lucideImportMatches.length).toBeGreaterThan(0);
+    const lucideImportMatch = content.match(/import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/);
+    expect(lucideImportMatch).toBeTruthy();
 
-    const importedIcons = lucideImportMatches
-      .flatMap((m) => m[1].split(','))
+    const importedIcons = lucideImportMatch[1]
+      .split(',')
       .map((s) => s.trim().replace(/^.*as\s+/, '').replace(/\r|\n/g, ''))
       .filter(Boolean);
 
@@ -270,12 +214,8 @@ describe('MobileRobotScreen Component & UX Tests', () => {
   });
 
   it('removes cluttered quick action chips below subtitle on idle screen to prevent clipping in mobile landscape', () => {
-    const content = [
-      '../MobileRobotScreen.jsx',
-      '../MobileCinemaSubtitle.jsx',
-      '../MobileRobotLanguageAndMap.jsx',
-      '../MobileRobotUtilitiesMenu.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const mobileScreenPath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(mobileScreenPath, 'utf8');
 
     // Không còn hàng chip thao tác nhanh dưới nút micro / subtitle gây chật chội và tràn viền
     expect(content).not.toContain('Fast Menu Action Chips trên màn hình ngang');
@@ -287,12 +227,8 @@ describe('MobileRobotScreen Component & UX Tests', () => {
   });
 
   it('integrates mic action into subtitle right side and ensures subtitle and idle dock are mutually exclusive', () => {
-    const content = [
-      '../MobileRobotScreen.jsx',
-      '../MobileCinemaSubtitle.jsx',
-      '../MobileRobotLanguageAndMap.jsx',
-      '../MobileRobotUtilitiesMenu.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const mobileScreenPath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(mobileScreenPath, 'utf8');
 
     // Nút micro được tích hợp tinh gọn ngay bên phải của thanh subtitle
     expect(content).toContain('Cụm công cụ bên phải subtitle: Nút Micro & Nút Đóng');

@@ -10,8 +10,8 @@ logger = logging.getLogger("hcrobot.interceptor.route")
 class RouteInterceptor(APIRoute):
     """
     Route-level Interceptor (Kế thừa APIRoute trong FastAPI).
-
-    Khác với Middleware chạy ở tầng ASGI tổng thể, Interceptor này can thiệp trực tiếp
+    
+    Khác với Middleware chạy ở tầng ASGI tổng thể, Interceptor này can thiệp trực tiếp 
     vào chu kỳ thực thi của chính hàm Controller/Endpoint:
     1. Pre-handle: Ghi nhận tên endpoint, route path, thời điểm bắt đầu xử lý logic nghiệp vụ.
     2. Post-handle: Đo thời gian thực thi thuần túy của hàm (Handler Time - loại bỏ overhead mạng),
@@ -27,7 +27,7 @@ class RouteInterceptor(APIRoute):
             endpoint_name = self.endpoint.__name__
             request.state.endpoint_name = endpoint_name
             request.state.route_path = self.path
-
+            
             start_time = time.perf_counter()
 
             try:

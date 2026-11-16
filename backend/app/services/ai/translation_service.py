@@ -4,6 +4,8 @@ import logging
 from typing import Dict, Any, Optional, Tuple
 import httpx
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 # Ký tự CJK (Trung, Nhật, Hàn) và các hệ chữ ngoại lai dễ bị nhận diện nhầm
@@ -197,7 +199,7 @@ class TranslationService:
         - Nếu khác ngôn ngữ -> Dịch sang target_lang và tổng hợp TTS nếu with_audio=True.
         """
         clean_text = (text or "").strip()
-        target_code = self.normalize_lang_code(target_lang, default="vi") or "vi"
+        target_code = self.normalize_lang_code(target_lang, default="vi")
 
         if not clean_text:
             return {

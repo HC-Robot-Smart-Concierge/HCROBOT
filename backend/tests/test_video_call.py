@@ -31,7 +31,7 @@ async def test_concierge_intent_routing_triggers_call():
     result_vi = await concierge_graph.ainvoke(state_vi, config=config)
     assert result_vi.get("action") in ["concierge", "trigger_video_call"]
     assert result_vi.get("trigger_video_call") is True
-    assert "nhân viên" in (result_vi.get("response") or "").lower()
+    assert "nhân viên" in result_vi.get("response").lower()
 
     # Test câu thoại tiếng Anh: 'call staff'
     config_en = {"configurable": {"thread_id": "thread_call_en"}}
@@ -46,8 +46,7 @@ async def test_concierge_intent_routing_triggers_call():
     result_en = await concierge_graph.ainvoke(state_en, config=config_en)
     assert result_en.get("action") in ["concierge", "trigger_video_call"]
     assert result_en.get("trigger_video_call") is True
-    resp_en = (result_en.get("response") or "").lower()
-    assert "connecting" in resp_en or "concierge" in resp_en
+    assert "connecting" in result_en.get("response").lower() or "concierge" in result_en.get("response").lower()
 
 
 @pytest.mark.asyncio
@@ -160,3 +159,4 @@ async def test_sync_cloudinary_recordings_endpoint(monkeypatch):
                 )
             )
             await db.commit()
+

@@ -75,7 +75,7 @@ def bell_service_label(service_key: str | None, english: bool = False) -> str:
 
 def is_bell_inquiry(text_value: str) -> bool:
     """The guest is talking about luggage ("hành lý tôi đem lên chưa"), not food or housekeeping."""
-    return contains_keyword((text_value or "").lower(), SERVICE_KEYWORDS["bellman"])
+    return contains_keyword(str(text_value or "").lower(), SERVICE_KEYWORDS["bellman"])
 
 
 def _bell_query(clean_room: str):
@@ -136,7 +136,7 @@ async def get_or_create_bell_request(
     """Return (ticket, created). Repeating an open request for the same room returns that ticket."""
     from app.api.v1.endpoints.operations.shared import create_department_notification
 
-    room = (room_number or "").strip()
+    room = str(room_number or "").strip()
     clean_room = normalize_room(room)
     if not clean_room:
         raise ValueError("A room is required for a Bellman request")
@@ -161,7 +161,7 @@ async def get_or_create_bell_request(
         existing_key = (existing.extra_data or {}).get("bell_service")
         if service_key and existing_key == service_key:
             return existing, False
-        if not service_key and not existing_key and normalize_text(existing.description or "") == normalize_text(description or ""):
+        if not service_key and not existing_key and normalize_text(existing.description) == normalize_text(description):
             return existing, False
 
     label = bell_service_label(service_key)

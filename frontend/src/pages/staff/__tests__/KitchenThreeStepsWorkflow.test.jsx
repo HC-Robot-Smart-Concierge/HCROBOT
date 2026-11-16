@@ -9,20 +9,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe('Kitchen 3-Step Lifecycle Workflow Tests (RequestsPage & MyTasksPage)', () => {
-  const requestsPageContent = [
-    '../RequestsPage.jsx',
-    '../requestsPageStageUtils.jsx',
-    '../requestsPageScopeUtils.js',
-    '../RequestsListSection.jsx',
-    '../RequestsDetailModals.jsx',
-  ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+  const requestsPagePath = path.resolve(__dirname, '../RequestsPage.jsx');
+  const requestsPageContent = fs.readFileSync(requestsPagePath, 'utf8');
 
-  const myTasksPageContent = [
-    '../MyTasksPage.jsx',
-    '../myTasksUtils.jsx',
-    '../MyTasksListSection.jsx',
-    '../MyTasksDetailModal.jsx',
-  ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+  const myTasksPagePath = path.resolve(__dirname, '../MyTasksPage.jsx');
+  const myTasksPageContent = fs.readFileSync(myTasksPagePath, 'utf8');
 
   it('exports RequestsPage and MyTasksPage as functional components', () => {
     expect(typeof RequestsPage).toBe('function');
@@ -82,3 +73,4 @@ describe('Kitchen 3-Step Lifecycle Workflow Tests (RequestsPage & MyTasksPage)',
     expect(requestsPageContent).toContain('label: st("Completed")');
   });
 });
+

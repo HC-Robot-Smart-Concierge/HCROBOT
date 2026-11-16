@@ -2,9 +2,9 @@ import functools
 import inspect
 import time
 import logging
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
 
-from app.services.logger_service import audit
+from app.services.logger_service import audit, log_event, LogLevelEnum, LogCategoryEnum
 
 logger = logging.getLogger("hcrobot.interceptor.aop")
 
@@ -17,7 +17,7 @@ def audit_action(
 ):
     """
     AOP Method Interceptor: Tự động ghi Audit Trail cho một hàm/endpoint.
-
+    
     Khi hàm được thực thi thành công, Interceptor này sẽ tự động:
     - Trích xuất resource_id từ tham số của hàm (nếu resource_id_arg được cấu hình).
     - Lấy Correlation ID hiện tại từ async contextvars.
@@ -31,7 +31,7 @@ def audit_action(
             # 1. Pre-handle: Trích xuất tham số
             bound_args = sig.bind_partial(*args, **kwargs)
             bound_args.apply_defaults()
-
+            
             res_id = None
             if resource_id_arg and resource_id_arg in bound_args.arguments:
                 val = bound_args.arguments[resource_id_arg]
@@ -62,7 +62,7 @@ def audit_action(
         def sync_wrapper(*args, **kwargs):
             bound_args = sig.bind_partial(*args, **kwargs)
             bound_args.apply_defaults()
-
+            
             res_id = None
             if resource_id_arg and resource_id_arg in bound_args.arguments:
                 val = bound_args.arguments[resource_id_arg]
@@ -100,7 +100,7 @@ def measure_performance(
 ):
     """
     Performance Interceptor: Giám sát và cảnh báo các tác vụ AI / SLAM / Robot chạy chậm.
-
+    
     Tự động ghi log cảnh báo (WARNING) khi hàm mất nhiều hơn slow_threshold_ms để xử lý,
     giúp đội ngũ kỹ thuật nhanh chóng phát hiện điểm nghẽn (bottleneck).
     """

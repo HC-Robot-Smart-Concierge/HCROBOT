@@ -38,40 +38,23 @@ describe('RobotFacilitiesModal Knowledge Base & AI Integration Tests', () => {
   });
 
   it('keeps FloorMap and AdminKnowledgePage markdown template consistent with 24/7 Room Service KB', () => {
-    const floorMapContent = [
-      '../FloorMap.jsx',
-      '../floorMapGroundDestinations.js',
-      '../floorMapRoomDestinations.js',
-      '../floorMapWayfindingUtils.js',
-      '../FloorMapHeaderBar.jsx',
-      '../FloorMapContentViews.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const floorMapContent = fs.readFileSync(path.resolve(__dirname, '../FloorMap.jsx'), 'utf8');
     expect(floorMapContent).not.toContain('Nhà Hàng Aurora & Bếp');
     expect(floorMapContent).toContain('Room Service 24/7');
 
-    const knowledgePageContent = [
-      '../../../pages/admin/tabs/AdminKnowledgePage.jsx',
-      '../../../pages/admin/tabs/adminKnowledgeUtils.jsx',
-      '../../../pages/admin/tabs/useAdminKnowledgeHandlers.js',
-      '../../../pages/admin/tabs/AdminKnowledgeHeaderAndNav.jsx',
-      '../../../pages/admin/tabs/AdminKnowledgeVaultView.jsx',
-      '../../../pages/admin/tabs/AdminKnowledgeScenariosView.jsx',
-      '../../../pages/admin/tabs/AdminKnowledgeSourceEditorModal.jsx',
-      '../../../pages/admin/tabs/AdminKnowledgeScenarioAndVoiceModals.jsx',
-      '../../../pages/admin/tabs/AdminKnowledgeGuideAndDeleteModals.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const knowledgePageContent = fs.readFileSync(
+      path.resolve(__dirname, '../../../pages/admin/tabs/AdminKnowledgePage.jsx'),
+      'utf8'
+    );
     expect(knowledgePageContent).not.toContain('| Nhà Hàng Buffet |');
     expect(knowledgePageContent).toContain('Gọi Món Tận Phòng 24/7');
   });
 
   it('wires RobotScreenPage to ask AI grounded in facility kbContext when introducing a facility', () => {
-    const robotDir = path.resolve(__dirname, '../../../pages/robot');
-    const robotScreenContent = fs
-      .readdirSync(robotDir)
-      .filter((f) => /\.(js|jsx)$/.test(f))
-      .sort()
-      .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
-      .join('\n');
+    const robotScreenContent = fs.readFileSync(
+      path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx'),
+      'utf8'
+    );
     expect(robotScreenContent).toContain('onAskFacilityWithAI={async (facility)');
     expect(robotScreenContent).toContain('facility.kbContext');
     expect(robotScreenContent).toContain('sendChatPrompt(');

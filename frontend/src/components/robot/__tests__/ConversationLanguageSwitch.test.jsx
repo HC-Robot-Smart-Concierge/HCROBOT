@@ -7,13 +7,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe('Conversation Voice Language Switching Tests', () => {
-  const robotDir = path.resolve(__dirname, '../../../pages/robot');
-  const robotScreenContent = fs
-    .readdirSync(robotDir)
-    .filter((f) => /\.(js|jsx)$/.test(f))
-    .sort()
-    .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
-    .join('\n');
+  const robotScreenPath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
+  const robotScreenContent = fs.readFileSync(robotScreenPath, 'utf8');
 
   const useSpeechPath = path.resolve(__dirname, '../../../hooks/useSpeechRecognition.js');
   const useSpeechContent = fs.readFileSync(useSpeechPath, 'utf8');
@@ -53,3 +48,4 @@ describe('Conversation Voice Language Switching Tests', () => {
     expect(useSpeechContent).toContain('if (liveRef.current && langChanged)');
   });
 });
+

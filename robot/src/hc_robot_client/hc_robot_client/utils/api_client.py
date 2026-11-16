@@ -31,39 +31,6 @@ class BackendAPIClient:
             logger.error(f"Error connecting to backend at {self.base_url}: {e}")
             return False
 
-    async def update_robot_profile(
-        self,
-        status: str,
-        battery_level: Optional[int] = None,
-        current_location: Optional[str] = None,
-        is_online: bool = True,
-        robot_id: str = "RC-001",
-    ) -> bool:
-        """
-        Cập nhật trạng thái vận hành & telemetry của Robot lên Backend (PUT /api/v1/operations/robot/profile).
-        """
-        url = f"{self.base_url}/api/v1/operations/robot/profile"
-        payload: Dict[str, Any] = {
-            "status": status,
-            "is_online": is_online,
-        }
-        if battery_level is not None:
-            payload["battery_level"] = int(battery_level)
-        if current_location is not None:
-            payload["current_location"] = current_location
-
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.put(url, params={"robot_id": robot_id}, json=payload)
-                if response.status_code == 200:
-                    logger.debug(f"Synced robot telemetry to backend ({robot_id}): {payload}")
-                    return True
-                logger.warning(f"Backend returned non-200 status for robot profile update: {response.status_code} {response.text}")
-                return False
-        except Exception as e:
-            logger.error(f"Error syncing robot profile to backend at {self.base_url}: {e}")
-            return False
-
     async def send_chat_prompt(self, prompt: str, rag_context: Optional[str] = None) -> Dict[str, Any]:
         """
         Gửi câu hỏi của người dùng tới endpoint /api/v1/ai/chat trên Laptop Server.
@@ -79,7 +46,7 @@ class BackendAPIClient:
                 response = await client.post(url, json=payload)
                 if response.status_code == 200:
                     return response.json()
-
+                
                 error_msg = f"API chat failed with status code {response.status_code}: {response.text}"
                 logger.error(error_msg)
                 return {"response": "Rất tiếc, server đang bận. Vui lòng thử lại sau.", "error": error_msg}
@@ -101,7 +68,7 @@ class BackendAPIClient:
                 response = await client.post(url, json=payload)
                 if response.status_code == 200:
                     return response.json()
-
+                
                 error_msg = f"API intent failed with status code {response.status_code}: {response.text}"
                 logger.error(error_msg)
                 return {"action": "unknown", "error": error_msg}

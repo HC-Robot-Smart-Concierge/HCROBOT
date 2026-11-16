@@ -1,3 +1,4 @@
+import pytest
 from app.services.hardware.rplidar_service import RPLidarService
 
 
@@ -14,7 +15,7 @@ def test_rplidar_service_initial_state():
 def test_rplidar_scan_points_transformation():
     """Kiểm tra logic quy đổi góc & khoảng cách mm sang mét và tọa độ Đề-các (x, y)"""
     service = RPLidarService(port="COM9")
-
+    
     # Mock một mảng scan nhận từ driver (quality, angle, distance_mm)
     mock_scan = [
         (15, 0.0, 1000.0),    # Góc 0 độ, 1 mét -> x = 1.0, y = 0.0
@@ -47,3 +48,5 @@ def test_rplidar_handshake_failure_handling(mocker=None):
     status = service.get_status()
     assert "source" in status
     assert status["source"] in ["REAL_RPLIDAR_HARDWARE", "NO_HARDWARE_CONNECTED"]
+
+

@@ -2,7 +2,7 @@ import io
 import re
 import logging
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from typing import Dict, Any, Tuple
+from typing import Optional, Dict, Any, Tuple
 
 from app.core.config import settings
 
@@ -180,8 +180,8 @@ def _score_bilingual_candidates(
     if not vi_clean and not en_clean:
         return "", preferred_lang if preferred_lang in ("vi", "en") else "en", 0.0
 
-    vi_score = vi_conf or 0.75
-    en_score = en_conf or 0.75
+    vi_score = float(vi_conf or 0.75)
+    en_score = float(en_conf or 0.75)
 
     has_vi_diacritics = bool(VI_DIACRITICS_RE.search(vi_clean))
     vi_anchor_matches = len(VI_ANCHOR_WORDS_RE.findall(vi_clean))
@@ -234,11 +234,11 @@ def transcribe_audio_wav_detailed(
         "provider": str
     }
     """
-    pref = "vi" if (preferred_lang or "").lower().startswith("vi") else "en"
+    pref = "vi" if str(preferred_lang or "").lower().startswith("vi") else "en"
     if not wav_bytes or len(wav_bytes) < 2000:
         return {"text": "", "detected_language": pref, "confidence": 0.0, "provider": "none"}
 
-    is_auto = not language or language.lower() in ("auto", "bilingual", "all", "none")
+    is_auto = not language or str(language).lower() in ("auto", "bilingual", "all", "none")
 
     # --- 1. Chế độ Song ngữ Tự động (Auto Detect EN / VI từ Audio) ---
     if is_auto:
@@ -297,8 +297,7 @@ def transcribe_audio_wav_detailed(
 
             def _rec_lang(lang_code: str) -> Tuple[str, float]:
                 try:
-                    recognize_google = getattr(recognizer, "recognize_google")
-                    raw = recognize_google(audio_data, language=lang_code, with_confidence=True)
+                    raw = recognizer.recognize_google(audio_data, language=lang_code, with_confidence=True)
                     return _parse_google_result(raw)
                 except Exception:
                     return "", 0.0
@@ -336,7 +335,7 @@ def transcribe_audio_wav_detailed(
         return {"text": "", "detected_language": pref, "confidence": 0.0, "provider": "none"}
 
     # --- 2. Chế độ Ngôn ngữ Cố định ('vi' hoặc 'en') ---
-    is_vi_target = language.lower().startswith("vi")
+    is_vi_target = str(language).lower().startswith("vi")
     lang_code = "vi-VN" if is_vi_target else "en-US"
     whisper_lang = "vi" if is_vi_target else "en"
 
@@ -349,8 +348,7 @@ def transcribe_audio_wav_detailed(
             audio_data = recognizer.record(source)
 
             def _google_call():
-                recognize_google = getattr(recognizer, "recognize_google")
-                return recognize_google(audio_data, language=lang_code, with_confidence=True)
+                return recognizer.recognize_google(audio_data, language=lang_code, with_confidence=True)
 
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(_google_call)

@@ -15,11 +15,10 @@ def test_chroma_upsert_and_get():
     with patch("app.services.rag.chroma.get_concierge_collection", return_value=mock_collection):
         collection = get_concierge_collection("test")
         collection.upsert(ids=["test_001"], documents=["Nội dung test"], metadatas=[{"category": "test"}])
-
+        
         data = collection.get()
         assert data["ids"][0] == "test_001"
-        docs = data["documents"]
-        assert docs is not None and docs[0] == "Nội dung test"
+        assert data["documents"][0] == "Nội dung test"
 
 
 @pytest.mark.asyncio

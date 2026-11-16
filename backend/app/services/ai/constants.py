@@ -256,3 +256,4 @@ ORDER_OR_SERVICE_EXCLUSION_KEYWORDS: List[str] = sorted(list(set(
 )))
 
 ORDER_OR_SERVICE_EXCLUSION_REGEX: re.Pattern = build_keyword_regex(ORDER_OR_SERVICE_EXCLUSION_KEYWORDS)
+

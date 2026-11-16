@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, LogOut, Bell, Menu } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Settings, LogOut, Sparkles, Bell, CheckCheck, Trash2, X, Activity, User, Menu } from 'lucide-react';
 import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminRobotControlTab } from './tabs/AdminRobotControlTab';
@@ -13,32 +13,140 @@ import { AdminAdvertisementsTab } from './tabs/AdminAdvertisementsTab';
 import { AdminVideoCallsTab } from './tabs/AdminVideoCallsTab';
 import { useLanguage } from '../../context/LanguageContext';
 import {
-  getInitialAdminTab,
-  useAdminNotifications,
-  AdminPortalNotificationDrawer,
-} from './AdminPortalNotifications';
+  fetchNotifications,
+  toggleNotificationRead,
+  markAllNotificationsRead,
+  deleteNotification,
+} from '../../services/operationsApi';
 
-export const AdminPortal = ({ currentUser, onLogout = () => { }, onNotify = () => { } }) => {
+export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () => {} }) => {
   const { language, t } = useLanguage();
+  const getInitialTab = () => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      const validTabs = [
+        'Dashboard',
+        'Operations',
+        'Robot Control',
+        'Manage Robot',
+        'Knowledge',
+        'Hotel Content',
+        'Advertisements',
+        'Department',
+        'Account',
+        'Staff',
+        'Video Calls',
+        'Logs',
+        'Settings',
+      ];
+      if (tab === 'Analytics') return 'Dashboard';
+      if (tab === 'Staff') return 'Account';
+      if (tab === 'Hotel Content') return 'Advertisements';
+      return validTabs.includes(tab) ? tab : 'Dashboard';
+    } catch {
+      return 'Dashboard';
+    }
+  };
 
-  const [activeMenu, setActiveMenu] = useState(getInitialAdminTab);
+  const [activeMenu, setActiveMenu] = useState(getInitialTab);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [operationsSubTab, setOperationsSubTab] = useState('requests');
   const [robotSubTab, setRobotSubTab] = useState('lidar');
   const [manageRobotSubTab, setManageRobotSubTab] = useState('robot_profile');
   const [knowledgeSubTab, setKnowledgeSubTab] = useState('sources');
-  const [logsSubTab, setLogsSubTab] = useState('operational');
 
-  const {
-    notifications,
-    unreadCount,
-    isNotifOpen,
-    setIsNotifOpen,
-    wsConnected,
-    handleToggleRead,
-    handleMarkAllRead,
-    handleDeleteNotif,
-  } = useAdminNotifications({ onNotify, t });
+  // Real-time Notifications Center State
+  const [notifications, setNotifications] = useState([]);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
+  const wsRef = useRef(null);
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  const loadNotifications = async () => {
+    try {
+      const data = await fetchNotifications('Admin', 40);
+      if (Array.isArray(data)) {
+        setNotifications(data);
+      }
+    } catch (e) {
+      console.warn('Failed to load notifications:', e);
+    }
+  };
+
+  // WebSocket for Real-time Notifications (chỉ nhận thông báo riêng cho Admin)
+  useEffect(() => {
+    loadNotifications();
+
+    let ws = null;
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      ws = new WebSocket(`${protocol}//${host}/api/v1/operations/ws/notifications?department=Admin`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setWsConnected(true);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          if (event.data === 'pong') return;
+          const parsed = JSON.parse(event.data);
+          const newNotif = parsed?.type === 'NEW_NOTIFICATION' && parsed.data ? parsed.data : parsed;
+          if (newNotif && newNotif.id) {
+            setNotifications((prev) => [newNotif, ...prev.filter((n) => n.id !== newNotif.id)]);
+            onNotify(`🔔 [${newNotif.department || 'Admin'}] ${newNotif.title}`);
+          }
+        } catch {}
+      };
+
+      ws.onerror = () => {
+        setWsConnected(false);
+      };
+
+      ws.onclose = () => {
+        setWsConnected(false);
+      };
+    } catch {
+      setWsConnected(false);
+    }
+
+    // Fallback polling every 10s
+    const pollInterval = setInterval(() => {
+      loadNotifications();
+    }, 10000);
+
+    return () => {
+      if (ws) ws.close();
+      clearInterval(pollInterval);
+    };
+  }, []);
+
+  const handleToggleRead = async (notifId) => {
+    try {
+      await toggleNotificationRead(notifId);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notifId ? { ...n, is_read: !n.is_read } : n))
+      );
+    } catch {}
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await markAllNotificationsRead('All');
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      onNotify(t('adminMarkAllReadNotice'));
+    } catch {}
+  };
+
+  const handleDeleteNotif = async (notifId) => {
+    try {
+      await deleteNotification(notifId);
+      setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+    } catch {}
+  };
 
   const handleSelectTab = (tabId) => {
     setActiveMenu(tabId);
@@ -47,7 +155,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => { }, onNotify = () =
       params.set('tab', tabId);
       params.delete('page');
       window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
-    } catch { }
+    } catch {}
   };
 
   useEffect(() => {
@@ -56,23 +164,23 @@ export const AdminPortal = ({ currentUser, onLogout = () => { }, onNotify = () =
         const params = new URLSearchParams(window.location.search);
         const tab = params.get('tab');
         if (tab) setActiveMenu(tab);
-      } catch { }
+      } catch {}
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
   const menuItems = [
-    { id: 'Dashboard', label: t('adminDashboard') },
-    { id: 'Operations', label: t('adminOperations') },
+    { id: 'Dashboard',     label: t('adminDashboard') },
+    { id: 'Operations',    label: t('adminOperations') },
     { id: 'Robot Control', label: t('adminRobotControl') },
-    { id: 'Manage Robot', label: t('adminManageRobot') },
-    { id: 'Knowledge', label: t('adminKnowledge') },
-    { id: 'Advertisements', label: t('adminAdvertisements') },
-    { id: 'Department', label: t('adminDepartment') },
-    { id: 'Video Calls', label: 'Video Calls' },
-    { id: 'Account', label: t('adminAccount') },
-    { id: 'Logs', label: t('adminLogs') },
+    { id: 'Manage Robot',  label: t('adminManageRobot') },
+    { id: 'Knowledge',     label: t('adminKnowledge') },
+    { id: 'Advertisements',label: t('adminAdvertisements') },
+    { id: 'Department',    label: t('adminDepartment') },
+    { id: 'Video Calls',   label: 'Video Calls' },
+    { id: 'Account',       label: t('adminAccount') },
+    { id: 'Logs',          label: t('adminLogs') },
   ];
 
   return (
@@ -86,19 +194,19 @@ export const AdminPortal = ({ currentUser, onLogout = () => { }, onNotify = () =
         <div>
           <div className="px-3 border-b flex items-center gap-2 shrink-0" style={{ height: 'var(--admin-header-height)', borderColor: 'var(--admin-header-border)' }}>
             {!isSidebarCollapsed && <>
-              <img
-                src="/hc-robot-logo.png"
-                alt="HC-Robot Logo"
-                className="w-8 h-8 object-contain shrink-0 drop-shadow-xs"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-black tracking-tight truncate" style={{ color: '#262626' }}>
-                  HC-ROBOT
-                </div>
-                <div className="text-[10px] font-semibold tracking-widest truncate" style={{ color: '#8C8C8C' }}>
-                  {t('adminBrandSubtitle')}
-                </div>
+            <img
+              src="/hc-robot-logo.png"
+              alt="HC-Robot Logo"
+              className="w-8 h-8 object-contain shrink-0 drop-shadow-xs"
+            />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-black tracking-tight truncate" style={{ color: '#262626' }}>
+                HC-ROBOT
               </div>
+              <div className="text-[10px] font-semibold tracking-widest truncate" style={{ color: '#8C8C8C' }}>
+                {t('adminBrandSubtitle')}
+              </div>
+            </div>
             </>}
             <button
               type="button"
@@ -265,42 +373,6 @@ export const AdminPortal = ({ currentUser, onLogout = () => { }, onNotify = () =
                       </button>
                     </div>
                   )}
-
-                  {/* Logs sub-items */}
-                  {item.id === 'Logs' && activeMenu === 'Logs' && (
-                    <div className="ml-3 pl-3 border-l my-0.5 space-y-0.5" style={{ borderColor: '#262626' }}>
-                      <button
-                        onClick={() => setLogsSubTab('operational')}
-                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
-                        style={{
-                          background: logsSubTab === 'operational' ? '#262626' : 'transparent',
-                          color: logsSubTab === 'operational' ? '#FFFFFF' : '#8C8C8C',
-                        }}
-                      >
-                        {t('logsTabOperational')}
-                      </button>
-                      <button
-                        onClick={() => setLogsSubTab('audit')}
-                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
-                        style={{
-                          background: logsSubTab === 'audit' ? '#262626' : 'transparent',
-                          color: logsSubTab === 'audit' ? '#FFFFFF' : '#8C8C8C',
-                        }}
-                      >
-                        {t('logsTabAudit')}
-                      </button>
-                      <button
-                        onClick={() => setLogsSubTab('conversations')}
-                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
-                        style={{
-                          background: logsSubTab === 'conversations' ? '#262626' : 'transparent',
-                          color: logsSubTab === 'conversations' ? '#FFFFFF' : '#8C8C8C',
-                        }}
-                      >
-                        {t('logsTabAiChat')}
-                      </button>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -390,15 +462,90 @@ export const AdminPortal = ({ currentUser, onLogout = () => { }, onNotify = () =
             </button>
           </div>
 
-          <AdminPortalNotificationDrawer
-            isOpen={isNotifOpen}
-            onClose={() => setIsNotifOpen(false)}
-            notifications={notifications}
-            unreadCount={unreadCount}
-            onMarkAllRead={handleMarkAllRead}
-            onToggleRead={handleToggleRead}
-            onDeleteNotif={handleDeleteNotif}
-          />
+          {/* Notification Drawer Popover (Opens to the right of the sidebar, fixed bottom) */}
+          {isNotifOpen && (
+            <div
+              className="fixed left-58 bottom-4 w-80 sm:w-96 rounded-2xl border shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+              style={{ background: '#FFFFFF', borderColor: '#BFBFBD' }}
+            >
+              <div className="p-3 border-b flex items-center justify-between" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4" style={{ color: '#262626' }} />
+                  <span className="text-xs font-bold" style={{ color: '#262626' }}>Notification Center</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold" style={{ backgroundColor: '#262626', color: '#F2EFE9' }}>
+                    {unreadCount} unread
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={handleMarkAllRead}
+                      className="text-[10px] font-bold hover:underline p-1 flex items-center gap-0.5 cursor-pointer"
+                      style={{ color: '#262626' }}
+                      title="Mark all read"
+                    >
+                      <CheckCheck className="w-3 h-3" />
+                      <span>Mark all read</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsNotifOpen(false)}
+                    className="p-1 cursor-pointer transition-colors"
+                    style={{ color: '#8C8C8C' }}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
+                {notifications.length === 0 ? (
+                  <div className="py-8 text-center text-xs" style={{ color: '#8C8C8C' }}>
+                    No new notifications
+                  </div>
+                ) : (
+                  notifications.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`p-3 transition-colors flex items-start justify-between gap-2 ${
+                        item.is_read ? 'bg-white opacity-70' : 'bg-[#E9E5DC]/30 font-medium'
+                      }`}
+                    >
+                      <div
+                        onClick={() => handleToggleRead(item.id)}
+                        className="flex-1 cursor-pointer space-y-0.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded font-mono border" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}>
+                            {item.department || 'All'}
+                          </span>
+                          <span className="text-xs font-bold truncate" style={{ color: '#262626' }}>
+                            {item.title}
+                          </span>
+                        </div>
+                        <p className="text-[11px] line-clamp-2" style={{ color: '#8C8C8C' }}>
+                          {item.description}
+                        </p>
+                        <span className="text-[10px]" style={{ color: '#8C8C8C' }}>
+                          {item.created_at ? new Date(item.created_at).toLocaleTimeString('en-US') : 'Just now'}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteNotif(item.id)}
+                        className="p-1 cursor-pointer transition-colors hover:text-red-600"
+                        style={{ color: '#8C8C8C' }}
+                        title="Xóa thông báo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -462,11 +609,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => { }, onNotify = () =
           )}
 
           {activeMenu === 'Logs' && (
-            <AdminLogsTab
-              currentUser={currentUser}
-              subTabProp={logsSubTab}
-              onSelectSubTab={setLogsSubTab}
-            />
+            <AdminLogsTab currentUser={currentUser} />
           )}
 
           {(activeMenu === 'Advertisements' || activeMenu === 'Hotel Content') && (

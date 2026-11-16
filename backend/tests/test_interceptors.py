@@ -63,7 +63,7 @@ async def test_measure_performance_interceptor():
 
     result = await sample_task()
     assert result == 42
-    assert executed
+    assert executed is True
 
 
 @pytest.mark.asyncio

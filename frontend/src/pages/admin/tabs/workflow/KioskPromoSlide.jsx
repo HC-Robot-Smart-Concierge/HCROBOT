@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { QrCode, Clock, Gift, Flame, ArrowRight, Sparkles, Percent } from 'lucide-react';
+import { Tag, QrCode, Clock, Gift, Flame, ArrowRight, Sparkles, Percent } from 'lucide-react';
 
 export const KioskPromoSlide = ({ activeStep }) => {
   const params = activeStep?.params || {};

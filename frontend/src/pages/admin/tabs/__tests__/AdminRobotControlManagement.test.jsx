@@ -76,3 +76,4 @@ describe('operationsApi RC-001 Robot Profile, Jobs & Maintenance', () => {
     expect(typeof AdminRobotManagementTab).toBe('function');
   });
 });
+

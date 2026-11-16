@@ -6,9 +6,13 @@ import {
   getSegmentIntersection,
   segmentIntersectsBox,
   pointToSegmentDistance,
+  isPointNearDoorway,
   parseSvgPathToPoints,
   formatSvgPath,
+  smoothPathWithClearance,
+  dijkstraSearch,
   getFloorGeometry,
+  ALL_FLOOR_GEOMETRIES,
   DEFAULT_NAVIGATION_CLEARANCE,
   ROUTE_GROUND_TO_ELEVATOR,
 } from '../index.js';
@@ -201,3 +205,4 @@ describe('Indoor Navigation Pathfinding Engine & Validation Tests', () => {
     expect(dynamicRoute.points.some((p) => p.x === 600 && p.y === 458)).toBe(true);
   });
 });
+

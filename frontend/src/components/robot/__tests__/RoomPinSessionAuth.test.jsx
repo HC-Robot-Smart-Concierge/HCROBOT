@@ -17,15 +17,8 @@ describe('Room PIN Session Authentication Flow Tests', () => {
   });
 
   it('verifies RobotFoodMenuScreen accepts session authentication props and handles PIN check', () => {
-    const content = [
-      '../RobotFoodMenuScreen.jsx',
-      '../robotFoodMenuCatalog.js',
-      '../robotFoodMenuDataPart1.js',
-      '../robotFoodMenuDataPart2.js',
-      '../useRobotFoodMenuLogic.js',
-      '../RobotFoodMenuMainView.jsx',
-      '../RobotFoodMenuModals.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const filePath = path.resolve(__dirname, '../RobotFoodMenuScreen.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
 
     // Accepts authenticatedRoom, onPinVerifiedSuccess, and sessionId props
     expect(content).toContain('authenticatedRoom = null');
@@ -48,13 +41,8 @@ describe('Room PIN Session Authentication Flow Tests', () => {
   });
 
   it('verifies RobotRoomServiceScreen accepts session authentication props and handles PIN check', () => {
-    const content = [
-      '../RobotRoomServiceScreen.jsx',
-      '../robotRoomServiceCatalog.jsx',
-      '../RobotRoomServiceMainView.jsx',
-      '../RobotRoomServiceReviewAndPinModals.jsx',
-      '../RobotRoomServiceSuccessAndStatusModals.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const filePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
 
     // Accepts authenticatedRoom, onPinVerifiedSuccess, and sessionId props
     expect(content).toContain('authenticatedRoom = null');
@@ -77,12 +65,8 @@ describe('Room PIN Session Authentication Flow Tests', () => {
   });
 
   it('verifies RoomPinModal forwards sessionId to verify APIs', () => {
-    const content = [
-      '../RoomPinModal.jsx',
-      '../roomPinLockoutUtils.js',
-      '../useRoomPinNfc.js',
-      '../RoomPinViews.jsx',
-    ].map((rel) => fs.readFileSync(path.resolve(__dirname, rel), 'utf8')).join('\n');
+    const filePath = path.resolve(__dirname, '../RoomPinModal.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
 
     expect(content).toContain('sessionId = null');
     expect(content).toContain('sessionId');
@@ -91,13 +75,8 @@ describe('Room PIN Session Authentication Flow Tests', () => {
   });
 
   it('verifies RobotScreenPage passes session state to modals and resets on session flush', () => {
-    const robotDir = path.resolve(__dirname, '../../../pages/robot');
-    const content = fs
-      .readdirSync(robotDir)
-      .filter((f) => /\.(js|jsx)$/.test(f))
-      .sort()
-      .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
-      .join('\n');
+    const filePath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
 
     // State declaration
     expect(content).toContain('const [authenticatedRoom, setAuthenticatedRoom] = useState(null);');
@@ -114,26 +93,9 @@ describe('Room PIN Session Authentication Flow Tests', () => {
   it('ensures no emojis exist in modified files', () => {
     const files = [
       path.resolve(__dirname, '../RobotFoodMenuScreen.jsx'),
-      path.resolve(__dirname, '../robotFoodMenuCatalog.js'),
-      path.resolve(__dirname, '../robotFoodMenuDataPart1.js'),
-      path.resolve(__dirname, '../robotFoodMenuDataPart2.js'),
-      path.resolve(__dirname, '../useRobotFoodMenuLogic.js'),
-      path.resolve(__dirname, '../RobotFoodMenuMainView.jsx'),
-      path.resolve(__dirname, '../RobotFoodMenuModals.jsx'),
       path.resolve(__dirname, '../RobotRoomServiceScreen.jsx'),
-      path.resolve(__dirname, '../robotRoomServiceCatalog.jsx'),
-      path.resolve(__dirname, '../RobotRoomServiceMainView.jsx'),
-      path.resolve(__dirname, '../RobotRoomServiceReviewAndPinModals.jsx'),
-      path.resolve(__dirname, '../RobotRoomServiceSuccessAndStatusModals.jsx'),
       path.resolve(__dirname, '../RoomPinModal.jsx'),
-      path.resolve(__dirname, '../roomPinLockoutUtils.js'),
-      path.resolve(__dirname, '../useRoomPinNfc.js'),
-      path.resolve(__dirname, '../RoomPinViews.jsx'),
-      ...fs
-        .readdirSync(path.resolve(__dirname, '../../../pages/robot'))
-        .filter((f) => /\.(js|jsx)$/.test(f))
-        .sort()
-        .map((f) => path.resolve(__dirname, '../../../pages/robot', f)),
+      path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx'),
     ];
 
     const emojiRegex = /[\u{1F300}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u;

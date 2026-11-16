@@ -10,17 +10,10 @@ const __dirname = path.dirname(__filename);
 
 describe('Bellman 2 Core Workflows (Luggage, Lost & Found) Tests', () => {
   const bellDashPath = path.resolve(__dirname, '../BellServicesDashboard.jsx');
-  const bellUtilsPath = path.resolve(__dirname, '../bellServicesUtils.js');
-  const bellPartsPath = path.resolve(__dirname, '../BellServicesParts.jsx');
-  const bellDashContent = [bellDashPath, bellUtilsPath, bellPartsPath].map((p) => fs.readFileSync(p, 'utf8')).join('\n');
+  const bellDashContent = fs.readFileSync(bellDashPath, 'utf8');
 
-  const robotDir = path.resolve(__dirname, '../../robot');
-  const robotScreenContent = fs
-    .readdirSync(robotDir)
-    .filter((f) => /\.(js|jsx)$/.test(f))
-    .sort()
-    .map((f) => fs.readFileSync(path.join(robotDir, f), 'utf8'))
-    .join('\n');
+  const robotScreenPath = path.resolve(__dirname, '../../robot/RobotScreenPage.jsx');
+  const robotScreenContent = fs.readFileSync(robotScreenPath, 'utf8');
 
   it('exports BellServicesDashboard as a functional component', () => {
     expect(typeof BellServicesDashboard).toBe('function');

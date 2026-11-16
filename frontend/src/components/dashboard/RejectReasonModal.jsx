@@ -59,7 +59,7 @@ export const RejectReasonModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
-      <div
+      <div 
         className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
@@ -170,3 +170,4 @@ export const RejectReasonModal = ({
     </div>
   );
 };
+

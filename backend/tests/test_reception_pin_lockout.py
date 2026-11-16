@@ -1,4 +1,5 @@
 import time
+import pytest
 from app.api.v1.endpoints.operations.reception import (
     ROOM_PIN_ATTEMPTS,
     PIN_LOCKOUT_MAX_ATTEMPTS,
@@ -27,3 +28,4 @@ def test_room_pin_attempts_tracking():
     # Reset
     ROOM_PIN_ATTEMPTS.pop(room_test, None)
     assert room_test not in ROOM_PIN_ATTEMPTS
+

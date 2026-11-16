@@ -5,8 +5,8 @@ import threading
 import time
 import logging
 import serial
+from datetime import datetime
 from typing import Dict, List, Any, Optional
-from app.core.time import utc_now_naive
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ class RPLidarService:
             self.saved_map_id = map_id
             self.static_grid_data = list(self.grid_data)
             self.is_map_locked = True
-            now_iso = utc_now_naive().isoformat()
+            now_iso = datetime.utcnow().isoformat()
             self.last_saved_time = now_iso
 
             map_payload = {
@@ -214,7 +214,7 @@ class RPLidarService:
                 self.grid_data = list(data["grid_data"])
                 self.static_grid_data = list(data["grid_data"])
                 self.is_map_locked = lock
-                self.last_saved_time = data.get("saved_at") or utc_now_naive().isoformat()
+                self.last_saved_time = data.get("saved_at") or datetime.utcnow().isoformat()
             logger.info(f"📂 Đã nạp thành công bản đồ cố định '{map_id}' (Locked: {lock})")
             return True
         except Exception as e:
@@ -256,7 +256,7 @@ class RPLidarService:
 
         for pt in scan_points:
             ox, oy = self._world_to_grid(pt["x"], pt["y"])
-
+            
             # Dùng thuật toán Bresenham dựng đường đi tia laser
             dx = abs(ox - rx)
             dy = abs(oy - ry)
@@ -301,7 +301,7 @@ class RPLidarService:
         try:
             logger.info(f"🔌 Đang mở cổng Serial {self.port} (Baudrate {self.baudrate})...")
             self.ser = serial.Serial(self.port, self.baudrate, timeout=0.02)
-
+            
             # Kích hoạt chân DTR & RTS cấp nguồn bật motor RPLiDAR
             self.ser.dtr = False
             self.ser.rts = False

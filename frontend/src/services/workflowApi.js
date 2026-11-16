@@ -348,3 +348,4 @@ export async function updateRos2KeepoutMask(mapName) {
   });
   return parseRos2RuntimeResponse(res, 'Không cập nhật được vùng cấm cho Nav2');
 }
+

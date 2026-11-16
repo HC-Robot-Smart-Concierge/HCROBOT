@@ -90,3 +90,4 @@ def test_opencv_backend_capture_jpeg_watchdog_nonblocking():
         frame = backend.capture_jpeg()
         assert frame == fake_jpeg
         mock_reconnect.assert_called_once()
+

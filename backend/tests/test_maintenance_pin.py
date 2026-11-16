@@ -1,4 +1,3 @@
-from typing import cast
 import pytest
 from httpx import AsyncClient, ASGITransport
 from app.main import app
@@ -69,7 +68,7 @@ async def test_maintenance_pin_verification_and_ticket_routing():
 @pytest.mark.asyncio
 async def test_maintenance_graph_pin_requirement_by_session():
     # Case A: Unauthenticated session -> requires room PIN
-    state_unauth = cast(ConciergeState, {
+    state_unauth: ConciergeState = {
         "current_query": "tôi muốn báo sửa bóng đèn phòng 301",
         "prompt": "tôi muốn báo sửa bóng đèn phòng 301",
         "session_id": "sess_mnt_unauth",
@@ -79,13 +78,13 @@ async def test_maintenance_graph_pin_requirement_by_session():
         "is_room_authenticated": False,
         "chat_history": [],
         "context": {},
-    })
+    }
     res_unauth = await service_fsm_node(state_unauth)
     assert res_unauth.get("require_room_pin") is True
     assert "mã pin" in res_unauth.get("response", "").lower()
 
     # Case B: Authenticated session -> does NOT require room PIN
-    state_auth = cast(ConciergeState, {
+    state_auth: ConciergeState = {
         "current_query": "tôi muốn báo sửa bóng đèn phòng 301",
         "prompt": "tôi muốn báo sửa bóng đèn phòng 301",
         "session_id": "sess_mnt_auth",
@@ -95,7 +94,8 @@ async def test_maintenance_graph_pin_requirement_by_session():
         "is_room_authenticated": True,
         "chat_history": [],
         "context": {},
-    })
+    }
     res_auth = await service_fsm_node(state_auth)
     assert res_auth.get("require_room_pin") is False
     assert "tiếp nhận" in res_auth.get("response", "").lower() or "received" in res_auth.get("response", "").lower()
+

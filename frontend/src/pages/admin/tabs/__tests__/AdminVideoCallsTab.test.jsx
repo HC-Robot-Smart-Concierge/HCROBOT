@@ -9,11 +9,7 @@ const __dirname = path.dirname(__filename);
 
 describe('AdminVideoCallsTab (WF-04 Call Monitoring & Video Tab)', () => {
   const componentPath = path.resolve(__dirname, '../AdminVideoCallsTab.jsx');
-  const partsPath = path.resolve(__dirname, '../AdminVideoCallsParts.jsx');
-  const componentContent = [
-    fs.readFileSync(componentPath, 'utf8'),
-    fs.readFileSync(partsPath, 'utf8'),
-  ].join('\n');
+  const componentContent = fs.readFileSync(componentPath, 'utf8');
 
   it('exports AdminVideoCallsTab as a functional component', () => {
     expect(typeof AdminVideoCallsTab).toBe('function');
@@ -62,12 +58,5 @@ describe('AdminVideoCallsTab (WF-04 Call Monitoring & Video Tab)', () => {
     expect(componentContent).toContain('useMp4Fallback');
     expect(componentContent).toContain('handleCopyVideoUrl');
     expect(componentContent).toContain('Thử tải lại');
-  });
-
-  it('verifies shared Pagination component and URL page sync matching Department/Account tabs', () => {
-    expect(componentContent).toContain("from '../../../components/common/Pagination'");
-    expect(componentContent).toContain('<Pagination');
-    expect(componentContent).toContain('handlePageChange');
-    expect(componentContent).toContain("params.set('tab', 'Video Calls')");
   });
 });

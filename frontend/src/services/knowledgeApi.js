@@ -197,3 +197,5 @@ export const fetchRAGFacilities = async (lang = 'vi') => {
 
   return await response.json();
 };
+
+

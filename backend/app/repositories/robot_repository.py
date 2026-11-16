@@ -361,3 +361,4 @@ class RobotRepository(BaseRepository[Robot]):
         await self.db.commit()
         await self.db.refresh(item)
         return item
+

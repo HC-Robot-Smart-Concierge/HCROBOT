@@ -166,7 +166,7 @@ async def execute_workflow(
         step_type = step.get("type", "UNKNOWN")
         step_title = step.get("title", f"Step {idx}")
         params = step.get("params", {})
-
+        
         if step_type == "MOVE":
             wp = params.get("waypoint_name", params.get("target_waypoint_id", params.get("target_value", "Tọa độ")))
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [MOVE] Robot đang di chuyển đến điểm mốc '{wp}' (X:{params.get('target_x', 0)}, Y:{params.get('target_y', 0)}, Vận tốc:{params.get('speed', 0.4)}m/s)")

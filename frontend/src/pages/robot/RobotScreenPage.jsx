@@ -186,9 +186,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const isSpeakingRef = useRef(false);
   useEffect(() => { isSpeakingRef.current = isSpeaking; }, [isSpeaking]);
 
-  const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, volumeLevel } = useSpeechRecognition({
+  const {
+    isListening = false,
+    transcript = '',
+    error: speechError = null,
+    startListening,
+    stopListening,
+    resetTranscript,
+    hasSupport,
+    volumeLevel = 0,
+  } = useSpeechRecognition({
     isSpeaking: Boolean(isSpeaking),
-  });
+  }) || {};
 
   const toggleLanguage = useCallback((targetLang) => {
     if (typeof targetLang === 'string' && (targetLang === 'English' || targetLang === 'Tiếng Việt')) {

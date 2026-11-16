@@ -157,7 +157,7 @@ export const MobileRobotScreen = ({
   onToggleAutoListen,
   onToggleLanguage,
   speechError,
-  transcript,
+  transcript = '',
   volumeLevel = 0,
   workflowTrigger,
   onOpenFacilities,

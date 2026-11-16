@@ -34,6 +34,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const [feedSource, setFeedSource] = useState('webrtc'); // 'webrtc' | 'local_webcam'
   const [sessionId, setSessionId] = useState(DEFAULT_SESSION_ID);
   const [connectionStatus, setConnectionStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'connected'
+  const [iceConnectionState, setIceConnectionState] = useState('idle');
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [snapshotUrl, setSnapshotUrl] = useState(null);
@@ -164,6 +165,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     iceCandidateQueueRef.current = [];
     setHasRemoteVideo(false);
     setConnectionStatus('disconnected');
+    setIceConnectionState('disconnected');
 
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
@@ -242,6 +244,22 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           setConnectionStatus('connected');
           setHasRemoteVideo(true);
         } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+          setConnectionStatus('disconnected');
+          setHasRemoteVideo(false);
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        if (pc.iceConnectionState) {
+          setIceConnectionState(pc.iceConnectionState);
+        }
+        if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+          setConnectionStatus('connected');
+          setHasRemoteVideo(true);
+          if (videoRef.current) {
+            videoRef.current.play().catch(() => {});
+          }
+        } else if (pc.iceConnectionState === 'failed') {
           setConnectionStatus('disconnected');
           setHasRemoteVideo(false);
         }
@@ -338,6 +356,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       cleanupWebRTC();
     };
   }, [feedSource, connectWebRTC, connectLocalWebcam, cleanupWebRTC]);
+
+  // Dam bao video thuc su play khi remote video duoc bat
+  useEffect(() => {
+    if (hasRemoteVideo && videoRef.current) {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [hasRemoteVideo]);
 
   // 4. Vong lap nhan dien MediaPipe va Ve Cac Diem Neo Bieu Cam Toi Gian (Key Anchors Only)
   useEffect(() => {
@@ -775,6 +800,12 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 autoPlay
                 playsInline
                 muted
+                onLoadedMetadata={(e) => {
+                  e.target.play().catch(() => {});
+                }}
+                onCanPlay={(e) => {
+                  e.target.play().catch(() => {});
+                }}
                 className={`w-full h-full object-contain ${!hasRemoteVideo && 'hidden'}`}
               />
 
@@ -857,6 +888,11 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             <div className="flex items-center gap-3">
               <span>
                 Status: <strong style={{ color: '#262626' }}>{connectionStatus.toUpperCase()}</strong>
+                {feedSource === 'webrtc' && iceConnectionState !== 'idle' && (
+                  <span className="text-[10px] text-stone-500 ml-1">
+                    (ICE: {iceConnectionState.toUpperCase()})
+                  </span>
+                )}
               </span>
               <span>
                 AI Engine:{' '}

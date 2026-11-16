@@ -303,7 +303,7 @@ export const MobileRobotScreen = ({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onStartKioskCamera();
+                  onStartKioskCamera(true);
                 }}
                 className="h-7 px-2.5 rounded-full border border-amber-600/60 bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95 animate-pulse"
                 title={isEn ? "Tap to enable Kiosk Camera" : "Chạm để bật Camera Kiosk"}
@@ -373,7 +373,7 @@ export const MobileRobotScreen = ({
           <div
             onClick={(e) => {
               e.stopPropagation();
-              onStartKioskCamera();
+              onStartKioskCamera(true);
             }}
             className="mx-3 my-1 px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-900 flex items-center justify-between text-xs cursor-pointer active:scale-[0.99] transition-all shadow-xs shrink-0 select-none"
           >

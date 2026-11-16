@@ -57,7 +57,7 @@ export const useKioskStreamBroadcaster = ({
   const iceCandidateQueueRef = useRef([]);
 
   // 1. Khoi tao va xin quyen Camera truoc tren Dien thoai (chan spam tren moi cu cham)
-  const startCamera = useCallback(async (manual = false) => {
+  const startCamera = useCallback(async (manual = true) => {
     if (streamRef.current && streamRef.current.active) {
       setIsCameraActive(true);
       setNeedsUserGesture(false);
@@ -68,7 +68,7 @@ export const useKioskStreamBroadcaster = ({
       permissionDeniedRef.current = false;
     }
 
-    if (isRequestingRef.current || permissionDeniedRef.current) {
+    if (isRequestingRef.current || (permissionDeniedRef.current && !manual)) {
       return null;
     }
 

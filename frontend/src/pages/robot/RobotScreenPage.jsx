@@ -419,9 +419,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isSpeakingRef.current = isSpeaking;
   }, [isSpeaking]);
 
-  const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport, volumeLevel } = useSpeechRecognition({
+  const {
+    isListening = false,
+    transcript = '',
+    error: speechError = null,
+    startListening,
+    stopListening,
+    resetTranscript,
+    hasSupport,
+    volumeLevel = 0,
+  } = useSpeechRecognition({
     isSpeaking: Boolean(isSpeaking),
-  });
+  }) || {};
 
   const toggleLanguage = useCallback((targetLang) => {
     if (typeof targetLang === 'string' && (targetLang === 'English' || targetLang === 'Tiếng Việt')) {
@@ -2843,7 +2852,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onResetToIdle={resetToIdle}
         onPrime={prime}
         onStartTalk={handleStartTalk}
-        onSubmitTalk={() => handleStopTalkAndProcess(transcript)}
+        onSubmitTalk={() => handleStopTalkAndProcess(transcript || '')}
         onStopSpeaking={handleStopSpeaking}
         onToggleAutoListen={() => setIsAutoListen((value) => !value)}
         onToggleLanguage={toggleLanguage}

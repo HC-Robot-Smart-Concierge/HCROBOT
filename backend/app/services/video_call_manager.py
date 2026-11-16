@@ -191,14 +191,18 @@ class VideoCallManager:
 
                     # Chon tap IP phu hop cua nguoi gui de de-anonymize .local
                     target_ips = []
-                    if sender_role == "staff":
+                    client_host = websocket.client.host if websocket.client else None
+                    is_local_sender = (
+                        client_host in ("127.0.0.1", "localhost", "::1")
+                        or (client_host and client_host in get_host_ips())
+                    )
+
+                    if is_local_sender and sender_role == "staff":
+                        # Staff chay tren may local Laptop -> de-anonymize bang LAN IP may chu
                         target_ips = get_host_ips()
-                    else:
-                        client_host = websocket.client.host if websocket.client else None
-                        if client_host and not client_host.startswith("127."):
-                            target_ips.append(client_host)
-                        else:
-                            target_ips = get_host_ips()
+                    elif client_host and not client_host.startswith("127.") and not client_host.startswith("104.23.") and not client_host.startswith("172.64."):
+                        # Client ket noi truc tiep qua Wi-Fi LAN hoac Tailscale
+                        target_ips = [client_host]
 
                     import re
                     for t_ip in target_ips:

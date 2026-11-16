@@ -1024,12 +1024,13 @@ export const MobileRobotScreen = ({
             aria-hidden="true"
             style={{
               position: 'fixed',
-              top: -9999,
-              left: -9999,
-              width: '1px',
-              height: '1px',
-              opacity: 0,
+              top: 0,
+              left: 0,
+              width: '4px',
+              height: '4px',
+              opacity: 0.001,
               pointerEvents: 'none',
+              zIndex: -1,
             }}
           />
         )}

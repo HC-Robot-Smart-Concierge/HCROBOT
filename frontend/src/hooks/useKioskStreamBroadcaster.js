@@ -52,12 +52,11 @@ export const useKioskStreamBroadcaster = ({
   const hasRequestedRef = useRef(false);
   const isRequestingRef = useRef(false);
   const permissionDeniedRef = useRef(false);
-  const isDisplacedRef = useRef(false);
   const reconnectTimeoutRef = useRef(null);
   const iceCandidateQueueRef = useRef([]);
 
   // 1. Khoi tao va xin quyen Camera truoc tren Dien thoai (chan spam tren moi cu cham)
-  const startCamera = useCallback(async (manual = true) => {
+  const startCamera = useCallback(async (manual = false) => {
     if (streamRef.current && streamRef.current.active) {
       setIsCameraActive(true);
       setNeedsUserGesture(false);
@@ -68,7 +67,7 @@ export const useKioskStreamBroadcaster = ({
       permissionDeniedRef.current = false;
     }
 
-    if (isRequestingRef.current || (permissionDeniedRef.current && !manual)) {
+    if (isRequestingRef.current || permissionDeniedRef.current) {
       return null;
     }
 
@@ -80,12 +79,14 @@ export const useKioskStreamBroadcaster = ({
         throw new Error('Trinh duyet khong ho tro navigator.mediaDevices.getUserMedia');
       }
 
-      // Xin quyen camera truoc
+      // Xin quyen camera truoc voi do phan giai ho tro ca Portrait va Landscape
+      const isLandscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight;
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'user' },
-          width: { ideal: 1280, min: 480 },
-          height: { ideal: 720, min: 360 },
+          width: { ideal: isLandscape ? 1280 : 720, min: 480 },
+          height: { ideal: isLandscape ? 720 : 1280, min: 360 },
+          aspectRatio: { ideal: isLandscape ? 1.7777777778 : 0.5625 },
           frameRate: { ideal: 24, max: 30 },
         },
         audio: false,
@@ -139,28 +140,14 @@ export const useKioskStreamBroadcaster = ({
     setIsCameraActive(false);
   }, []);
 
-  // 2. Tu dong kich hoat camera, dong thoi lang nghe cu chi cham dau tien de vuot qua rao can User Gesture tren Mobile
+  // 2. Tu dong kich hoat camera 1 lan duy nhat khi render (khong spam tren moi cu chi cham man hinh)
   useEffect(() => {
     if (!enabled || isPaused) return undefined;
 
     if (!hasRequestedRef.current) {
       hasRequestedRef.current = true;
-      startCamera(true);
+      startCamera();
     }
-
-    const handleUserGesture = () => {
-      if (!streamRef.current || !streamRef.current.active) {
-        startCamera(true);
-      }
-    };
-
-    window.addEventListener('touchstart', handleUserGesture, { passive: true });
-    window.addEventListener('click', handleUserGesture, { passive: true });
-
-    return () => {
-      window.removeEventListener('touchstart', handleUserGesture);
-      window.removeEventListener('click', handleUserGesture);
-    };
   }, [enabled, isPaused, startCamera]);
 
   // 3. WebRTC Broadcaster: Phone lam Offerer gui video ve Admin
@@ -204,7 +191,6 @@ export const useKioskStreamBroadcaster = ({
     (currentStream) => {
       if (!currentStream || !enabled || isPaused) return;
       cleanupSignaling();
-      isDisplacedRef.current = false;
 
       try {
         const pc = new RTCPeerConnection(WEBRTC_ICE_SERVERS);
@@ -240,27 +226,13 @@ export const useKioskStreamBroadcaster = ({
         wsRef.current = ws;
 
         ws.onopen = () => {
-          // Bao hieu vao phong va san sang phat song
+          // Bao hieu vao phong
           ws.send(JSON.stringify({ type: 'kiosk_ready' }));
-          // Chu dong tao Offer sau 300ms phong truong hop Admin da san sang trong phong truoc do
-          setTimeout(() => {
-            if (wsRef.current === ws && pcRef.current === pc && ws.readyState === WebSocket.OPEN) {
-              sendOffer(pc, ws);
-            }
-          }, 300);
         };
 
         ws.onmessage = async (msgEvent) => {
           try {
             const data = JSON.parse(msgEvent.data);
-
-            if (data.type === 'displaced') {
-              // Thiet bi khac da ket noi thay the -> Dung phat song va khong tu dong reconnect
-              isDisplacedRef.current = true;
-              setIsBroadcasting(false);
-              cleanupSignaling();
-              return;
-            }
 
             if (data.type === 'peer_joined' && data.role === 'staff') {
               // Khi Admin (Staff) vua vao phong -> Phone tao Offer gui cho Admin
@@ -270,22 +242,18 @@ export const useKioskStreamBroadcaster = ({
               await sendOffer(pc, ws);
             } else if (data.type === 'answer') {
               // Admin gui Answer lai
-              if (pc.signalingState === 'have-local-offer') {
-                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                // Xu ly hang doi candidate da luu
-                while (iceCandidateQueueRef.current.length > 0) {
-                  const cand = iceCandidateQueueRef.current.shift();
-                  try {
-                    await pc.addIceCandidate(new RTCIceCandidate(cand));
-                  } catch (e) {}
-                }
+              await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+              // Xu ly hang doi candidate da luu
+              while (iceCandidateQueueRef.current.length > 0) {
+                const cand = iceCandidateQueueRef.current.shift();
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(cand));
+                } catch (e) {}
               }
             } else if (data.type === 'candidate') {
               if (data.candidate) {
                 if (pc.remoteDescription) {
-                  try {
-                    await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-                  } catch (e) {}
+                  await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
                 } else {
                   iceCandidateQueueRef.current.push(data.candidate);
                 }
@@ -298,10 +266,10 @@ export const useKioskStreamBroadcaster = ({
 
         ws.onclose = () => {
           setIsBroadcasting(false);
-          // Tu dong thu ket noi lai sau 3 giay neu camera van con song va khong bi displaced
-          if (!isDisplacedRef.current && streamRef.current && streamRef.current.active && enabled && !isPaused) {
+          // Tu dong thu ket noi lai sau 3 giay neu camera van con song
+          if (streamRef.current && streamRef.current.active && enabled && !isPaused) {
             reconnectTimeoutRef.current = setTimeout(() => {
-              if (!isDisplacedRef.current && streamRef.current && streamRef.current.active) {
+              if (streamRef.current && streamRef.current.active) {
                 connectSignaling(streamRef.current);
               }
             }, 3000);

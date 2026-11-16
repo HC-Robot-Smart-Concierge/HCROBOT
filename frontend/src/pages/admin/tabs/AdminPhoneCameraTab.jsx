@@ -211,33 +211,18 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
           videoEl.onloadedmetadata = () => {
             videoEl.play().catch(() => {});
-            if (videoEl.videoWidth > 0) {
-              setHasRemoteVideo(true);
-            }
-          };
-          videoEl.oncanplay = () => {
-            videoEl.play().catch(() => {});
-            if (videoEl.videoWidth > 0) {
-              setHasRemoteVideo(true);
-            }
-          };
-          videoEl.onplaying = () => {
-            if (videoEl.videoWidth > 0) {
-              setHasRemoteVideo(true);
-            }
           };
         }
 
         event.track.onunmute = () => {
           if (videoRef.current) {
             videoRef.current.play().catch(() => {});
-            if (videoRef.current.videoWidth > 0) {
-              setHasRemoteVideo(true);
-            }
           }
+          setHasRemoteVideo(true);
           setConnectionStatus('connected');
         };
 
+        setHasRemoteVideo(true);
         setConnectionStatus('connected');
       };
 
@@ -255,16 +240,10 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'connected') {
           setConnectionStatus('connected');
+          setHasRemoteVideo(true);
         } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
           setConnectionStatus('disconnected');
           setHasRemoteVideo(false);
-          if (pc.connectionState === 'failed') {
-            setTimeout(() => {
-              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                connectWebRTC();
-              }
-            }, 2000);
-          }
         }
       };
 
@@ -300,9 +279,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           } else if (data.type === 'candidate') {
             if (data.candidate) {
               if (pc.remoteDescription) {
-                try {
-                  await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-                } catch (e) {}
+                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
               } else {
                 iceCandidateQueueRef.current.push(data.candidate);
               }
@@ -322,14 +299,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
       ws.onclose = () => {
         setConnectionStatus('disconnected');
-        setHasRemoteVideo(false);
-        if (feedSource === 'webrtc') {
-          setTimeout(() => {
-            if (feedSource === 'webrtc') {
-              connectWebRTC();
-            }
-          }, 3000);
-        }
       };
     } catch {
       setConnectionStatus('disconnected');
@@ -369,30 +338,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       cleanupWebRTC();
     };
   }, [feedSource, connectWebRTC, connectLocalWebcam, cleanupWebRTC]);
-
-  // Dam bao video duoc kich hoat play khi hasRemoteVideo bat sang true
-  useEffect(() => {
-    if (hasRemoteVideo && videoRef.current) {
-      videoRef.current.play().catch(() => {});
-    }
-  }, [hasRemoteVideo]);
-
-  // Dinh ky gui ready_for_offer moi 3.5s neu chua nhan duoc remote video tu dien thoai Robot
-  useEffect(() => {
-    if (feedSource !== 'webrtc' || hasRemoteVideo) return undefined;
-    const interval = setInterval(() => {
-      if (
-        wsRef.current &&
-        wsRef.current.readyState === WebSocket.OPEN &&
-        connectionStatus !== 'connected'
-      ) {
-        try {
-          wsRef.current.send(JSON.stringify({ type: 'ready_for_offer' }));
-        } catch {}
-      }
-    }, 3500);
-    return () => clearInterval(interval);
-  }, [feedSource, hasRemoteVideo, connectionStatus]);
 
   // 4. Vong lap nhan dien MediaPipe va Ve Cac Diem Neo Bieu Cam Toi Gian (Key Anchors Only)
   useEffect(() => {
@@ -830,37 +775,29 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 autoPlay
                 playsInline
                 muted
-                onLoadedMetadata={(e) => {
-                  e.target.play().catch(() => {});
-                }}
-                onCanPlay={(e) => {
-                  e.target.play().catch(() => {});
-                }}
-                className="w-full h-full object-contain"
+                className={`w-full h-full object-contain ${!hasRemoteVideo && 'hidden'}`}
               />
 
               <canvas
                 ref={canvasRef}
-                className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                className={`absolute inset-0 w-full h-full object-contain pointer-events-none ${
+                  !hasRemoteVideo && 'hidden'
+                }`}
               />
             </div>
 
             {!hasRemoteVideo && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center p-6 text-stone-400 gap-3 select-none bg-stone-950/95">
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 text-stone-400 gap-3 select-none bg-stone-950/95">
                 <VideoOff className="w-12 h-12 text-stone-600" />
                 <div>
                   <h3 className="text-sm font-bold text-stone-200 font-mono uppercase">
                     {feedSource === 'webrtc'
-                      ? connectionStatus === 'connected'
-                        ? 'Connected. Receiving Video Frames...'
-                        : 'Waiting for Robot Phone Video Stream...'
+                      ? 'Waiting for Robot Phone Video Stream...'
                       : 'Local Camera Standby'}
                   </h3>
                   <p className="text-xs text-stone-400 font-mono mt-1">
                     {feedSource === 'webrtc'
-                      ? connectionStatus === 'connected'
-                        ? 'Da ket noi WebRTC P2P thanh cong. Dang cho khung hinh video tu camera dien thoai...'
-                        : `Dang cho tin hieu WebRTC tu dien thoai Robot (Session: ${sessionId})`
+                      ? `Dang cho tin hieu WebRTC tu dien thoai Robot (Session: ${sessionId})`
                       : 'Nhan nut Reconnect de cap quyen truy cap camera may tinh'}
                   </p>
                 </div>

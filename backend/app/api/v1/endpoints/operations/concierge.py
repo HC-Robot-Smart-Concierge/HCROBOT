@@ -866,12 +866,22 @@ async def get_local_recording(filename: str):
 
 @router.get("/concierge/ws/video-call/status")
 async def get_video_rooms_status():
-    return {
-        "rooms": {
-            sid: {role: p.get("name") for role, p in peers.items()}
-            for sid, peers in video_call_manager.rooms.items()
-        }
-    }
+    result = {}
+    for sid, peers in video_call_manager.rooms.items():
+        result[sid] = {}
+        for role, p in peers.items():
+            ws = p.get("ws")
+            client_host = ws.client.host if ws and ws.client else None
+            client_port = ws.client.port if ws and ws.client else None
+            headers = dict(ws.headers) if ws and hasattr(ws, "headers") else {}
+            cf_ip = headers.get("cf-connecting-ip") or headers.get("x-forwarded-for")
+            result[sid][role] = {
+                "name": p.get("name"),
+                "client_ip": client_host,
+                "client_port": client_port,
+                "forwarded_ip": cf_ip,
+            }
+    return {"rooms": result}
 
 
 # =====================================================================

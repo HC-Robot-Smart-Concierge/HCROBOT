@@ -133,7 +133,7 @@ export const RobotBackgroundAndMobileLayer = ({
     onResetToIdle={resetToIdle}
     onPrime={prime}
     onStartTalk={handleStartTalk}
-    onSubmitTalk={() => handleStopTalkAndProcess(transcript || '')}
+    onSubmitTalk={() => handleStopTalkAndProcess(transcript)}
     onStopSpeaking={handleStopSpeaking}
     onToggleAutoListen={() => setIsAutoListen((value) => !value)}
     onToggleLanguage={toggleLanguage}

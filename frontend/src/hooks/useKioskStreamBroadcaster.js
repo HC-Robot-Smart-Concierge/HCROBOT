@@ -52,6 +52,7 @@ export const useKioskStreamBroadcaster = ({
   const hasRequestedRef = useRef(false);
   const isRequestingRef = useRef(false);
   const permissionDeniedRef = useRef(false);
+  const isDisplacedRef = useRef(false);
   const reconnectTimeoutRef = useRef(null);
   const iceCandidateQueueRef = useRef([]);
 
@@ -191,6 +192,7 @@ export const useKioskStreamBroadcaster = ({
     (currentStream) => {
       if (!currentStream || !enabled || isPaused) return;
       cleanupSignaling();
+      isDisplacedRef.current = false;
 
       try {
         const pc = new RTCPeerConnection(WEBRTC_ICE_SERVERS);
@@ -226,13 +228,27 @@ export const useKioskStreamBroadcaster = ({
         wsRef.current = ws;
 
         ws.onopen = () => {
-          // Bao hieu vao phong
+          // Bao hieu vao phong va san sang phat song
           ws.send(JSON.stringify({ type: 'kiosk_ready' }));
+          // Chu dong tao Offer sau 300ms phong truong hop Admin da san sang trong phong truoc do
+          setTimeout(() => {
+            if (wsRef.current === ws && pcRef.current === pc && ws.readyState === WebSocket.OPEN) {
+              sendOffer(pc, ws);
+            }
+          }, 300);
         };
 
         ws.onmessage = async (msgEvent) => {
           try {
             const data = JSON.parse(msgEvent.data);
+
+            if (data.type === 'displaced') {
+              // Thiet bi khac da ket noi thay the -> Dung phat song va khong tu dong reconnect
+              isDisplacedRef.current = true;
+              setIsBroadcasting(false);
+              cleanupSignaling();
+              return;
+            }
 
             if (data.type === 'peer_joined' && data.role === 'staff') {
               // Khi Admin (Staff) vua vao phong -> Phone tao Offer gui cho Admin
@@ -242,18 +258,22 @@ export const useKioskStreamBroadcaster = ({
               await sendOffer(pc, ws);
             } else if (data.type === 'answer') {
               // Admin gui Answer lai
-              await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-              // Xu ly hang doi candidate da luu
-              while (iceCandidateQueueRef.current.length > 0) {
-                const cand = iceCandidateQueueRef.current.shift();
-                try {
-                  await pc.addIceCandidate(new RTCIceCandidate(cand));
-                } catch (e) {}
+              if (pc.signalingState === 'have-local-offer') {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+                // Xu ly hang doi candidate da luu
+                while (iceCandidateQueueRef.current.length > 0) {
+                  const cand = iceCandidateQueueRef.current.shift();
+                  try {
+                    await pc.addIceCandidate(new RTCIceCandidate(cand));
+                  } catch (e) {}
+                }
               }
             } else if (data.type === 'candidate') {
               if (data.candidate) {
                 if (pc.remoteDescription) {
-                  await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                  try {
+                    await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                  } catch (e) {}
                 } else {
                   iceCandidateQueueRef.current.push(data.candidate);
                 }
@@ -266,10 +286,10 @@ export const useKioskStreamBroadcaster = ({
 
         ws.onclose = () => {
           setIsBroadcasting(false);
-          // Tu dong thu ket noi lai sau 3 giay neu camera van con song
-          if (streamRef.current && streamRef.current.active && enabled && !isPaused) {
+          // Tu dong thu ket noi lai sau 3 giay neu camera van con song va khong bi displaced
+          if (!isDisplacedRef.current && streamRef.current && streamRef.current.active && enabled && !isPaused) {
             reconnectTimeoutRef.current = setTimeout(() => {
-              if (streamRef.current && streamRef.current.active) {
+              if (!isDisplacedRef.current && streamRef.current && streamRef.current.active) {
                 connectSignaling(streamRef.current);
               }
             }, 3000);

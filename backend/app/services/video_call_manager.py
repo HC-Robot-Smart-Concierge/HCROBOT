@@ -79,6 +79,24 @@ class VideoCallManager:
         if canonical_session not in self.rooms:
             self.rooms[canonical_session] = {}
 
+        # Neu da co peer voi cung role (vi du dien thoai khac vua dang nhap hoac reload)
+        # -> Thong bao cho socket cu bi thay the (displaced) va dong socket cu de tranh xung dot WebRTC SDP Offer
+        if role in self.rooms[canonical_session]:
+            old_peer = self.rooms[canonical_session][role]
+            old_ws = old_peer.get("ws")
+            if old_ws and old_ws != websocket:
+                try:
+                    logger.info(
+                        f"[VideoCall] Displacing older peer for role='{role}' in room='{canonical_session}'"
+                    )
+                    await old_ws.send_text(json.dumps({
+                        "type": "displaced",
+                        "message": "Thiet bi moi da ket noi vao phong nay voi vai tro nay.",
+                    }))
+                    await old_ws.close(code=1000)
+                except Exception as e:
+                    logger.warning(f"[VideoCall] Loi dong socket cu bi displaced: {e}")
+
         self.rooms[canonical_session][role] = {
             "ws": websocket,
             "role": role,

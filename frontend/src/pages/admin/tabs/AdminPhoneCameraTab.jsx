@@ -244,6 +244,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
         } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
           setConnectionStatus('disconnected');
           setHasRemoteVideo(false);
+          if (pc.connectionState === 'failed') {
+            setTimeout(() => {
+              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                connectWebRTC();
+              }
+            }, 2000);
+          }
         }
       };
 
@@ -279,7 +286,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           } else if (data.type === 'candidate') {
             if (data.candidate) {
               if (pc.remoteDescription) {
-                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                } catch (e) {}
               } else {
                 iceCandidateQueueRef.current.push(data.candidate);
               }
@@ -338,6 +347,23 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       cleanupWebRTC();
     };
   }, [feedSource, connectWebRTC, connectLocalWebcam, cleanupWebRTC]);
+
+  // Dinh ky gui ready_for_offer moi 3.5s neu chua nhan duoc remote video tu dien thoai Robot
+  useEffect(() => {
+    if (feedSource !== 'webrtc' || hasRemoteVideo) return undefined;
+    const interval = setInterval(() => {
+      if (
+        wsRef.current &&
+        wsRef.current.readyState === WebSocket.OPEN &&
+        connectionStatus !== 'connected'
+      ) {
+        try {
+          wsRef.current.send(JSON.stringify({ type: 'ready_for_offer' }));
+        } catch {}
+      }
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [feedSource, hasRemoteVideo, connectionStatus]);
 
   // 4. Vong lap nhan dien MediaPipe va Ve Cac Diem Neo Bieu Cam Toi Gian (Key Anchors Only)
   useEffect(() => {

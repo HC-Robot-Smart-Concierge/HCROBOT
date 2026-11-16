@@ -77,4 +77,17 @@ describe('AdminPhoneCameraTab Component & Minimal Expression Anchors & Rotation'
     expect(sourceCode).toContain('consecutiveUnhappyFramesRef');
     expect(sourceCode).toContain('consecutiveUnhappyFramesRef.current >= 3');
   });
+
+  it('sends periodic ready_for_offer heartbeat and recovers WebRTC connection on failure', () => {
+    const filePath = path.resolve(__dirname, '../AdminPhoneCameraTab.jsx');
+    const sourceCode = fs.readFileSync(filePath, 'utf-8');
+
+    // Heartbeat san sang nhan offer tu dien thoai
+    expect(sourceCode).toContain("type: 'ready_for_offer'");
+    expect(sourceCode).toContain('setInterval');
+
+    // Tu dong khoi phuc khi mat ICE hoac ket noi failed
+    expect(sourceCode).toContain("pc.connectionState === 'failed'");
+    expect(sourceCode).toContain('connectWebRTC');
+  });
 });

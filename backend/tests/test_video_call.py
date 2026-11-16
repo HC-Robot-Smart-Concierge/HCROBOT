@@ -160,3 +160,47 @@ async def test_sync_cloudinary_recordings_endpoint(monkeypatch):
             )
             await db.commit()
 
+
+@pytest.mark.asyncio
+async def test_video_call_manager_single_active_broadcaster_displacement():
+    """Xac minh tinh nang Single Active Broadcaster: thiet bi cu bi displaced sach se khi thiet bi moi dang nhap."""
+    import json
+    from unittest.mock import AsyncMock
+    from app.services.video_call_manager import VideoCallManager
+
+    mgr = VideoCallManager()
+    session_id = "test-displacement-room"
+
+    # 1. Thiet bi 1 (Dien thoai 1) ket noi voi vai tro 'guest'
+    ws1 = AsyncMock()
+    await mgr.connect(ws1, session_id, "guest", "PhoneUnit1")
+    ws1.accept.assert_awaited_once()
+
+    state = mgr.get_room_state(session_id)
+    assert state["active"] is True
+    assert len(state["peers"]) == 1
+    assert state["peers"][0]["name"] == "PhoneUnit1"
+
+    # 2. Thiet bi 2 (Dien thoai 2) ket noi cung phong voi cung vai tro 'guest'
+    ws2 = AsyncMock()
+    await mgr.connect(ws2, session_id, "guest", "PhoneUnit2")
+    ws2.accept.assert_awaited_once()
+
+    # Kiem tra ws1 da nhan duoc tin nhan 'displaced' va bi dong voi code 1000
+    ws1_sent_messages = [json.loads(call.args[0]) for call in ws1.send_text.await_args_list]
+    displaced_msgs = [m for m in ws1_sent_messages if m.get("type") == "displaced"]
+    assert len(displaced_msgs) == 1
+    ws1.close.assert_awaited_once_with(code=1000)
+
+    # 3. Phong hien tai chi con Thiet bi 2 giu vai tro 'guest'
+    state_after = mgr.get_room_state(session_id)
+    assert len(state_after["peers"]) == 1
+    assert state_after["peers"][0]["name"] == "PhoneUnit2"
+    assert state_after["peers"][0]["role"] == "guest"
+
+    # 4. Khi thiet bi 2 ngat ket noi -> phong trong
+    mgr.disconnect(ws2, session_id)
+    state_empty = mgr.get_room_state(session_id)
+    assert state_empty["active"] is False
+
+

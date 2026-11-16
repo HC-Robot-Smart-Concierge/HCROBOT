@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
+import httpx
 from httpx import AsyncClient, ASGITransport, Response
 from app.main import app
 from app.core.database import init_db
@@ -125,4 +126,30 @@ async def test_pi5_proxy_endpoint():
             data = res.json()
             assert data["status"] == "SUCCESS"
             assert data["power"]["battery"] == 92
+
+
+@pytest.mark.asyncio
+async def test_proxy_pi5_hardware_api_power_fallback_when_offline():
+    await init_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        with patch("app.api.v1.endpoints.operations.robot_control.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client.request.side_effect = httpx.ConnectError("Connection refused")
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = None
+            mock_client_cls.return_value = mock_client
+
+            # Khi Pi 5 offline va fetch system/power, tra ve 200 kem status offline thay vi 503
+            res = await ac.get("/api/v1/operations/robot/pi5/system/power")
+            assert res.status_code == 200
+            data = res.json()
+            assert data["status"] == "offline"
+            assert data["online"] is False
+            assert data["power"] is None
+            assert data["battery"] is None
+
+            # Endpoint khac (vi du motor control POST) van throw 503
+            res_post = await ac.post("/api/v1/operations/robot/pi5/map/teleop", json={"linear_x": 0.5})
+            assert res_post.status_code == 503
+
 

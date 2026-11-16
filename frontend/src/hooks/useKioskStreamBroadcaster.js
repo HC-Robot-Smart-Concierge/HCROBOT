@@ -35,17 +35,28 @@ export const useKioskStreamBroadcaster = ({
   const wsRef = useRef(null);
   const streamRef = useRef(null);
   const hasRequestedRef = useRef(false);
+  const isRequestingRef = useRef(false);
+  const permissionDeniedRef = useRef(false);
   const reconnectTimeoutRef = useRef(null);
   const iceCandidateQueueRef = useRef([]);
 
-  // 1. Khoi tao va xin quyen Camera truoc tren Dien thoai
-  const startCamera = useCallback(async () => {
+  // 1. Khoi tao va xin quyen Camera truoc tren Dien thoai (chan spam tren moi cu cham)
+  const startCamera = useCallback(async (manual = false) => {
     if (streamRef.current && streamRef.current.active) {
       setIsCameraActive(true);
       setNeedsUserGesture(false);
       return streamRef.current;
     }
 
+    if (manual) {
+      permissionDeniedRef.current = false;
+    }
+
+    if (isRequestingRef.current || permissionDeniedRef.current) {
+      return null;
+    }
+
+    isRequestingRef.current = true;
     try {
       setCameraError(null);
 
@@ -70,9 +81,11 @@ export const useKioskStreamBroadcaster = ({
       setStream(mediaStream);
       setIsCameraActive(true);
       setNeedsUserGesture(false);
+      permissionDeniedRef.current = false;
       return mediaStream;
     } catch (err) {
       if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+        permissionDeniedRef.current = true;
         setNeedsUserGesture(true);
         setIsCameraActive(false);
       } else {
@@ -86,14 +99,20 @@ export const useKioskStreamBroadcaster = ({
           setStream(fallbackStream);
           setIsCameraActive(true);
           setNeedsUserGesture(false);
+          permissionDeniedRef.current = false;
           return fallbackStream;
         } catch (fbErr) {
+          if (fbErr.name === 'NotAllowedError' || fbErr.name === 'SecurityError') {
+            permissionDeniedRef.current = true;
+          }
           setCameraError(fbErr.message || 'Khong the khoi dong Camera');
           setNeedsUserGesture(true);
           setIsCameraActive(false);
         }
       }
       return null;
+    } finally {
+      isRequestingRef.current = false;
     }
   }, []);
 
@@ -106,7 +125,7 @@ export const useKioskStreamBroadcaster = ({
     setIsCameraActive(false);
   }, []);
 
-  // 2. Tu dong kich hoat camera ngay khi render, va lang nghe moi cu chi cham dau tien tren iOS
+  // 2. Tu dong kich hoat camera 1 lan duy nhat khi render (khong spam tren moi cu chi cham man hinh)
   useEffect(() => {
     if (!enabled || isPaused) return undefined;
 
@@ -114,22 +133,6 @@ export const useKioskStreamBroadcaster = ({
       hasRequestedRef.current = true;
       startCamera();
     }
-
-    const handleUserGesture = () => {
-      if (!streamRef.current || !streamRef.current.active) {
-        startCamera();
-      }
-    };
-
-    document.addEventListener('touchstart', handleUserGesture, { capture: true, passive: true });
-    document.addEventListener('pointerdown', handleUserGesture, { capture: true, passive: true });
-    document.addEventListener('click', handleUserGesture, { capture: true, passive: true });
-
-    return () => {
-      document.removeEventListener('touchstart', handleUserGesture, { capture: true });
-      document.removeEventListener('pointerdown', handleUserGesture, { capture: true });
-      document.removeEventListener('click', handleUserGesture, { capture: true });
-    };
   }, [enabled, isPaused, startCamera]);
 
   // 3. WebRTC Broadcaster: Phone lam Offerer gui video ve Admin

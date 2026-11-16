@@ -1019,7 +1019,15 @@ export const MobileRobotScreen = ({
             playsInline
             muted
             aria-hidden="true"
-            className="hidden pointer-events-none"
+            style={{
+              position: 'fixed',
+              top: -9999,
+              left: -9999,
+              width: '1px',
+              height: '1px',
+              opacity: 0,
+              pointerEvents: 'none',
+            }}
           />
         )}
 

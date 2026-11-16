@@ -212,6 +212,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           videoEl.onloadedmetadata = () => {
             videoEl.play().catch(() => {});
           };
+          videoEl.oncanplay = () => {
+            videoEl.play().catch(() => {});
+            setHasRemoteVideo(true);
+          };
+          videoEl.onplaying = () => {
+            setHasRemoteVideo(true);
+          };
         }
 
         event.track.onunmute = () => {
@@ -347,6 +354,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       cleanupWebRTC();
     };
   }, [feedSource, connectWebRTC, connectLocalWebcam, cleanupWebRTC]);
+
+  // Dam bao video duoc kich hoat play khi hasRemoteVideo bat sang true
+  useEffect(() => {
+    if (hasRemoteVideo && videoRef.current) {
+      videoRef.current.play().catch(() => {});
+    }
+  }, [hasRemoteVideo]);
 
   // Dinh ky gui ready_for_offer moi 3.5s neu chua nhan duoc remote video tu dien thoai Robot
   useEffect(() => {
@@ -801,19 +815,23 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 autoPlay
                 playsInline
                 muted
-                className={`w-full h-full object-contain ${!hasRemoteVideo && 'hidden'}`}
+                onLoadedMetadata={(e) => {
+                  e.target.play().catch(() => {});
+                }}
+                onCanPlay={(e) => {
+                  e.target.play().catch(() => {});
+                }}
+                className="w-full h-full object-contain"
               />
 
               <canvas
                 ref={canvasRef}
-                className={`absolute inset-0 w-full h-full object-contain pointer-events-none ${
-                  !hasRemoteVideo && 'hidden'
-                }`}
+                className="absolute inset-0 w-full h-full object-contain pointer-events-none"
               />
             </div>
 
             {!hasRemoteVideo && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 text-stone-400 gap-3 select-none bg-stone-950/95">
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-center p-6 text-stone-400 gap-3 select-none bg-stone-950/95">
                 <VideoOff className="w-12 h-12 text-stone-600" />
                 <div>
                   <h3 className="text-sm font-bold text-stone-200 font-mono uppercase">

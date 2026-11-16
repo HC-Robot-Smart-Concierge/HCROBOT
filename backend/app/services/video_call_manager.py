@@ -49,6 +49,33 @@ def is_private_or_tailscale_ip(ip_str: Optional[str]) -> bool:
         return False
 
 
+def get_lan_peer_ips() -> List[str]:
+    """Lấy danh sách các IP thiết bị nội bộ (Wi-Fi LAN và Tailscale) từ bảng ARP và mạng."""
+    import subprocess
+    import re
+    ips = []
+    host_ips = get_host_ips()
+
+    # 1. Quét các thiết bị động trong cùng mạng LAN qua bảng ARP
+    try:
+        out = subprocess.check_output('arp -a', shell=True, text=True, timeout=2.0)
+        for line in out.splitlines():
+            m = re.search(r'((?:192\.168\.|10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)\d+\.\d+)\s+([0-9a-fA-F-]+)\s+dynamic', line.strip())
+            if m:
+                ip = m.group(1)
+                if not ip.endswith('.1') and not ip.endswith('.255') and ip not in host_ips and ip not in ips:
+                    ips.append(ip)
+    except Exception:
+        pass
+
+    # 2. Thêm IP Tailscale của iPhone nếu có
+    for ts_ip in ["100.94.28.91"]:
+        if ts_ip not in ips and ts_ip not in host_ips:
+            ips.append(ts_ip)
+
+    return ips
+
+
 class VideoCallManager:
     """
     Quản lý phòng gọi và WebSocket Signaling Hub cho WebRTC Video Call 2 chiều
@@ -209,9 +236,11 @@ class VideoCallManager:
                         # Staff luon la AdminStaff tren Laptop may chu -> luon de-anonymize bang LAN IP & Tailscale IP cua Laptop
                         target_ips = get_host_ips()
                     elif is_private_or_tailscale_ip(client_host):
-                        # Guest chi de-anonymize neu client_host la IP noi bo thuc su (Wi-Fi LAN 192.168.x.x hoac Tailscale 100.x.x.x)
-                        # Tuyet doi khong dung IP proxy Cloudflare (162.x, 172.x, 104.x)
+                        # Guest ket noi truc tiep bang IP LAN hoac Tailscale
                         target_ips = [client_host]
+                    else:
+                        # Guest ket noi qua Cloudflare proxy -> de-anonymize bang IP thuc cua dien thoai trong bang ARP va Tailscale
+                        target_ips = get_lan_peer_ips()
 
                     import re
                     for t_ip in target_ips:

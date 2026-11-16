@@ -193,40 +193,6 @@ class VideoCallManager:
                 sender_role = r_name
                 break
 
-        # De-anonymize mDNS (.local) ICE candidates CHỈ KHI người gửi là Robot Kiosk trên PC (role == 'guest')
-        # Tuyệt đối không thay cho role == 'staff' (iPhone) để tránh iPhone tự xưng IP của PC
-        if msg_type == "candidate" and "candidate" in message_data:
-            cand_obj = message_data.get("candidate")
-            if isinstance(cand_obj, dict) and "candidate" in cand_obj and sender_role == "guest":
-                cand_str = cand_obj.get("candidate", "")
-                if ".local" in cand_str:
-                    host_ips = get_host_ips()
-                    # Forward candidate gốc trước
-                    for role, data in room.items():
-                        if data["ws"] != websocket:
-                            try:
-                                await data["ws"].send_text(json.dumps(message_data))
-                            except Exception as e:
-                                logger.warning(f"[VideoCall] Lỗi forward candidate gốc tới {role}: {e}")
-
-                    # Forward thêm candidate đã de-anonymize cho từng IP thực tế (Wi-Fi LAN và Tailscale P2P)
-                    import re
-                    for h_ip in host_ips:
-                        unmdns_str = re.sub(r'([a-zA-Z0-9_\-]+\.local)', h_ip, cand_str)
-                        if unmdns_str != cand_str:
-                            logger.info(f"[VideoCall] Forwarding de-anonymized candidate ({h_ip}) for Robot Kiosk")
-                            alt_msg = dict(message_data)
-                            alt_cand = dict(cand_obj)
-                            alt_cand["candidate"] = unmdns_str
-                            alt_msg["candidate"] = alt_cand
-                            for role, data in room.items():
-                                if data["ws"] != websocket:
-                                    try:
-                                        await data["ws"].send_text(json.dumps(alt_msg))
-                                    except Exception as e:
-                                        logger.warning(f"[VideoCall] Lỗi forward unmdns candidate ({h_ip}) tới {role}: {e}")
-                    return
-
         receivers = [role for role, data in room.items() if data["ws"] != websocket]
         if msg_type in ("live_subtitle", "live_audio", "live_audio_status"):
             # Chẩn đoán luồng phiên dịch 2 chiều: chỉ log metadata, không log nội dung câu nói/âm thanh

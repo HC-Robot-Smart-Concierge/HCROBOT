@@ -211,25 +211,33 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
           videoEl.onloadedmetadata = () => {
             videoEl.play().catch(() => {});
+            if (videoEl.videoWidth > 0) {
+              setHasRemoteVideo(true);
+            }
           };
           videoEl.oncanplay = () => {
             videoEl.play().catch(() => {});
-            setHasRemoteVideo(true);
+            if (videoEl.videoWidth > 0) {
+              setHasRemoteVideo(true);
+            }
           };
           videoEl.onplaying = () => {
-            setHasRemoteVideo(true);
+            if (videoEl.videoWidth > 0) {
+              setHasRemoteVideo(true);
+            }
           };
         }
 
         event.track.onunmute = () => {
           if (videoRef.current) {
             videoRef.current.play().catch(() => {});
+            if (videoRef.current.videoWidth > 0) {
+              setHasRemoteVideo(true);
+            }
           }
-          setHasRemoteVideo(true);
           setConnectionStatus('connected');
         };
 
-        setHasRemoteVideo(true);
         setConnectionStatus('connected');
       };
 
@@ -247,7 +255,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       pc.onconnectionstatechange = () => {
         if (pc.connectionState === 'connected') {
           setConnectionStatus('connected');
-          setHasRemoteVideo(true);
         } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
           setConnectionStatus('disconnected');
           setHasRemoteVideo(false);
@@ -315,6 +322,14 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
       ws.onclose = () => {
         setConnectionStatus('disconnected');
+        setHasRemoteVideo(false);
+        if (feedSource === 'webrtc') {
+          setTimeout(() => {
+            if (feedSource === 'webrtc') {
+              connectWebRTC();
+            }
+          }, 3000);
+        }
       };
     } catch {
       setConnectionStatus('disconnected');
@@ -836,12 +851,16 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 <div>
                   <h3 className="text-sm font-bold text-stone-200 font-mono uppercase">
                     {feedSource === 'webrtc'
-                      ? 'Waiting for Robot Phone Video Stream...'
+                      ? connectionStatus === 'connected'
+                        ? 'Connected. Receiving Video Frames...'
+                        : 'Waiting for Robot Phone Video Stream...'
                       : 'Local Camera Standby'}
                   </h3>
                   <p className="text-xs text-stone-400 font-mono mt-1">
                     {feedSource === 'webrtc'
-                      ? `Dang cho tin hieu WebRTC tu dien thoai Robot (Session: ${sessionId})`
+                      ? connectionStatus === 'connected'
+                        ? 'Da ket noi WebRTC P2P thanh cong. Dang cho khung hinh video tu camera dien thoai...'
+                        : `Dang cho tin hieu WebRTC tu dien thoai Robot (Session: ${sessionId})`
                       : 'Nhan nut Reconnect de cap quyen truy cap camera may tinh'}
                   </p>
                 </div>

@@ -51,6 +51,19 @@ async def test_robot_profile_job_history_and_maintenance_crud():
             assert updated["battery_level"] == 88
             assert updated["current_location"] == "Trạm Sạc Robot Sảnh"
 
+            # Verify ROS 2 client default robot_id ('hc_pi5_01') resolves to RC-001
+            pi_get = await ac.get("/api/v1/operations/robot/profile?robot_id=hc_pi5_01")
+            assert pi_get.status_code == 200
+            assert pi_get.json()["id"] == "RC-001"
+            pi_put = await ac.put(
+                "/api/v1/operations/robot/profile?robot_id=hc_pi5_01",
+                json={"status": "delivering", "battery_level": 77},
+            )
+            assert pi_put.status_code == 200
+            assert pi_put.json()["id"] == "RC-001"
+            assert pi_put.json()["status"] == "DELIVERING"
+            assert pi_put.json()["battery_level"] == 77
+
             # 3. Maintenance schedule CRUD + overdue + recurring auto-schedule
             past_due = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
             overdue_res = await ac.post(

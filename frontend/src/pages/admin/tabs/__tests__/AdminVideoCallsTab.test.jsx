@@ -59,4 +59,12 @@ describe('AdminVideoCallsTab (WF-04 Call Monitoring & Video Tab)', () => {
     expect(componentContent).toContain('handleCopyVideoUrl');
     expect(componentContent).toContain('Thử tải lại');
   });
+
+  it('uses shared Pagination component synced with URL tab & page query parameters', () => {
+    expect(componentContent).toContain('<Pagination');
+    expect(componentContent).toContain('handlePageChange');
+    expect(componentContent).toContain("params.set('tab', 'Video Calls')");
+    expect(componentContent).toContain("params.set('page', newPage.toString())");
+    expect(componentContent).not.toContain('totalPages');
+  });
 });

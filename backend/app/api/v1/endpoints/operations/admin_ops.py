@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -762,12 +762,39 @@ async def get_admin_conversation_detail(
 
 @router.get("/analytics/summary", tags=TAG_ADMIN, summary="Admin: Thống kê phân tích số liệu thực tế từ Database")
 async def get_analytics_summary(
+    period: str = Query("all", pattern="^(all|weekly|monthly)$", description="Khoảng thời gian: all, weekly, monthly"),
     db: AsyncSession = Depends(get_db),
     staff_repo: StaffRepository = Depends(get_staff_repository),
     session_repo: SupportSessionRepository = Depends(get_support_session_repository),
 ):
     """Trả về số liệu phân tích vận hành thực tế 100% từ cơ sở dữ liệu."""
+    cutoff: Optional[datetime] = None
+    if period == "weekly":
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=7)
+    elif period == "monthly":
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=30)
+
     raw_list = await _fetch_all_raw_requests(db)
+    if cutoff is not None:
+        filtered_requests = []
+        for item in raw_list:
+            created = item.get("created_at")
+            if isinstance(created, str):
+                try:
+                    created = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                except ValueError:
+                    created = None
+            if created is None:
+                continue
+            created_naive = (
+                created.astimezone(timezone.utc).replace(tzinfo=None)
+                if created.tzinfo is not None
+                else created
+            )
+            if created_naive >= cutoff:
+                filtered_requests.append(item)
+        raw_list = filtered_requests
+
     total_tasks = len(raw_list)
     active_tasks = sum(1 for t in raw_list if t["status"].lower() not in ["completed", "cancelled", "rejected"])
     completed_tasks = sum(1 for t in raw_list if t["status"].lower() == "completed")
@@ -803,9 +830,15 @@ async def get_analytics_summary(
         elif "maintenance" in d:
             dept_distribution["Maintenance"] += 1
 
-    # Sessions & Messages via repository
-    total_sessions = await session_repo.count_chat_sessions()
-    total_messages = await session_repo.count_chat_messages()
+    # Sessions & Messages via repository (or period-filtered query)
+    if cutoff is not None:
+        sess_stmt = select(func.count(ChatSession.id)).where(ChatSession.created_at >= cutoff)
+        msg_stmt = select(func.count(ChatMessage.id)).where(ChatMessage.created_at >= cutoff)
+        total_sessions = int((await db.execute(sess_stmt)).scalar() or 0)
+        total_messages = int((await db.execute(msg_stmt)).scalar() or 0)
+    else:
+        total_sessions = await session_repo.count_chat_sessions()
+        total_messages = await session_repo.count_chat_messages()
 
     # Staff metrics via repository
     total_staff = await staff_repo.count_active()
@@ -831,6 +864,7 @@ async def get_analytics_summary(
     robot_rate = round((robot_assigned_tasks / total_tasks * 100), 1) if total_tasks > 0 else 0.0
 
     return {
+        "period": period,
         "total_tasks": total_tasks,
         "active_tasks": active_tasks,
         "completed_tasks": completed_tasks,

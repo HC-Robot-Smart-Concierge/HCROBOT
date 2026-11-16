@@ -139,14 +139,28 @@ export const useKioskStreamBroadcaster = ({
     setIsCameraActive(false);
   }, []);
 
-  // 2. Tu dong kich hoat camera 1 lan duy nhat khi render (khong spam tren moi cu chi cham man hinh)
+  // 2. Tu dong kich hoat camera, dong thoi lang nghe cu chi cham dau tien de vuot qua rao can User Gesture tren Mobile
   useEffect(() => {
     if (!enabled || isPaused) return undefined;
 
     if (!hasRequestedRef.current) {
       hasRequestedRef.current = true;
-      startCamera();
+      startCamera(true);
     }
+
+    const handleUserGesture = () => {
+      if (!streamRef.current || !streamRef.current.active) {
+        startCamera(true);
+      }
+    };
+
+    window.addEventListener('touchstart', handleUserGesture, { passive: true });
+    window.addEventListener('click', handleUserGesture, { passive: true });
+
+    return () => {
+      window.removeEventListener('touchstart', handleUserGesture);
+      window.removeEventListener('click', handleUserGesture);
+    };
   }, [enabled, isPaused, startCamera]);
 
   // 3. WebRTC Broadcaster: Phone lam Offerer gui video ve Admin

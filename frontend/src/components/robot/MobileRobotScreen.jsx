@@ -894,6 +894,9 @@ export const MobileRobotScreen = ({
         ) : (
           <main
             onClick={() => {
+              if (typeof onStartKioskCamera === 'function' && !isKioskCameraActive) {
+                onStartKioskCamera(true);
+              }
               if (isSpeaking && onStopSpeaking) {
                 onStopSpeaking();
                 return;

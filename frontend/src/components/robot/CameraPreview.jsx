@@ -42,6 +42,8 @@ export const CameraPreview = ({
   const landmarkerRef = useRef(null);
 
   const isTriggeredRef = useRef(false);
+  const lastDistanceRef = useRef('NONE');
+  const lastApproachedTimeRef = useRef(0);
   const negativeFramesRef = useRef(0);
   const consecutiveUnhappyFramesRef = useRef(0);
 
@@ -192,6 +194,8 @@ export const CameraPreview = ({
     setIsFaceDetected(false);
     setLatestDetection(null);
     setPi5StreamError(false);
+    lastDistanceRef.current = 'NONE';
+    lastApproachedTimeRef.current = 0;
     if (isTriggeredRef.current) {
       isTriggeredRef.current = false;
       presenceHandlers.current.onGuestLeft?.();
@@ -462,10 +466,25 @@ export const CameraPreview = ({
           drawBoundingBox(result, sourceEl);
           setIsPersonDetected(true);
 
-          if (!isTriggeredRef.current) {
+          const curDist =
+            result.distance ||
+            (result.distanceRatio >= 0.45 ? 'CLOSE' : (result.distanceRatio >= 0.25 ? 'APPROACHING' : 'FAR'));
+          const isCloseOrApproaching = curDist === 'CLOSE' || curDist === 'APPROACHING';
+          const now = Date.now();
+          const isSteppingCloser =
+            (lastDistanceRef.current === 'FAR' || lastDistanceRef.current === 'NONE') && isCloseOrApproaching;
+          const isCooldownPassed = now - lastApproachedTimeRef.current > 5000;
+          const shouldTriggerApproach =
+            (!isTriggeredRef.current && isCloseOrApproaching) ||
+            isSteppingCloser ||
+            (isCooldownPassed && curDist === 'CLOSE');
+
+          if (shouldTriggerApproach) {
             isTriggeredRef.current = true;
-            presenceHandlers.current.onGuestApproached?.(result);
+            lastApproachedTimeRef.current = now;
+            presenceHandlers.current.onGuestApproached?.({ ...result, distance: curDist });
           }
+          lastDistanceRef.current = curDist;
         } else {
           negativeFramesRef.current++;
 
@@ -478,6 +497,7 @@ export const CameraPreview = ({
           if (negativeFramesRef.current >= 16) {
             setLatestDetection(null);
             setIsPersonDetected(false);
+            lastDistanceRef.current = 'NONE';
             if (isTriggeredRef.current) {
               isTriggeredRef.current = false;
               presenceHandlers.current.onGuestLeft?.();

@@ -432,6 +432,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isSpeaking: Boolean(isSpeaking),
   }) || {};
 
+  const isListeningRef = useRef(false);
+  useEffect(() => {
+    isListeningRef.current = Boolean(isListening);
+  }, [isListening]);
+
   const toggleLanguage = useCallback((targetLang) => {
     if (typeof targetLang === 'string' && (targetLang === 'English' || targetLang === 'Tiếng Việt')) {
       languageRef.current = targetLang;
@@ -1028,7 +1033,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [currentState, isListening, isSpeaking, isProcessing, isVideoCallOpen, isPinModalOpen, transcript, stopListening]);
 
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
-  const handleGuestApproached = () => {
+  const handleGuestApproached = (detection) => {
     setGuestPresent(true);
     // Pin yếu: không mở phiên mới, không dừng kịch bản về trạm sạc, chỉ báo khách
     if (!batteryGuard.canStartGuestSession) {
@@ -1041,12 +1046,33 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     if (isIdlePromo) pausePromoForGuest();
     else if (isWorkflowRunning) return;
 
-    if (currentState === 'RT-01') {
-      setCurrentState('RT-02');
+    const isIdle = currentState === 'RT-01' || currentState === 'RT-02';
+    const isBusy =
+      isSpeaking ||
+      isSpeakingRef.current ||
+      isProcessing ||
+      isProcessingRef.current ||
+      isListening ||
+      isListeningRef.current;
+    const isRestrictedModal = isVideoCallOpenRef.current || isPinModalOpenRef.current;
+
+    if (isIdle && !isBusy && !isRestrictedModal) {
+      if (currentState === 'RT-01') {
+        setCurrentState('RT-02');
+      }
+      triggerEyeExpression('happy');
       if (isAutoListen) {
         setTimeout(() => {
-          handleStartTalk();
-        }, 500);
+          if (
+            !isSpeakingRef.current &&
+            !isProcessingRef.current &&
+            !isListeningRef.current &&
+            !isVideoCallOpenRef.current &&
+            !isPinModalOpenRef.current
+          ) {
+            handleStartTalk();
+          }
+        }, 350);
       }
     }
   };
@@ -2865,7 +2891,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
       {/* Camera AI (Chạy ngầm nhận diện khách/cảm xúc và stream WebRTC về Admin) */}
       <CameraPreview
-        autoStart={false}
+        autoStart={true}
         externalStream={kioskCameraStream}
         controlsClassName="robot-camera-control"
         onGuestApproached={handleGuestApproached}

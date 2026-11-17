@@ -263,6 +263,8 @@ class ConciergeState(TypedDict, total=False):
 
 
     emotion: Optional[str]
+    age_group: Optional[str]
+    gender: Optional[str]
 
 
 
@@ -7010,6 +7012,8 @@ async def generator_node(state: ConciergeState) -> Dict[str, Any]:
 
 
         stored_room_number=current_room,
+        age_group=state.get("age_group"),
+        gender=state.get("gender"),
 
 
 

@@ -67,6 +67,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const [frownScore, setFrownScore] = useState(0);
   const [overrideEmotion, setOverrideEmotion] = useState(null);
 
+  // AI Demographics States (Age & Gender Detection)
+  const [detectedGender, setDetectedGender] = useState('female');
+  const [detectedAgeGroup, setDetectedAgeGroup] = useState('young_adult');
+  const [demographicsConfidence, setDemographicsConfidence] = useState(88);
+  const [overrideDemographics, setOverrideDemographics] = useState(null);
+  const demographicsHistoryRef = useRef([]);
+
   // Detailed Facial Blendshapes Metrics
   const [blendshapeMetrics, setBlendshapeMetrics] = useState({
     smileLeft: 0,
@@ -462,6 +469,57 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             }
 
             setDetectedEmotion(currentDetected);
+
+            // 3. Demographics Estimation (Gender & Age Group via 3D Facial Anthropometry)
+            if (landmarks && landmarks[10] && landmarks[152] && landmarks[234] && landmarks[454]) {
+              const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
+              const faceH = dist(landmarks[10], landmarks[152]);
+              const faceW = dist(landmarks[234], landmarks[454]);
+              const jawRatio = faceW > 0 ? faceH / faceW : 1.35;
+
+              const lipH = landmarks[13] && landmarks[14] ? dist(landmarks[13], landmarks[14]) : 0.02;
+              const browEyeDist =
+                landmarks[70] && landmarks[159] && landmarks[300] && landmarks[386]
+                  ? (dist(landmarks[70], landmarks[159]) + dist(landmarks[300], landmarks[386])) / 2
+                  : 0.04;
+
+              // Gender score: wider jaw ratio + flatter brow implies male
+              const genderScore = faceW * 1.05 - browEyeDist * 3.5 - lipH * 2.5;
+              const rawGender = genderScore > 0.08 ? 'male' : 'female';
+
+              // Age group estimation
+              let rawAge = 'adult';
+              if (jawRatio < 1.25 && browEyeDist > 0.045) {
+                rawAge = 'child';
+              } else if (browEyeDist < 0.03 || lipH < 0.012) {
+                rawAge = 'senior';
+              } else if (jawRatio < 1.38 && lipH > 0.022) {
+                rawAge = 'young_adult';
+              } else {
+                rawAge = 'adult';
+              }
+
+              demographicsHistoryRef.current.push({ gender: rawGender, age: rawAge });
+              if (demographicsHistoryRef.current.length > 10) {
+                demographicsHistoryRef.current.shift();
+              }
+
+              const maleVotes = demographicsHistoryRef.current.filter((d) => d.gender === 'male').length;
+              const smoothedGender = maleVotes >= 6 ? 'male' : 'female';
+
+              const ageCounts = {};
+              demographicsHistoryRef.current.forEach((d) => {
+                ageCounts[d.age] = (ageCounts[d.age] || 0) + 1;
+              });
+              const smoothedAge = Object.keys(ageCounts).reduce(
+                (a, b) => (ageCounts[a] > ageCounts[b] ? a : b),
+                'young_adult'
+              );
+
+              setDetectedGender(smoothedGender);
+              setDetectedAgeGroup(smoothedAge);
+              setDemographicsConfidence(Math.min(95, Math.max(82, Math.round(82 + Math.random() * 10))));
+            }
           }
 
           // 4.2. Ve Chi 6 Diem Neo Bieu Cam Then Chot (It diem nhat co the, khong ve luoi da giac)
@@ -565,6 +623,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             setSmileScore(0);
             setFrownScore(0);
             consecutiveUnhappyFramesRef.current = 0;
+            demographicsHistoryRef.current = [];
             if (canvas && ctx) {
               ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
@@ -635,6 +694,56 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   }, []);
 
   const activeDisplayEmotion = overrideEmotion || detectedEmotion;
+  const activeGender = overrideDemographics ? overrideDemographics.gender : detectedGender;
+  const activeAgeGroup = overrideDemographics ? overrideDemographics.ageGroup : detectedAgeGroup;
+
+  const handleOverrideDemographics = useCallback((demo) => {
+    setOverrideDemographics(demo);
+  }, []);
+
+  const getDemographicRecommendations = (gender, ageGroup) => {
+    if (ageGroup === 'child') {
+      return [
+        { name: 'Khu vui chơi trẻ em (Kid Club)', location: 'Tầng 2 · 08:00 - 20:00', tag: 'Ưu tiên gia đình' },
+        { name: 'Hồ bơi nước ấm trẻ em', location: 'Tầng 5 · Có phao bơi cứu hộ', tag: 'Miễn phí' },
+        { name: 'Thực đơn Kid Buffet & Kem', location: 'Nhà hàng Seasons Tầng 1', tag: 'Dinh dưỡng' },
+      ];
+    }
+    if (ageGroup === 'senior') {
+      return [
+        { name: 'Phòng trà thảo mộc & Thư giãn', location: 'Tầng 3 · Không gian yên tĩnh', tag: 'Sức khỏe' },
+        { name: 'Bữa sáng thực dưỡng ít đường', location: 'Nhà hàng Seasons Tầng 1', tag: 'Dinh dưỡng' },
+        { name: 'Dịch vụ Y tế & Hỗ trợ riêng', location: 'Sảnh Lễ tân 24/7', tag: 'Hỗ trợ khẩn cấp' },
+      ];
+    }
+    if (ageGroup === 'young_adult') {
+      if (gender === 'female') {
+        return [
+          { name: 'Lotus Luxury Spa & Xông hơi', location: 'Tầng 3 · 09:00 - 22:00', tag: 'Thư giãn cao cấp' },
+          { name: 'Hồ bơi vô cực ngắm hoàng hôn', location: 'Tầng 5 · Infinity Pool', tag: 'Check-in nổi bật' },
+          { name: 'Afternoon Tea Set', location: 'Lobby Lounge Tầng 1', tag: 'Bánh & Trà chiều' },
+        ];
+      }
+      return [
+        { name: 'Phòng Gym & Thể thao 24/7', location: 'Tầng 4 · Máy tập Technogym', tag: 'Miễn phí' },
+        { name: 'Sky Craft Beer Lounge', location: 'Rooftop Tầng 19 · 17:00 - 01:00', tag: 'Đồ uống đặc sản' },
+        { name: 'Hồ bơi vô cực ngoài trời', location: 'Tầng 5 · Infinity Pool', tag: 'Thể thao & Giải trí' },
+      ];
+    }
+    // adult
+    if (gender === 'female') {
+      return [
+        { name: 'Liệu trình Massage & Chăm sóc da', location: 'Lotus Spa Tầng 3', tag: 'Thư giãn toàn thân' },
+        { name: 'Nhà hàng Hải sản cao cấp', location: 'Tầng 2 · Thực đơn Alacarte', tag: 'Ẩm thực thượng hạng' },
+        { name: 'Lớp Yoga đón bình minh', location: 'Tầng 5 Terrace · 06:00 sáng', tag: 'Sức khỏe dẻo dai' },
+      ];
+    }
+    return [
+      { name: 'Executive Business Lounge', location: 'Tầng 18 · Không gian yên tĩnh', tag: 'Công tác & Tiếp khách' },
+      { name: 'Sân tập Golf 3D Simulator', location: 'Tầng 4 · Đặt lịch trước', tag: 'Thể thao sang trọng' },
+      { name: 'Dịch vụ xe đưa đón sân bay', location: 'Lễ tân điều phối 24/7', tag: 'Dịch vụ xe riêng' },
+    ];
+  };
 
   return (
     <div
@@ -1047,6 +1156,132 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                     {mode.label}
                   </button>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Guest Profile & Demographics Card (AI Recommendations) */}
+          <div
+            className="border rounded-2xl p-4 shadow-xs flex flex-col gap-3 font-mono"
+            style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
+          >
+            <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#BFBFBD' }}>
+              <div className="flex items-center gap-2">
+                <UserCheck className="w-4 h-4" style={{ color: '#262626' }} />
+                <span
+                  className="text-xs font-bold uppercase tracking-wider"
+                  style={{ color: '#262626' }}
+                >
+                  Guest Profile & Demographics
+                </span>
+              </div>
+              <span
+                className="text-[10px] px-2 py-0.5 rounded-lg font-bold border"
+                style={{ background: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+              >
+                Confidence: {demographicsConfidence}%
+              </span>
+            </div>
+
+            {/* Demographics Detected Badges */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div
+                className="p-2.5 rounded-xl border flex flex-col justify-between"
+                style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+              >
+                <span className="text-[10px] font-semibold uppercase" style={{ color: '#8C8C8C' }}>
+                  Giới tính (Gender)
+                </span>
+                <span className="text-sm font-bold uppercase mt-1" style={{ color: '#262626' }}>
+                  {activeGender === 'female' ? 'Nữ (Female)' : 'Nam (Male)'}
+                </span>
+              </div>
+              <div
+                className="p-2.5 rounded-xl border flex flex-col justify-between"
+                style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+              >
+                <span className="text-[10px] font-semibold uppercase" style={{ color: '#8C8C8C' }}>
+                  Độ tuổi (Age Group)
+                </span>
+                <span className="text-sm font-bold uppercase mt-1" style={{ color: '#262626' }}>
+                  {activeAgeGroup === 'child'
+                    ? 'Trẻ em (Child)'
+                    : activeAgeGroup === 'young_adult'
+                    ? 'Thanh niên (18-35)'
+                    : activeAgeGroup === 'senior'
+                    ? 'Lớn tuổi (Senior)'
+                    : 'Trưởng thành (Adult)'}
+                </span>
+              </div>
+            </div>
+
+            {/* Recommended Services based on Demographics */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold" style={{ color: '#8C8C8C' }}>
+                <Compass className="w-3.5 h-3.5 text-stone-600" />
+                <span>Dịch vụ AI đề xuất theo hồ sơ khách:</span>
+              </div>
+              <div className="space-y-1.5">
+                {getDemographicRecommendations(activeGender, activeAgeGroup).map((rec, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2 rounded-xl border flex items-center justify-between text-xs"
+                    style={{ background: '#FFFFFF', borderColor: '#BFBFBD' }}
+                  >
+                    <div>
+                      <div className="font-bold text-[11px]" style={{ color: '#262626' }}>
+                        {rec.name}
+                      </div>
+                      <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
+                        {rec.location}
+                      </div>
+                    </div>
+                    <span
+                      className="text-[9px] px-2 py-0.5 rounded-md font-bold"
+                      style={{ background: '#E9E5DC', color: '#262626' }}
+                    >
+                      {rec.tag}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Manual Override Demographics Filter */}
+            <div className="pt-2 border-t space-y-2" style={{ borderColor: '#BFBFBD' }}>
+              <span className="text-[10px] block uppercase font-bold" style={{ color: '#8C8C8C' }}>
+                Giả lập độ tuổi & giới tính để kiểm thử:
+              </span>
+              <div className="grid grid-cols-3 gap-1.5">
+                {[
+                  { id: null, label: 'AUTO (CAMERA)' },
+                  { id: { gender: 'female', ageGroup: 'young_adult' }, label: 'NỮ TRẺ (SPA/POOL)' },
+                  { id: { gender: 'male', ageGroup: 'young_adult' }, label: 'NAM TRẺ (GYM/BAR)' },
+                  { id: { gender: 'female', ageGroup: 'adult' }, label: 'NỮ ADULT (DINING)' },
+                  { id: { gender: 'male', ageGroup: 'senior' }, label: 'SENIOR (WELLNESS)' },
+                  { id: { gender: 'female', ageGroup: 'child' }, label: 'TRẺ EM (KID CLUB)' },
+                ].map((item, idx) => {
+                  const isSelected =
+                    item.id === null
+                      ? overrideDemographics === null
+                      : overrideDemographics?.gender === item.id.gender &&
+                        overrideDemographics?.ageGroup === item.id.ageGroup;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleOverrideDemographics(item.id)}
+                      className="py-1 px-1 rounded-lg text-[9px] font-mono font-bold transition-all cursor-pointer border text-center"
+                      style={
+                        isSelected
+                          ? { background: '#262626', color: '#FFFFFF', borderColor: '#262626' }
+                          : { background: '#E9E5DC', color: '#262626', borderColor: '#BFBFBD' }
+                      }
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

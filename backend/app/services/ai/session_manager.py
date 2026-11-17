@@ -146,6 +146,8 @@ class SessionMemoryManager:
                 "is_room_authenticated": False,
                 "guest_name": None,
                 "pending_intent": None,
+                "active_topic": None,
+                "last_destination_key": None,
                 "language": None,
                 "last_active": now,
             }
@@ -153,6 +155,22 @@ class SessionMemoryManager:
             self._sessions[session_id]["last_active"] = now
 
         return self._sessions[session_id]
+
+    def set_active_topic(self, session_id: str, topic: Optional[str] = None, destination_key: Optional[str] = None):
+        """Lưu lại chủ đề đang nói và điểm đến POI gần nhất để duy trì ngữ cảnh nhiều lượt."""
+        session = self.get_session(session_id)
+        if topic:
+            session["active_topic"] = topic
+        if destination_key:
+            session["last_destination_key"] = destination_key
+
+    def get_active_topic(self, session_id: str) -> Optional[str]:
+        """Lấy chủ đề đang được thảo luận trong phiên."""
+        return self.get_session(session_id).get("active_topic")
+
+    def get_last_destination_key(self, session_id: str) -> Optional[str]:
+        """Lấy POI gần nhất được thảo luận để hỗ trợ câu hỏi chỉ đường nối tiếp."""
+        return self.get_session(session_id).get("last_destination_key")
 
     def add_turn(self, session_id: str, role: str, content: str, language: str = "vi-VN", intent_action: Optional[str] = None):
         """Thêm 1 lượt nói (user/assistant) vào lịch sử phiên trong RAM."""

@@ -39,6 +39,8 @@ export const sendChatStreamSSE = async (
     emotion = 'neutral',
     roomNumber = null,
     onAck = null,
+    ageGroup = 'adult',
+    gender = 'unknown',
   } = options;
 
   try {
@@ -54,6 +56,8 @@ export const sendChatStreamSSE = async (
         language: language,
         emotion: emotion,
         room_number: roomNumber,
+        age_group: options.age_group || ageGroup,
+        gender: options.gender || gender,
       }),
     });
 
@@ -116,7 +120,8 @@ export const sendChatPrompt = async (
   emotion = 'neutral',
   sessionId = 'default_session',
   roomNumber = null,
-  externalSignal = null
+  externalSignal = null,
+  demographics = null
 ) => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 30000);
@@ -143,6 +148,8 @@ export const sendChatPrompt = async (
         language: language,
         emotion: emotion,
         room_number: roomNumber,
+        age_group: demographics?.age_group || demographics?.ageGroup || 'adult',
+        gender: demographics?.gender || 'unknown',
       }),
     });
 

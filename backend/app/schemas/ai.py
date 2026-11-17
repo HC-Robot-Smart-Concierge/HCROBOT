@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -9,6 +9,8 @@ class ChatRequest(BaseModel):
     language: Optional[str] = Field("Tiếng Việt", description="Ngôn ngữ phản hồi yêu cầu: Tiếng Việt hoặc English", json_schema_extra={"example": "English"})
     emotion: Optional[str] = Field("neutral", description="Trạng thái cảm xúc của khách hàng", json_schema_extra={"example": "neutral"})
     room_number: Optional[str] = Field(None, description="Số phòng khai báo nếu có")
+    age_group: Optional[str] = Field("adult", description="Độ tuổi ước tính của khách: child, teen, young_adult, middle_aged, senior")
+    gender: Optional[str] = Field("unknown", description="Giới tính ước tính của khách: male, female, unknown")
 
 
 class ChatResponse(BaseModel):
@@ -34,6 +36,7 @@ class ChatResponse(BaseModel):
     action: Optional[str] = Field(default=None, description="Tên action/intent dịch vụ được phân loại: query_order_status, room_service, ...")
     status_query_type: Optional[str] = Field(default=None, description="Loại tra cứu trạng thái: service | food")
     trigger_menu: Optional[str] = Field(default=None, description="Tên menu tự động kích hoạt trên Kiosk: food_menu | room_service")
+    suggested_prompts: Optional[List[str]] = Field(default_factory=list, description="Danh sách 2-3 câu hỏi gợi ý tiếp theo dạng Quick-Reply Chips")
 
 
 class IntentRequest(BaseModel):

@@ -459,6 +459,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [language]);
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
+  const [guestAgeGroup, setGuestAgeGroup] = useState('adult');
+  const [guestGender, setGuestGender] = useState('unknown');
+  const [suggestedPrompts, setSuggestedPrompts] = useState([]);
   const lastUnhappyAlertTimeRef = useRef(0);
   const [isUnhappyAssistanceOpen, setIsUnhappyAssistanceOpen] = useState(false);
 
@@ -1633,7 +1636,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     try {
       // Gửi toàn bộ truy vấn tới RAG Backend duy nhất (Single Source of Truth)
-      const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, effectiveRoomNumber, chatSignal);
+      const chatRes = await sendChatPrompt(
+        query,
+        null,
+        "auto",
+        guestEmotion,
+        sessionId,
+        effectiveRoomNumber,
+        chatSignal,
+        { ageGroup: guestAgeGroup, gender: guestGender }
+      );
 
       // Nếu người dùng đã kích hoạt câu nói mới, ngắt lời hoặc timeout xảy ra -> Hủy bỏ câu cũ
       if (currentChatId !== activeChatRequestIdRef.current || chatRes?.aborted) {
@@ -1723,6 +1735,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         if (processingSafetyTimerRef.current) {
           clearTimeout(processingSafetyTimerRef.current);
           processingSafetyTimerRef.current = null;
+        }
+
+        if (Array.isArray(chatRes?.suggested_prompts) && chatRes.suggested_prompts.length > 0) {
+          setSuggestedPrompts(chatRes.suggested_prompts);
+        } else {
+          setSuggestedPrompts([]);
         }
 
         const replyText = chatRes.response || 'Dạ, tôi đã ghi nhận yêu cầu của quý khách.';
@@ -3630,8 +3648,30 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     clearFollowUpTimer();
                     setIsWaitingFollowUp(false);
                     setAiResponseText('');
+                    setSuggestedPrompts([]);
                   }}
                 />
+              )}
+
+              {/* Interactive Quick-Reply Chips for Dynamic Conversation Continuation */}
+              {suggestedPrompts && suggestedPrompts.length > 0 && !isSpeaking && (
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2 animate-fadeIn z-20 max-w-xl">
+                  {suggestedPrompts.map((promptText, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSuggestedPrompts([]);
+                        handleStopTalkAndProcess(promptText, { force: true });
+                      }}
+                      className="px-3.5 py-1.5 rounded-full bg-stone-900/90 hover:bg-stone-800 text-stone-200 hover:text-white border border-stone-700/80 hover:border-amber-500/80 text-xs font-medium transition-all shadow-lg cursor-pointer flex items-center gap-1.5 active:scale-95"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      <span>{promptText}</span>
+                    </button>
+                  ))}
+                </div>
               )}
 
               {/* Nút hành động nhanh khi Robot hỏi "Quý khách có cần hỗ trợ thêm gì nữa không?" */}

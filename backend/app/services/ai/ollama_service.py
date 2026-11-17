@@ -337,6 +337,8 @@ class OllamaService:
         emotion: Optional[str] = None,
         stored_room_number: Optional[str] = None,
         rag_context: Optional[str] = None,
+        age_group: Optional[str] = None,
+        gender: Optional[str] = None,
     ) -> str:
         """
         Xây dựng System Prompt tối ưu cho giao tiếp hội thoại tự nhiên, thông minh và phản hồi nhanh.
@@ -359,6 +361,9 @@ class OllamaService:
                 "   - All factual details regarding hotel amenities, timings, room types, and services are strictly governed by [Hotel Knowledge Base (RAG)] and Admin-configured facts.\n"
                 "   - NEVER hallucinate or invent facilities not documented in the provided knowledge base.\n"
                 "   - If an amenity or inquiry is not found in the documentation, politely advise the guest to check with the Front Desk.\n"
+                "8. CONVERSATIONAL ENGAGEMENT & CONTINUATION RULE:\n"
+                "   - Never end inquiries or questions with an abrupt dead-end statement.\n"
+                "   - Always conclude your answer with ONE natural, context-aware follow-up suggestion, helpful question, or relevant next step based on hotel amenities (e.g., offering map directions for facilities, menu/reservations for dining, amenities for room stay, or asking how else you may assist) to keep the conversation flowing smoothly.\n"
             )
             if kb_facts:
                 prompt += f"\n{kb_facts}\n"
@@ -376,6 +381,9 @@ class OllamaService:
                 "   - Toàn bộ thông tin về cơ sở vật chất, tiện ích, giờ hoạt động và quy định do [Cơ sở tri thức khách sạn (RAG)] và Admin quản lý.\n"
                 "   - Tuyệt đối KHÔNG tự ý suy diễn hoặc bịa đặt các dịch vụ không có trong tài liệu.\n"
                 "   - Nếu thông tin khách hỏi không có trong tài liệu, hãy lịch sự trả lời rằng Rora sẽ liên hệ nhân viên hoặc quầy lễ tân để hỗ trợ quý khách.\n"
+                "10. NGUYÊN TẮC DUY TRÌ HỘI THOẠI VÀ GỢI Ý MỞ (CONVERSATIONAL CONTINUATION):\n"
+                "   - Tuyệt đối không kết thúc câu trả lời một cách cụt lủn hoặc rơi vào ngõ cụt.\n"
+                "   - Luôn chủ động khép lại câu nói bằng MỘT câu hỏi gợi ý mở hoặc đề xuất hành động tiếp theo thật tự nhiên bám sát tiện ích khách sạn (ví dụ: gợi ý mở bản đồ chỉ đường nếu hỏi về tiện ích/địa điểm, gợi ý xem thực đơn/đặt bàn nếu hỏi về ăn uống, gợi ý đồ dùng nếu hỏi về lưu trú phòng, hoặc hỏi xem khách có cần hỗ trợ thêm thông tin gì khác không).\n"
             )
             if kb_facts:
                 prompt += f"\n{kb_facts}\n"
@@ -395,6 +403,17 @@ class OllamaService:
             happy_msg = "The guest is very happy, respond warmly and enthusiastically." if lang_code == "en-US" else "Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
             prompt += f"\n{label}: {happy_msg}"
 
+        if age_group or gender:
+            demo_parts = []
+            if age_group and age_group != "adult":
+                demo_parts.append(f"Age Group: {age_group}")
+            if gender and gender != "unknown":
+                demo_parts.append(f"Gender: {gender}")
+            if demo_parts:
+                label = "[Guest Profile]" if lang_code == "en-US" else "[Hồ sơ khách]"
+                demo_desc = ", ".join(demo_parts)
+                prompt += f"\n{label}: {demo_desc} (Naturally prioritize relevant recommendations when the guest asks for advice or activities)."
+
         if rag_context:
             prompt += format_safe_rag_context(rag_context, lang_code)
 
@@ -411,6 +430,8 @@ class OllamaService:
         emotion: Optional[str] = None,
         chat_history: Optional[List[Dict[str, str]]] = None,
         stored_room_number: Optional[str] = None,
+        age_group: Optional[str] = None,
+        gender: Optional[str] = None,
     ):
         """
         Async Generator sinh token theo thời gian thực từ Qwen/Groq/Gemini/Ollama (stream=True).
@@ -448,6 +469,8 @@ class OllamaService:
             emotion=emotion,
             stored_room_number=stored_room_number,
             rag_context=rag_context,
+            age_group=age_group,
+            gender=gender,
         )
 
         messages = [{"role": "system", "content": system_prompt}]
@@ -556,6 +579,8 @@ class OllamaService:
         emotion: Optional[str] = None,
         chat_history: Optional[List[Dict[str, str]]] = None,
         stored_room_number: Optional[str] = None,
+        age_group: Optional[str] = None,
+        gender: Optional[str] = None,
     ) -> Tuple[str, str, str]:
         """
         Sinh câu trả lời thoại cho Concierge Robot dựa trên câu hỏi của khách và lịch sử phiên.
@@ -591,6 +616,8 @@ class OllamaService:
             emotion=emotion,
             stored_room_number=stored_room_number,
             rag_context=rag_context,
+            age_group=age_group,
+            gender=gender,
         )
 
         messages = [{"role": "system", "content": system_prompt}]

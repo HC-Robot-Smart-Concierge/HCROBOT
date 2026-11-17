@@ -3487,6 +3487,30 @@ class ScenarioService:
 
                 logger.info(f"[ScenarioService FastPath Hit] Matched scenario '{scn.get('id')}' - '{scn.get('title')}' in <1ms")
 
+                # Tu dong gan cau hoi mo (Conversational Continuation Hook) neu phan hoi chua co cau hoi tuong tac
+                if action_type in ("none", "show_map", "conversation") and not scn.get("trigger_menu"):
+                    clean_resp = resp_text.strip()
+                    has_question = clean_resp.endswith("?") or clean_resp.endswith("ạ?") or ("?" in clean_resp and len(clean_resp.split("?")[-1].strip()) < 15)
+                    if not has_question:
+                        category = scn.get("category", "faq")
+                        hooks_vi = {
+                            "facility": " Quý khách có muốn Rora mở bản đồ chỉ đường hoặc cần em hỗ trợ thêm thông tin gì nữa không ạ?",
+                            "reception": " Quý khách có cần Rora hỗ trợ thêm thông tin hay thủ tục nào khác không ạ?",
+                            "service": " Quý khách có cần em ghi nhận thêm yêu cầu gì cho phòng mình không ạ?",
+                            "faq": " Quý khách có muốn tìm hiểu thêm về dịch vụ nào khác của khách sạn không ạ?",
+                            "chitchat": " Rora có thể hỗ trợ quý khách dịch vụ gì nữa hôm nay ạ?",
+                        }
+                        hooks_en = {
+                            "facility": " Would you like me to show directions on the map, or can I assist you with anything else?",
+                            "reception": " May I assist you with any other front desk inquiries?",
+                            "service": " Is there anything else you would like to request for your stay?",
+                            "faq": " Would you like to know more about any of our other hotel services?",
+                            "chitchat": " How else may I be of service to you today?",
+                        }
+                        hooks = hooks_en if is_en else hooks_vi
+                        hook = hooks.get(category, hooks["faq"])
+                        resp_text = clean_resp + hook
+
                 return resp_text, lang_name, lang_code, action_type, action_payload
 
 

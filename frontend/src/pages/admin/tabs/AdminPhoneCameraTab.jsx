@@ -706,44 +706,170 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const getDemographicRecommendations = (gender, ageGroup) => {
     if (ageGroup === 'child') {
       return [
-        { name: 'Khu vui chơi trẻ em (Kid Club)', location: 'Tầng 2 · 08:00 - 20:00', tag: 'Ưu tiên gia đình' },
-        { name: 'Hồ bơi nước ấm trẻ em', location: 'Tầng 5 · Có phao bơi cứu hộ', tag: 'Miễn phí' },
-        { name: 'Thực đơn Kid Buffet & Kem', location: 'Nhà hàng Seasons Tầng 1', tag: 'Dinh dưỡng' },
+        {
+          poiKey: 'infinity_pool',
+          name: 'Hồ Bơi Vô Cực Nước Ấm',
+          location: 'Tầng 5 · 06:00 - 22:00',
+          tag: 'RAG: Thư giãn · Miễn phí',
+          fastPathQuery: 'hồ bơi ở đâu',
+          scenarioId: 'scn-pool',
+        },
+        {
+          poiKey: 'restaurant',
+          name: 'Room Service Gọi Món Tận Phòng 24/7',
+          location: 'Tầng 2 Bếp Trung Tâm · 24/7',
+          tag: 'RAG: Ẩm thực 24/7',
+          fastPathQuery: 'đặt món tận phòng',
+          scenarioId: 'scn-restaurant',
+        },
+        {
+          poiKey: 'gift_shop',
+          name: 'Cửa Hàng Lưu Niệm (Gift Shop)',
+          location: 'Tầng 6 · 08:00 - 22:00',
+          tag: 'RAG: Mua sắm & Quà tặng',
+          fastPathQuery: 'cửa hàng lưu niệm ở đâu',
+          scenarioId: 'scn-gift-shop',
+        },
       ];
     }
     if (ageGroup === 'senior') {
       return [
-        { name: 'Phòng trà thảo mộc & Thư giãn', location: 'Tầng 3 · Không gian yên tĩnh', tag: 'Sức khỏe' },
-        { name: 'Bữa sáng thực dưỡng ít đường', location: 'Nhà hàng Seasons Tầng 1', tag: 'Dinh dưỡng' },
-        { name: 'Dịch vụ Y tế & Hỗ trợ riêng', location: 'Sảnh Lễ tân 24/7', tag: 'Hỗ trợ khẩn cấp' },
+        {
+          poiKey: 'spa',
+          name: 'Thảo Mộc Spa & Massage Trị Liệu',
+          location: 'Tầng 5 · 09:00 - 22:00',
+          tag: 'RAG: Sức khỏe & Trị liệu',
+          fastPathQuery: 'dịch vụ spa ở đâu',
+          scenarioId: 'scn-spa',
+        },
+        {
+          poiKey: 'rooftop_coffee',
+          name: 'Rooftop Coffee & Trà Thảo Mộc',
+          location: 'Tầng 6 · 07:00 - 23:00',
+          tag: 'RAG: Thư thái ngắm cảnh',
+          fastPathQuery: 'rooftop coffee mở cửa mấy giờ',
+          scenarioId: 'scn-rooftop-coffee',
+        },
+        {
+          poiKey: 'front_desk',
+          name: 'Quầy Lễ Tân & Hỗ Trợ 24/7',
+          location: 'Tầng Trệt Sảnh Chính · 24/7',
+          tag: 'RAG: Dịch vụ Lễ tân 24/7',
+          fastPathQuery: 'quầy lễ tân ở đâu',
+          scenarioId: 'scn-front-desk',
+        },
       ];
     }
     if (ageGroup === 'young_adult') {
       if (gender === 'female') {
         return [
-          { name: 'Lotus Luxury Spa & Xông hơi', location: 'Tầng 3 · 09:00 - 22:00', tag: 'Thư giãn cao cấp' },
-          { name: 'Hồ bơi vô cực ngắm hoàng hôn', location: 'Tầng 5 · Infinity Pool', tag: 'Check-in nổi bật' },
-          { name: 'Afternoon Tea Set', location: 'Lobby Lounge Tầng 1', tag: 'Bánh & Trà chiều' },
+          {
+            poiKey: 'spa',
+            name: 'Thảo Mộc Spa & Xông Hơi Đá Muối',
+            location: 'Tầng 5 · 09:00 - 22:00',
+            tag: 'RAG: Thư giãn cao cấp',
+            fastPathQuery: 'thảo mộc spa ở đâu',
+            scenarioId: 'scn-spa',
+          },
+          {
+            poiKey: 'rooftop_coffee',
+            name: 'Rooftop Coffee & Check-in View Toàn Cảnh',
+            location: 'Tầng 6 · 07:00 - 23:00',
+            tag: 'RAG: Điểm check-in nổi bật',
+            fastPathQuery: 'quán cà phê ở đâu',
+            scenarioId: 'scn-rooftop-coffee',
+          },
+          {
+            poiKey: 'infinity_pool',
+            name: 'Hồ Bơi Vô Cực (Infinity Pool)',
+            location: 'Tầng 5 · 06:00 - 22:00',
+            tag: 'RAG: Hồ bơi ngắm hoàng hôn',
+            fastPathQuery: 'hồ bơi ở đâu',
+            scenarioId: 'scn-pool',
+          },
         ];
       }
       return [
-        { name: 'Phòng Gym & Thể thao 24/7', location: 'Tầng 4 · Máy tập Technogym', tag: 'Miễn phí' },
-        { name: 'Sky Craft Beer Lounge', location: 'Rooftop Tầng 19 · 17:00 - 01:00', tag: 'Đồ uống đặc sản' },
-        { name: 'Hồ bơi vô cực ngoài trời', location: 'Tầng 5 · Infinity Pool', tag: 'Thể thao & Giải trí' },
+        {
+          poiKey: 'gym',
+          name: 'Fitness & Gym Center 24/7',
+          location: 'Tầng 5 · Mở cửa 24/7',
+          tag: 'RAG: Thể thao miễn phí',
+          fastPathQuery: 'phòng gym ở đâu',
+          scenarioId: 'scn-gym',
+        },
+        {
+          poiKey: 'bar',
+          name: 'Sky Lounge Bar & Craft Beer',
+          location: 'Tầng 6 · 16:30 - 01:00 đêm',
+          tag: 'RAG: Giải trí về đêm',
+          fastPathQuery: 'quầy bar ở đâu',
+          scenarioId: 'scn-rooftop-bar',
+        },
+        {
+          poiKey: 'karaoke',
+          name: 'Phòng VIP Karaoke Cách Âm',
+          location: 'Tầng 6 · 14:00 - 00:00 đêm',
+          tag: 'RAG: Âm thanh đỉnh cao',
+          fastPathQuery: 'phòng karaoke ở đâu',
+          scenarioId: 'scn-karaoke',
+        },
       ];
     }
     // adult
     if (gender === 'female') {
       return [
-        { name: 'Liệu trình Massage & Chăm sóc da', location: 'Lotus Spa Tầng 3', tag: 'Thư giãn toàn thân' },
-        { name: 'Nhà hàng Hải sản cao cấp', location: 'Tầng 2 · Thực đơn Alacarte', tag: 'Ẩm thực thượng hạng' },
-        { name: 'Lớp Yoga đón bình minh', location: 'Tầng 5 Terrace · 06:00 sáng', tag: 'Sức khỏe dẻo dai' },
+        {
+          poiKey: 'spa',
+          name: 'Thảo Mộc Spa Trị Liệu Đá Nóng',
+          location: 'Tầng 5 · 09:00 - 22:00',
+          tag: 'RAG: Trị liệu chuyên sâu',
+          fastPathQuery: 'dịch vụ spa ở đâu',
+          scenarioId: 'scn-spa',
+        },
+        {
+          poiKey: 'restaurant',
+          name: 'Room Service Ẩm Thực Tận Phòng 24/7',
+          location: 'Tầng 2 Bếp Trung Tâm · 24/7',
+          tag: 'RAG: Ẩm thực 24/7',
+          fastPathQuery: 'đặt món tận phòng',
+          scenarioId: 'scn-restaurant',
+        },
+        {
+          poiKey: 'rooftop_coffee',
+          name: 'Rooftop Coffee & View Thành Phố',
+          location: 'Tầng 6 · 07:00 - 23:00',
+          tag: 'RAG: Thư giãn thanh tịnh',
+          fastPathQuery: 'rooftop coffee',
+          scenarioId: 'scn-rooftop-coffee',
+        },
       ];
     }
     return [
-      { name: 'Executive Business Lounge', location: 'Tầng 18 · Không gian yên tĩnh', tag: 'Công tác & Tiếp khách' },
-      { name: 'Sân tập Golf 3D Simulator', location: 'Tầng 4 · Đặt lịch trước', tag: 'Thể thao sang trọng' },
-      { name: 'Dịch vụ xe đưa đón sân bay', location: 'Lễ tân điều phối 24/7', tag: 'Dịch vụ xe riêng' },
+      {
+        poiKey: 'gym',
+        name: 'Fitness & Gym Center 24/7',
+        location: 'Tầng 5 · Mở cửa 24/7',
+        tag: 'RAG: Thể hình & Sức khỏe',
+        fastPathQuery: 'giờ mở cửa phòng gym',
+        scenarioId: 'scn-gym-hours',
+      },
+      {
+        poiKey: 'bar',
+        name: 'Sky Lounge Bar',
+        location: 'Tầng 6 · 16:30 - 01:00 đêm',
+        tag: 'RAG: Tiếp khách & Vang nhập',
+        fastPathQuery: 'quầy bar ở đâu',
+        scenarioId: 'scn-rooftop-bar',
+      },
+      {
+        poiKey: 'parking_car',
+        name: 'Bãi Đỗ Xe Ô Tô & Trạm Sạc EV',
+        location: 'Hầm B2 · Mở cửa 24/7',
+        tag: 'RAG: Bãi đỗ xe an ninh',
+        fastPathQuery: 'bãi đỗ xe ở đâu',
+        scenarioId: 'scn-parking',
+      },
     ];
   };
 
@@ -1223,27 +1349,41 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 <Compass className="w-3.5 h-3.5 text-stone-600" />
                 <span>Dịch vụ AI đề xuất theo hồ sơ khách:</span>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {getDemographicRecommendations(activeGender, activeAgeGroup).map((rec, idx) => (
                   <div
                     key={idx}
-                    className="p-2 rounded-xl border flex items-center justify-between text-xs"
+                    className="p-2.5 rounded-xl border flex flex-col gap-1.5 text-xs shadow-2xs transition-all hover:border-[#262626]"
                     style={{ background: '#FFFFFF', borderColor: '#BFBFBD' }}
                   >
-                    <div>
-                      <div className="font-bold text-[11px]" style={{ color: '#262626' }}>
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="font-bold text-[11px] leading-tight" style={{ color: '#262626' }}>
                         {rec.name}
                       </div>
-                      <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
-                        {rec.location}
-                      </div>
+                      <span
+                        className="text-[9px] px-2 py-0.5 rounded-md font-bold shrink-0"
+                        style={{ background: '#E9E5DC', color: '#262626' }}
+                      >
+                        {rec.tag}
+                      </span>
                     </div>
-                    <span
-                      className="text-[9px] px-2 py-0.5 rounded-md font-bold"
-                      style={{ background: '#E9E5DC', color: '#262626' }}
-                    >
-                      {rec.tag}
-                    </span>
+                    <div className="text-[10px]" style={{ color: '#555555' }}>
+                      {rec.location}
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-1 border-t" style={{ borderColor: '#E9E5DC' }}>
+                      <span
+                        className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: '#E8F5E9', color: '#2E7D32', border: '1px solid #C8E6C9' }}
+                      >
+                        Fast-Path: "{rec.fastPathQuery}"
+                      </span>
+                      <span
+                        className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded"
+                        style={{ background: '#F5F5F5', color: '#424242', border: '1px solid #E0E0E0' }}
+                      >
+                        POI: {rec.poiKey.toUpperCase()}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>

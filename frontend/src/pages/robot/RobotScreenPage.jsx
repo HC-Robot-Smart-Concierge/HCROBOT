@@ -567,6 +567,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     [language, speak, isUnhappyAssistanceOpen]
   );
 
+  const handleGuestDemographicsDetected = useCallback(({ gender, ageGroup }) => {
+    if (gender && gender !== 'unknown') {
+      setGuestGender((prev) => (prev !== gender ? gender : prev));
+    }
+    if (ageGroup) {
+      setGuestAgeGroup((prev) => (prev !== ageGroup ? ageGroup : prev));
+    }
+  }, []);
+
   // Lang nghe phan hoi bang giong noi khi Modal ho tro bieu cam dang mo
   useEffect(() => {
     if (!isUnhappyAssistanceOpen || !transcript) return;
@@ -2896,6 +2905,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onGuestApproached={handleGuestApproached}
         onGuestLeft={handleGuestLeft}
         onEmotionChange={handleGuestEmotionDetected}
+        onDemographicsChange={handleGuestDemographicsDetected}
         source="local"
         defaultMinimized={true}
         visible={false}

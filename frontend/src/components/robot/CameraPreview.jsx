@@ -19,6 +19,7 @@ export const CameraPreview = ({
   onGuestApproached,
   onGuestLeft,
   onEmotionChange,
+  onDemographicsChange,
   autoStart = true,
   controlsClassName = '',
   source = 'local',
@@ -31,7 +32,7 @@ export const CameraPreview = ({
   const isPi5 = source === 'pi5';
   // Guest-session updates change the handlers, but must not restart the camera.
   const presenceHandlers = useRef({});
-  presenceHandlers.current = { onGuestApproached, onGuestLeft };
+  presenceHandlers.current = { onGuestApproached, onGuestLeft, onDemographicsChange };
 
   const offscreenVideoRef = useRef(null);
   const previewVideoRef = useRef(null);
@@ -46,6 +47,7 @@ export const CameraPreview = ({
   const lastApproachedTimeRef = useRef(0);
   const negativeFramesRef = useRef(0);
   const consecutiveUnhappyFramesRef = useRef(0);
+  const demographicsHistoryRef = useRef([]);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isMinimized, setIsMinimized] = useState(defaultMinimized);
@@ -577,11 +579,63 @@ export const CameraPreview = ({
                   return confirmedEmotion;
                 });
               }
+
+              // 3. Demographics Estimation (Gender & Age Group via 3D Facial Anthropometry)
+              const landmarks = results.faceLandmarks[0];
+              if (landmarks && landmarks[10] && landmarks[152] && landmarks[234] && landmarks[454]) {
+                const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
+                const faceH = dist(landmarks[10], landmarks[152]);
+                const faceW = dist(landmarks[234], landmarks[454]);
+                const jawRatio = faceW > 0 ? faceH / faceW : 1.35;
+
+                const lipH = landmarks[13] && landmarks[14] ? dist(landmarks[13], landmarks[14]) : 0.02;
+                const browEyeDist =
+                  landmarks[70] && landmarks[159] && landmarks[300] && landmarks[386]
+                    ? (dist(landmarks[70], landmarks[159]) + dist(landmarks[300], landmarks[386])) / 2
+                    : 0.04;
+
+                const genderScore = faceW * 1.05 - browEyeDist * 3.5 - lipH * 2.5;
+                const rawGender = genderScore > 0.08 ? 'male' : 'female';
+
+                let rawAge = 'adult';
+                if (jawRatio < 1.25 && browEyeDist > 0.045) {
+                  rawAge = 'child';
+                } else if (browEyeDist < 0.03 || lipH < 0.012) {
+                  rawAge = 'senior';
+                } else if (jawRatio < 1.38 && lipH > 0.022) {
+                  rawAge = 'young_adult';
+                } else {
+                  rawAge = 'adult';
+                }
+
+                demographicsHistoryRef.current.push({ gender: rawGender, age: rawAge });
+                if (demographicsHistoryRef.current.length > 8) {
+                  demographicsHistoryRef.current.shift();
+                }
+
+                const maleVotes = demographicsHistoryRef.current.filter((d) => d.gender === 'male').length;
+                const smoothedGender = maleVotes >= 5 ? 'male' : 'female';
+
+                const ageCounts = {};
+                demographicsHistoryRef.current.forEach((d) => {
+                  ageCounts[d.age] = (ageCounts[d.age] || 0) + 1;
+                });
+                const smoothedAge = Object.keys(ageCounts).reduce(
+                  (a, b) => (ageCounts[a] > ageCounts[b] ? a : b),
+                  'adult'
+                );
+
+                presenceHandlers.current.onDemographicsChange?.({
+                  gender: smoothedGender,
+                  ageGroup: smoothedAge,
+                });
+              }
             } else {
               setIsFaceDetected(false);
               setSmileScore(0);
               setFrownScore(0);
               consecutiveUnhappyFramesRef.current = 0;
+              demographicsHistoryRef.current = [];
               setCurrentEmotion((prev) => {
                 if (prev !== 'neutral') {
                   if (onEmotionChange) onEmotionChange('neutral');

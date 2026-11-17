@@ -83,7 +83,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const [detectedGender, setDetectedGender] = useState('female');
   const [detectedAgeGroup, setDetectedAgeGroup] = useState('young_adult');
   const [demographicsConfidence, setDemographicsConfidence] = useState(88);
-  const [overrideDemographics, setOverrideDemographics] = useState(null);
   const demographicsHistoryRef = useRef([]);
 
   // Detailed Facial Blendshapes Metrics
@@ -706,12 +705,8 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   }, []);
 
   const activeDisplayEmotion = overrideEmotion || detectedEmotion;
-  const activeGender = overrideDemographics ? overrideDemographics.gender : detectedGender;
-  const activeAgeGroup = overrideDemographics ? overrideDemographics.ageGroup : detectedAgeGroup;
-
-  const handleOverrideDemographics = useCallback((demo) => {
-    setOverrideDemographics(demo);
-  }, []);
+  const activeGender = detectedGender;
+  const activeAgeGroup = detectedAgeGroup;
 
   const getDemographicRecommendations = (gender, ageGroup) => {
     if (ageGroup === 'child') {
@@ -1372,12 +1367,25 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                   Guest Profile & Demographics
                 </span>
               </div>
-              <span
-                className="text-[9px] px-1.5 py-0.5 rounded-md font-bold border"
-                style={{ background: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
-              >
-                Confidence: {demographicsConfidence}%
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="text-[9px] px-1.5 py-0.5 rounded-md font-bold border flex items-center gap-1"
+                  style={{
+                    background: isFaceDetected ? '#E8F5E9' : '#E9E5DC',
+                    borderColor: isFaceDetected ? '#A5D6A7' : '#BFBFBD',
+                    color: isFaceDetected ? '#2E7D32' : '#8C8C8C',
+                  }}
+                >
+                  {isFaceDetected && <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />}
+                  {isFaceDetected ? 'AI LIVE' : 'NO FACE'}
+                </span>
+                <span
+                  className="text-[9px] px-1.5 py-0.5 rounded-md font-bold border"
+                  style={{ background: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                >
+                  Confidence: {isFaceDetected ? `${demographicsConfidence}%` : '--'}
+                </span>
+              </div>
             </div>
 
             {/* Demographics Detected Badges */}
@@ -1455,45 +1463,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                     </div>
                   </div>
                 ))}
-              </div>
-            </div>
-
-            {/* Manual Override Demographics Filter */}
-            <div className="pt-1.5 border-t space-y-1" style={{ borderColor: '#BFBFBD' }}>
-              <span className="text-[9px] block uppercase font-bold" style={{ color: '#8C8C8C' }}>
-                Giả lập độ tuổi & giới tính để kiểm thử:
-              </span>
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
-                {[
-                  { id: null, label: 'AUTO' },
-                  { id: { gender: 'female', ageGroup: 'young_adult' }, label: 'NỮ TRẺ' },
-                  { id: { gender: 'male', ageGroup: 'young_adult' }, label: 'NAM TRẺ' },
-                  { id: { gender: 'female', ageGroup: 'adult' }, label: 'NỮ ADULT' },
-                  { id: { gender: 'male', ageGroup: 'senior' }, label: 'SENIOR' },
-                  { id: { gender: 'female', ageGroup: 'child' }, label: 'TRẺ EM' },
-                ].map((item, idx) => {
-                  const isSelected =
-                    item.id === null
-                      ? overrideDemographics === null
-                      : overrideDemographics?.gender === item.id.gender &&
-                        overrideDemographics?.ageGroup === item.id.ageGroup;
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => handleOverrideDemographics(item.id)}
-                      className="py-1 px-1 rounded-md text-[9px] font-mono font-bold transition-all cursor-pointer border text-center truncate"
-                      style={
-                        isSelected
-                          ? { background: '#262626', color: '#FFFFFF', borderColor: '#262626' }
-                          : { background: '#E9E5DC', color: '#262626', borderColor: '#BFBFBD' }
-                      }
-                      title={item.label}
-                    >
-                      {item.label}
-                    </button>
-                  );
-                })}
               </div>
             </div>
           </div>

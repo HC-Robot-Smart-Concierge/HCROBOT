@@ -13,6 +13,8 @@ import {
   VideoOff,
   CheckCircle,
   RotateCw,
+  UserCheck,
+  Compass,
 } from 'lucide-react';
 import { getCallSignalingWsUrl } from '../../../services/conciergeApi';
 import { WEBRTC_ICE_SERVERS } from '../../../hooks/useKioskStreamBroadcaster';

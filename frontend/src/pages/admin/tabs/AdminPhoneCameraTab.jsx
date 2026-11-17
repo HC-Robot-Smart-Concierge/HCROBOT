@@ -68,6 +68,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const [smileScore, setSmileScore] = useState(0);
   const [frownScore, setFrownScore] = useState(0);
   const [overrideEmotion, setOverrideEmotion] = useState(null);
+  const [showMeshDiagnostics, setShowMeshDiagnostics] = useState(false);
 
   // AI Demographics States (Age & Gender Detection)
   const [detectedGender, setDetectedGender] = useState('female');
@@ -876,31 +877,31 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full flex flex-col p-4 overflow-y-auto custom-scrollbar gap-4 text-[#262626] font-sans select-none"
+      className="w-full h-full flex flex-col p-3 overflow-y-auto custom-scrollbar gap-2.5 text-[#262626] font-sans select-none"
       style={{ background: '#F2EFE9' }}
     >
       {/* Top Header & Toolbar (System Theme: Sand-Beige #F2EFE9, Cards #FAF8F5, Border #BFBFBD, Buttons #262626) */}
       <div
-        className="flex flex-wrap items-center justify-between gap-3 border rounded-2xl p-4 shadow-xs"
+        className="flex flex-wrap items-center justify-between gap-2 border rounded-xl px-3.5 py-2 shadow-xs shrink-0"
         style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center shadow-xs"
+            className="w-8 h-8 rounded-lg flex items-center justify-center shadow-xs shrink-0"
             style={{ background: '#262626', color: '#FFFFFF' }}
           >
-            <Camera className="w-5 h-5 text-white" />
+            <Camera className="w-4 h-4 text-white" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <h1
-                className="text-sm font-bold tracking-wide uppercase font-mono"
+                className="text-xs sm:text-sm font-bold tracking-wide uppercase font-mono"
                 style={{ color: '#262626' }}
               >
                 Phone Kiosk Camera & Emotion AI
               </h1>
               <span
-                className={`w-2 h-2 rounded-full ${
+                className={`w-2 h-2 rounded-full shrink-0 ${
                   connectionStatus === 'connected' && hasRemoteVideo
                     ? 'bg-emerald-500 animate-pulse'
                     : connectionStatus === 'connecting'
@@ -909,23 +910,23 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 }`}
               />
             </div>
-            <p className="text-[11px] font-mono" style={{ color: '#8C8C8C' }}>
+            <p className="text-[10px] font-mono hidden sm:block" style={{ color: '#8C8C8C' }}>
               Live feed tu dien thoai Robot (Kiosk) voi cac diem bieu cam then chot (Key Expression Anchors)
             </p>
           </div>
         </div>
 
         {/* Action Controls & Feed Selector */}
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5 flex-wrap">
           {/* Cụm chọn nguồn Feed */}
           <div
-            className="flex items-center rounded-xl border p-0.5 text-xs font-mono"
+            className="flex items-center rounded-lg border p-0.5 text-xs font-mono"
             style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
           >
             <button
               type="button"
               onClick={() => setFeedSource('webrtc')}
-              className="px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer"
+              className="px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer text-[11px]"
               style={
                 feedSource === 'webrtc'
                   ? { background: '#262626', color: '#FFFFFF' }
@@ -937,7 +938,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             <button
               type="button"
               onClick={() => setFeedSource('local_webcam')}
-              className="px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer"
+              className="px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer text-[11px]"
               style={
                 feedSource === 'local_webcam'
                   ? { background: '#262626', color: '#FFFFFF' }
@@ -950,11 +951,11 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
           {/* Bộ chọn nhanh góc xoay video 4 nấc (0°, 90°, 180°, 270°) */}
           <div
-            className="flex items-center rounded-xl border p-0.5 text-xs font-mono"
+            className="flex items-center rounded-lg border p-0.5 text-xs font-mono"
             style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
           >
-            <span className="px-2 text-[11px] uppercase font-bold flex items-center gap-1" style={{ color: '#8C8C8C' }}>
-              <RotateCw className="w-3.5 h-3.5" style={{ color: '#262626' }} /> Xoay:
+            <span className="px-1.5 text-[10px] uppercase font-bold flex items-center gap-1" style={{ color: '#8C8C8C' }}>
+              <RotateCw className="w-3 h-3" style={{ color: '#262626' }} /> Xoay:
             </span>
             {[
               { deg: 0, label: '0°' },
@@ -966,7 +967,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 key={item.deg}
                 type="button"
                 onClick={() => setVideoRotation(item.deg)}
-                className="px-2 py-1 rounded-lg font-bold transition-all cursor-pointer"
+                className="px-1.5 py-0.5 rounded font-bold transition-all cursor-pointer text-[10px]"
                 style={
                   videoRotation === item.deg
                     ? { background: '#262626', color: '#FFFFFF' }
@@ -983,53 +984,53 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           <button
             type="button"
             onClick={feedSource === 'webrtc' ? connectWebRTC : connectLocalWebcam}
-            className="p-2 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 hover:opacity-90"
+            className="p-1.5 rounded-lg transition-all cursor-pointer shadow-xs active:scale-95 hover:opacity-90"
             style={{ background: '#262626', color: '#FFFFFF' }}
             title="Reconnect Stream"
           >
-            <RefreshCw className="w-4 h-4 text-white" />
+            <RefreshCw className="w-3.5 h-3.5 text-white" />
           </button>
 
           {/* Nút Take Snapshot (Đen hệ thống) */}
           <button
             type="button"
             onClick={handleTakeSnapshot}
-            className="p-2 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 hover:opacity-90"
+            className="p-1.5 rounded-lg transition-all cursor-pointer shadow-xs active:scale-95 hover:opacity-90"
             style={{ background: '#262626', color: '#FFFFFF' }}
             title="Take Snapshot"
           >
-            <Camera className="w-4 h-4 text-white" />
+            <Camera className="w-3.5 h-3.5 text-white" />
           </button>
 
           {/* Nút Fullscreen (Đen hệ thống) */}
           <button
             type="button"
             onClick={toggleFullscreen}
-            className="p-2 rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 hover:opacity-90"
+            className="p-1.5 rounded-lg transition-all cursor-pointer shadow-xs active:scale-95 hover:opacity-90"
             style={{ background: '#262626', color: '#FFFFFF' }}
             title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
           >
-            {isFullscreen ? <Minimize2 className="w-4 h-4 text-white" /> : <Maximize2 className="w-4 h-4 text-white" />}
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 text-white" /> : <Maximize2 className="w-3.5 h-3.5 text-white" />}
           </button>
         </div>
       </div>
 
       {/* Main Grid: Video Stream with Landmark Canvas (Left) + Emotion Analytics HUD (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0">
         {/* Left Column: Video Viewport + Overlaid Canvas (System Theme) */}
         <div
-          className="lg:col-span-2 flex flex-col border rounded-2xl overflow-hidden relative shadow-xs"
+          className="lg:col-span-6 flex flex-col border rounded-xl overflow-hidden relative shadow-xs"
           style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
         >
-          <div className="flex-1 relative flex items-center justify-center bg-stone-950 min-h-[420px] overflow-hidden p-2 rounded-t-2xl">
+          <div className="relative flex items-center justify-center bg-stone-950 overflow-hidden p-2 rounded-t-xl h-[310px] sm:h-[340px] lg:h-[370px]">
             {/* Container chua Video va Canvas duoc Xoay dong bo */}
             <div
               className="relative flex items-center justify-center transition-all duration-300"
               style={{
                 transform: `rotate(${videoRotation}deg)`,
-                width: videoRotation % 180 !== 0 ? '420px' : '100%',
+                width: videoRotation % 180 !== 0 ? '255px' : '100%',
                 height: videoRotation % 180 !== 0 ? '100%' : '100%',
-                maxHeight: videoRotation % 180 !== 0 ? '560px' : '440px',
+                maxHeight: videoRotation % 180 !== 0 ? '330px' : '350px',
               }}
             >
               <video
@@ -1119,36 +1120,35 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
           {/* Footer Information (System Theme: Sand-Beige #E9E5DC, Border #BFBFBD) */}
           <div
-            className="flex items-center justify-between px-4 py-2.5 border-t text-[11px] font-mono"
+            className="flex items-center justify-between px-3 py-1.5 border-t text-[10px] sm:text-[11px] font-mono shrink-0"
             style={{ background: '#E9E5DC', borderColor: '#BFBFBD', color: '#555555' }}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <span>
                 Status: <strong style={{ color: '#262626' }}>{connectionStatus.toUpperCase()}</strong>
                 {feedSource === 'webrtc' && iceConnectionState !== 'idle' && (
-                  <span className="text-[10px] text-stone-500 ml-1">
+                  <span className="text-[9px] text-stone-500 ml-1">
                     (ICE: {iceConnectionState.toUpperCase()})
                   </span>
                 )}
               </span>
               <span>
-                AI Engine:{' '}
-                <strong style={{ color: '#262626' }}>
-                  {visionModelReady ? 'EXPRESSION AI' : 'INITIALIZING'}
+                AI: <strong style={{ color: '#262626' }}>
+                  {visionModelReady ? 'EXPRESSION AI' : 'INIT'}
                 </strong>
               </span>
               <span>
-                Orientation: <strong style={{ color: '#262626' }}>{videoRotation}°</strong>
+                Góc: <strong style={{ color: '#262626' }}>{videoRotation}°</strong>
               </span>
             </div>
             {feedSource === 'webrtc' && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span style={{ color: '#555555' }}>Room:</span>
                 <input
                   type="text"
                   value={sessionId}
                   onChange={(e) => setSessionId(e.target.value)}
-                  className="border rounded px-2 py-0.5 text-[11px] font-mono w-32 outline-none"
+                  className="border rounded px-1.5 py-0.5 text-[10px] font-mono w-28 outline-none"
                   style={{ background: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
                 />
               </div>
@@ -1157,15 +1157,15 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
         </div>
 
         {/* Right Column: AI Emotion Analytics & Facial Mesh Diagnostics (System Theme) */}
-        <div className="flex flex-col gap-4">
+        <div className="lg:col-span-6 flex flex-col gap-2.5 overflow-y-auto custom-scrollbar pr-0.5">
           {/* Main Emotion Analytics Card */}
           <div
-            className="border rounded-2xl p-4 shadow-xs flex flex-col gap-3"
+            className="border rounded-xl p-3 shadow-xs flex flex-col gap-2 shrink-0"
             style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
           >
-            <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#BFBFBD' }}>
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4" style={{ color: '#262626' }} />
+            <div className="flex items-center justify-between border-b pb-1.5" style={{ borderColor: '#BFBFBD' }}>
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" style={{ color: '#262626' }} />
                 <span
                   className="text-xs font-bold font-mono uppercase tracking-wider"
                   style={{ color: '#262626' }}
@@ -1173,93 +1173,114 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                   AI Expression Analytics
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsAiEmotionActive((prev) => !prev)}
-                className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold cursor-pointer transition-all border"
-                style={
-                  isAiEmotionActive
-                    ? { background: '#262626', color: '#FFFFFF', borderColor: '#262626' }
-                    : { background: '#E9E5DC', color: '#8C8C8C', borderColor: '#BFBFBD' }
-                }
-              >
-                {isAiEmotionActive ? 'AI ON' : 'AI OFF'}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setShowMeshDiagnostics((prev) => !prev)}
+                  className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold cursor-pointer transition-all border flex items-center gap-1"
+                  style={
+                    showMeshDiagnostics
+                      ? { background: '#262626', color: '#FFFFFF', borderColor: '#262626' }
+                      : { background: '#E9E5DC', color: '#555555', borderColor: '#BFBFBD' }
+                  }
+                  title="Bật/Tắt bảng chi tiết Mesh Blendshapes"
+                >
+                  <Activity className="w-3 h-3" />
+                  <span>{showMeshDiagnostics ? 'Mesh On' : 'Mesh Off'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAiEmotionActive((prev) => !prev)}
+                  className="px-2 py-0.5 rounded-md text-[9px] font-mono font-bold cursor-pointer transition-all border"
+                  style={
+                    isAiEmotionActive
+                      ? { background: '#262626', color: '#FFFFFF', borderColor: '#262626' }
+                      : { background: '#E9E5DC', color: '#8C8C8C', borderColor: '#BFBFBD' }
+                  }
+                >
+                  {isAiEmotionActive ? 'AI ON' : 'AI OFF'}
+                </button>
+              </div>
             </div>
 
-            {/* Current Emotion State */}
-            <div
-              className="p-3 rounded-xl border flex items-center justify-between"
-              style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
-            >
-              <div className="flex flex-col">
-                <span className="text-[10px] font-mono uppercase font-semibold" style={{ color: '#8C8C8C' }}>
-                  Current Expression
-                </span>
+            {/* Current Emotion State & Gauges side-by-side */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-mono">
+              <div
+                className="p-2 rounded-lg border flex items-center justify-between"
+                style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+              >
+                <div className="flex flex-col">
+                  <span className="text-[9px] uppercase font-semibold" style={{ color: '#8C8C8C' }}>
+                    Current Expression
+                  </span>
+                  <span
+                    className="text-sm font-black tracking-wide uppercase mt-0.5"
+                    style={{ color: '#262626' }}
+                  >
+                    {activeDisplayEmotion}
+                  </span>
+                </div>
                 <span
-                  className="text-base font-black font-mono tracking-wide uppercase mt-0.5"
-                  style={{ color: '#262626' }}
+                  className="text-[9px] px-1.5 py-0.5 rounded-md font-bold shadow-xs"
+                  style={{ background: '#262626', color: '#FFFFFF' }}
                 >
-                  {activeDisplayEmotion}
+                  {overrideEmotion ? 'OVERRIDE' : 'REALTIME AI'}
                 </span>
               </div>
-              <span
-                className="text-[10px] font-mono px-2 py-1 rounded-lg font-bold shadow-xs"
-                style={{ background: '#262626', color: '#FFFFFF' }}
+
+              {/* Gauges for Smile & Frown */}
+              <div
+                className="p-2 rounded-lg border flex flex-col justify-center gap-1.5"
+                style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
               >
-                {overrideEmotion ? 'MANUAL OVERRIDE' : 'REALTIME AI'}
-              </span>
-            </div>
-
-            {/* Gauges for Smile & Frown */}
-            <div className="space-y-2.5 font-mono text-xs">
-              <div>
-                <div className="flex justify-between mb-1" style={{ color: '#555555' }}>
-                  <span className="flex items-center gap-1.5 font-semibold">
-                    <Smile className="w-3.5 h-3.5 text-emerald-600" /> Smile Level
-                  </span>
-                  <span className="font-bold" style={{ color: '#262626' }}>
-                    {Math.round(smileScore * 100)}%
-                  </span>
-                </div>
-                <div
-                  className="w-full h-2 rounded-full overflow-hidden border"
-                  style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
-                >
+                <div>
+                  <div className="flex justify-between text-[10px] mb-0.5" style={{ color: '#555555' }}>
+                    <span className="flex items-center gap-1 font-semibold">
+                      <Smile className="w-3 h-3 text-emerald-600" /> Smile
+                    </span>
+                    <span className="font-bold" style={{ color: '#262626' }}>
+                      {Math.round(smileScore * 100)}%
+                    </span>
+                  </div>
                   <div
-                    className="h-full bg-emerald-600 transition-all duration-300"
-                    style={{ width: `${Math.min(100, Math.round(smileScore * 100))}%` }}
-                  />
+                    className="w-full h-1.5 rounded-full overflow-hidden border"
+                    style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+                  >
+                    <div
+                      className="h-full bg-emerald-600 transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.round(smileScore * 100))}%` }}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div>
-                <div className="flex justify-between mb-1" style={{ color: '#555555' }}>
-                  <span className="flex items-center gap-1.5 font-semibold">
-                    <Frown className="w-3.5 h-3.5 text-rose-600" /> Frown / Distress Level
-                  </span>
-                  <span className="font-bold" style={{ color: '#262626' }}>
-                    {Math.round(frownScore * 100)}%
-                  </span>
-                </div>
-                <div
-                  className="w-full h-2 rounded-full overflow-hidden border"
-                  style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
-                >
+                <div>
+                  <div className="flex justify-between text-[10px] mb-0.5" style={{ color: '#555555' }}>
+                    <span className="flex items-center gap-1 font-semibold">
+                      <Frown className="w-3 h-3 text-rose-600" /> Frown
+                    </span>
+                    <span className="font-bold" style={{ color: '#262626' }}>
+                      {Math.round(frownScore * 100)}%
+                    </span>
+                  </div>
                   <div
-                    className="h-full bg-rose-600 transition-all duration-300"
-                    style={{ width: `${Math.min(100, Math.round(frownScore * 100))}%` }}
-                  />
+                    className="w-full h-1.5 rounded-full overflow-hidden border"
+                    style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+                  >
+                    <div
+                      className="h-full bg-rose-600 transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.round(frownScore * 100))}%` }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Test Robot Expression Override Buttons (Toan bo Nut Den He Thong / Khung Beige) */}
-            <div className="pt-2 border-t space-y-2" style={{ borderColor: '#BFBFBD' }}>
-              <span className="text-[10px] font-mono block uppercase font-bold" style={{ color: '#8C8C8C' }}>
+            {/* Test Robot Expression Override Buttons */}
+            <div className="pt-1.5 border-t space-y-1" style={{ borderColor: '#BFBFBD' }}>
+              <span className="text-[9px] font-mono block uppercase font-bold" style={{ color: '#8C8C8C' }}>
                 Test / Override Robot Expression:
               </span>
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-4 sm:grid-cols-8 gap-1">
                 {[
                   { id: null, label: 'AUTO' },
                   { id: 'happy', label: 'HAPPY' },
@@ -1274,7 +1295,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                     key={String(mode.id)}
                     type="button"
                     onClick={() => handleOverrideEmotion(mode.id)}
-                    className="py-1.5 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer border"
+                    className="py-1 rounded-md text-[9px] font-mono font-bold transition-all cursor-pointer border text-center"
                     style={
                       overrideEmotion === mode.id
                         ? { background: '#262626', color: '#FFFFFF', borderColor: '#262626' }
@@ -1290,12 +1311,12 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
           {/* Guest Profile & Demographics Card (AI Recommendations) */}
           <div
-            className="border rounded-2xl p-4 shadow-xs flex flex-col gap-3 font-mono"
+            className="border rounded-xl p-3 shadow-xs flex flex-col gap-2 font-mono shrink-0"
             style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
           >
-            <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#BFBFBD' }}>
-              <div className="flex items-center gap-2">
-                <UserCheck className="w-4 h-4" style={{ color: '#262626' }} />
+            <div className="flex items-center justify-between border-b pb-1.5" style={{ borderColor: '#BFBFBD' }}>
+              <div className="flex items-center gap-1.5">
+                <UserCheck className="w-3.5 h-3.5" style={{ color: '#262626' }} />
                 <span
                   className="text-xs font-bold uppercase tracking-wider"
                   style={{ color: '#262626' }}
@@ -1304,7 +1325,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 </span>
               </div>
               <span
-                className="text-[10px] px-2 py-0.5 rounded-lg font-bold border"
+                className="text-[9px] px-1.5 py-0.5 rounded-md font-bold border"
                 style={{ background: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
               >
                 Confidence: {demographicsConfidence}%
@@ -1314,24 +1335,24 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             {/* Demographics Detected Badges */}
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div
-                className="p-2.5 rounded-xl border flex flex-col justify-between"
+                className="p-2 rounded-lg border flex flex-col justify-between"
                 style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
               >
-                <span className="text-[10px] font-semibold uppercase" style={{ color: '#8C8C8C' }}>
+                <span className="text-[9px] font-semibold uppercase" style={{ color: '#8C8C8C' }}>
                   Giới tính (Gender)
                 </span>
-                <span className="text-sm font-bold uppercase mt-1" style={{ color: '#262626' }}>
+                <span className="text-xs font-bold uppercase mt-0.5" style={{ color: '#262626' }}>
                   {activeGender === 'female' ? 'Nữ (Female)' : 'Nam (Male)'}
                 </span>
               </div>
               <div
-                className="p-2.5 rounded-xl border flex flex-col justify-between"
+                className="p-2 rounded-lg border flex flex-col justify-between"
                 style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
               >
-                <span className="text-[10px] font-semibold uppercase" style={{ color: '#8C8C8C' }}>
+                <span className="text-[9px] font-semibold uppercase" style={{ color: '#8C8C8C' }}>
                   Độ tuổi (Age Group)
                 </span>
-                <span className="text-sm font-bold uppercase mt-1" style={{ color: '#262626' }}>
+                <span className="text-xs font-bold uppercase mt-0.5" style={{ color: '#262626' }}>
                   {activeAgeGroup === 'child'
                     ? 'Trẻ em (Child)'
                     : activeAgeGroup === 'young_adult'
@@ -1344,16 +1365,16 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </div>
 
             {/* Recommended Services based on Demographics */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold" style={{ color: '#8C8C8C' }}>
-                <Compass className="w-3.5 h-3.5 text-stone-600" />
+            <div className="space-y-1.5 pt-0.5">
+              <div className="flex items-center gap-1.5 text-[9px] uppercase font-bold" style={{ color: '#8C8C8C' }}>
+                <Compass className="w-3 h-3 text-stone-600" />
                 <span>Dịch vụ AI đề xuất theo hồ sơ khách:</span>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {getDemographicRecommendations(activeGender, activeAgeGroup).map((rec, idx) => (
                   <div
                     key={idx}
-                    className="p-2.5 rounded-xl border flex flex-col gap-1.5 text-xs shadow-2xs transition-all hover:border-[#262626]"
+                    className="p-2 rounded-lg border flex flex-col gap-1 text-xs shadow-2xs transition-all hover:border-[#262626]"
                     style={{ background: '#FFFFFF', borderColor: '#BFBFBD' }}
                   >
                     <div className="flex items-center justify-between gap-1">
@@ -1361,7 +1382,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                         {rec.name}
                       </div>
                       <span
-                        className="text-[9px] px-2 py-0.5 rounded-md font-bold shrink-0"
+                        className="text-[9px] px-1.5 py-0.5 rounded-md font-bold shrink-0"
                         style={{ background: '#E9E5DC', color: '#262626' }}
                       >
                         {rec.tag}
@@ -1390,18 +1411,18 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </div>
 
             {/* Manual Override Demographics Filter */}
-            <div className="pt-2 border-t space-y-2" style={{ borderColor: '#BFBFBD' }}>
-              <span className="text-[10px] block uppercase font-bold" style={{ color: '#8C8C8C' }}>
+            <div className="pt-1.5 border-t space-y-1" style={{ borderColor: '#BFBFBD' }}>
+              <span className="text-[9px] block uppercase font-bold" style={{ color: '#8C8C8C' }}>
                 Giả lập độ tuổi & giới tính để kiểm thử:
               </span>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-1">
                 {[
-                  { id: null, label: 'AUTO (CAMERA)' },
-                  { id: { gender: 'female', ageGroup: 'young_adult' }, label: 'NỮ TRẺ (SPA/POOL)' },
-                  { id: { gender: 'male', ageGroup: 'young_adult' }, label: 'NAM TRẺ (GYM/BAR)' },
-                  { id: { gender: 'female', ageGroup: 'adult' }, label: 'NỮ ADULT (DINING)' },
-                  { id: { gender: 'male', ageGroup: 'senior' }, label: 'SENIOR (WELLNESS)' },
-                  { id: { gender: 'female', ageGroup: 'child' }, label: 'TRẺ EM (KID CLUB)' },
+                  { id: null, label: 'AUTO' },
+                  { id: { gender: 'female', ageGroup: 'young_adult' }, label: 'NỮ TRẺ' },
+                  { id: { gender: 'male', ageGroup: 'young_adult' }, label: 'NAM TRẺ' },
+                  { id: { gender: 'female', ageGroup: 'adult' }, label: 'NỮ ADULT' },
+                  { id: { gender: 'male', ageGroup: 'senior' }, label: 'SENIOR' },
+                  { id: { gender: 'female', ageGroup: 'child' }, label: 'TRẺ EM' },
                 ].map((item, idx) => {
                   const isSelected =
                     item.id === null
@@ -1413,12 +1434,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                       key={idx}
                       type="button"
                       onClick={() => handleOverrideDemographics(item.id)}
-                      className="py-1 px-1 rounded-lg text-[9px] font-mono font-bold transition-all cursor-pointer border text-center"
+                      className="py-1 px-1 rounded-md text-[9px] font-mono font-bold transition-all cursor-pointer border text-center truncate"
                       style={
                         isSelected
                           ? { background: '#262626', color: '#FFFFFF', borderColor: '#262626' }
                           : { background: '#E9E5DC', color: '#262626', borderColor: '#BFBFBD' }
                       }
+                      title={item.label}
                     >
                       {item.label}
                     </button>
@@ -1428,153 +1450,155 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             </div>
           </div>
 
-          {/* Facial Landmark Mesh & Blendshapes Diagnostic Panel (System Theme) */}
-          <div
-            className="border rounded-2xl p-4 shadow-xs flex-1 flex flex-col gap-3 font-mono"
-            style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
-          >
-            <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#BFBFBD' }}>
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4" style={{ color: '#262626' }} />
-                <span
-                  className="text-xs font-bold uppercase tracking-wider"
-                  style={{ color: '#262626' }}
-                >
-                  Facial Mesh & Blendshapes
+          {/* Facial Landmark Mesh & Blendshapes Diagnostic Panel (Collapsible Toggle) */}
+          {showMeshDiagnostics && (
+            <div
+              className="border rounded-xl p-3 shadow-xs flex flex-col gap-2 font-mono shrink-0"
+              style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
+            >
+              <div className="flex items-center justify-between border-b pb-1.5" style={{ borderColor: '#BFBFBD' }}>
+                <div className="flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5" style={{ color: '#262626' }} />
+                  <span
+                    className="text-xs font-bold uppercase tracking-wider"
+                    style={{ color: '#262626' }}
+                  >
+                    Facial Mesh & Blendshapes
+                  </span>
+                </div>
+                <span className="text-[9px] font-bold" style={{ color: '#8C8C8C' }}>
+                  Key Anchors (6 PTS)
                 </span>
               </div>
-              <span className="text-[10px] font-bold" style={{ color: '#8C8C8C' }}>
-                Key Anchors (6 PTS)
-              </span>
-            </div>
 
-            {/* Muscle Blendshapes Diagnostic Breakdown */}
-            <div className="space-y-2 text-xs">
-              <div
-                className="p-2 rounded-xl border space-y-2"
-                style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
-              >
+              {/* Muscle Blendshapes Diagnostic Breakdown */}
+              <div className="space-y-1.5 text-xs">
                 <div
-                  className="text-[11px] font-bold flex items-center justify-between"
-                  style={{ color: '#262626' }}
-                >
-                  <span>Mouth Corners (Smile L/R)</span>
-                  <span className="text-emerald-700">
-                    {Math.round(blendshapeMetrics.smileLeft * 100)}% | {Math.round(blendshapeMetrics.smileRight * 100)}%
-                  </span>
-                </div>
-                <div
-                  className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5"
-                  style={{ background: '#FAF8F5' }}
-                >
-                  <div
-                    className="h-full bg-emerald-600 transition-all duration-200"
-                    style={{ width: `${Math.round(blendshapeMetrics.smileLeft * 50)}%` }}
-                  />
-                  <div
-                    className="h-full bg-emerald-500 transition-all duration-200"
-                    style={{ width: `${Math.round(blendshapeMetrics.smileRight * 50)}%` }}
-                  />
-                </div>
-              </div>
-
-              <div
-                className="p-2 rounded-xl border space-y-2"
-                style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
-              >
-                <div
-                  className="text-[11px] font-bold flex items-center justify-between"
-                  style={{ color: '#262626' }}
-                >
-                  <span>Brow Depression (Distress L/R)</span>
-                  <span className="text-rose-700">
-                    {Math.round(blendshapeMetrics.browDownLeft * 100)}% | {Math.round(blendshapeMetrics.browDownRight * 100)}%
-                  </span>
-                </div>
-                <div
-                  className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5"
-                  style={{ background: '#FAF8F5' }}
-                >
-                  <div
-                    className="h-full bg-rose-600 transition-all duration-200"
-                    style={{ width: `${Math.round(blendshapeMetrics.browDownLeft * 50)}%` }}
-                  />
-                  <div
-                    className="h-full bg-rose-500 transition-all duration-200"
-                    style={{ width: `${Math.round(blendshapeMetrics.browDownRight * 50)}%` }}
-                  />
-                </div>
-              </div>
-
-              <div
-                className="p-2 rounded-xl border space-y-2"
-                style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
-              >
-                <div
-                  className="text-[11px] font-bold flex items-center justify-between"
-                  style={{ color: '#262626' }}
-                >
-                  <span>Mouth Frown (Sadness L/R)</span>
-                  <span className="text-amber-700">
-                    {Math.round(blendshapeMetrics.mouthFrownLeft * 100)}% | {Math.round(blendshapeMetrics.mouthFrownRight * 100)}%
-                  </span>
-                </div>
-                <div
-                  className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5"
-                  style={{ background: '#FAF8F5' }}
-                >
-                  <div
-                    className="h-full bg-amber-600 transition-all duration-200"
-                    style={{ width: `${Math.round(blendshapeMetrics.mouthFrownLeft * 50)}%` }}
-                  />
-                  <div
-                    className="h-full bg-amber-500 transition-all duration-200"
-                    style={{ width: `${Math.round(blendshapeMetrics.mouthFrownRight * 50)}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Eye Squint and Jaw Opening */}
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div
-                  className="p-2 rounded-xl border flex flex-col justify-between"
+                  className="p-2 rounded-lg border space-y-1"
                   style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
                 >
-                  <span className="font-semibold" style={{ color: '#8C8C8C' }}>
-                    Eye Squint
-                  </span>
-                  <span className="text-sm font-bold mt-1" style={{ color: '#262626' }}>
-                    {Math.round(blendshapeMetrics.eyeSquint * 100)}%
-                  </span>
+                  <div
+                    className="text-[10px] font-bold flex items-center justify-between"
+                    style={{ color: '#262626' }}
+                  >
+                    <span>Mouth Corners (Smile L/R)</span>
+                    <span className="text-emerald-700">
+                      {Math.round(blendshapeMetrics.smileLeft * 100)}% | {Math.round(blendshapeMetrics.smileRight * 100)}%
+                    </span>
+                  </div>
+                  <div
+                    className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5"
+                    style={{ background: '#FAF8F5' }}
+                  >
+                    <div
+                      className="h-full bg-emerald-600 transition-all duration-200"
+                      style={{ width: `${Math.round(blendshapeMetrics.smileLeft * 50)}%` }}
+                    />
+                    <div
+                      className="h-full bg-emerald-500 transition-all duration-200"
+                      style={{ width: `${Math.round(blendshapeMetrics.smileRight * 50)}%` }}
+                    />
+                  </div>
                 </div>
+
                 <div
-                  className="p-2 rounded-xl border flex flex-col justify-between"
+                  className="p-2 rounded-lg border space-y-1"
                   style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
                 >
-                  <span className="font-semibold" style={{ color: '#8C8C8C' }}>
-                    Jaw Open
-                  </span>
-                  <span className="text-sm font-bold mt-1" style={{ color: '#262626' }}>
-                    {Math.round(blendshapeMetrics.jawOpen * 100)}%
-                  </span>
+                  <div
+                    className="text-[10px] font-bold flex items-center justify-between"
+                    style={{ color: '#262626' }}
+                  >
+                    <span>Brow Depression (Distress L/R)</span>
+                    <span className="text-rose-700">
+                      {Math.round(blendshapeMetrics.browDownLeft * 100)}% | {Math.round(blendshapeMetrics.browDownRight * 100)}%
+                    </span>
+                  </div>
+                  <div
+                    className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5"
+                    style={{ background: '#FAF8F5' }}
+                  >
+                    <div
+                      className="h-full bg-rose-600 transition-all duration-200"
+                      style={{ width: `${Math.round(blendshapeMetrics.browDownLeft * 50)}%` }}
+                    />
+                    <div
+                      className="h-full bg-rose-500 transition-all duration-200"
+                      style={{ width: `${Math.round(blendshapeMetrics.browDownRight * 50)}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div
+                  className="p-2 rounded-lg border space-y-1"
+                  style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+                >
+                  <div
+                    className="text-[10px] font-bold flex items-center justify-between"
+                    style={{ color: '#262626' }}
+                  >
+                    <span>Mouth Frown (Sadness L/R)</span>
+                    <span className="text-amber-700">
+                      {Math.round(blendshapeMetrics.mouthFrownLeft * 100)}% | {Math.round(blendshapeMetrics.mouthFrownRight * 100)}%
+                    </span>
+                  </div>
+                  <div
+                    className="w-full h-1.5 rounded-full overflow-hidden flex gap-0.5"
+                    style={{ background: '#FAF8F5' }}
+                  >
+                    <div
+                      className="h-full bg-amber-600 transition-all duration-200"
+                      style={{ width: `${Math.round(blendshapeMetrics.mouthFrownLeft * 50)}%` }}
+                    />
+                    <div
+                      className="h-full bg-amber-500 transition-all duration-200"
+                      style={{ width: `${Math.round(blendshapeMetrics.mouthFrownRight * 50)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Eye Squint and Jaw Opening */}
+                <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                  <div
+                    className="p-1.5 rounded-lg border flex flex-col justify-between"
+                    style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+                  >
+                    <span className="font-semibold" style={{ color: '#8C8C8C' }}>
+                      Eye Squint
+                    </span>
+                    <span className="text-xs font-bold mt-0.5" style={{ color: '#262626' }}>
+                      {Math.round(blendshapeMetrics.eyeSquint * 100)}%
+                    </span>
+                  </div>
+                  <div
+                    className="p-1.5 rounded-lg border flex flex-col justify-between"
+                    style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+                  >
+                    <span className="font-semibold" style={{ color: '#8C8C8C' }}>
+                      Jaw Open
+                    </span>
+                    <span className="text-xs font-bold mt-0.5" style={{ color: '#262626' }}>
+                      {Math.round(blendshapeMetrics.jawOpen * 100)}%
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* Mesh Status Note */}
-            <div
-              className="mt-auto pt-2 border-t text-[10px] flex items-center justify-between"
-              style={{ borderColor: '#BFBFBD', color: '#8C8C8C' }}
-            >
-              <span className="flex items-center gap-1 font-semibold" style={{ color: '#262626' }}>
-                <CheckCircle className="w-3 h-3 text-emerald-600" />
-                Minimal Anchors Mode
-              </span>
-              <span className="font-mono" style={{ color: '#8C8C8C' }}>
-                GPU Accelerated
-              </span>
+              {/* Mesh Status Note */}
+              <div
+                className="mt-1 pt-1.5 border-t text-[9px] flex items-center justify-between"
+                style={{ borderColor: '#BFBFBD', color: '#8C8C8C' }}
+              >
+                <span className="flex items-center gap-1 font-semibold" style={{ color: '#262626' }}>
+                  <CheckCircle className="w-3 h-3 text-emerald-600" />
+                  Minimal Anchors Mode
+                </span>
+                <span className="font-mono" style={{ color: '#8C8C8C' }}>
+                  GPU Accelerated
+                </span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

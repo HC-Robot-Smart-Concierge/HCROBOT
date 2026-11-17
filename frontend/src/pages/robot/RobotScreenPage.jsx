@@ -1060,7 +1060,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       if (currentState === 'RT-01') {
         setCurrentState('RT-02');
       }
-      triggerEyeExpression('happy');
       if (isAutoListen) {
         setTimeout(() => {
           if (
@@ -1072,7 +1071,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           ) {
             handleStartTalk();
           }
-        }, 350);
+        }, 200);
       }
     }
   };

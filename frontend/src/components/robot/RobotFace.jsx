@@ -93,8 +93,9 @@ export const RobotFace = ({
     );
   }
 
-  // 3. Màu sắc: Welcome & Speaking dùng xám đậm #4A4A4A, Listening dùng xám nhạt #A0A0A0, Happy dùng xanh ngọc tươi tắn #10b981
-  const color = isHappy ? '#10b981' : isListening ? '#A0A0A0' : '#4A4A4A';
+  // 3. Màu sắc: Trạng thái Lắng nghe & Khách lại gần dùng xám nhạt #A0A0A0 nháy chậm tự nhiên (2.5s), không dùng màu xanh lá
+  const isSlowPulsing = isListening || isHappy;
+  const color = isSlowPulsing ? '#A0A0A0' : '#4A4A4A';
   const sizeClass = isMiniSize
     ? 'w-8 h-8 sm:w-9 sm:h-9'
     : isCompactSize 
@@ -194,8 +195,8 @@ export const RobotFace = ({
 
       <svg 
         viewBox="0 0 1000 1000" 
-        className={`w-full h-full transition-colors duration-300 block ${isListening ? 'animate-pulse' : ''}`}
-        style={{ animationDuration: isListening ? '2.5s' : undefined }}
+        className={`w-full h-full transition-colors duration-300 block ${isSlowPulsing ? 'animate-pulse' : ''}`}
+        style={{ animationDuration: isSlowPulsing ? '2.5s' : undefined }}
       >
         {/* Nhóm hai mắt chuyển động theo biểu cảm - Tăng kích thước mắt to rõ, cân đối với mặt ngủ */}
         <g 

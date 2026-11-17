@@ -483,30 +483,42 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
             // 3. Demographics Estimation (Gender & Age Group via 3D Facial Anthropometry)
             if (landmarks && landmarks[10] && landmarks[152] && landmarks[234] && landmarks[454]) {
-              const dist = (p1, p2) => Math.hypot(p1.x - p2.x, p1.y - p2.y);
+              const aspect = videoEl.videoWidth && videoEl.videoHeight
+                ? videoEl.videoWidth / videoEl.videoHeight
+                : 1.0;
+              // Chuan hoa khoang cach sang he toa do dong nhat (theo chieu doc) de loai bo bien dang do camera doc / ngang
+              const dist = (p1, p2) => Math.hypot((p1.x - p2.x) * aspect, p1.y - p2.y);
               const faceH = dist(landmarks[10], landmarks[152]);
               const faceW = dist(landmarks[234], landmarks[454]);
               const jawRatio = faceW > 0 ? faceH / faceW : 1.35;
 
-              const lipH = landmarks[13] && landmarks[14] ? dist(landmarks[13], landmarks[14]) : 0.02;
+              const lipH = landmarks[13] && landmarks[14] ? dist(landmarks[13], landmarks[14]) : 0.02 * faceH;
               const browEyeDist =
                 landmarks[70] && landmarks[159] && landmarks[300] && landmarks[386]
                   ? (dist(landmarks[70], landmarks[159]) + dist(landmarks[300], landmarks[386])) / 2
-                  : 0.04;
+                  : 0.04 * faceH;
 
-              // Gender score: wider jaw ratio + flatter brow implies male
-              const genderScore = faceW * 1.05 - browEyeDist * 3.5 - lipH * 2.5;
-              const rawGender = genderScore > 0.08 ? 'male' : 'female';
+              // Ti le phi thuoc ty le khoang cach so voi chieu dai mat (Scale-Invariant Biometrics)
+              const relBrowEye = browEyeDist / Math.max(faceH, 0.001);
+              const relLipH = lipH / Math.max(faceH, 0.001);
+
+              // Gender score: Nam gioi xuong ham rong hon (jawRatio thap hon), go may thap hon, viền môi gọn hơn
+              const genderScore = (1.40 - jawRatio) * 1.5 - (relBrowEye - 0.13) * 4.0 - (relLipH - 0.07) * 3.0;
+              const rawGender = genderScore >= 0 ? 'male' : 'female';
 
               // Age group estimation
-              let rawAge = 'adult';
-              if (jawRatio < 1.25 && browEyeDist > 0.045) {
+              let rawAge = 'young_adult';
+              if (jawRatio < 1.16 && relBrowEye > 0.18) {
+                // Tre em: Khuon mat rat tron, khoang cach may - mat rat cao, xuong ham chua phat trien
                 rawAge = 'child';
-              } else if (browEyeDist < 0.03 || lipH < 0.012) {
+              } else if (relBrowEye < 0.095 || relLipH < 0.045) {
+                // Nguoi lon tuoi: Sup mi, cung may thap, mo moi thu hep
                 rawAge = 'senior';
-              } else if (jawRatio < 1.38 && lipH > 0.022) {
+              } else if (jawRatio <= 1.45 && relLipH >= 0.052) {
+                // Thanh nien (18 - 35 tuoi): Co mat san chac, duong net tre trung day dan
                 rawAge = 'young_adult';
               } else {
+                // Truong thanh (36 - 55 tuoi)
                 rawAge = 'adult';
               }
 

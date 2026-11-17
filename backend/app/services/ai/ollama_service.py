@@ -405,14 +405,14 @@ class OllamaService:
 
         if age_group or gender:
             demo_parts = []
-            if age_group and age_group != "adult":
+            if age_group and age_group != "unknown":
                 demo_parts.append(f"Age Group: {age_group}")
             if gender and gender != "unknown":
                 demo_parts.append(f"Gender: {gender}")
             if demo_parts:
                 label = "[Guest Profile]" if lang_code == "en-US" else "[Hồ sơ khách]"
                 demo_desc = ", ".join(demo_parts)
-                prompt += f"\n{label}: {demo_desc} (Naturally prioritize relevant recommendations when the guest asks for advice or activities)."
+                prompt += f"\n{label}: {demo_desc} (Naturally prioritize relevant amenities, dining, and activities matching this profile when the guest asks for recommendations, advice, or what to do)."
 
         if rag_context:
             prompt += format_safe_rag_context(rag_context, lang_code)

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { RotateCw } from 'lucide-react';
 import { Pagination } from '../../../components/common/Pagination';
 import { useLanguage } from '../../../context/LanguageContext';
@@ -9,14 +9,22 @@ import {
   fetchAuditLogs,
   getLogExportUrl,
 } from '../../../services/logsApi';
+import { fetchChatSessions, fetchSessionMessages } from '../../../services/aiApi';
+import { AdminLogsAuditAndChatViews, AdminChatTranscriptModal } from './AdminLogsAuditAndChatViews';
 
-export const AdminLogsTab = () => {
+export const AdminLogsTab = ({ subTabProp = 'operational', onSelectSubTab }) => {
   const { t, language } = useLanguage();
-  const [activeView, setActiveView] = useState('operational'); // 'operational' | 'audit'
+  const [activeView, setActiveView] = useState(subTabProp || 'operational'); // 'operational' | 'audit' | 'conversations'
   const [logs, setLogs] = useState([]);
   const [totalLogs, setTotalLogs] = useState(0);
   const [auditLogs, setAuditLogs] = useState([]);
   const [totalAudit, setTotalAudit] = useState(0);
+  const [chatSessions, setChatSessions] = useState([]);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [selectedChatSession, setSelectedChatSession] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [isChatModalLoading, setIsChatModalLoading] = useState(false);
 
   const [statistics, setStatistics] = useState({
     total: 0,
@@ -41,6 +49,25 @@ export const AdminLogsTab = () => {
     }
   });
   const pageSize = 15;
+
+  const switchView = (nextView) => {
+    setActiveView(nextView);
+    setCurrentPage(1);
+    if (typeof onSelectSubTab === 'function') {
+      onSelectSubTab(nextView);
+    }
+  };
+
+  useEffect(() => {
+    if (
+      subTabProp &&
+      ['operational', 'audit', 'conversations'].includes(subTabProp) &&
+      subTabProp !== activeView
+    ) {
+      setActiveView(subTabProp);
+      setCurrentPage(1);
+    }
+  }, [subTabProp]);
 
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
@@ -212,6 +239,18 @@ export const AdminLogsTab = () => {
       } catch {
         // Fallback
       }
+    } else if (activeView === 'conversations') {
+      setIsChatLoading(true);
+      try {
+        const res = await fetchChatSessions();
+        if (Array.isArray(res)) {
+          setChatSessions(res);
+        }
+      } catch {
+        // Fallback
+      } finally {
+        setIsChatLoading(false);
+      }
     } else {
       try {
         const res = await fetchAuditLogs({
@@ -312,6 +351,37 @@ export const AdminLogsTab = () => {
     }
   };
 
+  const handleOpenChatTranscript = async (session) => {
+    if (!session?.id) return;
+    setSelectedChatSession(session);
+    setChatMessages([]);
+    setIsChatModalLoading(true);
+    try {
+      const res = await fetchSessionMessages(session.id);
+      setChatMessages(Array.isArray(res) ? res : []);
+    } catch {
+      setChatMessages([]);
+    } finally {
+      setIsChatModalLoading(false);
+    }
+  };
+
+  const filteredChatSessions = useMemo(() => {
+    const q = chatSearchQuery.trim().toLowerCase();
+    if (!q) return chatSessions;
+    return chatSessions.filter(
+      (s) =>
+        String(s.id || '').toLowerCase().includes(q) ||
+        String(s.room_number || '').toLowerCase().includes(q) ||
+        String(s.guest_name || '').toLowerCase().includes(q)
+    );
+  }, [chatSessions, chatSearchQuery]);
+
+  const paginatedChatSessions = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredChatSessions.slice(start, start + pageSize);
+  }, [filteredChatSessions, currentPage, pageSize]);
+
   const formatTimestamp = (ts) => {
     if (!ts) return '--:--:--';
     try {
@@ -377,21 +447,28 @@ export const AdminLogsTab = () => {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* Toggle Operational vs Audit */}
+          {/* Toggle Operational vs Audit vs AI Chat History */}
           <div className="flex rounded-lg border p-0.5" style={{ borderColor: '#BFBFBD', backgroundColor: '#E9E5DC' }}>
             <button
-              onClick={() => { setActiveView('operational'); setCurrentPage(1); }}
+              onClick={() => switchView('operational')}
               className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'operational' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
                 }`}
             >
               {t('logsTabOperational')}
             </button>
             <button
-              onClick={() => { setActiveView('audit'); setCurrentPage(1); }}
+              onClick={() => switchView('audit')}
               className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'audit' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
                 }`}
             >
               {t('logsTabAudit')}
+            </button>
+            <button
+              onClick={() => switchView('conversations')}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'conversations' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
+                }`}
+            >
+              {t('logsTabAiChat')}
             </button>
           </div>
 
@@ -673,76 +750,22 @@ export const AdminLogsTab = () => {
           </div>
         </>
       ) : (
-        /* AUDIT TRAIL VIEW */
-        <div
-          className="rounded-xl border overflow-hidden shadow-none"
-          style={{
-            backgroundColor: '#FFFFFF',
-            borderColor: '#BFBFBD',
-          }}
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr
-                  className="border-b text-[11px] font-semibold uppercase tracking-wider"
-                  style={{
-                    backgroundColor: '#E9E5DC',
-                    borderColor: '#BFBFBD',
-                    color: '#262626',
-                  }}
-                >
-                  <th className="py-2 px-3 w-32">{t('logsColTime')}</th>
-                  <th className="py-2 px-3 w-32">{t('logsColAction')}</th>
-                  <th className="py-2 px-3 w-36">{t('logsColActor')}</th>
-                  <th className="py-2 px-3 w-32">{t('logsColResource')}</th>
-                  <th className="py-2 px-3">{t('logsColChanges')}</th>
-                  <th className="py-2 px-3 w-28">{t('logsColIp')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
-                {auditLogs.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
-                      {t('logsAuditEmpty')}
-                    </td>
-                  </tr>
-                ) : (
-                  auditLogs.map((item) => (
-                    <tr key={item.id} className="hover:bg-[#F2EFE9]/50 transition-colors">
-                      <td className="py-2 px-3 font-mono text-[11px]" style={{ color: '#8C8C8C' }}>
-                        {formatTimestamp(item.timestamp)}
-                      </td>
-                      <td className="py-2 px-3 font-bold text-indigo-700">
-                        {item.action}
-                      </td>
-                      <td className="py-2 px-3 font-medium">
-                        {item.actor_name || item.actor_id || 'System'} ({item.actor_type})
-                      </td>
-                      <td className="py-2 px-3 font-mono text-[11px]">
-                        {item.resource_type} #{item.resource_id}
-                      </td>
-                      <td className="py-2 px-3 text-[11px] text-stone-700">
-                        {item.after_state ? JSON.stringify(item.after_state) : 'Action logged'}
-                      </td>
-                      <td className="py-2 px-3 font-mono text-[10px] text-stone-500">
-                        {item.ip_address || '127.0.0.1'}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <Pagination
-            currentPage={currentPage}
-            totalItems={totalAudit}
-            pageSize={pageSize}
-            onPageChange={handlePageChange}
-            className="border-t px-3 py-2"
-          />
-        </div>
+        <AdminLogsAuditAndChatViews
+          activeView={activeView}
+          auditLogs={auditLogs}
+          totalAudit={totalAudit}
+          currentPage={currentPage}
+          pageSize={pageSize}
+          onPageChange={handlePageChange}
+          formatTimestamp={formatTimestamp}
+          chatSearchQuery={chatSearchQuery}
+          onChatSearchChange={setChatSearchQuery}
+          onRefreshChat={loadLogsData}
+          isChatLoading={isChatLoading}
+          filteredChatSessions={filteredChatSessions}
+          paginatedChatSessions={paginatedChatSessions}
+          onOpenChatTranscript={handleOpenChatTranscript}
+        />
       )}
       </div>
 
@@ -914,6 +937,14 @@ export const AdminLogsTab = () => {
           </div>
         </div>
       )}
+
+      <AdminChatTranscriptModal
+        session={selectedChatSession}
+        messages={chatMessages}
+        isLoading={isChatModalLoading}
+        formatTimestamp={formatTimestamp}
+        onClose={() => setSelectedChatSession(null)}
+      />
     </div>
   );
 };

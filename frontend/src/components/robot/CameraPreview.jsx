@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
+import { X } from 'lucide-react';
 import {
   detectPerson,
   loadPersonDetector,
@@ -18,6 +19,7 @@ export const CameraPreview = ({
   onGuestApproached,
   onGuestLeft,
   onEmotionChange,
+  onDemographicsChange,
   autoStart = true,
   controlsClassName = '',
   source = 'local',
@@ -25,11 +27,12 @@ export const CameraPreview = ({
   defaultMinimized = true,
   visible = true,
   onClose,
+  externalStream = null,
 }) => {
   const isPi5 = source === 'pi5';
   // Guest-session updates change the handlers, but must not restart the camera.
   const presenceHandlers = useRef({});
-  presenceHandlers.current = { onGuestApproached, onGuestLeft };
+  presenceHandlers.current = { onGuestApproached, onGuestLeft, onDemographicsChange };
 
   const offscreenVideoRef = useRef(null);
   const previewVideoRef = useRef(null);
@@ -40,7 +43,11 @@ export const CameraPreview = ({
   const landmarkerRef = useRef(null);
 
   const isTriggeredRef = useRef(false);
+  const lastDistanceRef = useRef('NONE');
+  const lastApproachedTimeRef = useRef(0);
   const negativeFramesRef = useRef(0);
+  const consecutiveUnhappyFramesRef = useRef(0);
+  const demographicsHistoryRef = useRef([]);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isMinimized, setIsMinimized] = useState(defaultMinimized);
@@ -189,6 +196,8 @@ export const CameraPreview = ({
     setIsFaceDetected(false);
     setLatestDetection(null);
     setPi5StreamError(false);
+    lastDistanceRef.current = 'NONE';
+    lastApproachedTimeRef.current = 0;
     if (isTriggeredRef.current) {
       isTriggeredRef.current = false;
       presenceHandlers.current.onGuestLeft?.();
@@ -202,8 +211,18 @@ export const CameraPreview = ({
     }
   }, [isPi5, stream]);
 
-  // Tự động bật camera nếu autoStart = true, tắt camera giải phóng phần cứng khi autoStart = false
+  // Tự động sử dụng externalStream nếu được cung cấp từ hook useKioskStreamBroadcaster
   useEffect(() => {
+    if (externalStream) {
+      setStream(externalStream);
+      setIsCameraActive(true);
+    }
+  }, [externalStream]);
+
+  // Tự động bật camera nếu autoStart = true (chỉ khi không có externalStream)
+  useEffect(() => {
+    if (externalStream) return undefined;
+
     if (autoStart) {
       startCamera();
     } else {
@@ -211,11 +230,12 @@ export const CameraPreview = ({
     }
 
     return () => {
-      if (stream) {
+      // Chỉ cleanup stream do chính component tự tạo, không stop externalStream
+      if (!externalStream && stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [autoStart, startCamera, stopCamera]);
+  }, [autoStart, externalStream, startCamera, stopCamera]);
 
   // Gán stream cho các thẻ video và bắt buộc gọi play()
   useEffect(() => {
@@ -448,10 +468,25 @@ export const CameraPreview = ({
           drawBoundingBox(result, sourceEl);
           setIsPersonDetected(true);
 
-          if (!isTriggeredRef.current) {
+          const curDist =
+            result.distance ||
+            (result.distanceRatio >= 0.45 ? 'CLOSE' : (result.distanceRatio >= 0.25 ? 'APPROACHING' : 'FAR'));
+          const isCloseOrApproaching = curDist === 'CLOSE' || curDist === 'APPROACHING';
+          const now = Date.now();
+          const isSteppingCloser =
+            (lastDistanceRef.current === 'FAR' || lastDistanceRef.current === 'NONE') && isCloseOrApproaching;
+          const isCooldownPassed = now - lastApproachedTimeRef.current > 5000;
+          const shouldTriggerApproach =
+            (!isTriggeredRef.current && isCloseOrApproaching) ||
+            isSteppingCloser ||
+            (isCooldownPassed && curDist === 'CLOSE');
+
+          if (shouldTriggerApproach) {
             isTriggeredRef.current = true;
-            presenceHandlers.current.onGuestApproached?.(result);
+            lastApproachedTimeRef.current = now;
+            presenceHandlers.current.onGuestApproached?.({ ...result, distance: curDist });
           }
+          lastDistanceRef.current = curDist;
         } else {
           negativeFramesRef.current++;
 
@@ -464,6 +499,7 @@ export const CameraPreview = ({
           if (negativeFramesRef.current >= 16) {
             setLatestDetection(null);
             setIsPersonDetected(false);
+            lastDistanceRef.current = 'NONE';
             if (isTriggeredRef.current) {
               isTriggeredRef.current = false;
               presenceHandlers.current.onGuestLeft?.();
@@ -500,28 +536,126 @@ export const CameraPreview = ({
                 }
 
                 const smile = (sLeft + sRight) / 2;
-                const frown = Math.max((bDownL + bDownR) / 2, (mFrownL + mFrownR) / 2);
+                const browDown = (bDownL + bDownR) / 2;
+                const mouthFrown = (mFrownL + mFrownR) / 2;
+                // Diem kho chiu tong hop (Compound Distress): 70% tu chan may, 30% tu khoe mieng
+                const compoundDistress = browDown * 0.7 + mouthFrown * 0.3;
+                const frown = Math.max(browDown, mouthFrown);
                 setSmileScore(smile);
                 setFrownScore(frown);
 
-                let detected = 'neutral';
+                // 1. Danh gia ung vien bieu cam (Candidate Emotion):
+                // Khach duoc xem la unhapppy khi ha chan may (browDown >= 0.30), tre khoe mieng (mouthFrown >= 0.22),
+                // hoac phoi hop ca hai (compoundDistress >= 0.26 hoac browDown >= 0.25 va mouthFrown >= 0.12), va khong cuoi (smile < 0.18)
+                let candidate = 'neutral';
                 if (smile >= 0.35) {
-                  detected = 'happy';
-                } else if (frown >= 0.28) {
-                  detected = 'unhappy';
+                  candidate = 'happy';
+                } else if (
+                  (browDown >= 0.30 || mouthFrown >= 0.22 || compoundDistress >= 0.26 || (browDown >= 0.25 && mouthFrown >= 0.12)) &&
+                  smile < 0.18
+                ) {
+                  candidate = 'unhappy';
+                }
+
+                // 2. Bo loc xac nhan theo thoi gian (Temporal Confirmation Filter):
+                // O chu ky 500ms/frame, duy tri lien tuc >= 2 frames (~1.0s) de tranh bao sai do chop mat ma van bat nhay bieu cam
+                let confirmedEmotion = 'neutral';
+                if (candidate === 'unhappy') {
+                  consecutiveUnhappyFramesRef.current += 1;
+                  if (consecutiveUnhappyFramesRef.current >= 2) {
+                    confirmedEmotion = 'unhappy';
+                  } else {
+                    confirmedEmotion = 'neutral';
+                  }
+                } else {
+                  consecutiveUnhappyFramesRef.current = 0;
+                  confirmedEmotion = candidate;
                 }
 
                 setCurrentEmotion((prev) => {
-                  if (prev !== detected) {
-                    if (onEmotionChange) onEmotionChange(detected);
+                  if (prev !== confirmedEmotion) {
+                    if (onEmotionChange) onEmotionChange(confirmedEmotion);
                   }
-                  return detected;
+                  return confirmedEmotion;
+                });
+              }
+
+              // 3. Demographics Estimation (Gender & Age Group via 3D Facial Anthropometry)
+              const landmarks = results.faceLandmarks[0];
+              if (landmarks && landmarks[10] && landmarks[152] && landmarks[234] && landmarks[454]) {
+                const width = sourceEl?.videoWidth || sourceEl?.naturalWidth || 1;
+                const height = sourceEl?.videoHeight || sourceEl?.naturalHeight || 1;
+                const aspect = width / height;
+                // Chuan hoa khoang cach sang he toa do dong nhat de loai bo bien dang do camera doc / ngang
+                const dist = (p1, p2) => Math.hypot((p1.x - p2.x) * aspect, p1.y - p2.y);
+                const faceH = dist(landmarks[10], landmarks[152]);
+                const faceW = dist(landmarks[234], landmarks[454]);
+                const jawRatio = faceW > 0 ? faceH / faceW : 1.35;
+
+                const lipH = landmarks[13] && landmarks[14] ? dist(landmarks[13], landmarks[14]) : 0.02 * faceH;
+                const browEyeDist =
+                  landmarks[70] && landmarks[159] && landmarks[300] && landmarks[386]
+                    ? (dist(landmarks[70], landmarks[159]) + dist(landmarks[300], landmarks[386])) / 2
+                    : 0.04 * faceH;
+
+                // Ti le phi thuoc ty le khoang cach so voi chieu dai mat (Scale-Invariant Biometrics)
+                const relBrowEye = browEyeDist / Math.max(faceH, 0.001);
+                const relLipH = lipH / Math.max(faceH, 0.001);
+
+                // Gender score: Nam gioi xuong ham rong hon (jawRatio thap hon), go may thap hon, vien moi gon hon
+                const genderScore = (1.40 - jawRatio) * 1.5 - (relBrowEye - 0.13) * 4.0 - (relLipH - 0.07) * 3.0;
+                const rawGender = genderScore >= 0 ? 'male' : 'female';
+
+                // Age group estimation
+                let rawAge = 'young_adult';
+                if (jawRatio < 1.16 && relBrowEye > 0.18) {
+                  // Tre em: Khuon mat rat tron, khoang cach may - mat rat cao, xuong ham chua phat trien
+                  rawAge = 'child';
+                } else if (relBrowEye < 0.095 || relLipH < 0.045) {
+                  // Nguoi lon tuoi: Sup mi, cung may thap, mo moi thu hep
+                  rawAge = 'senior';
+                } else if (jawRatio <= 1.45 && relLipH >= 0.052) {
+                  // Thanh nien (18 - 35 tuoi): Co mat san chac, duong net tre trung day dan
+                  rawAge = 'young_adult';
+                } else {
+                  // Truong thanh (36 - 55 tuoi)
+                  rawAge = 'adult';
+                }
+
+                demographicsHistoryRef.current.push({ gender: rawGender, age: rawAge });
+                if (demographicsHistoryRef.current.length > 8) {
+                  demographicsHistoryRef.current.shift();
+                }
+
+                const maleVotes = demographicsHistoryRef.current.filter((d) => d.gender === 'male').length;
+                const smoothedGender = maleVotes >= 5 ? 'male' : 'female';
+
+                const ageCounts = {};
+                demographicsHistoryRef.current.forEach((d) => {
+                  ageCounts[d.age] = (ageCounts[d.age] || 0) + 1;
+                });
+                const smoothedAge = Object.keys(ageCounts).reduce(
+                  (a, b) => (ageCounts[a] > ageCounts[b] ? a : b),
+                  'young_adult'
+                );
+
+                presenceHandlers.current.onDemographicsChange?.({
+                  gender: smoothedGender,
+                  ageGroup: smoothedAge,
                 });
               }
             } else {
               setIsFaceDetected(false);
               setSmileScore(0);
               setFrownScore(0);
+              consecutiveUnhappyFramesRef.current = 0;
+              demographicsHistoryRef.current = [];
+              setCurrentEmotion((prev) => {
+                if (prev !== 'neutral') {
+                  if (onEmotionChange) onEmotionChange('neutral');
+                }
+                return 'neutral';
+              });
             }
           } catch (mpErr) {
             // Lỗi đọc frame tạm thời
@@ -657,10 +791,10 @@ export const CameraPreview = ({
                     setIsMinimized(true);
                     onClose?.();
                   }}
-                  className="text-stone-400 hover:text-white p-1 rounded-md hover:bg-stone-800 text-xs leading-none transition-colors cursor-pointer"
+                  className="text-stone-400 hover:text-white p-1 rounded-md hover:bg-stone-800 transition-colors cursor-pointer flex items-center justify-center"
                   title="Đóng camera"
                 >
-                  ✕
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>

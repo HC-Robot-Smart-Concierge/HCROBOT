@@ -12,6 +12,13 @@ from app.services.ai.scenario_service import scenario_service
 from app.services.ai.constants import BELLMAN_MENU_TRIGGER_KEYWORDS, SERVICE_KEYWORDS
 from app.services.bell_request_service import classify_bell_request
 from app.services.maintenance_request_service import is_fault_report
+from app.services.ai.prompt_guard import (
+    check_prompt_injection,
+    get_rejection_reply,
+    get_immutability_directives,
+    format_safe_user_prompt,
+    format_safe_rag_context,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -330,28 +337,22 @@ class OllamaService:
         emotion: Optional[str] = None,
         stored_room_number: Optional[str] = None,
         rag_context: Optional[str] = None,
+        age_group: Optional[str] = None,
+        gender: Optional[str] = None,
     ) -> str:
         """
         Xây dựng System Prompt tối ưu cho giao tiếp hội thoại tự nhiên, thông minh và phản hồi nhanh.
         Tự động nạp thông tin tiện ích động từ ScenarioService (do Admin quản lý qua API).
         """
         from app.services.rag.facilities_kb_service import get_kb_facts_prompt
+        from app.services.ai.persona_service import persona_service
         kb_facts = get_kb_facts_prompt(lang_code)
         hotel_facts = scenario_service.get_hotel_facts_prompt(lang_code)
+        base_persona = persona_service.get_persona_prompt(lang_code)
 
         if lang_code == "en-US":
             prompt = (
-                "You are Rora - a smart, charming, and courteous AI Concierge Robot at the 5-star Aurora Grand Hotel.\n"
-                "CRITICAL LANGUAGE DIRECTIVE:\n"
-                "- The guest is communicating in ENGLISH. You MUST ALWAYS respond in 100% fluent, natural ENGLISH.\n"
-                "- NEVER reply in Vietnamese or any other language when the guest speaks English.\n"
-                "- Even though the hotel knowledge base and reference facts below are written in Vietnamese, you MUST translate and summarize all facts into natural English for the guest.\n\n"
-                "CONVERSATIONAL GUIDELINES:\n"
-                "1. Always communicate naturally, warmly, and politely in 2 to 3 clear, complete sentences.\n"
-                "2. Speak directly and helpfully as a professional 5-star concierge. Answer questions accurately and concisely.\n"
-                "3. Never use emojis, markdown formatting (*, #, _, -), or bulleted lists to ensure smooth speech synthesis.\n"
-                "4. State times clearly in full words (e.g., 'from 6:00 AM to 10:00 PM', '12:00 PM noon').\n"
-                "5. When providing directions or guiding to a hotel facility or room, politely end with: 'In addition, you can scan the QR code on the screen to save the directions!'\n"
+                base_persona +
                 "6. MANDATORY SERVICE & ROOM NUMBER RULES:\n"
                 "   - Whenever the guest makes a room service or amenity request (cleaning, towels, food, repairs, luggage, taxi):\n"
                 "     + If room number is NOT known yet (not in [Room Info]): ALWAYS politely ask for their room number first.\n"
@@ -360,6 +361,9 @@ class OllamaService:
                 "   - All factual details regarding hotel amenities, timings, room types, and services are strictly governed by [Hotel Knowledge Base (RAG)] and Admin-configured facts.\n"
                 "   - NEVER hallucinate or invent facilities not documented in the provided knowledge base.\n"
                 "   - If an amenity or inquiry is not found in the documentation, politely advise the guest to check with the Front Desk.\n"
+                "8. CONVERSATIONAL ENGAGEMENT & CONTINUATION RULE:\n"
+                "   - Never end inquiries or questions with an abrupt dead-end statement.\n"
+                "   - Always conclude your answer with ONE natural, context-aware follow-up suggestion, helpful question, or relevant next step based on hotel amenities (e.g., offering map directions for facilities, menu/reservations for dining, amenities for room stay, or asking how else you may assist) to keep the conversation flowing smoothly.\n"
             )
             if kb_facts:
                 prompt += f"\n{kb_facts}\n"
@@ -367,15 +371,7 @@ class OllamaService:
                 prompt += f"\n{hotel_facts}\n"
         else:
             prompt = (
-                "Bạn là Rora - Trợ lý Robot Concierge thông minh, lễ phép, duyên dáng và hiếu khách tại khách sạn 5 sao Aurora Grand Hotel.\n"
-                "PHONG CÁCH GIAO TIẾP VÀ TRÒ CHUYỆN TỰ NHIÊN:\n"
-                "1. Xưng là 'em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'. Giao tiếp tự nhiên, lịch sự, có thể mở đầu lời chào bằng 'Dạ' khi phù hợp nhưng tuyệt đối không lặp lại từ 'Dạ' ở đầu mỗi câu tiếp theo.\n"
-                "2. Trò chuyện một cách tự nhiên, gần gũi, ấm áp, lưu loát như một nhân viên lễ tân 5 sao chuyên nghiệp.\n"
-                "3. Trả lời đúng trọng tâm, súc tích trong 2 đến 3 câu văn gãy gọn, hoàn chỉnh để phát giọng đọc mượt mà và người nghe dễ nắm bắt nhất.\n"
-                "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa.\n"
-                "5. Tuyệt đối KHÔNG dùng emoji, ký hiệu markdown (*, #, _, -) hay gạch đầu dòng.\n"
-                "6. Viết thời gian rõ ràng: luôn viết bằng chữ như 'từ 6 giờ sáng đến 22 giờ tối', '12 giờ trưa', không viết tắt '6-22h'.\n"
-                "7. Khi hướng dẫn chỉ đường hoặc giới thiệu vị trí một tiện ích hay phòng của khách sạn, ở cuối câu hãy luôn thêm câu mời: 'Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ.'\n"
+                base_persona +
                 "8. QUY TẮC BẮT BUỘC VỀ YÊU CẦU DỊCH VỤ LIÊN QUAN TỚI SỐ PHÒNG:\n"
                 "   - Khi khách yêu cầu bất kỳ dịch vụ phòng nào (khăn tắm, buồng phòng, dọn phòng, chăn gối, đồ dùng, đồ ăn thức uống room service, hành lý bellman, sửa chữa máy lạnh điện nước, đặt xe taxi, v.v.):\n"
                 "     + Nếu CHƯA BIẾT số phòng (chưa có trong [Thông tin phòng]): BẮT BUỘC Rora phải hỏi số phòng của quý khách trước (ví dụ: 'Dạ em sẽ hỗ trợ ... cho quý khách ngay ạ! Quý khách vui lòng cho em xin số phòng của mình là bao nhiêu ạ?').\n"
@@ -385,6 +381,9 @@ class OllamaService:
                 "   - Toàn bộ thông tin về cơ sở vật chất, tiện ích, giờ hoạt động và quy định do [Cơ sở tri thức khách sạn (RAG)] và Admin quản lý.\n"
                 "   - Tuyệt đối KHÔNG tự ý suy diễn hoặc bịa đặt các dịch vụ không có trong tài liệu.\n"
                 "   - Nếu thông tin khách hỏi không có trong tài liệu, hãy lịch sự trả lời rằng Rora sẽ liên hệ nhân viên hoặc quầy lễ tân để hỗ trợ quý khách.\n"
+                "10. NGUYÊN TẮC DUY TRÌ HỘI THOẠI VÀ GỢI Ý MỞ (CONVERSATIONAL CONTINUATION):\n"
+                "   - Tuyệt đối không kết thúc câu trả lời một cách cụt lủn hoặc rơi vào ngõ cụt.\n"
+                "   - Luôn chủ động khép lại câu nói bằng MỘT câu hỏi gợi ý mở hoặc đề xuất hành động tiếp theo thật tự nhiên bám sát tiện ích khách sạn (ví dụ: gợi ý mở bản đồ chỉ đường nếu hỏi về tiện ích/địa điểm, gợi ý xem thực đơn/đặt bàn nếu hỏi về ăn uống, gợi ý đồ dùng nếu hỏi về lưu trú phòng, hoặc hỏi xem khách có cần hỗ trợ thêm thông tin gì khác không).\n"
             )
             if kb_facts:
                 prompt += f"\n{kb_facts}\n"
@@ -396,13 +395,30 @@ class OllamaService:
 
         emotion_str = (emotion or "").lower()
         if emotion_str in ["annoyed", "angry", "upset", "unhappy", "frustrated", "khó chịu", "kho chiu"]:
-            prompt += "\n[Cảm xúc khách]: Khách đang có biểu cảm khó chịu hoặc chưa hài lòng, hãy phản hồi với thái độ xin lỗi chân thành, xoa dịu ân cần và cho biết nhân viên Concierge tại sảnh sẽ hỗ trợ ngay."
+            unhappy_msg = persona_service.get_unhappy_empathy(lang_code)
+            label = "[Guest Emotion]" if lang_code == "en-US" else "[Cảm xúc khách]"
+            prompt += f"\n{label}: {unhappy_msg}"
         elif emotion_str in ["happy", "pleased"]:
-            prompt += "\n[Cảm xúc khách]: Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
+            label = "[Guest Emotion]" if lang_code == "en-US" else "[Cảm xúc khách]"
+            happy_msg = "The guest is very happy, respond warmly and enthusiastically." if lang_code == "en-US" else "Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
+            prompt += f"\n{label}: {happy_msg}"
+
+        if age_group or gender:
+            demo_parts = []
+            if age_group and age_group != "unknown":
+                demo_parts.append(f"Age Group: {age_group}")
+            if gender and gender != "unknown":
+                demo_parts.append(f"Gender: {gender}")
+            if demo_parts:
+                label = "[Guest Profile]" if lang_code == "en-US" else "[Hồ sơ khách]"
+                demo_desc = ", ".join(demo_parts)
+                prompt += f"\n{label}: {demo_desc} (Naturally prioritize relevant amenities, dining, and activities matching this profile when the guest asks for recommendations, advice, or what to do)."
 
         if rag_context:
-            kb_label = "[Hotel Knowledge Base (Reference Facts)]" if lang_code == "en-US" else "[Cơ sở tri thức khách sạn (RAG)]"
-            prompt += f"\n{kb_label}:\n{rag_context}"
+            prompt += format_safe_rag_context(rag_context, lang_code)
+
+        # Cung co nguyen tac bat bien bao mat chong Prompt Injection
+        prompt += get_immutability_directives(lang_code)
 
         return prompt
 
@@ -414,11 +430,19 @@ class OllamaService:
         emotion: Optional[str] = None,
         chat_history: Optional[List[Dict[str, str]]] = None,
         stored_room_number: Optional[str] = None,
+        age_group: Optional[str] = None,
+        gender: Optional[str] = None,
     ):
         """
         Async Generator sinh token theo thời gian thực từ Qwen/Groq/Gemini/Ollama (stream=True).
         Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
+        # 0.0. Kiem tra an toan bao mat: Chan Prompt Injection tuc thi (< 0.05ms)
+        if check_prompt_injection(prompt):
+            lang_code = "en-US" if (language and (language == "English" or "en" in str(language).lower())) else "vi-VN"
+            yield get_rejection_reply(lang_code)
+            return
+
         # 0. Kiểm tra Mega Fast-Path tức thì (< 1ms), bỏ qua nếu caller truyền sẵn rag_context từ Knowledge Base
         fast_hit = None if (rag_context and rag_context.strip()) else self.check_fast_path(prompt, language)
         if fast_hit:
@@ -445,6 +469,8 @@ class OllamaService:
             emotion=emotion,
             stored_room_number=stored_room_number,
             rag_context=rag_context,
+            age_group=age_group,
+            gender=gender,
         )
 
         messages = [{"role": "system", "content": system_prompt}]
@@ -452,7 +478,7 @@ class OllamaService:
             for turn in chat_history:
                 if turn.get("role") in ["user", "assistant"] and turn.get("content"):
                     messages.append({"role": turn["role"], "content": turn["content"]})
-        messages.append({"role": "user", "content": prompt})
+        messages.append({"role": "user", "content": format_safe_user_prompt(prompt)})
 
         provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
 
@@ -553,11 +579,19 @@ class OllamaService:
         emotion: Optional[str] = None,
         chat_history: Optional[List[Dict[str, str]]] = None,
         stored_room_number: Optional[str] = None,
+        age_group: Optional[str] = None,
+        gender: Optional[str] = None,
     ) -> Tuple[str, str, str]:
         """
         Sinh câu trả lời thoại cho Concierge Robot dựa trên câu hỏi của khách và lịch sử phiên.
         Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
+        # 0.0. Kiem tra an toan bao mat: Chan Prompt Injection tuc thi (< 0.05ms)
+        if check_prompt_injection(prompt):
+            lang_code = "en-US" if (language and (language == "English" or "en" in str(language).lower())) else "vi-VN"
+            lang_name = "English" if lang_code == "en-US" else "Tiếng Việt"
+            return get_rejection_reply(lang_code), lang_name, lang_code
+
         # 0. Kiểm tra Fast-Path trước (< 1ms), bỏ qua nếu caller truyền sẵn rag_context từ Knowledge Base
         fast_hit = None if (rag_context and rag_context.strip()) else self.check_fast_path(prompt, language)
         if fast_hit:
@@ -582,6 +616,8 @@ class OllamaService:
             emotion=emotion,
             stored_room_number=stored_room_number,
             rag_context=rag_context,
+            age_group=age_group,
+            gender=gender,
         )
 
         messages = [{"role": "system", "content": system_prompt}]
@@ -589,7 +625,7 @@ class OllamaService:
             for turn in chat_history:
                 if turn.get("role") in ["user", "assistant"] and turn.get("content"):
                     messages.append({"role": turn["role"], "content": turn["content"]})
-        messages.append({"role": "user", "content": prompt})
+        messages.append({"role": "user", "content": format_safe_user_prompt(prompt)})
 
         provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
 
@@ -599,7 +635,7 @@ class OllamaService:
         if provider not in ["gemini", "ollama"] and bool(settings.GROQ_API_KEY):
             try:
                 logger.info(f"[AI Tier 1] Gửi Groq Cloud (model: {settings.GROQ_MODEL})...")
-                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=150)
+                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=80)
                 if groq_reply and groq_reply.strip():
                     reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
                     if lang_code == "en-US" and not re.search(r"[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]", reply, re.IGNORECASE):
@@ -647,7 +683,7 @@ class OllamaService:
                         "temperature": 0.7,
                         "top_p": 0.9,
                         "num_ctx": 1024,
-                        "num_predict": 70,
+                        "num_predict": 45,
                         "num_thread": 8,
                         "repeat_penalty": 1.1,
                     },

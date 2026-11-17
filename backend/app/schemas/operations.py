@@ -176,6 +176,7 @@ class ConciergeLiveRequestCreate(BaseModel):
     assistance_status: Optional[str] = Field("Connected", description="Trạng thái kết nối video: 'Connected', 'Pending', 'Ended'", json_schema_extra={"example": "Connected"})
     transcript: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Đoạn hội thoại đã diễn ra giữa Robot và khách")
     category: Optional[str] = Field(None, description="Phân loại yêu cầu hỗ trợ")
+    notify: bool = Field(True, description="Có gửi thông báo notification đến Concierge hay không")
 
 
 class ConciergeLiveRequestUpdate(BaseModel):
@@ -892,6 +893,13 @@ class HumanSupportSessionResponse(BaseModel):
     wait_time_label: str
     status: str
     linked_request_id: Optional[str] = None
+    recording_url: Optional[str] = None
+    recording_public_id: Optional[str] = None
+    recording_duration: Optional[int] = None
+    recording_status: Optional[str] = "ready"
+    thumbnail_url: Optional[str] = None
+    call_started_at: Optional[datetime] = None
+    call_ended_at: Optional[datetime] = None
     messages: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: datetime
 

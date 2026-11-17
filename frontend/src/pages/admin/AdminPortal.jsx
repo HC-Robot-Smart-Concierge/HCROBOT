@@ -10,6 +10,7 @@ import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
 import { AdminAdvertisementsTab } from './tabs/AdminAdvertisementsTab';
+import { AdminVideoCallsTab } from './tabs/AdminVideoCallsTab';
 import { useLanguage } from '../../context/LanguageContext';
 import {
   fetchNotifications,
@@ -35,6 +36,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Department',
         'Account',
         'Staff',
+        'Video Calls',
         'Logs',
         'Settings',
       ];
@@ -53,6 +55,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   const [robotSubTab, setRobotSubTab] = useState('lidar');
   const [manageRobotSubTab, setManageRobotSubTab] = useState('robot_profile');
   const [knowledgeSubTab, setKnowledgeSubTab] = useState('sources');
+  const [logsSubTab, setLogsSubTab] = useState('operational');
 
   // Real-time Notifications Center State
   const [notifications, setNotifications] = useState([]);
@@ -176,6 +179,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Knowledge',     label: t('adminKnowledge') },
     { id: 'Advertisements',label: t('adminAdvertisements') },
     { id: 'Department',    label: t('adminDepartment') },
+    { id: 'Video Calls',   label: 'Video Calls' },
     { id: 'Account',       label: t('adminAccount') },
     { id: 'Logs',          label: t('adminLogs') },
   ];
@@ -267,6 +271,16 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         {t('adminSubControlCamera')}
                       </button>
                       <button
+                        onClick={() => setRobotSubTab('phone_camera')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: robotSubTab === 'phone_camera' ? '#262626' : 'transparent',
+                          color: robotSubTab === 'phone_camera' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('adminSubPhoneCamera')}
+                      </button>
+                      <button
                         onClick={() => setRobotSubTab('physical_map')}
                         className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
                         style={{
@@ -347,6 +361,52 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         }}
                       >
                         {t('adminSubFastPath')}
+                      </button>
+                      <button
+                        onClick={() => setKnowledgeSubTab('persona')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: knowledgeSubTab === 'persona' ? '#262626' : 'transparent',
+                          color: knowledgeSubTab === 'persona' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('adminSubPersona')}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Logs sub-items */}
+                  {item.id === 'Logs' && activeMenu === 'Logs' && (
+                    <div className="ml-3 pl-3 border-l my-0.5 space-y-0.5" style={{ borderColor: '#262626' }}>
+                      <button
+                        onClick={() => setLogsSubTab('operational')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: logsSubTab === 'operational' ? '#262626' : 'transparent',
+                          color: logsSubTab === 'operational' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('logsTabOperational')}
+                      </button>
+                      <button
+                        onClick={() => setLogsSubTab('audit')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: logsSubTab === 'audit' ? '#262626' : 'transparent',
+                          color: logsSubTab === 'audit' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('logsTabAudit')}
+                      </button>
+                      <button
+                        onClick={() => setLogsSubTab('conversations')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: logsSubTab === 'conversations' ? '#262626' : 'transparent',
+                          color: logsSubTab === 'conversations' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('logsTabAiChat')}
                       </button>
                     </div>
                   )}
@@ -573,6 +633,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             <AdminDepartmentTab currentUser={currentUser} />
           )}
 
+          {activeMenu === 'Video Calls' && (
+            <AdminVideoCallsTab currentUser={currentUser} />
+          )}
+
           {(activeMenu === 'Account' || activeMenu === 'Staff') && (
             <AdminStaffTab currentUser={currentUser} />
           )}
@@ -582,7 +646,11 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           )}
 
           {activeMenu === 'Logs' && (
-            <AdminLogsTab currentUser={currentUser} />
+            <AdminLogsTab
+              currentUser={currentUser}
+              subTabProp={logsSubTab}
+              onSelectSubTab={setLogsSubTab}
+            />
           )}
 
           {(activeMenu === 'Advertisements' || activeMenu === 'Hotel Content') && (

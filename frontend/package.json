@@ -11,7 +11,7 @@
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.0.1",

@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -9,6 +9,8 @@ class ChatRequest(BaseModel):
     language: Optional[str] = Field("Tiếng Việt", description="Ngôn ngữ phản hồi yêu cầu: Tiếng Việt hoặc English", json_schema_extra={"example": "English"})
     emotion: Optional[str] = Field("neutral", description="Trạng thái cảm xúc của khách hàng", json_schema_extra={"example": "neutral"})
     room_number: Optional[str] = Field(None, description="Số phòng khai báo nếu có")
+    age_group: Optional[str] = Field("adult", description="Độ tuổi ước tính của khách: child, teen, young_adult, middle_aged, senior")
+    gender: Optional[str] = Field("unknown", description="Giới tính ước tính của khách: male, female, unknown")
 
 
 class ChatResponse(BaseModel):
@@ -34,6 +36,7 @@ class ChatResponse(BaseModel):
     action: Optional[str] = Field(default=None, description="Tên action/intent dịch vụ được phân loại: query_order_status, room_service, ...")
     status_query_type: Optional[str] = Field(default=None, description="Loại tra cứu trạng thái: service | food")
     trigger_menu: Optional[str] = Field(default=None, description="Tên menu tự động kích hoạt trên Kiosk: food_menu | room_service")
+    suggested_prompts: Optional[List[str]] = Field(default_factory=list, description="Danh sách 2-3 câu hỏi gợi ý tiếp theo dạng Quick-Reply Chips")
 
 
 class IntentRequest(BaseModel):
@@ -76,6 +79,7 @@ class VoiceSettingsRequest(BaseModel):
     speech_rate: float = Field(1.0, ge=0.5, le=2.0, description="Tốc độ nói từ 0.5x đến 2.0x")
     vi_voice: Optional[str] = Field("vi-VN-HoaiMyNeural", description="Giọng đọc tiếng Việt (VD: vi-VN-HoaiMyNeural, vi-VN-NamMinhNeural)")
     en_voice: Optional[str] = Field("en-US-JennyNeural", description="Giọng đọc tiếng Anh")
+    volume: Optional[str] = Field("+35%", description="Âm lượng EdgeTTS (+30%, +35%, +50%)")
 
 
 class VoiceSettingsResponse(BaseModel):
@@ -83,6 +87,37 @@ class VoiceSettingsResponse(BaseModel):
     rate_percentage: str = Field("+0%", description="Tốc độ theo định dạng % của EdgeTTS")
     vi_voice: str = Field("vi-VN-HoaiMyNeural", description="Giọng tiếng Việt đang dùng")
     en_voice: str = Field("en-US-JennyNeural", description="Giọng tiếng Anh đang dùng")
+    volume: Optional[str] = Field("+35%", description="Âm lượng EdgeTTS đang dùng")
+
+
+class PersonaSettingsRequest(BaseModel):
+    bot_name: Optional[str] = Field(None, description="Tên định danh của Robot")
+    hotel_name: Optional[str] = Field(None, description="Tên khách sạn")
+    star_rating: Optional[int] = Field(None, ge=1, le=7, description="Hạng sao khách sạn (1 - 7 sao)")
+    tone_style: Optional[str] = Field(None, description="Phong cách: 'luxury' | 'warm' | 'concise'")
+    pronoun_bot_vi: Optional[str] = Field(None, description="Cách Robot tự xưng trong tiếng Việt")
+    pronoun_guest_vi: Optional[str] = Field(None, description="Cách Robot gọi khách trong tiếng Việt")
+    qr_cta_vi: Optional[str] = Field(None, description="Câu mời quét mã QR chỉ đường (tiếng Việt)")
+    qr_cta_en: Optional[str] = Field(None, description="Câu mời quét mã QR chỉ đường (tiếng Anh)")
+    unhappy_empathy_vi: Optional[str] = Field(None, description="Chỉ thị xoa dịu khi khách khó chịu (tiếng Việt)")
+    unhappy_empathy_en: Optional[str] = Field(None, description="Chỉ thị xoa dịu khi khách khó chịu (tiếng Anh)")
+    out_of_scope_vi: Optional[str] = Field(None, description="Câu từ chối khi hỏi ngoài phạm vi (tiếng Việt)")
+    out_of_scope_en: Optional[str] = Field(None, description="Câu từ chối khi hỏi ngoài phạm vi (tiếng Anh)")
+
+
+class PersonaSettingsResponse(BaseModel):
+    bot_name: str
+    hotel_name: str
+    star_rating: int
+    tone_style: str
+    pronoun_bot_vi: str
+    pronoun_guest_vi: str
+    qr_cta_vi: str
+    qr_cta_en: str
+    unhappy_empathy_vi: str
+    unhappy_empathy_en: str
+    out_of_scope_vi: str
+    out_of_scope_en: str
 
 
 class FeedbackCreate(BaseModel):

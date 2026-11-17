@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import time
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.ai import ChatRequest, ChatResponse
@@ -56,15 +56,31 @@ async def _submit_bell_for_chat(db, room_number, items, english):
         )
 
 
-def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | None = None) -> str | None:
+def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | None = None, session_id: str | None = None) -> str | None:
     """
     Nhận diện mã điểm đến POI để đồng bộ bản đồ 8 tầng.
     Chỉ kích hoạt khi câu hỏi của người dùng (prompt) thực sự có ý định hỏi đường/vị trí.
     Tuyệt đối không tự tiện bật bản đồ khi người dùng chỉ hỏi thông tin dịch vụ thông thường
     mà câu trả lời của AI có nhắc đến quầy lễ tân hoặc tiện ích.
+    Hỗ trợ kế thừa POI từ câu hỏi gợi ý ở lượt trước qua Session Memory.
     """
     p_lower = (prompt or "").lower().strip()
     r_lower = (reply or "").lower().strip()
+
+    # 0. Hỗ trợ câu hỏi nối tiếp xác nhận điều hướng POI từ lượt trước (Multi-turn Context)
+    if session_id:
+        affirmative_nav = bool(re.search(
+            r'^(?:có|dạ có|da co|ừ|uh|yes|sure)?[\s\,\.\-]*'
+            r'(?:chỉ đường|chi duong|dẫn đường|dan duong|chỉ đi|dẫn đi|mở bản đồ|mo ban do|dẫn tôi đi|chỉ tôi đi|show me|take me there|navigate)'
+            r'(?:[\s\w]*)$'
+            r'|'
+            r'^(?:có|dạ có|da co|ừ|uh|yes|sure)[\s\!\.\?]*$',
+            p_lower
+        ))
+        if affirmative_nav:
+            last_key = session_manager.get_last_destination_key(session_id)
+            if last_key:
+                return last_key
 
     # Neu cau hoi nhac toi phong khong ton tai hoac phan hoi thong bao phong khong ton tai -> Tuyet doi khong bat ban do
     cand_room = extract_room_number(p_lower)
@@ -302,6 +318,226 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     return None
 
 
+def get_dynamic_suggested_prompts(
+    prompt: str = "",
+    reply: str = "",
+    action: str = "conversation",
+    destination_key: Optional[str] = None,
+    lang_code: str = "vi-VN",
+    age_group: Optional[str] = None,
+    gender: Optional[str] = None,
+) -> List[str]:
+    """
+    Sinh 2-3 câu hỏi gợi ý mở dạng Quick-Reply Chips theo chủ đề ngữ cảnh của câu thoại vừa diễn ra.
+    Hoàn toàn hướng dữ liệu (Data-Driven), bám sát tiện ích khách sạn và hồ sơ nhân khẩu học.
+    """
+    is_en = (lang_code == "en-US")
+    text_check = f"{(prompt or '').lower()} {(reply or '').lower()}"
+
+    # 1. Nhóm Hồ bơi / Infinity Pool (Tầng 5)
+    if destination_key == "infinity_pool" or any(k in text_check for k in ["hồ bơi", "ho boi", "bể bơi", "be boi", "pool", "swimming"]):
+        return [
+            "Chỉ đường lên Hồ bơi Tầng 5",
+            "Giờ mở cửa hồ bơi vô cực",
+            "Quy định khăn tắm và phao bơi",
+        ] if not is_en else [
+            "Directions to Pool Level 5",
+            "Infinity pool opening hours",
+            "Towel & amenity policy",
+        ]
+
+    # 2. Nhóm Phòng Gym / Fitness (Tầng 5 - Mở cửa 24/7)
+    if destination_key == "gym" or any(k in text_check for k in ["gym", "fitness", "thể hình", "the thao", "chạy bộ", "tập tạ"]):
+        return [
+            "Chỉ đường phòng Gym Tầng 5",
+            "Phòng Gym mở cửa 24/7 phải không",
+            "Thiết bị tập tại phòng Gym",
+        ] if not is_en else [
+            "Directions to Gym Level 5",
+            "Is Gym open 24/7?",
+            "Gym workout equipment",
+        ]
+
+    # 3. Nhóm Thảo Mộc Spa & Massage (Tầng 5 - Giảm 15% cho khách phòng)
+    if destination_key == "spa" or any(k in text_check for k in ["spa", "massage", "xông hơi", "chăm sóc da", "wellness", "thảo mộc"]):
+        return [
+            "Chỉ đường Thảo Mộc Spa Tầng 5",
+            "Gói xông hơi đá muối & massage",
+            "Khách phòng có được giảm giá Spa không",
+        ] if not is_en else [
+            "Directions to Herbal Spa Level 5",
+            "Salt sauna & massage packages",
+            "Spa discount for hotel guests",
+        ]
+
+    # 4. Nhóm Ăn uống / Room Service 24/7 (Bếp Tầng 2 - Không có buffet ăn tại chỗ)
+    if action in ["room_service", "open_food_menu", "open_room_service_menu"] or destination_key in ["restaurant", "kitchen"] or any(k in text_check for k in ["nhà hàng", "nha hang", "ăn uống", "an uong", "thực đơn", "thuc don", "menu", "đặt món", "bữa sáng", "breakfast", "dining", "food", "room service"]):
+        return [
+            "Xem thực đơn Room Service 24/7",
+            "Cách đặt món ăn lên phòng",
+            "Khách sạn có buffet sáng không",
+        ] if not is_en else [
+            "View 24/7 Room Service menu",
+            "How to order food to room",
+            "Is breakfast buffet available?",
+        ]
+
+    # 5. Nhóm Rooftop Coffee & View (Tầng 6)
+    if destination_key == "rooftop_coffee" or any(k in text_check for k in ["rooftop coffee", "cà phê", "cafe", "coffee", "ngắm cảnh"]):
+        return [
+            "Chỉ đường Rooftop Coffee Tầng 6",
+            "Giờ mở cửa quán cà phê",
+            "Menu trà thảo mộc & điểm ngắm cảnh",
+        ] if not is_en else [
+            "Directions to Rooftop Coffee Level 6",
+            "Rooftop Coffee operating hours",
+            "Herbal tea & scenic views",
+        ]
+
+    # 6. Nhóm Sky Lounge Bar (Tầng 6)
+    if destination_key == "bar" or any(k in text_check for k in ["sky lounge", "quầy bar", "lounge bar", "cocktail", "craft beer", "rượu"]):
+        return [
+            "Chỉ đường Sky Lounge Bar Tầng 6",
+            "Giờ mở cửa Sky Lounge Bar",
+            "Menu cocktail & bia thủ công",
+        ] if not is_en else [
+            "Directions to Sky Lounge Bar Level 6",
+            "Sky Lounge Bar operating hours",
+            "Cocktails & craft beer menu",
+        ]
+
+    # 7. Nhóm VIP Karaoke (Tầng 6)
+    if destination_key == "karaoke" or any(k in text_check for k in ["karaoke", "hát karaoke"]):
+        return [
+            "Chỉ đường phòng VIP Karaoke Tầng 6",
+            "Cách đặt phòng VIP Karaoke",
+            "Giờ mở cửa phòng Karaoke",
+        ] if not is_en else [
+            "Directions to VIP Karaoke Level 6",
+            "How to book VIP Karaoke",
+            "Karaoke operating hours",
+        ]
+
+    # 8. Nhóm Buồng phòng / Housekeeping
+    if action in ["housekeeping", "laundry"] or any(k in text_check for k in ["khăn", "dọn phòng", "don phong", "nước suối", "gối", "chăn", "giặt ủi", "towel", "cleaning"]):
+        return [
+            "Xin thêm khăn tắm",
+            "Lấy thêm nước suối miễn phí",
+            "Yêu cầu dọn phòng ngay",
+        ] if not is_en else [
+            "Request extra towels",
+            "Complimentary bottled water",
+            "Make up room now",
+        ]
+
+    # 9. Nhóm Hành lý / Bellman / Taxi
+    if action in ["bellman", "book_taxi"] or any(k in text_check for k in ["hành lý", "hanh ly", "vali", "taxi", "sân bay", "luggage", "baggage", "airport"]):
+        return [
+            "Hỗ trợ chuyển hành lý",
+            "Đặt xe taxi ra sân bay",
+            "Gửi đồ tại sảnh",
+        ] if not is_en else [
+            "Luggage assistance",
+            "Book an airport taxi",
+            "Luggage storage service",
+        ]
+
+    # 10. Nhóm Lễ tân / Check-in / Check-out (Tầng Trệt)
+    if destination_key in ["front_desk", "reception"] or any(k in text_check for k in ["lễ tân", "le tan", "check-in", "checkin", "check-out", "checkout", "nhận phòng", "trả phòng"]):
+        return [
+            "Chỉ đường ra Quầy Lễ Tân Tầng Trệt",
+            "Quy định giờ check-in và check-out",
+            "Hỗ trợ gửi hành lý tại sảnh",
+        ] if not is_en else [
+            "Directions to Front Desk Ground Level",
+            "Check-in & check-out policy",
+            "Luggage storage at lobby",
+        ]
+
+    # 11. Nhóm Bãi đỗ xe (Hầm B1 & B2)
+    if destination_key in ["parking_car", "parking_bike"] or any(k in text_check for k in ["đỗ xe", "do xe", "bãi xe", "bai xe", "gửi xe", "gui xe", "parking"]):
+        return [
+            "Chỉ đường Bãi đỗ xe ô tô Hầm B2",
+            "Chỉ đường Bãi giữ xe máy Hầm B1",
+            "Khách sạn có trạm sạc xe điện không",
+        ] if not is_en else [
+            "Directions to Car Parking B2",
+            "Directions to Bike Parking B1",
+            "EV charging station info",
+        ]
+
+    # 12. Nhóm Wifi
+    if any(k in text_check for k in ["wifi", "wi-fi", "mật khẩu", "mat khau", "password", "mạng"]):
+        return [
+            "Khách sạn có những tiện ích gì?",
+            "Xem menu Room Service 24/7",
+            "Chỉ đường quầy Lễ tân",
+        ] if not is_en else [
+            "Hotel amenities & highlights",
+            "View 24/7 Room Service menu",
+            "Directions to Front Desk",
+        ]
+
+    # 13. Gợi ý cá nhân hóa theo Profile nhân khẩu học (Demographics) liên kết 100% với RAG
+    age_str = (age_group or "").lower()
+    gender_str = (gender or "").lower()
+
+    if "child" in age_str or "kid" in age_str:
+        return [
+            "Chỉ đường Hồ Bơi Vô Cực Tầng 5",
+            "Menu nước ép Room Service 24/7",
+            "Cửa Hàng Lưu Niệm Tầng 6",
+        ] if not is_en else [
+            "Directions to Infinity Pool Level 5",
+            "Kids juice & Room Service menu",
+            "Gift Shop at Level 6",
+        ]
+
+    if gender_str == "female" and ("young" in age_str or "adult" in age_str):
+        return [
+            "Thảo Mộc Spa & Xông hơi Tầng 5",
+            "Rooftop Coffee ngắm hoàng hôn Tầng 6",
+            "Hồ Bơi Vô Cực Tầng 5",
+        ] if not is_en else [
+            "Herbal Spa & Sauna at Level 5",
+            "Rooftop Coffee sunset view Level 6",
+            "Infinity Pool at Level 5",
+        ]
+
+    if gender_str == "male" and ("young" in age_str or "adult" in age_str):
+        return [
+            "Phòng Gym 24/7 Tầng 5",
+            "Sky Lounge Bar Tầng 6",
+            "Phòng VIP Karaoke Tầng 6",
+        ] if not is_en else [
+            "24/7 Fitness Center Level 5",
+            "Sky Lounge Bar Level 6",
+            "VIP Karaoke Level 6",
+        ]
+
+    if "senior" in age_str:
+        return [
+            "Thảo Mộc Spa trị liệu Tầng 5",
+            "Trà thảo mộc thanh tịnh Rooftop Tầng 6",
+            "Quầy Lễ Tân hỗ trợ 24/7 Tầng Trệt",
+        ] if not is_en else [
+            "Herbal Spa therapy Level 5",
+            "Herbal tea at Rooftop Coffee Level 6",
+            "Front Desk 24/7 assistance Ground Level",
+        ]
+
+    # 14. Mặc định tự nhiên (Đồng bộ RAG Aurora Grand Hotel)
+    return [
+        "Khách sạn có những tiện ích gì?",
+        "Xem thực đơn Room Service 24/7",
+        "Chỉ đường quầy Lễ tân",
+    ] if not is_en else [
+        "Hotel amenities & highlights",
+        "View 24/7 Room Service menu",
+        "Directions to Front Desk",
+    ]
+
+
 async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatResponse:
     """
     Điều phối luồng xử lý câu thoại của khách:
@@ -365,7 +601,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
                 elif isinstance(sc_match[4], dict):
                     dest_key = sc_match[4].get("destination_key")
             if not dest_key and (not sc_match or sc_match[3] != "none"):
-                dest_key = _detect_destination_poi(request.prompt, reply, current_room)
+                dest_key = _detect_destination_poi(request.prompt, reply, current_room, session_id=sid)
 
         session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
         session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
@@ -377,6 +613,18 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
             )
         except Exception:
             audio_b64, mime_type = None, "audio/mp3"
+
+        suggested = get_dynamic_suggested_prompts(
+            prompt=request.prompt,
+            reply=reply,
+            action=act,
+            destination_key=dest_key,
+            lang_code=lang_code,
+            age_group=request.age_group,
+            gender=request.gender,
+        )
+        if dest_key:
+            session_manager.set_active_topic(sid, topic=dest_key, destination_key=dest_key)
 
         return ChatResponse(
             response=reply,
@@ -391,6 +639,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
             ticket_created=False,
             audio_base64=audio_b64,
             mime_type=mime_type or "audio/mp3",
+            suggested_prompts=suggested,
         )
 
     # Điều phối hội thoại trực tiếp qua LangGraph Harness
@@ -408,6 +657,8 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         "lang_name": cur_lang_name,
         "lang_code": cur_lang_code,
         "emotion": request.emotion,
+        "age_group": request.age_group,
+        "gender": request.gender,
         "room_number": current_room,
         "is_room_authenticated": bool(current_room and session_manager.is_room_authenticated(sid, current_room)),
         "chat_history": history,
@@ -430,11 +681,11 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     if act == "switch_language":
         session_manager.set_language(sid, detected_lang)
 
-    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang WebSpeech nếu quá 4.8s)
+    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang Google TTS / WebSpeech)
     try:
         audio_b64, mime_type, _ = await asyncio.wait_for(
             tts_service.synthesize(reply, provider="edge", language=lang_code),
-            timeout=7.0
+            timeout=8.0
         )
     except Exception as e_tts:
         logger.warning(f"[AIChatService] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
@@ -507,12 +758,24 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     elif act == "query_order_status":
         destination_key = None
     else:
-        destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply, current_room)
+        destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply, current_room, session_id=sid)
     if destination_key and destination_key.startswith("room_"):
         r_part = destination_key.replace("room_", "")
         if not is_valid_hotel_room(r_part):
             destination_key = None
     eye_expression = graph_result.get("eye_expression")
+
+    suggested = get_dynamic_suggested_prompts(
+        prompt=request.prompt,
+        reply=reply,
+        action=act,
+        destination_key=destination_key,
+        lang_code=lang_code,
+        age_group=request.age_group,
+        gender=request.gender,
+    )
+    if destination_key:
+        session_manager.set_active_topic(sid, topic=destination_key, destination_key=destination_key)
 
     # Lưu kết quả vào Redis Cache (bỏ qua nếu là câu hỏi tra cứu trạng thái đơn món, yêu cầu dịch vụ hoặc có số phòng)
     if act not in ["query_order_status", "open_food_menu", "open_room_service_menu", "open_maintenance_menu", "open_bellman_menu", "room_service", "housekeeping", "laundry", "maintenance", "bellman"] and not has_room_in_prompt and not is_menu_action:
@@ -554,6 +817,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         pending_service_items=pending_items,
         status_query_type=status_q_type,
         trigger_menu=graph_result.get("trigger_menu"),
+        suggested_prompts=suggested,
     )
 
 
@@ -588,7 +852,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             reply, _lang_name, lang_code, act_type, act_payload = fast_hit
             dest_key = act_payload.get("destination_key") if isinstance(act_payload, dict) else None
             if not dest_key and act_type != "none":
-                dest_key = _detect_destination_poi(request.prompt, reply, current_room)
+                dest_key = _detect_destination_poi(request.prompt, reply, current_room, session_id=sid)
             logger.info(f"[AIChatStream Fast-Path] Trả lời tức thì <1ms cho: '{request.prompt[:30]}' (dest: {dest_key})")
 
             words = reply.split(" ")
@@ -599,6 +863,26 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
 
             session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
             session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act_type or "fast_path")
+            suggested = get_dynamic_suggested_prompts(
+                prompt=request.prompt,
+                reply=reply,
+                action=act_type or "fast_path",
+                destination_key=dest_key,
+                lang_code=lang_code,
+                age_group=request.age_group,
+                gender=request.gender,
+            )
+            if dest_key:
+                session_manager.set_active_topic(sid, topic=dest_key, destination_key=dest_key)
+
+            try:
+                audio_b64, mime_type, _ = await asyncio.wait_for(
+                    tts_service.synthesize(reply, provider="edge", language=lang_code),
+                    timeout=5.0
+                )
+            except Exception:
+                audio_b64, mime_type = None, "audio/mp3"
+
             done_payload = {
                 "event": "done",
                 "full_text": reply,
@@ -606,6 +890,9 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
                 "room_number": current_room,
                 "action": act_type or "fast_path",
                 "destination_key": dest_key,
+                "suggested_prompts": suggested,
+                "audio_base64": audio_b64,
+                "mime_type": mime_type or "audio/mp3",
             }
             yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
             return
@@ -711,6 +998,8 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             emotion=request.emotion,
             chat_history=history,
             stored_room_number=current_room,
+            age_group=request.age_group,
+            gender=request.gender,
         ):
             full_text += token
             yield f"data: {json.dumps({'event': 'token', 'token': token}, ensure_ascii=False)}\n\n"
@@ -720,12 +1009,27 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
         session_manager.add_turn(sid, "user", request.prompt, language=final_lang_code)
         session_manager.add_turn(sid, "assistant", full_text, language=final_lang_code, intent_action="conversation")
 
+        dest_key = _detect_destination_poi(request.prompt, full_text, current_room, session_id=sid)
+        suggested = get_dynamic_suggested_prompts(
+            prompt=request.prompt,
+            reply=full_text,
+            action="conversation",
+            destination_key=dest_key,
+            lang_code=final_lang_code,
+            age_group=request.age_group,
+            gender=request.gender,
+        )
+        if dest_key:
+            session_manager.set_active_topic(sid, topic=dest_key, destination_key=dest_key)
+
         done_payload = {
             "event": "done",
             "full_text": full_text,
             "lang_code": final_lang_code,
             "room_number": current_room,
             "action": "conversation",
+            "destination_key": dest_key,
+            "suggested_prompts": suggested,
         }
         yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
     except Exception as e:

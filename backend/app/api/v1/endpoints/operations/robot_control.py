@@ -116,7 +116,7 @@ async def get_robot_profile(
     repo: RobotRepository = Depends(get_robot_repository),
 ):
     robot = await repo.get_by_id_or_code(robot_id)
-    if not robot and robot_id == DEFAULT_ROBOT_ID:
+    if not robot and robot_id in (DEFAULT_ROBOT_ID, "hc_pi5_01"):
         robot = await repo.ensure_default_robot()
     if not robot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Không tìm thấy hồ sơ robot '{robot_id}'")
@@ -138,7 +138,7 @@ async def update_robot_profile(
     repo: RobotRepository = Depends(get_robot_repository),
 ):
     robot = await repo.get_by_id_or_code(robot_id)
-    if not robot and robot_id == DEFAULT_ROBOT_ID:
+    if not robot and robot_id in (DEFAULT_ROBOT_ID, "hc_pi5_01"):
         robot = await repo.ensure_default_robot()
     if not robot:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Không tìm thấy hồ sơ robot '{robot_id}'")
@@ -552,6 +552,21 @@ async def proxy_pi5_hardware_api(request: Request, path: str):
                 media_type=resp.headers.get("content-type", "application/json"),
             )
     except Exception as exc:
+        # Graceful fallback cho telemetry / status endpoint khi Pi 5 ngoai tuyen de tranh spam loi 503 tren browser console
+        if request.method == "GET" and any(k in path.lower() for k in ["system/power", "system/battery"]):
+            import json
+            fallback_payload = {
+                "status": "offline",
+                "online": False,
+                "power": None,
+                "battery": None,
+                "detail": f"Pi 5 ngoai tuyen hoac khong the ket noi ({target_url}): {exc}",
+            }
+            return Response(
+                content=json.dumps(fallback_payload),
+                status_code=200,
+                media_type="application/json",
+            )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Không thể kết nối tới Pi 5 API ({target_url}): {exc}",

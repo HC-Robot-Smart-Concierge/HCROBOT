@@ -36,7 +36,7 @@ export function polygonEdgeAtPoint(points, point, tolerance = 8) {
   return nearest;
 }
 
-function segmentsIntersect(a, b, c, d) {
+export function segmentsIntersect(a, b, c, d) {
   const ac = cross(a, b, c), ad = cross(a, b, d), ca = cross(c, d, a), cb = cross(c, d, b);
   if (((ac > EPS && ad < -EPS) || (ac < -EPS && ad > EPS))
     && ((ca > EPS && cb < -EPS) || (ca < -EPS && cb > EPS))) return true;

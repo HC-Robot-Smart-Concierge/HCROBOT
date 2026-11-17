@@ -38,7 +38,7 @@ export class ErrorBoundary extends React.Component {
       // Ignored
     }
     this.setState({ hasError: false, error: null });
-    window.location.replace(window.location.pathname);
+    window.location.href = window.location.origin + window.location.pathname + '?reload=' + Date.now();
   };
 
   handleLogoutAndReset = async () => {
@@ -56,7 +56,7 @@ export class ErrorBoundary extends React.Component {
     } catch {
       // Ignored
     }
-    window.location.replace(window.location.pathname);
+    window.location.href = window.location.origin + window.location.pathname + '?reset=' + Date.now();
   };
 
   render() {

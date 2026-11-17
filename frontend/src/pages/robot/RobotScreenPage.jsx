@@ -5,6 +5,7 @@ import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl, detectDestinationPo
 import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck, Wrench, Luggage } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
+import { useKioskStreamBroadcaster } from '../../hooks/useKioskStreamBroadcaster';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
 import { RobotRoomServiceScreen } from '../../components/robot/RobotRoomServiceScreen';
@@ -31,6 +32,7 @@ import { playEarcon } from '../../utils/audioFeedback';
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
 import { RobotFacilitiesModal } from '../../components/robot/RobotFacilitiesModal';
+import { EmotionAssistanceModal } from '../../components/robot/EmotionAssistanceModal';
 import { createConciergeRequest, createConciergeEmotionAlert } from '../../services/conciergeApi';
 import { createBellRequest, createMaintenanceRequest } from '../../services/operationsApi';
 import { useRobotBattery } from '../../hooks/useRobotBattery';
@@ -347,6 +349,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const [videoCallSessionId, setVideoCallSessionId] = useState(null);
   const [videoCallTicketCode, setVideoCallTicketCode] = useState(null);
 
+  // Kiosk Phone Camera Broadcaster to Admin WebRTC (kiosk-live-feed)
+  const {
+    stream: kioskCameraStream,
+    isCameraActive: isKioskCameraActive,
+    isBroadcasting: isKioskBroadcasting,
+    needsUserGesture: needsKioskCameraGesture,
+    startCamera: startKioskCamera,
+  } = useKioskStreamBroadcaster({
+    enabled: true,
+    isPaused: isVideoCallOpen,
+  });
+
   useEffect(() => {
     isVideoCallOpenRef.current = isVideoCallOpen;
   }, [isVideoCallOpen]);
@@ -389,15 +403,39 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const [showWorkflowMenu, setShowWorkflowMenu] = useState(false);
 
   // Hooks
-  const { speak, prime, cancel: stopSpeaking, isSpeaking, speechRate, updateSpeechRate } = useSpeechSynthesis();
+  const {
+    speak,
+    prime,
+    cancel: stopSpeaking,
+    isSpeaking,
+    speechRate,
+    updateSpeechRate,
+    viVoice,
+    enVoice,
+    updateVoiceSettings,
+  } = useSpeechSynthesis();
   const isSpeakingRef = useRef(false);
   useEffect(() => {
     isSpeakingRef.current = isSpeaking;
   }, [isSpeaking]);
 
-  const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport, volumeLevel } = useSpeechRecognition({
+  const {
+    isListening = false,
+    transcript = '',
+    error: speechError = null,
+    startListening,
+    stopListening,
+    resetTranscript,
+    hasSupport,
+    volumeLevel = 0,
+  } = useSpeechRecognition({
     isSpeaking: Boolean(isSpeaking),
-  });
+  }) || {};
+
+  const isListeningRef = useRef(false);
+  useEffect(() => {
+    isListeningRef.current = Boolean(isListening);
+  }, [isListening]);
 
   const toggleLanguage = useCallback((targetLang) => {
     if (typeof targetLang === 'string' && (targetLang === 'English' || targetLang === 'Tiếng Việt')) {
@@ -426,30 +464,128 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [language]);
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
+  const [guestAgeGroup, setGuestAgeGroup] = useState('adult');
+  const [guestGender, setGuestGender] = useState('unknown');
+  const [suggestedPrompts, setSuggestedPrompts] = useState([]);
   const lastUnhappyAlertTimeRef = useRef(0);
+  const [isUnhappyAssistanceOpen, setIsUnhappyAssistanceOpen] = useState(false);
+  const unhappyTimerRef = useRef(null);
+
+  const handleConfirmCallConcierge = useCallback(async () => {
+    if (unhappyTimerRef.current) {
+      clearTimeout(unhappyTimerRef.current);
+      unhappyTimerRef.current = null;
+    }
+    setIsUnhappyAssistanceOpen(false);
+    try {
+      const promptText =
+        language === 'English'
+          ? 'Connecting to Concierge staff now. Please wait a moment.'
+          : 'Dạ vâng, đang kết nối tới nhân viên Concierge. Quý khách vui lòng đợi trong giây lát ạ.';
+      speak(promptText);
+    } catch {}
+
+    // Gọi thẳng Concierge kết nối video trực tiếp, không gửi thông báo
+    try {
+      const roomLoc = activeRoomNumber ? `Phòng ${activeRoomNumber}` : 'Sảnh Kiosk';
+      const req = await createConciergeRequest({
+        title: 'Khách yêu cầu hỗ trợ trực tiếp từ Kiosk',
+        room_number: activeRoomNumber || 'Main Lobby Kiosk',
+        guest_name: activeRoomNumber ? `Guest (Room ${activeRoomNumber})` : 'Khách tại Sảnh',
+        description: `Kết nối Live Call trực tiếp từ Kiosk tại ${roomLoc}.`,
+        notify: false,
+      });
+      const canonicalCode = req.ticket_code || req.id || `SUP-${Date.now()}`;
+      setVideoCallSessionId(canonicalCode);
+      setVideoCallTicketCode(req.ticket_code || canonicalCode);
+      setIsVideoCallOpen(true);
+    } catch (err) {
+      console.warn('Call concierge fallback:', err);
+      const fallbackCode = `CCG-${Date.now()}`;
+      setVideoCallSessionId(fallbackCode);
+      setVideoCallTicketCode(fallbackCode);
+      setIsVideoCallOpen(true);
+    }
+  }, [activeRoomNumber, language, speak]);
+
+  const handleDismissUnhappyAssistance = useCallback(() => {
+    if (unhappyTimerRef.current) {
+      clearTimeout(unhappyTimerRef.current);
+      unhappyTimerRef.current = null;
+    }
+    setIsUnhappyAssistanceOpen(false);
+    try {
+      const promptText =
+        language === 'English'
+          ? 'Thank you. Please feel free to touch the screen anytime if you need help.'
+          : 'Dạ vâng, nếu cần thêm bất cứ trợ giúp nào, quý khách cứ chạm vào màn hình nhé.';
+      speak(promptText);
+    } catch {}
+  }, [language, speak]);
 
   const handleGuestEmotionDetected = useCallback(
     (emotion) => {
       setGuestEmotion(emotion);
+
       if (emotion === 'unhappy') {
+        // Đang có timer đếm ngược hoặc video call đang mở hoặc popup đã mở -> Bỏ qua
+        if (unhappyTimerRef.current || isVideoCallOpenRef.current || isUnhappyAssistanceOpen) {
+          return;
+        }
+
         const now = Date.now();
-        if (now - lastUnhappyAlertTimeRef.current > 90000) {
-          lastUnhappyAlertTimeRef.current = now;
-          const roomLoc = activeRoomNumber ? `Room ${activeRoomNumber}` : 'Main Lobby Kiosk';
-          createConciergeEmotionAlert({
-            title: `Cảnh báo AI: Khách có biểu cảm khó chịu tại ${roomLoc}`,
-            location: roomLoc,
-            guest_name: activeRoomNumber ? `Guest (Room ${activeRoomNumber})` : 'Khách tại Sảnh Kiosk',
-            reporter: 'HCRobot Emotion AI',
-            description:
-              'Camera AI phát hiện khách hàng có biểu cảm khó chịu (Unhappy) khi tương tác tại Kiosk. Cần nhân viên Concierge tiếp cận hỗ trợ trực tiếp ngay.',
-            emotion_type: 'Unhappy',
-          }).catch(() => {});
+        // Cooldown 60s giữa các lần hỏi để tránh spam
+        if (now - lastUnhappyAlertTimeRef.current <= 60000) {
+          return;
+        }
+
+        // Bắt đầu đếm nhăn mặt duy trì liên tục khoảng 2 giây (2000ms)
+        unhappyTimerRef.current = setTimeout(() => {
+          unhappyTimerRef.current = null;
+
+          // Kiểm tra lại trạng thái sau 2 giây: không gọi video, không đang nói
+          if (!isVideoCallOpenRef.current && !isSpeakingRef.current) {
+            lastUnhappyAlertTimeRef.current = Date.now();
+            setIsUnhappyAssistanceOpen(true);
+            const prompt =
+              language === 'English'
+                ? 'I noticed you might need assistance. Would you like me to call our Concierge staff right away?'
+                : 'Dạ, tôi thấy quý khách dường như đang gặp bất tiện. Quý khách có cần tôi gọi nhân viên Concierge tới hỗ trợ trực tiếp không ạ?';
+            try {
+              speak(prompt);
+            } catch {}
+          }
+        }, 2000);
+      } else {
+        // Nếu khách hết nhăn mặt (về neutral/happy hoặc cử động khác) trước 2s -> Hủy timer ngay
+        if (unhappyTimerRef.current) {
+          clearTimeout(unhappyTimerRef.current);
+          unhappyTimerRef.current = null;
         }
       }
     },
-    [activeRoomNumber]
+    [language, speak, isUnhappyAssistanceOpen]
   );
+
+  const handleGuestDemographicsDetected = useCallback(({ gender, ageGroup }) => {
+    if (gender && gender !== 'unknown') {
+      setGuestGender((prev) => (prev !== gender ? gender : prev));
+    }
+    if (ageGroup) {
+      setGuestAgeGroup((prev) => (prev !== ageGroup ? ageGroup : prev));
+    }
+  }, []);
+
+  // Lang nghe phan hoi bang giong noi khi Modal ho tro bieu cam dang mo
+  useEffect(() => {
+    if (!isUnhappyAssistanceOpen || !transcript) return;
+    const lower = transcript.toLowerCase();
+    if (/có|gọi|nhân viên|đồng ý|hỗ trợ|yes|call|staff|concierge|help/i.test(lower)) {
+      handleConfirmCallConcierge();
+    } else if (/không|thôi|được rồi|tự làm|tự xử lý|no|cancel|dismiss/i.test(lower)) {
+      handleDismissUnhappyAssistance();
+    }
+  }, [transcript, isUnhappyAssistanceOpen, handleConfirmCallConcierge, handleDismissUnhappyAssistance]);
 
   // Load available workflows for AUTO_DETECT trigger & manual launcher
   useEffect(() => {
@@ -464,12 +600,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   useEffect(() => {
     getVoiceSettings()
       .then((data) => {
-        if (data?.speech_rate) {
-          updateSpeechRate(data.speech_rate);
+        if (data) {
+          if (updateVoiceSettings) {
+            updateVoiceSettings(data);
+          } else if (data.speech_rate) {
+            updateSpeechRate(data.speech_rate);
+          }
         }
       })
       .catch((err) => console.warn('Could not fetch voice settings:', err));
-  }, []);
+  }, [updateVoiceSettings, updateSpeechRate]);
 
   // Workflow Native Runner Hook (tích hợp Micro & Loa máy tính)
   const {
@@ -849,7 +989,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, [isVideoCallOpen, isPinModalOpen, requestPhase, stopSpeaking, stopListening]);
 
-  // Tự động gửi AI khi người dùng ngừng nói đủ lâu (VAD Silence Detection tự nhiên: 1800ms)
+  // Tự động gửi AI khi người dùng ngừng nói đủ lâu (Semantic Silence Debounce)
   // Tránh ngắt lời khi khách đang dừng lấy hơi hoặc suy nghĩ giữa câu
   useEffect(() => {
     if (
@@ -864,15 +1004,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       transcript &&
       transcript.trim().length > 0
     ) {
-      // Nếu âm lượng micro cho thấy khách vẫn đang phát ra tiếng nói -> hủy ngay timer đếm im lặng
-      if (volumeLevel >= 6) {
-        if (silenceTimerRef.current) {
-          clearTimeout(silenceTimerRef.current);
-          silenceTimerRef.current = null;
-        }
-        return;
-      }
-
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       const dynamicDebounceMs = getSemanticSilenceDebounce(transcript, true);
       silenceTimerRef.current = setTimeout(() => {
@@ -884,10 +1015,34 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     };
-  }, [transcript, currentState, isListening, isSpeaking, isProcessing, isVideoCallOpen, volumeLevel]);
+  }, [transcript, currentState, isListening, isSpeaking, isProcessing, isVideoCallOpen]);
+
+  // Bộ đếm thời gian im lặng khi không có tiếng nói (No-Speech Timeout: 8s)
+  // Tránh tình trạng robot treo vĩnh viễn ở trạng thái "Đang lắng nghe..." khi khách không nói gì
+  useEffect(() => {
+    if (
+      currentState === 'RT-03' &&
+      isListening &&
+      !isSpeaking &&
+      !isSpeakingRef.current &&
+      !isProcessing &&
+      !isProcessingRef.current &&
+      !isVideoCallOpen &&
+      !isPinModalOpen &&
+      (!transcript || transcript.trim().length === 0)
+    ) {
+      const noSpeechTimer = setTimeout(() => {
+        if (!transcript || transcript.trim().length === 0) {
+          stopListening();
+          setCurrentState('RT-02');
+        }
+      }, 8000);
+      return () => clearTimeout(noSpeechTimer);
+    }
+  }, [currentState, isListening, isSpeaking, isProcessing, isVideoCallOpen, isPinModalOpen, transcript, stopListening]);
 
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
-  const handleGuestApproached = () => {
+  const handleGuestApproached = (detection) => {
     setGuestPresent(true);
     // Pin yếu: không mở phiên mới, không dừng kịch bản về trạm sạc, chỉ báo khách
     if (!batteryGuard.canStartGuestSession) {
@@ -900,12 +1055,32 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     if (isIdlePromo) pausePromoForGuest();
     else if (isWorkflowRunning) return;
 
-    if (currentState === 'RT-01') {
-      setCurrentState('RT-02');
+    const isIdle = currentState === 'RT-01' || currentState === 'RT-02';
+    const isBusy =
+      isSpeaking ||
+      isSpeakingRef.current ||
+      isProcessing ||
+      isProcessingRef.current ||
+      isListening ||
+      isListeningRef.current;
+    const isRestrictedModal = isVideoCallOpenRef.current || isPinModalOpenRef.current;
+
+    if (isIdle && !isBusy && !isRestrictedModal) {
+      if (currentState === 'RT-01') {
+        setCurrentState('RT-02');
+      }
       if (isAutoListen) {
         setTimeout(() => {
-          handleStartTalk();
-        }, 500);
+          if (
+            !isSpeakingRef.current &&
+            !isProcessingRef.current &&
+            !isListeningRef.current &&
+            !isVideoCallOpenRef.current &&
+            !isPinModalOpenRef.current
+          ) {
+            handleStartTalk();
+          }
+        }, 200);
       }
     }
   };
@@ -919,6 +1094,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const handleGuestLeft = async () => {
     setGuestPresent(false);
+    if (unhappyTimerRef.current) {
+      clearTimeout(unhappyTimerRef.current);
+      unhappyTimerRef.current = null;
+    }
     if (requestPhase) {
       // Close the verified session when the visitor leaves the service form.
       stopWorkflow();
@@ -1522,7 +1701,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     try {
       // Gửi toàn bộ truy vấn tới RAG Backend duy nhất (Single Source of Truth)
-      const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, effectiveRoomNumber, chatSignal);
+      const chatRes = await sendChatPrompt(
+        query,
+        null,
+        "auto",
+        guestEmotion,
+        sessionId,
+        effectiveRoomNumber,
+        chatSignal,
+        { ageGroup: guestAgeGroup, gender: guestGender }
+      );
 
       // Nếu người dùng đã kích hoạt câu nói mới, ngắt lời hoặc timeout xảy ra -> Hủy bỏ câu cũ
       if (currentChatId !== activeChatRequestIdRef.current || chatRes?.aborted) {
@@ -1614,6 +1802,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           processingSafetyTimerRef.current = null;
         }
 
+        if (Array.isArray(chatRes?.suggested_prompts) && chatRes.suggested_prompts.length > 0) {
+          setSuggestedPrompts(chatRes.suggested_prompts);
+        } else {
+          setSuggestedPrompts([]);
+        }
+
         const replyText = chatRes.response || 'Dạ, tôi đã ghi nhận yêu cầu của quý khách.';
         const detectedLang = chatRes.detected_language || 'Tiếng Việt';
         const langCode = chatRes.lang_code || (detectedLang === 'English' ? 'en-US' : 'vi-VN');
@@ -1663,6 +1857,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
         // Tự động mở video call nếu nhận diện ý định gọi nhân viên
         if (chatRes.trigger_video_call) {
+          stopSpeaking();
+          stopListening();
           const canonicalCode = chatRes.ticket_code || chatRes.support_session_id || chatRes.session_id || sessionId;
           setVideoCallSessionId(canonicalCode);
           setVideoCallTicketCode(chatRes.ticket_code || canonicalCode);
@@ -1921,12 +2117,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           let preloadedStep2Audio = null;
           let preloadedQrAudio = null;
 
-          // Preload background EdgeTTS (vi-VN-HoaiMyNeural) ngay khi Chặng 1 bắt đầu (cửa sổ 10 giây)
+          // Preload background EdgeTTS ngay khi Chặng 1 bắt đầu (cửa sổ 10 giây)
           // Triệt tiêu 100% rủi ro đổi sang giọng Safari Linh trên iPhone XR do mất gesture sau setTimeout
           if (destObj.isDifferentFloor && cleanStep2) {
             synthesizeSpeech(step2Speech, {
               language: isEn ? 'en-US' : 'vi-VN',
-              voice: isEn ? 'en-US-JennyNeural' : 'vi-VN-HoaiMyNeural'
+              voice: isEn ? (enVoice || 'en-US-JennyNeural') : (viVoice || 'vi-VN-NamMinhNeural')
             })
               .then((res) => {
                 if (res?.audio_base64 && currentChatId === activeChatRequestIdRef.current) {
@@ -1938,7 +2134,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
           synthesizeSpeech(qrVoicePrompt, {
             language: isEn ? 'en-US' : 'vi-VN',
-            voice: isEn ? 'en-US-JennyNeural' : 'vi-VN-HoaiMyNeural'
+            voice: isEn ? (enVoice || 'en-US-JennyNeural') : (viVoice || 'vi-VN-NamMinhNeural')
           })
             .then((res) => {
               if (res?.audio_base64 && currentChatId === activeChatRequestIdRef.current) {
@@ -2050,6 +2246,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           return;
         }
 
+        const hasAudio = Boolean(chatRes.audio_base64 && chatRes.audio_base64.length > 50);
+
         let hasRenderedText = false;
         const revealSubtitle = () => {
           if (!hasRenderedText && currentChatId === activeChatRequestIdRef.current) {
@@ -2057,13 +2255,21 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             stopListening();
             resetTranscript();
             setAiResponseText(replyText);
+            setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
           }
         };
 
-        // Fallback an toàn: nếu sau 2.0s âm thanh chưa kịp bắn onplay (ví dụ mạng chậm hoặc audio bị block), hiển thị phụ đề để không trễ
+        // Nếu backend không có audio (ví dụ timeout/lỗi mạng), hiển thị phụ đề và thoát trạng thái xoay RT-04 ngay lập tức
+        if (!hasAudio) {
+          revealSubtitle();
+          isProcessingRef.current = false;
+          setIsProcessing(false);
+        }
+
+        // Fallback an toàn: nếu sau 1.5s âm thanh chưa kịp bắn onplay, hiển thị phụ đề để không trễ
         const textSafetyTimer = setTimeout(() => {
           revealSubtitle();
-        }, 2000);
+        }, hasAudio ? 1500 : 0);
 
         const speechStartTimestamp = Date.now();
 
@@ -2691,21 +2897,25 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }}
       />
 
-      {/* Camera AI (Chạy ngầm 100% nhận diện khách/cảm xúc; tự động nhường camera khi mở Video Call) */}
+      {/* Camera AI (Chạy ngầm nhận diện khách/cảm xúc và stream WebRTC về Admin) */}
       <CameraPreview
-        autoStart={!isPhoneLayout && !isVideoCallOpen}
+        autoStart={true}
+        externalStream={kioskCameraStream}
         controlsClassName="robot-camera-control"
         onGuestApproached={handleGuestApproached}
         onGuestLeft={handleGuestLeft}
         onEmotionChange={handleGuestEmotionDetected}
-        source={import.meta.env.VITE_CAMERA_SOURCE || 'local'}
-        streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || '/api/v1/operations/robot/camera/stream'}
+        onDemographicsChange={handleGuestDemographicsDetected}
+        source="local"
         defaultMinimized={true}
         visible={false}
       />
 
 
       <MobileRobotScreen
+        isKioskCameraActive={isKioskCameraActive}
+        onStartKioskCamera={startKioskCamera}
+        kioskCameraStream={kioskCameraStream}
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
         eyeExpression={activeEyeExpression}
@@ -2726,7 +2936,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onResetToIdle={resetToIdle}
         onPrime={prime}
         onStartTalk={handleStartTalk}
-        onSubmitTalk={() => handleStopTalkAndProcess(transcript)}
+        onSubmitTalk={() => handleStopTalkAndProcess(transcript || '')}
         onStopSpeaking={handleStopSpeaking}
         onToggleAutoListen={() => setIsAutoListen((value) => !value)}
         onToggleLanguage={toggleLanguage}
@@ -3504,8 +3714,30 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     clearFollowUpTimer();
                     setIsWaitingFollowUp(false);
                     setAiResponseText('');
+                    setSuggestedPrompts([]);
                   }}
                 />
+              )}
+
+              {/* Interactive Quick-Reply Chips for Dynamic Conversation Continuation */}
+              {suggestedPrompts && suggestedPrompts.length > 0 && !isSpeaking && (
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-2 animate-fadeIn z-20 max-w-xl">
+                  {suggestedPrompts.map((promptText, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSuggestedPrompts([]);
+                        handleStopTalkAndProcess(promptText, { force: true });
+                      }}
+                      className="px-3.5 py-1.5 rounded-full bg-stone-900/90 hover:bg-stone-800 text-stone-200 hover:text-white border border-stone-700/80 hover:border-amber-500/80 text-xs font-medium transition-all shadow-lg cursor-pointer flex items-center gap-1.5 active:scale-95"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-400" />
+                      <span>{promptText}</span>
+                    </button>
+                  ))}
+                </div>
               )}
 
               {/* Nút hành động nhanh khi Robot hỏi "Quý khách có cần hỗ trợ thêm gì nữa không?" */}
@@ -3894,6 +4126,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         speak={speak}
         onStartTalk={handleStartTalk}
         onSuccess={() => {}}
+      />
+
+      {/* POP-UP HỎI VÀ GỌI CONCIERGE KHI PHÁT HIỆN KHÁCH KHÓ CHỊU */}
+      <EmotionAssistanceModal
+        isOpen={isUnhappyAssistanceOpen}
+        onConfirm={handleConfirmCallConcierge}
+        onDismiss={handleDismissUnhappyAssistance}
+        language={language}
       />
     </div>
   );

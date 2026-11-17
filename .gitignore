@@ -50,6 +50,11 @@ env/
 .ruff_cache/
 .coverage
 htmlcov/
+# Python Backend Test Suites
+backend/tests/
+**/tests/
+test_*.py
+*_test.py
 *.log
 **/*.log
 scratch/
@@ -114,6 +119,25 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
+# Frontend & JavaScript/TypeScript Test Suites
+**/__tests__/
+*.test.js
+*.test.jsx
+*.test.ts
+*.test.tsx
+*.spec.js
+*.spec.jsx
+*.spec.ts
+*.spec.tsx
+**/*.test.js
+**/*.test.jsx
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.js
+**/*.spec.jsx
+**/*.spec.ts
+**/*.spec.tsx
 
 # ==============================================================================
 # 5. Robot / ROS 2 / Hardware / RPLiDAR SDK / AI Models

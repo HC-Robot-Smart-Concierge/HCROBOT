@@ -7,17 +7,73 @@ from fastapi import WebSocket
 logger = logging.getLogger(__name__)
 
 
-def get_lan_ip() -> str:
-    """Lấy địa chỉ IPv4 LAN thực tế của máy chủ để hỗ trợ WebRTC P2P direct routing."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+def get_host_ips() -> List[str]:
+    """Lấy danh sách địa chỉ IPv4 thực tế của máy chủ (LAN Wi-Fi và Tailscale) hỗ trợ WebRTC P2P."""
+    ips = []
+    # 1. Thử qua default gateway (thường là Wi-Fi / Ethernet LAN)
     try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))
-        ip = s.getsockname()[0]
-    except Exception:
-        ip = '127.0.0.1'
-    finally:
+        primary_ip = s.getsockname()[0]
         s.close()
-    return ip
+        if primary_ip and primary_ip != '127.0.0.1':
+            ips.append(primary_ip)
+    except Exception:
+        pass
+
+    # 2. Lấy thêm các IP phụ của host (đặc biệt là IP Tailscale 100.x.x.x)
+    try:
+        for ip in socket.gethostbyname_ex(socket.gethostname())[2]:
+            if ip and ip != '127.0.0.1' and not ip.startswith('169.254.') and ip not in ips:
+                ips.append(ip)
+    except Exception:
+        pass
+
+    return ips if ips else ['127.0.0.1']
+
+
+def get_lan_ip() -> str:
+    """Lấy địa chỉ IPv4 chính của máy chủ."""
+    return get_host_ips()[0]
+
+
+def is_private_or_tailscale_ip(ip_str: Optional[str]) -> bool:
+    """Kiểm tra IP có phải là IP mạng nội bộ (LAN 192.168.x.x, 10.x.x.x, 172.16.x.x) hoặc Tailscale (100.x.x.x) hay không."""
+    if not ip_str:
+        return False
+    try:
+        import ipaddress
+        ip = ipaddress.ip_address(ip_str)
+        return ip.is_private or ip_str.startswith("100.")
+    except Exception:
+        return False
+
+
+def get_lan_peer_ips() -> List[str]:
+    """Lấy danh sách các IP thiết bị nội bộ (Wi-Fi LAN và Tailscale) từ bảng ARP và mạng."""
+    import subprocess
+    import re
+    ips = []
+    host_ips = get_host_ips()
+
+    # 1. Quét các thiết bị động trong cùng mạng LAN qua bảng ARP
+    try:
+        out = subprocess.check_output('arp -a', shell=True, text=True, timeout=2.0)
+        for line in out.splitlines():
+            m = re.search(r'((?:192\.168\.|10\.|172\.(?:1[6-9]|2[0-9]|3[01])\.)\d+\.\d+)\s+([0-9a-fA-F-]+)\s+dynamic', line.strip())
+            if m:
+                ip = m.group(1)
+                if not ip.endswith('.1') and not ip.endswith('.255') and ip not in host_ips and ip not in ips:
+                    ips.append(ip)
+    except Exception:
+        pass
+
+    # 2. Thêm IP Tailscale của iPhone nếu có
+    for ts_ip in ["100.94.28.91"]:
+        if ts_ip not in ips and ts_ip not in host_ips:
+            ips.append(ts_ip)
+
+    return ips
 
 
 class VideoCallManager:
@@ -72,11 +128,13 @@ class VideoCallManager:
             f"input_session='{session_id}', canonical_room='{canonical_session}'"
         )
 
-        # Gửi thông tin server LAN IP cho peer để hỗ trợ de-anonymize mDNS candidate
+        # Gửi thông tin server LAN IP và Tailscale IPs cho peer để hỗ trợ de-anonymize mDNS candidate
         try:
+            host_ips = get_host_ips()
             await websocket.send_text(json.dumps({
                 "type": "server_info",
-                "lan_ip": get_lan_ip(),
+                "lan_ip": host_ips[0],
+                "all_ips": host_ips,
             }))
         except Exception:
             pass
@@ -156,27 +214,39 @@ class VideoCallManager:
                 sender_role = r_name
                 break
 
-        # De-anonymize mDNS (.local) ICE candidates CHỈ KHI người gửi là Robot Kiosk trên PC (role == 'guest')
-        # Tuyệt đối không thay cho role == 'staff' (iPhone) để tránh iPhone tự xưng IP của PC
+        # De-anonymize mDNS (.local) ICE candidates bang IP phu hop cua nguoi gui
         if msg_type == "candidate" and "candidate" in message_data:
             cand_obj = message_data.get("candidate")
-            if isinstance(cand_obj, dict) and "candidate" in cand_obj and sender_role == "guest":
+            if isinstance(cand_obj, dict) and "candidate" in cand_obj:
                 cand_str = cand_obj.get("candidate", "")
                 if ".local" in cand_str:
-                    lan_ip = get_lan_ip()
-                    if lan_ip and lan_ip != "127.0.0.1":
-                        import re
-                        unmdns_str = re.sub(r'([a-zA-Z0-9_\-]+\.local)', lan_ip, cand_str)
+                    # Forward candidate goc truoc
+                    for role, data in room.items():
+                        if data["ws"] != websocket:
+                            try:
+                                await data["ws"].send_text(json.dumps(message_data))
+                            except Exception as e:
+                                logger.warning(f"[VideoCall] Loi forward candidate goc toi {role}: {e}")
+
+                    # Chon tap IP phu hop cua nguoi gui de de-anonymize .local
+                    target_ips = []
+                    client_host = websocket.client.host if websocket.client else None
+
+                    if sender_role == "staff":
+                        # Staff luon la AdminStaff tren Laptop may chu -> luon de-anonymize bang LAN IP & Tailscale IP cua Laptop
+                        target_ips = get_host_ips()
+                    elif is_private_or_tailscale_ip(client_host):
+                        # Guest ket noi truc tiep bang IP LAN hoac Tailscale
+                        target_ips = [client_host]
+                    else:
+                        # Guest ket noi qua Cloudflare proxy -> de-anonymize bang IP thuc cua dien thoai trong bang ARP va Tailscale
+                        target_ips = get_lan_peer_ips()
+
+                    import re
+                    for t_ip in target_ips:
+                        unmdns_str = re.sub(r'([a-zA-Z0-9_\-]+\.local)', t_ip, cand_str)
                         if unmdns_str != cand_str:
-                            logger.info(f"[VideoCall] Forwarding de-anonymized LAN candidate for Robot Kiosk: {lan_ip}")
-                            # Forward candidate gốc trước
-                            for role, data in room.items():
-                                if data["ws"] != websocket:
-                                    try:
-                                        await data["ws"].send_text(json.dumps(message_data))
-                                    except Exception as e:
-                                        logger.warning(f"[VideoCall] Lỗi forward candidate gốc tới {role}: {e}")
-                            # Forward thêm candidate đã de-anonymize sang IP LAN thực tế
+                            logger.info(f"[VideoCall] Forwarding de-anonymized candidate ({t_ip}) for {sender_role}")
                             alt_msg = dict(message_data)
                             alt_cand = dict(cand_obj)
                             alt_cand["candidate"] = unmdns_str
@@ -186,8 +256,18 @@ class VideoCallManager:
                                     try:
                                         await data["ws"].send_text(json.dumps(alt_msg))
                                     except Exception as e:
-                                        logger.warning(f"[VideoCall] Lỗi forward unmdns candidate tới {role}: {e}")
-                            return
+                                        logger.warning(f"[VideoCall] Loi forward unmdns candidate ({t_ip}) toi {role}: {e}")
+                    return
+
+        receivers = [role for role, data in room.items() if data["ws"] != websocket]
+        if msg_type in ("live_subtitle", "live_audio", "live_audio_status"):
+            # Chẩn đoán luồng phiên dịch 2 chiều: chỉ log metadata, không log nội dung câu nói/âm thanh
+            logger.info(
+                f"[VideoCall Relay] type={msg_type} sender={sender_role} -> {receivers or 'NO_PEER'} "
+                f"utteranceId={message_data.get('utteranceId')} seq={message_data.get('seq')} "
+                f"needsTrans={message_data.get('needsTranslation')} "
+                f"audioLen={len(message_data.get('audioBase64') or '')} room='{canonical_session}'"
+            )
 
         for role, data in room.items():
             if data["ws"] != websocket:

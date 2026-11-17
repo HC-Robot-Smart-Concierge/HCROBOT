@@ -79,9 +79,51 @@ export async function updateConciergeRequest(requestId, updateData) {
 /**
  * 4. Lay danh sach tat ca cac phien HumanSupportSession va video record Cloudinary
  */
-export async function fetchHumanSupportSessions(statusFilter = null) {
-  const query = statusFilter ? `?status_filter=${encodeURIComponent(statusFilter)}` : '';
+export async function fetchHumanSupportSessions(statusFilter = null, limit = 100, skip = 0) {
+  const params = new URLSearchParams();
+  if (statusFilter && statusFilter !== 'all') params.append('status_filter', statusFilter);
+  if (limit) params.append('limit', limit);
+  if (skip) params.append('skip', skip);
+  const query = params.toString() ? `?${params.toString()}` : '';
   return await fetchWithFallback(`${BASE_URL}/sessions${query}`, {}, []);
+}
+
+/**
+ * 4.1 Lay thong ke so lieu Video Call va Ban ghi WF-04 theo khoang ngay
+ */
+export async function fetchVideoCallMetrics(startDate = null, endDate = null) {
+  const params = new URLSearchParams();
+  if (startDate) params.append('start_date', startDate);
+  if (endDate) params.append('end_date', endDate);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/video-calls/metrics${query}`, {}, {
+    total_calls: 0,
+    ready_recordings: 0,
+    saving_recordings: 0,
+    failed_recordings: 0,
+    no_recordings: 0,
+  });
+}
+
+/**
+ * 4.2 Dong bo cac ban ghi video cu tu Cloudinary ve CSDL (Huong 1)
+ */
+export async function syncCloudinaryRecordings() {
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(`${BASE_URL}/recordings/sync-cloudinary`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.detail || `Đồng bộ thất bại (mã lỗi: ${response.status})`);
+  }
+
+  return await response.json();
 }
 
 /**

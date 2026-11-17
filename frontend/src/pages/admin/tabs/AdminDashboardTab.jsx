@@ -6,16 +6,20 @@ import {
   Activity,
   MessageSquare,
   FileText,
+  FileDown,
   Users,
   CheckCircle2,
 } from 'lucide-react';
 import { fetchAnalyticsSummary } from '../../../services/operationsApi';
 import { useLanguage } from '../../../context/LanguageContext';
+import { buildDashboardReportHtml } from './adminDashboardReport';
+
+export { buildDashboardReportHtml } from './adminDashboardReport';
 
 export const AdminDashboardTab = ({
   onNavigateToOperations = () => {},
 }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [data, setData] = useState({
     total_tasks: 0,
     active_tasks: 0,
@@ -41,11 +45,12 @@ export const AdminDashboardTab = ({
 
   const [isLoading, setIsLoading] = useState(false);
   const [selectedDeptHover, setSelectedDeptHover] = useState(null);
+  const [reportPeriod, setReportPeriod] = useState('all');
 
-  const loadData = async () => {
+  const loadData = async (period = reportPeriod) => {
     setIsLoading(true);
     try {
-      const analyticsRes = await fetchAnalyticsSummary();
+      const analyticsRes = await fetchAnalyticsSummary(period);
       if (analyticsRes) {
         setData(analyticsRes);
       }
@@ -57,8 +62,29 @@ export const AdminDashboardTab = ({
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadData(reportPeriod);
+  }, [reportPeriod]);
+
+  const handleExportPdf = () => {
+    const html = buildDashboardReportHtml({
+      data,
+      deptEntries,
+      period: reportPeriod,
+      language,
+    });
+    const printWindow = window.open('', '_blank', 'width=1024,height=768');
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
 
   const totalTasks = data.total_tasks || 1;
 
@@ -117,19 +143,52 @@ export const AdminDashboardTab = ({
           </p>
         </div>
 
-        <button
-          onClick={loadData}
-          disabled={isLoading}
-          className="px-3.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-all hover:bg-[#E9E5DC]/80 shrink-0 flex items-center gap-1.5"
-          style={{
-            backgroundColor: '#FFFFFF',
-            borderColor: '#BFBFBD',
-            color: '#262626',
-          }}
-        >
-          <RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          <span>{isLoading ? t('dashRefreshing') : t('dashRefresh')}</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <select
+            value={reportPeriod}
+            onChange={(e) => setReportPeriod(e.target.value)}
+            aria-label="Report period"
+            className="px-2.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer outline-none transition-all hover:bg-[#E9E5DC]/60"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+              color: '#262626',
+            }}
+          >
+            <option value="all">{t('dashPeriodAll')}</option>
+            <option value="weekly">{t('dashPeriodWeekly')}</option>
+            <option value="monthly">{t('dashPeriodMonthly')}</option>
+          </select>
+
+          <button
+            type="button"
+            onClick={handleExportPdf}
+            className="px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-all hover:bg-[#E9E5DC]/80 shrink-0 flex items-center gap-1.5"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+              color: '#262626',
+            }}
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            <span>{t('dashExportPdf')}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => loadData(reportPeriod)}
+            disabled={isLoading}
+            className="px-3.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-all hover:bg-[#E9E5DC]/80 shrink-0 flex items-center gap-1.5"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+              color: '#262626',
+            }}
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>{isLoading ? t('dashRefreshing') : t('dashRefresh')}</span>
+          </button>
+        </div>
       </div>
 
       {/* Content Body */}

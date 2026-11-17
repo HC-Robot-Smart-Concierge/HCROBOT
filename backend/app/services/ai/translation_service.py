@@ -8,6 +8,12 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Ký tự CJK (Trung, Nhật, Hàn) và các hệ chữ ngoại lai dễ bị nhận diện nhầm
+CJK_AND_NON_LATIN_SCRIPT_REGEX = re.compile(
+    r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af\u1100-\u11ff]',
+    re.UNICODE
+)
+
 # Ký tự có dấu đặc trưng của Tiếng Việt
 VIETNAMESE_DIACRITICS_REGEX = re.compile(
     r'[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]',
@@ -61,25 +67,36 @@ class TranslationService:
             await self.http_client.aclose()
 
     @staticmethod
-    def normalize_lang_code(lang: str) -> str:
-        """Chuẩn hóa mã ngôn ngữ về 'vi' hoặc 'en'."""
-        if not lang:
-            return "vi"
+    def normalize_lang_code(lang: str, default: Optional[str] = None) -> Optional[str]:
+        """
+        Chuẩn hóa mã ngôn ngữ về duy nhất 'vi' hoặc 'en'.
+        Các mã ngoại lai (ja, zh, ko, es...) hoặc mã rỗng/không xác định sẽ trả về None (hoặc default nếu được chỉ định).
+        Tuyệt đối không tự ý cắt 2 ký tự đầu biến 'ja' thành ngôn ngữ hợp lệ!
+        """
+        if not lang or not isinstance(lang, str):
+            return default
         clean = lang.lower().strip()
+        if not clean or clean in ("auto", "bilingual", "neutral", "unknown", "none"):
+            return default
         if clean.startswith("vi") or "việt" in clean or "viet" in clean:
             return "vi"
         if clean.startswith("en") or "anh" in clean or "eng" in clean:
             return "en"
-        return clean[:2]
+        return default
 
     @classmethod
-    def detect_language(cls, text: str) -> str:
+    def detect_language(cls, text: str, default_if_uncertain: Optional[str] = "en") -> str:
         """
-        Nhận diện nhanh ngôn ngữ giữa Tiếng Việt ('vi') và Tiếng Anh ('en').
-        Trả về 'neutral' nếu câu nói chỉ gồm 1 từ cảm thán trung tính (ok, ah, hmm...).
+        Nhận diện chính xác ngôn ngữ đầu vào giữa Tiếng Việt ('vi') và Tiếng Anh ('en').
+        - Trả về 'neutral' nếu câu nói chỉ gồm 1 từ cảm thán trung tính (ok, ah, hmm...).
+        - Chặn hoàn toàn các ngôn ngữ ngoài 'vi' và 'en'.
         """
         if not text or not text.strip():
             return "neutral"
+
+        # Nếu câu chứa ký tự tiếng Việt có dấu -> 100% là Tiếng Việt
+        if VIETNAMESE_DIACRITICS_REGEX.search(text):
+            return "vi"
 
         clean_words = set(
             re.findall(
@@ -94,11 +111,7 @@ class TranslationService:
         if len(clean_words) <= 1 and clean_words.issubset(NEUTRAL_WORDS):
             return "neutral"
 
-        # 2. Nếu chứa bất kỳ ký tự tiếng Việt có dấu nào -> Chắc chắn là Tiếng Việt ('vi')
-        if VIETNAMESE_DIACRITICS_REGEX.search(text):
-            return "vi"
-
-        # 3. Đếm số từ trùng khớp trong từ điển thông dụng
+        # 2. Đếm số từ trùng khớp trong từ điển thông dụng
         vi_hits = len(clean_words.intersection(COMMON_VIETNAMESE_WORDS))
         en_hits = len(clean_words.intersection(COMMON_ENGLISH_WORDS))
 
@@ -107,11 +120,16 @@ class TranslationService:
         if en_hits > vi_hits:
             return "en"
 
-        # 4. Nếu câu hoàn toàn là ASCII không dấu và không khớp từ tiếng Việt nào -> Ưu tiên 'en'
-        if vi_hits == 0:
+        # 3. Câu hoàn toàn không dấu:
+        # Nếu có ít nhất 1 từ tiếng Việt (vd: 'phong 402', 'ho boi') -> 'vi'
+        if vi_hits > 0:
+            return "vi"
+
+        # Nếu không có từ tiếng Việt nào -> Mặc định kiểm tra tiếng Anh hoặc fallback
+        if en_hits > 0:
             return "en"
 
-        return "vi"
+        return default_if_uncertain or "en"
 
     async def _translate_via_google_gtx(
         self, text: str, src_lang: str, target_lang: str
@@ -181,7 +199,7 @@ class TranslationService:
         - Nếu khác ngôn ngữ -> Dịch sang target_lang và tổng hợp TTS nếu with_audio=True.
         """
         clean_text = (text or "").strip()
-        target_code = self.normalize_lang_code(target_lang)
+        target_code = self.normalize_lang_code(target_lang, default="vi")
 
         if not clean_text:
             return {
@@ -195,13 +213,28 @@ class TranslationService:
                 "tts_error_detail": None,
             }
 
-        # 1. Xác định ngôn ngữ nguồn của câu vừa nói:
+        # 0. Loại trừ các transcript bị lỗi nhận diện thành chữ tượng hình ngoại lai (CJK: Trung, Nhật, Hàn)
+        if CJK_AND_NON_LATIN_SCRIPT_REGEX.search(clean_text):
+            logger.warning(f"[TranslationService] Rejected transcript containing non-Latin CJK script: '{clean_text}'")
+            return {
+                "original_text": clean_text,
+                "translated_text": clean_text,
+                "source_lang": "unknown",
+                "target_lang": target_code,
+                "needs_translation": False,
+                "audio_base64": None,
+                "tts_error_code": "STT_SCRIPT_UNSUPPORTED",
+                "tts_error_detail": "Phát hiện ngôn ngữ ngoài phạm vi Anh - Việt",
+            }
+
+        # 1. Xác định ngôn ngữ nguồn của câu vừa nói (chỉ giới hạn vi hoặc en):
+        normalized_explicit_src = self.normalize_lang_code(source_lang)
         if VIETNAMESE_DIACRITICS_REGEX.search(clean_text):
             detected_src = "vi"
-        elif source_lang and source_lang.lower() not in ("auto", "bilingual"):
-            detected_src = self.normalize_lang_code(source_lang)
+        elif normalized_explicit_src:
+            detected_src = normalized_explicit_src
         else:
-            detected_src = self.detect_language(clean_text)
+            detected_src = self.detect_language(clean_text, default_if_uncertain="en" if target_code == "vi" else "vi")
 
         # 2. Quy tắc giữ nguyên khi trung tính hoặc cùng ngôn ngữ với đích nhận:
         if detected_src == "neutral":
@@ -229,10 +262,13 @@ class TranslationService:
             }
 
         # 3. Tiến hành dịch thuật:
-        src_for_gtx = "auto" if (not source_lang or source_lang.lower() in ("auto", "bilingual")) else detected_src
+        # Nếu đã xác định rõ nguồn là vi hoặc en, truyền tường minh cho Google GTX để tránh đoán mò sang tiếng Nhật/Trung/Hàn
+        src_for_gtx = detected_src if detected_src in ("vi", "en") else ("auto" if (not source_lang or source_lang.lower() in ("auto", "bilingual")) else "auto")
         translated, gtx_detected = await self._translate_via_google_gtx(clean_text, src_for_gtx, target_code)
-        if gtx_detected and gtx_detected.lower()[:2] in ("vi", "en"):
-            detected_src = self.normalize_lang_code(gtx_detected)
+        if gtx_detected:
+            normalized_gtx = self.normalize_lang_code(gtx_detected)
+            if normalized_gtx in ("vi", "en"):
+                detected_src = normalized_gtx
 
         # Nếu Google GTX phát hiện ngôn ngữ thực tế trùng với target_code -> Giữ nguyên câu gốc, không cần dịch/TTS
         if detected_src == target_code:

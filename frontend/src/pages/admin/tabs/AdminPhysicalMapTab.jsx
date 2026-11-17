@@ -99,7 +99,7 @@ import {
 import { PANEL_SECTIONS, fitCanvasSize, loadPanelState, nextPanelState, savePanelState } from './physicalMapPanel';
 import PhysicalMapPopup from './PhysicalMapPopup';
 import { PhysicalMapRoutePlanner } from './PhysicalMapRoutePlanner';
-import { routePoint } from '../../../utils/physicalMapRoute';
+import { routePoint, routeIsClosed, routePointRole, pickRoutePoints } from '../../../utils/physicalMapRoute';
 import {
   DEFAULT_VIEW, MAX_ZOOM, clampView, fitWidthView, isDefaultView, mapFrame, panView, wheelZoomFactor, zoomViewAt,
 } from './physicalMapView';
@@ -1755,6 +1755,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     // Planned route is an ordered overlay, separate from Nav2's live path.
     const route = routeDraft?.execution_config?.route;
     if (route?.map_id === mapConfig.mapId && route.points.length) {
+      const closed = routeIsClosed(route.points);
       const points = route.points.map((p) => worldToCanvas(p.x, p.y, width, height));
       ctx.save();
       ctx.strokeStyle = '#22D3EE'; ctx.lineWidth = 3; ctx.setLineDash([8, 5]);
@@ -1769,10 +1770,21 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
           ctx.lineTo(x - 10 * Math.cos(angle - 0.5), y - 10 * Math.sin(angle - 0.5));
           ctx.moveTo(x, y); ctx.lineTo(x - 10 * Math.cos(angle + 0.5), y - 10 * Math.sin(angle + 0.5)); ctx.stroke();
         }
+        if (closed && index === points.length - 1) return;
         ctx.beginPath(); ctx.arc(point.x, point.y, 12, 0, Math.PI * 2);
-        ctx.fillStyle = '#0E7490'; ctx.fill(); ctx.strokeStyle = '#67E8F9'; ctx.stroke();
+        const isStart = index === 0, isEnd = !closed && index === points.length - 1;
+        const color = isStart ? '#059669' : isEnd ? '#E11D48' : '#0E7490';
+        ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = '#FFFFFF'; ctx.stroke();
         ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(String(index + 1), point.x, point.y);
+        if (isStart || isEnd) {
+          const label = routePointRole(route.points, index);
+          ctx.font = 'bold 12px sans-serif';
+          const labelWidth = ctx.measureText(label).width + 12;
+          ctx.fillStyle = color;
+          ctx.fillRect(point.x - labelWidth / 2, point.y - 35, labelWidth, 18);
+          ctx.fillStyle = '#FFFFFF'; ctx.fillText(label, point.x, point.y - 26);
+        }
       });
       ctx.restore();
     }
@@ -1858,19 +1870,31 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     }
 
     if (isPickingRoute && routeDraft?.execution_config?.route?.map_id === mapConfig.mapId) {
+      const routePoints = routeDraft.execution_config.route.points;
+      if (routeIsClosed(routePoints)) {
+        setNavStatus('Tuyến đã khép kín. Bấm “Mở tuyến” để thêm điểm.');
+        return;
+      }
+      const start = routePoints[0] && worldToCanvas(routePoints[0].x, routePoints[0].y, canvas.width, canvas.height);
+      const closeToStart = Boolean(start && Math.hypot(canvasX - start.x, canvasY - start.y) <= 18);
       const ep = endpoints.find((item) => {
         const point = worldToCanvas(item.x, item.y, canvas.width, canvas.height);
         return Math.hypot(canvasX - point.x, canvasY - point.y) <= 18;
       });
-      const point = routePoint(ep ? ep.x : worldX, ep ? ep.y : worldY, ep);
+      const point = closeToStart ? routePoints[0] : routePoint(ep ? ep.x : worldX, ep ? ep.y : worldY, ep);
       const invalid = validateRoutePoint(point);
       if (invalid) { setNavStatus(invalid); return; }
-      setRouteDraft((previous) => {
-        const config = previous.execution_config, route = config.route;
-        if (route.points.length >= 200) return previous;
-        return { ...previous, execution_config: { ...config, route: { ...route, points: [...route.points, point] } } };
-      });
-      setNavStatus(`Đã thêm ${point.name} vào tuyến. Bấm “Xong” để lưu tuyến.`);
+      try {
+        const nextPoints = pickRoutePoints(routePoints, point, closeToStart);
+        setRouteDraft((previous) => ({ ...previous, execution_config: { ...previous.execution_config,
+          route: { ...previous.execution_config.route, points: nextPoints } } }));
+        if (routeIsClosed(nextPoints)) {
+          setIsPickingRoute(false); openPanelSection('ROUTES');
+          setNavStatus('Đã khép kín tuyến và thêm chặng quay về điểm đầu. Bấm “Lưu tuyến” để lưu.');
+        } else setNavStatus(closeToStart
+          ? 'Thêm điểm khác trước khi bấm lại điểm đầu để khép kín tuyến.'
+          : `Đã thêm ${point.name} vào tuyến. Bấm “Xong” để chỉnh sửa và lưu tuyến.`);
+      } catch (err) { setNavStatus(err.message); }
       return;
     }
 

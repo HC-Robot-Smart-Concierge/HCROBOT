@@ -335,6 +335,8 @@ class OllamaService:
         Xây dựng System Prompt tối ưu cho giao tiếp hội thoại tự nhiên, thông minh và phản hồi nhanh.
         Tự động nạp thông tin tiện ích động từ ScenarioService (do Admin quản lý qua API).
         """
+        from app.services.rag.facilities_kb_service import get_kb_facts_prompt
+        kb_facts = get_kb_facts_prompt(lang_code)
         hotel_facts = scenario_service.get_hotel_facts_prompt(lang_code)
 
         if lang_code == "en-US":
@@ -359,6 +361,8 @@ class OllamaService:
                 "   - NEVER hallucinate or invent facilities not documented in the provided knowledge base.\n"
                 "   - If an amenity or inquiry is not found in the documentation, politely advise the guest to check with the Front Desk.\n"
             )
+            if kb_facts:
+                prompt += f"\n{kb_facts}\n"
             if hotel_facts:
                 prompt += f"\n{hotel_facts}\n"
         else:
@@ -382,6 +386,8 @@ class OllamaService:
                 "   - Tuyệt đối KHÔNG tự ý suy diễn hoặc bịa đặt các dịch vụ không có trong tài liệu.\n"
                 "   - Nếu thông tin khách hỏi không có trong tài liệu, hãy lịch sự trả lời rằng Rora sẽ liên hệ nhân viên hoặc quầy lễ tân để hỗ trợ quý khách.\n"
             )
+            if kb_facts:
+                prompt += f"\n{kb_facts}\n"
             if hotel_facts:
                 prompt += f"\n{hotel_facts}\n"
 
@@ -413,15 +419,15 @@ class OllamaService:
         Async Generator sinh token theo thời gian thực từ Qwen/Groq/Gemini/Ollama (stream=True).
         Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
-        # 0. Kiểm tra Mega Fast-Path tức thì (< 1ms)
-        fast_hit = self.check_fast_path(prompt, language)
+        # 0. Kiểm tra Mega Fast-Path tức thì (< 1ms), bỏ qua nếu caller truyền sẵn rag_context từ Knowledge Base
+        fast_hit = None if (rag_context and rag_context.strip()) else self.check_fast_path(prompt, language)
         if fast_hit:
             reply, _, _ = fast_hit
             yield reply
             return
 
         # Tự động truy vấn tri thức RAG từ ChromaDB nếu chưa có sẵn
-        if rag_context is None:
+        if not rag_context:
             try:
                 from app.services.rag.chroma import query_rag_context
                 rag_context = await query_rag_context(prompt)
@@ -552,13 +558,13 @@ class OllamaService:
         Sinh câu trả lời thoại cho Concierge Robot dựa trên câu hỏi của khách và lịch sử phiên.
         Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
-        # 0. Kiểm tra Fast-Path trước (< 1ms)
-        fast_hit = self.check_fast_path(prompt, language)
+        # 0. Kiểm tra Fast-Path trước (< 1ms), bỏ qua nếu caller truyền sẵn rag_context từ Knowledge Base
+        fast_hit = None if (rag_context and rag_context.strip()) else self.check_fast_path(prompt, language)
         if fast_hit:
             return fast_hit
 
         # Tự động truy vấn tri thức RAG từ ChromaDB nếu chưa có sẵn
-        if rag_context is None:
+        if not rag_context:
             try:
                 from app.services.rag.chroma import query_rag_context
                 rag_context = await query_rag_context(prompt)

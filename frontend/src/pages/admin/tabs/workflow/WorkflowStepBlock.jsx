@@ -149,6 +149,7 @@ export const WorkflowStepBlock = ({
             {routes.find((route) => route.id === params.route_id) && <p className="text-stone-500">{routes.find((route) => route.id === params.route_id).execution_config.route.points.map((point) => point.name).join(' → ')}</p>}
             <p className="text-stone-500">Có thể lưu workflow trước, rồi sang Physical Map chọn workflow và bước này để gán tuyến như một tham số. Chưa có tuyến thì workflow được lưu dưới dạng bản nháp tạm tắt.</p>
             <p className="text-stone-500">Số vòng ở đây chỉ lặp bước này. Lịch và số vòng của cả workflow được đặt ở cấu hình chạy.</p>
+            <p className="text-stone-500">Xe thật đi xuyên suốt tuyến qua các điểm trung gian; chỉ dừng căn hướng ở cuối tuyến hoặc tại bước Chờ.</p>
           </div>}
           {step.type === 'MOVE' && (
             <>

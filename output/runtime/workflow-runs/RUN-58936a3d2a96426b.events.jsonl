@@ -1,0 +1,5 @@
+{"type": "STARTED", "message": null, "step_index": 0, "round_index": 0, "at": 1794815964.0856888}
+{"type": "STEP_STARTED", "message": "TEST · vòng 1 · Điểm trung gian", "step_index": 0, "round_index": 0, "at": 1794815964.0926409}
+{"type": "STEP_COMPLETED", "message": null, "step_index": 0, "round_index": 0, "at": 1794815964.1077018}
+{"type": "STEP_STARTED", "message": "TEST · vòng 1 · Điểm trung gian", "step_index": 1, "round_index": 0, "at": 1794815964.1090727}
+{"type": "FAILED", "message": "Nav2 không hoàn thành tuyến (status=5).", "step_index": 1, "round_index": 0, "at": 1794815968.031934}

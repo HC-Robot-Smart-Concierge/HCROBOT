@@ -9,6 +9,19 @@ export function workflowRouteTargets(workflows) {
     && (workflow.steps || []).some((step) => step.type === 'FOLLOW_ROUTE'));
 }
 
+export function physicalWorkflowForMap(workflow, routes, mapId) {
+  if (unconfiguredRouteSteps(workflow).length) throw new Error('Còn bước chưa có tuyến. Cấu hình và lưu gán tất cả các bước Đi theo tuyến trước.');
+  const candidate = { ...workflow, is_active: true,
+    execution_config: { ...executionConfig(workflow.execution_config), execution_mode: 'ROBOT' } };
+  const error = executionError(candidate);
+  if (error) throw new Error(error);
+  const expanded = expandWorkflowRoutes(candidate, routes.filter((route) => route.is_active));
+  const moves = expanded.steps.filter((step) => step.type === 'MOVE');
+  if (!moves.length) throw new Error('Workflow cần ít nhất một bước di chuyển.');
+  if (moves.some((step) => step.params?.map_id !== mapId)) throw new Error('Các bước di chuyển phải dùng cùng bản đồ đang mở.');
+  return candidate;
+}
+
 export function routeStepOnMap(workflow, stepId, routes, mapId) {
   const step = workflow?.steps?.find((s) => s.step_id === stepId && s.type === 'FOLLOW_ROUTE');
   if (!step) throw new Error('Chọn bước Đi theo tuyến cần cấu hình.');
@@ -32,6 +45,34 @@ export function routePoint(x, y, endpoint = null) {
     name: endpoint?.name || 'Điểm trung gian',
     x: Number(x), y: Number(y), yaw: Number(endpoint?.yaw || 0),
   };
+}
+
+export function routeIsClosed(points) {
+  if (points.length < 3) return false;
+  const first = points[0], last = points[points.length - 1];
+  return Math.hypot(first.x - last.x, first.y - last.y) < 1e-6;
+}
+
+export function closeRoutePoints(points) {
+  if (routeIsClosed(points) || points.length < 2) return points;
+  if (!points.some((point) => Math.hypot(point.x - points[0].x, point.y - points[0].y) >= 1e-6)) return points;
+  if (points.length >= 200) throw new Error('Tuyến tối đa 200 điểm, cần chừa một điểm để quay về điểm đầu.');
+  // Persist an actual return leg, so existing workflow executors also close the loop.
+  return [...points, { ...points[0], id: routePoint(points[0].x, points[0].y).id }];
+}
+
+export function pickRoutePoints(points, point, closeToStart = false) {
+  if (routeIsClosed(points)) return points;
+  if (closeToStart) return closeRoutePoints(points);
+  if (points.length >= 200) throw new Error('Tuyến tối đa 200 điểm.');
+  return [...points, point];
+}
+
+export function routePointRole(points, index) {
+  const closed = routeIsClosed(points);
+  if (index === 0) return closed ? 'Điểm đầu / cuối' : 'Điểm đầu';
+  if (index === points.length - 1) return closed ? 'Quay về điểm đầu' : 'Điểm cuối';
+  return 'Điểm trung gian';
 }
 
 export function routeWorkflow(draft) {
@@ -77,7 +118,7 @@ export function expandWorkflowRoutes(workflow, routes) {
     const moves = routeWorkflow({ ...route, trigger_type: 'MANUAL' }).steps;
     const expanded = Array.from({ length: count }, (_, round) => moves.map((move, index) => ({
       ...move, step_id: round === 0 && index === 0 ? step.step_id : `${step.step_id}::${round}::${index}`,
-      params: { ...move.params, source_route_id: route.id },
+      params: { ...move.params, source_route_id: route.id, source_route_step_id: step.step_id },
     }))).flat();
     if (step.params.next_step_id) expanded[expanded.length - 1].params.next_step_id = step.params.next_step_id;
     return expanded;

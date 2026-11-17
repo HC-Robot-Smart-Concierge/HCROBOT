@@ -1,0 +1,3 @@
+{"type": "STARTED", "message": null, "step_index": 0, "round_index": 0, "at": 1794812553.443704}
+{"type": "STEP_STARTED", "message": "TEST · vòng 1 · Điểm trung gian", "step_index": 0, "round_index": 0, "at": 1794812553.5551758}
+{"type": "FAILED", "message": "Nav2 không hoàn thành goal (status=5).", "step_index": 0, "round_index": 0, "at": 1794812556.92816}

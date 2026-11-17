@@ -86,12 +86,17 @@ class TestFindFrontiers(unittest.TestCase):
 class TestExplorationResult(unittest.TestCase):
     """Ket qua cuoi phien tu quet -> /explore/status -> Web hien popup luu map."""
 
-    def test_done_when_robot_visited_frontiers(self):
+    def test_incomplete_when_frontiers_remain_even_after_progress(self):
         left = [Frontier(goal=(1.0, 2.0), size=9, centroid=(1.0, 2.0))]
         r = exploration_result(visited=5, stuck_count=1, frontiers=left)
-        self.assertEqual(r["state"], "DONE")
+        self.assertEqual(r["state"], "INCOMPLETE")
         self.assertEqual((r["visited"], r["stuck"], r["frontiers_left"]), (5, 1, 1))
         self.assertIn("5", r["message"])
+
+    def test_done_only_when_no_frontiers_remain(self):
+        r = exploration_result(visited=5, stuck_count=1, frontiers=[])
+        self.assertEqual(r["state"], "DONE")
+        self.assertEqual(r["frontiers_left"], 0)
 
     def test_failed_when_nothing_was_reached(self):
         r = exploration_result(visited=0, stuck_count=0, frontiers=[])

@@ -186,6 +186,7 @@ class LidarWsToRos2Bridge(Node):
         # Nut "Dung" tren Web (che do ROS 2): huy MOI goal Nav2. Chi gui /cmd_vel=0 thi
         # controller van phat lenh 10 Hz va xe chay tiep.
         self.nav_cancel_client = self.create_client(CancelGoal, '/navigate_to_pose/_action/cancel_goal')
+        self.route_cancel_client = self.create_client(CancelGoal, '/navigate_through_poses/_action/cancel_goal')
         self.nav_cancel_sub = self.create_subscription(Empty, '/robot/nav_cancel', self.on_nav_cancel, 10)
 
         # Service Clients kết nối tới SLAM Toolbox
@@ -602,6 +603,8 @@ class LidarWsToRos2Bridge(Node):
             self.nav_cancel_client.call_async(CancelGoal.Request())
         else:
             self.get_logger().warn("⚠️ Nav2 chưa chạy (không có cancel_goal), chỉ dừng motor")
+        if self.route_cancel_client.service_is_ready():
+            self.route_cancel_client.call_async(CancelGoal.Request())
         self.current_vx = 0.0
         self.current_wz = 0.0
         self.desired_motion = "stop"

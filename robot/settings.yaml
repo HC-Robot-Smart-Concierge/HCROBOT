@@ -33,7 +33,7 @@ robot:
     # thay vì giảm ngưỡng sonar để ép xe tiến/quay trong chỗ chật.
     front_stop_cm: 25
     rear_stop_cm: 20
-    # Hông chỉ dùng khi XOAY / rẽ một bên (góc xe lố ~10 cm ra ngoài hông).
+    # Quay tại chỗ kiểm tra cả hai hông vì đầu và đuôi quét ngược phía nhau.
     left_stop_cm: 16
     right_stop_cm: 16
     # Khi quay tại chỗ: ngoài bên quay, đầu/đuôi xe phải trống hơn mức này.

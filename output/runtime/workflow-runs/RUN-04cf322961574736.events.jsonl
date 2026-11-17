@@ -1,0 +1,9 @@
+{"type": "STARTED", "message": null, "step_index": 0, "round_index": 0, "at": 1794812893.4575624}
+{"type": "STEP_STARTED", "message": "TEST · vòng 1 · Điểm trung gian", "step_index": 0, "round_index": 0, "at": 1794812893.5646853}
+{"type": "STEP_COMPLETED", "message": null, "step_index": 0, "round_index": 0, "at": 1794812893.8814297}
+{"type": "STEP_STARTED", "message": "TEST · vòng 1 · Điểm trung gian", "step_index": 1, "round_index": 0, "at": 1794812893.996303}
+{"type": "STEP_COMPLETED", "message": null, "step_index": 1, "round_index": 0, "at": 1794812920.9670477}
+{"type": "STEP_STARTED", "message": "TEST · vòng 1 · Điểm trung gian", "step_index": 2, "round_index": 0, "at": 1794812921.0787222}
+{"type": "STEP_COMPLETED", "message": null, "step_index": 2, "round_index": 0, "at": 1794812942.083436}
+{"type": "STEP_STARTED", "message": "TEST · vòng 1 · Điểm trung gian", "step_index": 3, "round_index": 0, "at": 1794812942.1927567}
+{"type": "FAILED", "message": "Nav2 không hoàn thành goal (status=5).", "step_index": 3, "round_index": 0, "at": 1794812946.249428}

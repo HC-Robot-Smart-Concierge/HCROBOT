@@ -13,7 +13,9 @@ Chống kẹt (xe thật: sonar trên Pi chặn lệnh khi sát vật cản, Nav
 - Quay/rẽ qua kiểm tra vùng quét của LiDAR + local costmap; vướng thì chọn đường khác.
 - Thiếu cảm biến/costmap kéo dài: dừng tự hành và báo lý do.
 
-Kết thúc (xong / không tới được frontier nào / bị dừng): phát kết quả JSON lên /explore/status
+Còn frontier nhưng hết đích phù hợp: giữ phiên, báo BLOCKED và kiểm tra lại sau
+blocked_retry_sec (mặc định 30 giây), không báo quét xong.
+Kết thúc (hết frontier / lỗi cảm biến kéo dài / bị dừng): phát kết quả JSON lên /explore/status
 (latched) rồi THOÁT tiến trình sau vài giây => backend chuyển về MAPPING (SLAM vẫn chạy, giữ
 map) và Web hiện bảng đặt tên + lưu map.
 
@@ -74,6 +76,8 @@ class FrontierExplorer(Node):
         # Het cho de di ma van con frontier: mo lai cac cho da bo, thu them toi da N vong.
         self.max_retry_rounds = int(p("max_retry_rounds", 2).value)
         self.retry_rounds = 0
+        self.blocked_retry_sec = max(5.0, float(p("blocked_retry_sec", 30.0).value))
+        self.blocked_retry_at = None
         # Measured 33 x 17 cm body + 4 cm padding (~24.1 cm turning radius).
         # Nav2 and recovery check the actual swept body before changing heading.
         self.goal_clearance_m = float(p("goal_clearance_m", TURN_CLEARANCE_RADIUS_M).value)
@@ -366,6 +370,9 @@ class FrontierExplorer(Node):
                 continue
             break
         if target is None:
+            if frontiers and self.blocked_retry_at is not None:
+                self._wait_for_frontiers(frontiers, now)
+                return
             if frontiers and self.retry_rounds < self.max_retry_rounds:
                 reopened = self.memory.retry_round()
                 if reopened:
@@ -376,12 +383,39 @@ class FrontierExplorer(Node):
                         f"đã bỏ (vòng {self.retry_rounds}/{self.max_retry_rounds})"
                     )
                     return
+            if frontiers:
+                self._wait_for_frontiers(frontiers, now)
+                return
             self.empty_checks += 1
             if self.empty_checks >= self.done_checks:
                 self._finish(frontiers)
             return
         self.empty_checks = 0
+        if self.blocked_retry_at is not None:
+            self.blocked_retry_at = None
+            self._publish_status({"state": "EXPLORING", "message": "Robot tiếp tục khám phá vùng chưa quét."})
         self._send_goal(goal, target.goal, robot, len(frontiers))
+
+    def _wait_for_frontiers(self, frontiers, now):
+        """Keep SLAM and the exploration session alive while unresolved regions remain."""
+        self.empty_checks = 0
+        if self.blocked_retry_at is None:
+            self.blocked_retry_at = now + self.blocked_retry_sec
+            message = (
+                f"Còn {len(frontiers)} vùng chưa khám phá; chưa tìm được đích an toàn để đi tiếp. "
+                f"Giữ phiên quét, kiểm tra lại sau {self.blocked_retry_sec:.0f} giây. "
+                "Kiểm tra encoder, LiDAR và vật cản nếu xe vẫn đứng yên."
+            )
+            self.get_logger().warn(message)
+            self._publish_status({"state": "BLOCKED", "frontiers_left": len(frontiers),
+                                  "visited": self.visited, "stuck": self.stuck_count,
+                                  "message": message})
+        elif now >= self.blocked_retry_at:
+            # Reopen temporary navigation failures, keeping blind spots and all
+            # collision/scan checks. Never turn remaining frontiers into DONE.
+            self.memory.retry_round()
+            self.retry_rounds = 0
+            self.blocked_retry_at = None
 
     def _watch_goal(self, now):
         # 1. Tới gần đích: tự dừng (khỏi chờ Nav2 xoay đúng hướng đích - sát tường Pi chặn xoay).
@@ -727,6 +761,9 @@ class FrontierExplorer(Node):
 
     # ------------------------------------------------------------------ kết thúc
     def _finish(self, frontiers):
+        if frontiers:
+            self._wait_for_frontiers(frontiers, self._now())
+            return
         self.finished = True
         left = ", ".join(f"({f.goal[0]:.2f}, {f.goal[1]:.2f})" for f in frontiers[:6])
         result = exploration_result(self.visited, self.stuck_count, frontiers)

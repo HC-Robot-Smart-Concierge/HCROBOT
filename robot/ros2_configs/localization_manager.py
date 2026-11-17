@@ -86,6 +86,7 @@ class LocalizationManager(Node):
         self.match = None
         self.match_failure_reason = None
         self.active_goals = 0
+        self.active_goals_by_action = {}
         self.pending_source = None
         self.restore_tried = not self.persist_pose
         self.last_cancel = 0.0
@@ -98,10 +99,13 @@ class LocalizationManager(Node):
         self.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", self._on_amcl, 10)
         self.create_subscription(PoseWithCovarianceStamped, "/initialpose", self._on_initial_pose, 10)
         self.create_subscription(GoalStatusArray, "/navigate_to_pose/_action/status", self._on_goal_status, LATCHED)
+        self.create_subscription(GoalStatusArray, "/navigate_through_poses/_action/status",
+                                 lambda msg: self._on_goal_status(msg, 'route'), LATCHED)
         self.state_pub = self.create_publisher(String, "/localization/state", LATCHED)
         self.initial_pub = self.create_publisher(PoseWithCovarianceStamped, "/initialpose", 10)
         self.stop_pub = self.create_publisher(Empty, "/robot/nav_cancel", 10)
         self.cancel_client = self.create_client(CancelGoal, "/navigate_to_pose/_action/cancel_goal")
+        self.route_cancel_client = self.create_client(CancelGoal, "/navigate_through_poses/_action/cancel_goal")
         # Khoi phuc pose cu chi khi AMCL da active: gui som AMCL bo qua => khong co frame map,
         # global costmap cho TF qua lau va lifecycle manager huy ca Nav2.
         self.amcl_state_client = self.create_client(GetState, "/amcl/get_state")
@@ -145,8 +149,9 @@ class LocalizationManager(Node):
         )
         self._publish_state()
 
-    def _on_goal_status(self, msg):
-        self.active_goals = sum(1 for s in msg.status_list if s.status in ACTIVE_GOAL)
+    def _on_goal_status(self, msg, action='pose'):
+        self.active_goals_by_action[action] = sum(1 for s in msg.status_list if s.status in ACTIVE_GOAL)
+        self.active_goals = sum(self.active_goals_by_action.values())
         self._gate_goals()
 
     # ------------------------------------------------------------------ vong chinh
@@ -274,6 +279,8 @@ class LocalizationManager(Node):
         self.get_logger().warn(f"🛑 Hủy goal Nav2 + dừng xe: {why}")
         if self.cancel_client.service_is_ready():
             self.cancel_client.call_async(CancelGoal.Request())  # goal_info rong = huy tat ca
+        if self.route_cancel_client.service_is_ready():
+            self.route_cancel_client.call_async(CancelGoal.Request())
         self.stop_pub.publish(Empty())
 
     def _save_pose(self):

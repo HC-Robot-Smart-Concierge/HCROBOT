@@ -178,4 +178,24 @@ export const syncBilingualKnowledge = async () => {
   );
 };
 
+/**
+ * Lấy danh sách cơ sở vật chất & tiện ích trích xuất trực tiếp từ Knowledge Base (.md)
+ */
+export const fetchRAGFacilities = async (lang = 'vi') => {
+  const normalizedLang = String(lang || 'vi').toLowerCase().startsWith('en') ? 'en' : 'vi';
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(`${RAG_BASE_URL}/facilities?lang=${encodeURIComponent(normalizedLang)}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch facilities from Knowledge Base (${response.status})`);
+  }
+
+  return await response.json();
+};
+
 

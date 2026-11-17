@@ -35,6 +35,7 @@ export const AdminWorkflowTab = () => {
   const [waypoints, setWaypoints] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [startedRunId, setStartedRunId] = useState(null);
 
   // View state: 'list' (Quản lý kịch bản) | 'simulator' (Phòng giả lập Gazebo & Kiosk)
   const [activeView, setActiveView] = useState('list');
@@ -226,6 +227,7 @@ export const AdminWorkflowTab = () => {
     if (!hasRunConfiguration(wf)) return;
     try {
       const result = await executeWorkflow(wf.id, { robot_id: 'RC-001' });
+      if (result.run_id) setStartedRunId(result.run_id);
       showNotification(result.message || 'Đã gửi workflow.');
     } catch (err) {
       showNotification(`Không gửi được workflow: ${err.message}`);
@@ -379,7 +381,7 @@ export const AdminWorkflowTab = () => {
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 space-y-4" style={{ backgroundColor: '#F2EFE9' }}>
-        <WorkflowRunsPanel />
+        <WorkflowRunsPanel key={startedRunId || 'latest'} runId={startedRunId || undefined} />
         {/* Workflow Cards Grid - 2 Cột rộng rãi, màu xám #E9E5DC đồng bộ */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {workflows.length === 0 ? (

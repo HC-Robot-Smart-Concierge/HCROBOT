@@ -90,6 +90,15 @@ export async function saveWorkflow(workflow) {
   return res.json();
 }
 
+export async function activatePhysicalWorkflow(workflow) {
+  const res = await fetch(`${API_BASE}/workflows/${encodeURIComponent(workflow.id)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_active: true, execution_config: workflow.execution_config }),
+  });
+  if (!res.ok) throw await errorFromResponse(res, 'Không kích hoạt được workflow trên xe thật');
+  return res.json();
+}
+
 export async function previewWorkflowSchedule(executionConfig, signal) {
   const res = await fetch(`${API_BASE}/workflows/schedule-preview`, {
     method: 'POST',

@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ros2_configs"))
 from retreat_logic import RetreatTrail, ReverseFollower, body_scan, reverse_clear, turn_clear
-from frontier_logic import MotionWatchdog, choose_unstick_direction, exploration_result
+from frontier_logic import MotionWatchdog, choose_frontier, choose_unstick_direction, exploration_result
 from recovery_costmap import CostmapGrid, grid_sweep_clear, scan_sweep_clear
 
 
@@ -22,7 +22,8 @@ def explorer_class():
     methods = {"_on_nav_result", "_goal_finished", "_tick", "_watch_goal",
                "_retreat_scan", "_needs_retreat", "_start_unstick", "_maneuver_step",
                "_stop_recovery", "_publish_vx", "_on_stop", "_costmap_snapshot",
-               "_motion_allowed", "_retry_navigation", "_wait_recovery", "_recovery_missing"}
+               "_motion_allowed", "_retry_navigation", "_wait_recovery", "_recovery_missing",
+               "_wait_for_frontiers", "_finish"}
     cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in methods]
     cls.bases = []
     namespace = {"math": __import__("math"), "ReverseFollower": ReverseFollower,
@@ -30,13 +31,80 @@ def explorer_class():
                  "turn_clear": turn_clear, "MotionWatchdog": MotionWatchdog,
                  "choose_unstick_direction": choose_unstick_direction,
                  "CostmapGrid": CostmapGrid, "grid_sweep_clear": grid_sweep_clear,
-                 "scan_sweep_clear": scan_sweep_clear, "exploration_result": exploration_result}
+                 "scan_sweep_clear": scan_sweep_clear, "exploration_result": exploration_result,
+                 "choose_frontier": choose_frontier}
     yaw_helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_yaw_from_quat")
     exec(compile(ast.Module(body=[yaw_helper, cls], type_ignores=[]), str(source), "exec"), namespace)
     return namespace["FrontierExplorer"]
 
 
 class TestFrontierRecovery(unittest.TestCase):
+    def test_tick_waits_on_remaining_frontiers_then_resumes_on_new_target(self):
+        from frontier_logic import Frontier, FrontierMemory
+        n = self.node
+        n.finished = False
+        n.busy = False
+        n.maneuver = None
+        n.draining_future = None
+        n._needs_retreat = Mock(return_value=False)
+        n.map_msg = object()
+        n.nav = Mock()
+        n._robot_xy = Mock(return_value=(0.0, 0.0))
+        n.memory = FrontierMemory()
+        n.memory.give_up((2.0, 1.0))
+        n.retry_rounds = n.max_retry_rounds = 2
+        n.blocked_retry_at = None
+        n.blocked_retry_sec = 30.0
+        n.empty_checks = 2
+        n.done_checks = 3
+        n._publish_status = Mock()
+        n._finish = Mock()
+        n._frontiers = Mock(return_value=[Frontier((2.0, 1.0), 10, (2.0, 1.0))])
+        n._tick()
+        n._finish.assert_not_called()
+        self.assertEqual(n.blocked_retry_at, 40.0)
+        n._now.return_value = 20.0
+        n._tick()
+        self.assertEqual(n.memory.given_up, [(2.0, 1.0)])
+        # A newly discovered candidate can resume immediately during the wait.
+        n._frontiers.return_value.append(Frontier((4.0, 1.0), 10, (4.0, 1.0)))
+        n._safe_goal = Mock(return_value=(4.0, 1.0))
+        n.min_travel_m = 0.3
+        n._send_goal = Mock()
+        n._tick()
+        n._send_goal.assert_called_once()
+        self.assertIsNone(n.blocked_retry_at)
+        self.assertEqual(n._publish_status.call_args.args[0]['state'], 'EXPLORING')
+        # Completion still requires consecutive checks with no frontiers.
+        n._frontiers.return_value = []
+        for _ in range(3):
+            n._tick()
+        n._finish.assert_called_once_with([])
+
+    def test_unresolved_frontiers_keep_session_alive_and_retry_after_cooldown(self):
+        from frontier_logic import Frontier, FrontierMemory
+        n = self.node
+        n.finished = False
+        n.empty_checks = 3
+        n.blocked_retry_at = None
+        n.blocked_retry_sec = 30.0
+        n.retry_rounds = 2
+        n.memory = FrontierMemory()
+        n.memory.give_up((2.0, 1.0))
+        n.memory.mark_blind((3.0, 1.0))
+        n._publish_status = Mock()
+        left = [Frontier((2.0, 1.0), 10, (2.0, 1.0))]
+        n._finish(left)
+        self.assertFalse(n.finished)
+        n._report_and_exit.assert_not_called()
+        self.assertEqual(n._publish_status.call_args.args[0]['state'], 'BLOCKED')
+        n._wait_for_frontiers(left, 39.0)
+        self.assertEqual(len(n.memory.blacklist()), 2)
+        n._wait_for_frontiers(left, 40.0)
+        self.assertEqual(n.memory.blacklist(), [(3.0, 1.0)])
+        self.assertEqual(n.retry_rounds, 0)
+        self.assertIsNone(n.blocked_retry_at)
+
     def setUp(self):
         self.node = explorer_class()()
         n = self.node

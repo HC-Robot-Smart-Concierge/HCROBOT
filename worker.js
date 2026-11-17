@@ -2,9 +2,15 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1. Chuyển tiếp toàn bộ API calls (/api/*) về Tailscale Funnel Backend trên Laptop
-    if (url.pathname.startsWith('/api')) {
+    // 1. Chuyển tiếp toàn bộ API calls (/api/*) và static uploads (/static/*) về Tailscale Funnel Backend trên Laptop
+    if (url.pathname.startsWith('/api') || url.pathname.startsWith('/static')) {
       const targetUrl = new URL(`https://yungwhore.taila9018b.ts.net${url.pathname}${url.search}`);
+
+      // Hỗ trợ WebSocket Upgrade nguyên bản qua Cloudflare Worker
+      if (request.headers.get('Upgrade') === 'websocket') {
+        return fetch(targetUrl.toString(), request);
+      }
+
       const headers = new Headers(request.headers);
       headers.set('host', 'yungwhore.taila9018b.ts.net');
 

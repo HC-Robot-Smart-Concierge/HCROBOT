@@ -37,7 +37,8 @@ async def resolve_route_steps(steps, repo):
                     "step_id": step["step_id"] if first else f"{step['step_id']}::{round_index}::{index}",
                     "type": "MOVE", "title": f"{template.name} · vòng {round_index + 1} · {point.name}",
                     "params": {
-                        "source_route_id": route_id, "map_id": route.map_id, "frame_id": "map",
+                        "source_route_id": route_id, "source_route_step_id": step["step_id"],
+                        "map_id": route.map_id, "frame_id": "map",
                         "target_waypoint_id": point.endpoint_id, "target_value": point.endpoint_id or point.id,
                         "waypoint_name": point.name, "target_x": point.x, "target_y": point.y,
                         "target_yaw": point.yaw, "speed": 0.12, "timeout_sec": 120,

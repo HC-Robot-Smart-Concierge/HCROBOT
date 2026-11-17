@@ -1636,7 +1636,9 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
               <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2.5 px-4 py-2 bg-stone-900/90 border border-emerald-500/60 rounded-full shadow-2xl backdrop-blur-md text-white text-xs font-semibold pointer-events-auto">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0"/>
                 <span className="text-emerald-400 font-mono font-bold"> {rc("AUTONOMOUS SLAM:")} </span>
-                <span> {rc("The robot is scanning the entire room...")} </span>
+                <span> {exploreResult?.state === 'BLOCKED'
+                  ? exploreResult.message
+                  : rc("The robot is scanning the entire room...")} </span>
                 {exploredCount > 0 && (
                   <span className="px-2 py-0.5 rounded-full bg-emerald-900/80 border border-emerald-500/40 text-[10px] text-emerald-200 font-mono">
                     {exploredCount} {rc("locations")} </span>

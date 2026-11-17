@@ -23,6 +23,8 @@ Nếu mọi hướng đều chật hoặc dữ liệu mất thì phải dừng, 
   Đây là giới hạn lệnh theo mô hình open-loop, chưa phải tốc độ thực đo.
   Không tăng tốc lùi; giới hạn cũng áp dụng lệnh lùi qua bridge.
 - DWB kiểm tra footprint cả lúc mapping, không chỉ BaseObstacle tại tâm.
+- Quay tại chỗ kiểm tra sonar cả hai hông, không chỉ bên quay: góc đuôi bên
+  đối diện cũng có thể quệt vật cản. Lùi ra chỗ rộng trước khi quay nếu cần.
 - `PoseProgressChecker` của Nav2 tính cả translation và rotation, nên có thể
   phát hiện kẹt sớm hơn mà không coi mọi lần quay tại chỗ là đứng yên.
 - Pi dừng theo sonar: trước 25 cm, sau 20 cm, hông khi quay/rẽ 16 cm,

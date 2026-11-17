@@ -20,6 +20,10 @@ from app.services.workflow_schedule import ZONE_OFFSETS
 
 logger = logging.getLogger(__name__)
 TERMINAL = {"COMPLETED", "FAILED", "CANCELLED", "SKIPPED"}
+LEASE_SECONDS = 10.0
+CONTROL_INTERVAL_SECONDS = 1.0
+# Stop before the database's 25 s stale-owner recovery can release the robot.
+DATABASE_AUTHORIZATION_SECONDS = 20.0
 
 
 def due_slot(workflow, now):
@@ -46,7 +50,16 @@ def run_view(run):
 def atomic_json(path, data):
     temporary = path.with_suffix('.tmp')
     temporary.write_text(json.dumps(data, ensure_ascii=False), encoding='utf-8')
-    temporary.replace(path)
+    # DrvFS readers in WSL can briefly hold a Windows handle without delete
+    # sharing. Retain atomic replacement, retrying that short sharing conflict.
+    for attempt in range(20):
+        try:
+            temporary.replace(path)
+            return
+        except PermissionError:
+            if attempt == 19:
+                raise
+            time.sleep(.01)
 
 
 class WorkflowRuntime:
@@ -60,6 +73,7 @@ class WorkflowRuntime:
         self.owner = uuid.uuid4().hex
         self.running = {}
         self.task = None
+        self.control_task = None
 
     async def enqueue(self, workflow, repo, robot_id='RC-001', slot=None):
         plan = await physical_plan(workflow, repo)
@@ -113,6 +127,11 @@ class WorkflowRuntime:
             return [run_view(r) for r in (await db.scalars(query)).all()]
 
     async def cancel(self, run_id):
+        item = self.running.get(run_id)
+        if item is not None:
+            # An explicit stop must not wait for a database round trip.
+            item['cancel_requested'] = True
+            self.refresh_control(item)
         async with self.sessions() as db:
             # Conditional updates prevent a simultaneous worker claim from losing cancellation.
             await db.execute(update(WorkflowRun).where(WorkflowRun.id == run_id, WorkflowRun.status == 'PENDING')
@@ -125,19 +144,53 @@ class WorkflowRuntime:
 
     def start(self):
         self.directory.mkdir(parents=True, exist_ok=True)
+        self.control_task = asyncio.create_task(self.control_loop())
         self.task = asyncio.create_task(self.loop())
 
     async def close(self):
-        if self.task:
-            self.task.cancel()
+        tasks = [task for task in (self.task, self.control_task) if task is not None]
+        for task in tasks:
+            task.cancel()
+        for task in tasks:
             try:
-                await self.task
+                await task
             except asyncio.CancelledError:
                 pass
         # Do not release the DB reservation before the ROS worker has stopped.
         # Its lease also expires after 10 s if the backend is killed abruptly.
         for item in self.running.values():
-            atomic_json(item['control'], {'cancel': True, 'expires_at': time.time() + 10})
+            item['cancel_requested'] = True
+            self.refresh_control(item)
+
+    def refresh_control(self, item):
+        now = time.time()
+        # The local heartbeat is independent of scheduler/DB latency, but it
+        # cannot keep authorizing motion indefinitely if DB ownership is lost.
+        confirmed = item.get('db_confirmed_at')
+        authorization_left = (0.0 if confirmed is None else
+                              DATABASE_AUTHORIZATION_SECONDS - (time.monotonic() - confirmed))
+        if authorization_left <= 0:
+            item['cancel_requested'] = True
+            item['stop_reason'] = 'Backend không xác nhận được quyền quản lý lượt chạy trong 20 giây.'
+        item['control_sequence'] = item.get('control_sequence', 0) + 1
+        atomic_json(item['control'], {
+            'cancel': bool(item.get('cancel_requested')),
+            'expires_at': now + max(0.0, min(LEASE_SECONDS, authorization_left)),
+            'issued_at': now, 'sequence': item['control_sequence'],
+            'stop_reason': item.get('stop_reason'),
+        })
+
+    async def control_loop(self):
+        while True:
+            for run_id, item in list(self.running.items()):
+                if item['process'].poll() is not None:
+                    continue
+                try:
+                    self.refresh_control(item)
+                except OSError:
+                    # Failed file writes do not extend the worker's previous lease.
+                    logger.exception('Cannot renew workflow control %s', run_id)
+            await asyncio.sleep(CONTROL_INTERVAL_SECONDS)
 
     async def loop(self):
         while True:
@@ -182,7 +235,7 @@ class WorkflowRuntime:
         control = self.directory / f'{run.id}.control.json'
         events = self.directory / f'{run.id}.events.jsonl'
         atomic_json(request, run.payload)
-        atomic_json(control, {'cancel': False, 'expires_at': time.time() + 10})
+        atomic_json(control, {'cancel': False, 'expires_at': time.time() + LEASE_SECONDS})
         from app.services.hardware.ros2_runtime_service import ros2_runtime_service
         args = [str(request), str(control), str(events)]
         if os.name == 'nt':
@@ -197,7 +250,8 @@ class WorkflowRuntime:
                                            creationflags=int(getattr(subprocess, 'CREATE_NO_WINDOW', 0)))
             finally:
                 log.close()
-            self.running[run.id] = dict(process=process, control=control, events=events, offset=0, terminal=None)
+            self.running[run.id] = dict(process=process, control=control, events=events, offset=0, terminal=None,
+                                       db_confirmed_at=time.monotonic(), cancel_requested=False)
         except OSError as exc:
             await self.finish(run.id, 'FAILED', str(exc))
 
@@ -213,7 +267,11 @@ class WorkflowRuntime:
         async with self.sessions() as db:
             run = await db.get(WorkflowRun, run_id)
             cancel = run is None or run.status != 'RUNNING' or run.owner != self.owner
-            atomic_json(item['control'], {'cancel': cancel, 'expires_at': time.time() + 10})
+            if cancel:
+                item['cancel_requested'] = True
+            else:
+                item['db_confirmed_at'] = time.monotonic()
+            self.refresh_control(item)
             if run and run.owner == self.owner and run.status in {'RUNNING', 'CANCELLING'}:
                 run.heartbeat_at = datetime.utcnow()
                 if item['events'].exists():

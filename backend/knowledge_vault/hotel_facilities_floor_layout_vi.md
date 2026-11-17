@@ -173,7 +173,7 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 | **Hầm B2** | Bãi Đỗ Xe Ô Tô | Mở 24/7 | Miễn phí cho khách lưu trú | Đi Thang máy A bấm xuống Hầm B2 |
 | **Hầm B1** | Bãi Giữ Xe Máy & Xe Đạp | Mở 24/7 | Miễn phí cho khách lưu trú | Đi Thang máy A bấm xuống Hầm B1 |
 | **Tầng Trệt** | Sảnh Chính & Quầy Lễ Tân | Mở 24/7 | Miễn phí | Nằm ngay phía bên phải cửa sảnh vào |
-| **Tầng 2** | Bếp Trung Tâm (Staff Only) | Chuẩn bị món 24/7 | Không có nhà hàng/buffet; phục vụ gọi món tận phòng (Room Service) 24/7 |
+| **Tầng 2** | Bếp Trung Tâm (Staff Only) & Room Service | Phục vụ gọi món 24/7 | Không có nhà hàng/buffet; phục vụ gọi món tận phòng (Room Service) 24/7 | Xem menu màn hình / quét QR tại phòng (Bếp nội bộ Tầng 2) |
 | **Tầng 3** | Phòng Nghỉ Tiêu Chuẩn (301-310) | Phục vụ 24/7 | Theo mã đặt phòng | Đi Thang máy A lên Tầng 3, đi theo hành lang |
 | **Tầng 4** | Phòng Nghỉ Cao Cấp (401-410) | Phục vụ 24/7 | Theo mã đặt phòng | Đi Thang máy A lên Tầng 4, đi theo hành lang |
 | **Tầng 5** | Hồ Bơi Vô Cực | 06:00 - 22:00 | Miễn phí (kèm khăn tắm) | Đi Thang máy A lên Tầng 5, rẽ trái qua cửa kính |

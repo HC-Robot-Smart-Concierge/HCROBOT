@@ -502,7 +502,7 @@ async def exchange_camera_webrtc_offer(
     target_port = payload.port or 8554
     pi_offer_url = f"http://{target_host}:{target_port}/offer"
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=3.0, read=5.0, write=5.0, pool=5.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=12.0, write=5.0, pool=5.0)) as client:
             resp = await client.post(
                 pi_offer_url,
                 json={"sdp": payload.sdp, "type": payload.type},

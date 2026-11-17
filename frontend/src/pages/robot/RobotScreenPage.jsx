@@ -3791,6 +3791,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       {/* 5-STAR HOTEL FACILITIES MODAL */}
       <RobotFacilitiesModal
         isOpen={isFacilitiesModalOpen}
+        language={language}
         onClose={() => setIsFacilitiesModalOpen(false)}
         onNavigateToDestination={(destKey) => {
           setIsFacilitiesModalOpen(false);
@@ -3809,6 +3810,28 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setIsRoomServiceMenuOpen(false);
         }}
         onSpeak={(text) => speak(text)}
+        onAskFacilityWithAI={async (facility) => {
+          const isEnLang = language === 'English';
+          const prompt = isEnLang
+            ? `Please briefly and accurately introduce "${facility.name}" based strictly on the hotel Knowledge Base.`
+            : `Hãy giới thiệu ngắn gọn, chính xác về "${facility.name}" dựa trên Knowledge Base của khách sạn.`;
+          const kbCtx = facility.kbContext || facility.knowledge?.summary || null;
+          const chatRes = await sendChatPrompt(
+            prompt,
+            kbCtx,
+            language,
+            'neutral',
+            sessionId,
+            authenticatedRoom || activeRoomNumber || null
+          );
+          const reply = chatRes?.response || facility.knowledge?.summary || '';
+          if (reply) {
+            const langCode = chatRes?.lang_code || (isEnLang ? 'en-US' : 'vi-VN');
+            setAiResponseText(reply);
+            speak(reply, langCode, undefined, undefined, chatRes?.audio_base64 || null);
+          }
+          return reply;
+        }}
       />
 
       {/* ROOM PICKER MODAL (KIỂM TRA TIẾN ĐỘ ĐƠN MÓN & DỊCH VỤ DỌN PHÒNG - 100% CẢM ỨNG ON-SCREEN) */}

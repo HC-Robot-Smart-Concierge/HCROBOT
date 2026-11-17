@@ -48,3 +48,34 @@ class RAGFileUploadResponse(BaseModel):
     chunks_created: int
     image_url: Optional[str] = None
 
+
+class RAGFacilityKnowledge(BaseModel):
+    pricing: str
+    summary: str
+    highlights: List[str] = Field(default_factory=list)
+    transit_hint: str
+
+
+class RAGFacilityItem(BaseModel):
+    key: str
+    name: str
+    floor_level: str
+    category: str
+    icon_key: str = "building"
+    hours: str
+    desc: str
+    has_menu_action: bool = False
+    navigable: bool = True
+    source_file: Optional[str] = None
+    kb_context: Optional[str] = None
+    knowledge: RAGFacilityKnowledge
+
+
+class RAGFacilitiesResponse(BaseModel):
+    total: int
+    source_file: Optional[str] = None
+    language: str = "vi"
+    categories: List[str] = Field(default_factory=list)
+    facilities: List[RAGFacilityItem] = Field(default_factory=list)
+
+

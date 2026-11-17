@@ -343,7 +343,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
 
     from app.services.cache.redis_service import redis_service
     cached_ai = None
-    if not pending_intent_exist and not is_status_query_req and not has_room_in_prompt and not is_actionable_service and not is_menu_action:
+    if not request.rag_context and not pending_intent_exist and not is_status_query_req and not has_room_in_prompt and not is_actionable_service and not is_menu_action:
         cached_ai = await redis_service.get_ai_cache(request.prompt, request.language or "vi")
     if cached_ai and cached_ai.get("full_text"):
         reply = cached_ai["full_text"]
@@ -403,6 +403,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     initial_state = {
         "session_id": sid,
         "prompt": request.prompt,
+        "rag_context": request.rag_context,
         "language": request.language,
         "lang_name": cur_lang_name,
         "lang_code": cur_lang_code,
@@ -692,9 +693,9 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
             return
 
-        # 3. NẾU LÀ FAQ: TRUY VẤN VÀ CẮT GỌT RAG CONTEXT (HARNESS CONTEXT PRUNING)
+        # 3. TRUY VẤN VÀ CẮT GỌT RAG CONTEXT TỪ KNOWLEDGE BASE CHO CÂU HỎI THÔNG TIN
         rag_context = request.rag_context
-        if category == "faq" and not rag_context:
+        if category in ("faq", "conversation", "chitchat") and not rag_context and len(request.prompt.strip()) > 3:
             try:
                 retrieval_res = await retrieval_node({"prompt": request.prompt})
                 rag_context = retrieval_res.get("rag_context", "")

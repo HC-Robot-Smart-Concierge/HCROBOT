@@ -190,7 +190,7 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 | **Basement 2** | Automobile Car Parking Lot | Open 24/7 | Free for staying hotel guests | Take Elevator A down to Basement 2 |
 | **Basement 1** | Motorbike & Bike Parking | Open 24/7 | Free for staying hotel guests | Take Elevator A down to Basement 1 |
 | **Ground Floor** | Main Lobby & Reception Desk | Open 24/7 | Free access | Located on the right side of entrance lobby |
-| **2nd Floor** | Central Culinary Kitchen (Staff Only) | 24/7 Room Service preparation | No walk-in restaurant/buffet; 24/7 In-Room Dining only |
+| **2nd Floor** | Central Culinary Kitchen (Staff Only) & Room Service | 24/7 In-Room Dining | No walk-in restaurant/buffet; 24/7 In-Room Dining only | Order via in-room screen/QR (Staff Only kitchen) |
 | **3rd Floor** | Standard Guest Rooms (301-310) | Open 24/7 | Room PIN & electronic lock access | Take Elevator A to 3rd Floor, follow hallway signs |
 | **4th Floor** | Deluxe Guest Rooms (401-410) | Open 24/7 | Room PIN & electronic lock access | Take Elevator A to 4th Floor, follow hallway signs |
 | **5th Floor** | Infinity Swimming Pool | 06:00 - 22:00 | Free (towels included) | Take Elevator A to 5th Floor, turn left through glass doors |

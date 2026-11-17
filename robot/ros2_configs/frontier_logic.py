@@ -92,7 +92,7 @@ def exploration_result(visited: int, stuck_count: int, frontiers: Sequence[Front
                        stopped: bool = False) -> dict:
     """Ket qua cuoi phien tu quet (phat /explore/status cho Web hien popup luu map).
 
-    DONE: da toi it nhat 1 frontier. FAILED: chua toi duoc frontier nao (Nav2/TF/motor
+    DONE: da tham frontier va khong con cum nao. FAILED: chua toi duoc frontier nao (Nav2/TF/motor
     loi, map gan nhu chua quet). STOPPED: bi dung giua chung (/robot/nav_cancel).
     """
     left = len(frontiers)
@@ -102,6 +102,9 @@ def exploration_result(visited: int, stuck_count: int, frontiers: Sequence[Front
         state = "FAILED"
         message = (f"Robot chưa tới được điểm khám phá nào ({left} cụm còn lại): "
                    "kiểm tra Nav2/motor, map có thể chưa đầy đủ.")
+    elif left:
+        state = "INCOMPLETE"
+        message = f"Bản đồ chưa hoàn tất: đã thăm {visited} chỗ, còn {left} vùng chưa khám phá."
     else:
         state = "DONE"
         message = f"Đã quét xong: thăm {visited} chỗ, thoát kẹt {stuck_count} lần"

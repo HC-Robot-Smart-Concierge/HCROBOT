@@ -1,20 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import { fetchWorkflowRuns, cancelWorkflowRun } from '../../../../services/workflowApi';
+import { currentWorkflowRunLog } from '../../../../utils/workflowRunLog';
 
 const labels = { PENDING: 'Chờ thực thi', RUNNING: 'Đang chạy', CANCELLING: 'Đang dừng',
   CANCELLED: 'Đã dừng', COMPLETED: 'Hoàn thành', FAILED: 'Thất bại', SKIPPED: 'Bỏ qua do robot bận' };
 
-export function WorkflowRunsPanel() {
+export function WorkflowRunsPanel({ workflowId, runId } = {}) {
   const [runs, setRuns] = useState([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(null);
   useEffect(() => {
     const controller = new AbortController();
+    setRuns([]); setError(''); setBusy(null);
     let timer;
     const poll = async () => {
       try {
         const data = await fetchWorkflowRuns(controller.signal);
-        if (!controller.signal.aborted) { setRuns(data); setError(''); }
+        if (!controller.signal.aborted) { setRuns(currentWorkflowRunLog(data, workflowId, runId)); setError(''); }
       } catch (err) {
         if (!controller.signal.aborted) setError(err.message);
       } finally {
@@ -23,7 +25,7 @@ export function WorkflowRunsPanel() {
     };
     poll();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, []);
+  }, [workflowId, runId]);
   const stop = async (id) => {
     setBusy(id);
     try {
@@ -36,7 +38,7 @@ export function WorkflowRunsPanel() {
   return <section className="rounded-xl border border-stone-300 bg-white p-4 space-y-3">
     <h3 className="text-sm font-bold text-stone-800">Lượt chạy xe thật</h3>
     {error && <p role="alert" className="text-xs text-rose-700">{error}</p>}
-    {!runs.length && !error && <p className="text-xs text-stone-500">Chưa có lượt chạy. Chọn chế độ Điều khiển xe thật trong Lịch chạy rồi lưu workflow.</p>}
+    {!runs.length && !error && <p className="text-xs text-stone-500">{runId ? 'Đang tải nhật ký lượt chạy mới…' : workflowId ? 'Chưa có lượt chạy. Bấm “Bắt đầu workflow” sau khi lưu tuyến và kích hoạt.' : 'Chưa có lượt chạy. Chọn chế độ Điều khiển xe thật trong Lịch chạy rồi lưu workflow.'}</p>}
     <ol className="space-y-2 max-h-80 overflow-y-auto">
       {runs.map((run) => <li key={run.id} className="rounded-lg border border-stone-200 p-3 text-xs space-y-1">
         <div className="flex items-center justify-between gap-3">

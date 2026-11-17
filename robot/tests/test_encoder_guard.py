@@ -41,6 +41,8 @@ def test_same_side_disagreement_and_missing_channels_are_not_averaged():
     guard = EncoderSampleGuard()
     assert not check(guard, counts(100, 0, 0, 0))
     assert 'DISAGREEMENT' in guard.fault
+    assert 'M1=+0.63' in guard.fault
+    assert 'M2=+0.00' in guard.fault
     assert not check(guard, {'m1': 0})
     assert not check(guard, counts(math.nan))
 

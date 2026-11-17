@@ -176,6 +176,13 @@ class TestObstacleSafety(unittest.TestCase):
         self.assertEqual(self.safety.evaluate("right").sensor, "rear")
         self.assertFalse(self.safety.command("right"))
 
+    def test_in_place_turn_checks_opposite_rear_corner_side_too(self):
+        self.reader.snapshot = snapshot(left=100, right=5, front=100, rear=100)
+        self.assertFalse(self.safety.command('left'))
+        self.assertEqual(self.motor.motion, 'stop')
+        self.reader.snapshot = snapshot(sequence=2, left=5, right=100, front=100, rear=100)
+        self.assertFalse(self.safety.command('right'))
+
     def test_arc_turn_checks_directional_and_side_sensors(self):
         # Vật cản phía trước -> chặn vừa tiến vừa rẽ trái
         self.reader.snapshot = snapshot(front=20.0, left=100.0, right=100.0)

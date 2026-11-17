@@ -39,7 +39,8 @@ class EncoderSampleGuard:
         # indicates an unreliable channel, stalled wheel, or wrong wiring/sign.
         for a, b in [('m1', 'm2'), ('m3', 'm4')]:
             if abs(speeds[a] - speeds[b]) > self.max_pair_difference_mps:
-                return self.reject(f'ENCODER_{a.upper()}_{b.upper()}_DISAGREEMENT')
+                return self.reject(f'ENCODER_{a.upper()}_{b.upper()}_DISAGREEMENT '
+                                   f'({a.upper()}={speeds[a]:+.2f}, {b.upper()}={speeds[b]:+.2f} m/s)')
         self.clean_samples += 1
         if self.fault and self.clean_samples < self.recovery_samples:
             return False

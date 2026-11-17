@@ -131,12 +131,20 @@ class Picamera2Backend(CameraBackend):
         from picamera2 import Picamera2
 
         self._camera = Picamera2()
-        config = self._camera.create_video_configuration(
-            main={"size": (self.width, self.height), "format": "RGB888"}
-        )
-        self._camera.configure(config)
-        self._camera.start()
-        logger.info(f"Picamera2 started: {self.width}x{self.height} @ {self.fps}fps")
+        try:
+            config = self._camera.create_video_configuration(
+                main={"size": (self.width, self.height), "format": "RGB888"}
+            )
+            self._camera.configure(config)
+            self._camera.start()
+            logger.info(f"Picamera2 started: {self.width}x{self.height} @ {self.fps}fps")
+        except Exception:
+            try:
+                self._camera.close()
+            except Exception:
+                pass
+            self._camera = None
+            raise
 
     def capture_jpeg(self):
         buf = io.BytesIO()
@@ -432,24 +440,34 @@ class OpenCVBackend(CameraBackend):
                 self._cap = None
 
 
+def has_csi_camera():
+    """Kiem tra xem Pi co ket noi Camera Module CSI (Ribbon cable) hay khong."""
+    import glob
+    csi_nodes = glob.glob("/sys/bus/i2c/drivers/imx*") or glob.glob("/sys/bus/i2c/drivers/ov*")
+    return len(csi_nodes) > 0
+
+
 def create_camera_backend(width, height, fps, device=None):
-    """Tu dong chon backend phu hop: OpenCV -> Picamera2."""
+    """Tu dong chon backend phu hop: OpenCV (USB webcam) -> Picamera2 (CSI camera)."""
     try:
         backend = OpenCVBackend(width, height, fps, device=device)
         backend.start()
         logger.info("Dang su dung OpenCV V4L2 backend cho USB Camera.")
         return backend
     except (ImportError, RuntimeError) as e:
-        logger.info(f"OpenCV USB backend khong kha dung ({e}), thu Picamera2 (CSI)...")
+        logger.debug(f"OpenCV USB backend khong kha dung ({e})")
 
-    try:
-        backend = Picamera2Backend(width, height, fps)
-        backend.start()
-        logger.info("Dang su dung Picamera2 backend cho CSI Camera Module.")
-        return backend
-    except (ImportError, RuntimeError) as e:
-        logger.error(f"Picamera2 cung khong kha dung: {e}")
-        raise RuntimeError("Khong tim thay camera backend nao")
+    # Chi thu Picamera2 neu thuc su co CSI sensor de tranh libcamera lock /dev/video0 cua USB camera
+    if has_csi_camera():
+        try:
+            backend = Picamera2Backend(width, height, fps)
+            backend.start()
+            logger.info("Dang su dung Picamera2 backend cho CSI Camera Module.")
+            return backend
+        except Exception as e:
+            logger.debug(f"Picamera2 cung khong kha dung: {e}")
+
+    raise RuntimeError("Khong tim thay camera backend nao kha dung")
 
 
 camera_backend = None
@@ -614,8 +632,11 @@ async def handle_offer(request):
         @pc.on("connectionstatechange")
         async def on_connectionstatechange():
             logger.info("WebRTC Peer connection state: %s", pc.connectionState)
-            if pc.connectionState in ["failed", "closed"]:
-                await pc.close()
+            if pc.connectionState in ["failed", "closed", "disconnected"]:
+                try:
+                    await pc.close()
+                except Exception:
+                    pass
                 pcs.discard(pc)
 
         if relay is None:
@@ -629,6 +650,12 @@ async def handle_offer(request):
         await pc.setRemoteDescription(offer)
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
+
+        # Cho ICE gathering hoan tat (Vanilla ICE pattern cho WebRTC HTTP signaling)
+        gather_timeout = 2.0
+        start_t = time.time()
+        while pc.iceGatheringState != "complete" and (time.time() - start_t) < gather_timeout:
+            await asyncio.sleep(0.05)
 
         return web.json_response(
             {
@@ -695,6 +722,9 @@ async def handle_stream(request):
 
 async def handle_health(request):
     global pcs
+    dead = [p for p in pcs if p.connectionState in ["failed", "closed", "disconnected"]]
+    for p in dead:
+        pcs.discard(p)
     return web.json_response(
         {
             "status": "ok",

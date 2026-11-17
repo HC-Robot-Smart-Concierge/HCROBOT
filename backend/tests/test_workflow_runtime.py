@@ -1,7 +1,11 @@
 """Exercise real SQL constraints and runtime transitions without starting ROS."""
 from datetime import datetime, timezone
+import asyncio
+import json
+import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
@@ -11,7 +15,7 @@ from app.models.workflow import RobotWorkflow
 from app.models.workflow_run import WorkflowRun
 from app.models.map import Zone
 from app.repositories.workflow_repository import WorkflowRepository
-from app.services.workflow_runtime import WorkflowRuntime, due_slot
+from app.services.workflow_runtime import WorkflowRuntime, due_slot, atomic_json
 from app.services.workflow_plan import physical_plan
 
 
@@ -56,6 +60,103 @@ async def enqueue(runtime, slot=None):
     async with runtime.sessions() as db:
         repo = WorkflowRepository(db)
         return await runtime.enqueue(await repo.get_by_id('patrol'), repo, slot=slot)
+
+
+def supervised_item(runtime):
+    process = Mock()
+    process.poll.return_value = None
+    return dict(process=process, control=runtime.directory / 'heartbeat.control.json',
+                db_confirmed_at=time.monotonic(), cancel_requested=False)
+
+
+def test_atomic_control_renewal_retries_windows_wsl_sharing_conflict(tmp_path, monkeypatch):
+    import app.services.workflow_runtime as module
+    path = tmp_path / 'control.json'
+    atomic_json(path, {'expires_at': 1})
+    original = Path.replace
+    attempts = []
+    def replace(temporary, target):
+        attempts.append(target)
+        if len(attempts) < 3:
+            raise PermissionError('Windows reader still holds the previous file')
+        return original(temporary, target)
+    monkeypatch.setattr(Path, 'replace', replace)
+    monkeypatch.setattr(module.time, 'sleep', Mock())
+    atomic_json(path, {'expires_at': 2})
+    assert len(attempts) == 3
+    assert json.loads(path.read_text(encoding='utf-8')) == {'expires_at': 2}
+
+
+def test_permanent_control_write_failure_does_not_corrupt_or_extend_old_lease(tmp_path, monkeypatch):
+    import app.services.workflow_runtime as module
+    path = tmp_path / 'control.json'
+    atomic_json(path, {'expires_at': 1})
+    replace = Mock(side_effect=PermissionError('still locked'))
+    monkeypatch.setattr(Path, 'replace', replace)
+    monkeypatch.setattr(module.time, 'sleep', Mock())
+    with pytest.raises(PermissionError):
+        atomic_json(path, {'expires_at': 2})
+    assert replace.call_count == 20
+    assert json.loads(path.read_text(encoding='utf-8')) == {'expires_at': 1}
+
+
+@pytest.mark.asyncio
+async def test_control_keeps_renewing_while_scheduler_waits_on_slow_database(runtime, monkeypatch):
+    import app.services.workflow_runtime as module
+    monkeypatch.setattr(module, 'CONTROL_INTERVAL_SECONDS', .01)
+    entered = asyncio.Event()
+    never_finished_query = asyncio.Event()
+    async def slow_tick():
+        entered.set()
+        await never_finished_query.wait()
+    runtime.tick = slow_tick
+    item = supervised_item(runtime)
+    runtime.running['run'] = item
+    runtime.start()
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        for _ in range(50):
+            await asyncio.sleep(.01)
+            if item.get('control_sequence', 0) >= 3:
+                break
+        data = json.loads(item['control'].read_text(encoding='utf-8'))
+        assert data['sequence'] >= 3
+        assert data['cancel'] is False
+        assert data['expires_at'] > time.time() + 9
+        assert not never_finished_query.is_set()
+    finally:
+        await runtime.close()
+    assert json.loads(item['control'].read_text(encoding='utf-8'))['cancel'] is True
+
+
+def test_database_ownership_timeout_cannot_keep_renewing_motion_forever(runtime):
+    item = supervised_item(runtime)
+    item['db_confirmed_at'] = time.monotonic() - 21
+    runtime.refresh_control(item)
+    data = json.loads(item['control'].read_text(encoding='utf-8'))
+    assert data['cancel'] is True
+    assert data['expires_at'] <= time.time()
+    assert 'quyền quản lý' in data['stop_reason']
+
+
+def test_control_deadline_stops_before_database_can_reassign_a_stale_run(runtime):
+    item = supervised_item(runtime)
+    item['db_confirmed_at'] = time.monotonic() - 17
+    now = time.time()
+    runtime.refresh_control(item)
+    data = json.loads(item['control'].read_text(encoding='utf-8'))
+    assert data['cancel'] is False
+    assert now + 2 < data['expires_at'] <= now + 3.1
+
+
+@pytest.mark.asyncio
+async def test_user_stop_reaches_worker_even_if_database_access_fails(runtime):
+    item = supervised_item(runtime)
+    runtime.running['run'] = item
+    runtime.sessions = Mock(side_effect=RuntimeError('database unavailable'))
+    with pytest.raises(RuntimeError, match='database unavailable'):
+        await runtime.cancel('run')
+    assert json.loads(item['control'].read_text(encoding='utf-8'))['cancel'] is True
 
 
 def test_schedule_is_timezone_correct_and_screen_mode_cannot_move_robot():

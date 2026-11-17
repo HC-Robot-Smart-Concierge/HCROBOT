@@ -56,8 +56,8 @@ class _SensorState:
 class ObstacleSafetyController:
     """Chỉ chuyển lệnh tới motor khi mọi cảm biến liên quan đều an toàn.
 
-    Khi quay tại chỗ, đầu và đuôi xe cùng quét theo vòng cung. Vì vậy lệnh quay
-    kiểm tra cảm biến bên quay, phía trước và phía sau thay vì chỉ kiểm tra bên hông.
+    Khi quay tại chỗ, đầu và đuôi xe quét sang hai phía đối nhau. Kiểm tra
+    cả hai hông, phía trước và phía sau để tránh quệt góc đuôi bên đối diện.
     """
 
     def __init__(
@@ -116,8 +116,10 @@ class ObstacleSafetyController:
             return (("rear", self.thresholds_cm["backward"]),)
         elif motion in ("left", "right"):
             side = "left" if motion == "left" else "right"
+            opposite = "right" if side == "left" else "left"
             return (
                 (side, self.thresholds_cm[side]),
+                (opposite, self.thresholds_cm[opposite]),
                 ("front", self.turn_clearance_cm),
                 ("rear", self.turn_clearance_cm),
             )

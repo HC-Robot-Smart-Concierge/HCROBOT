@@ -31,7 +31,18 @@ async def test_route_reference_expands_only_the_route_and_preserves_branch_targe
     assert steps[4]["params"]["next_step_id"] == "bye"
     assert "next_step_id" not in steps[1]["params"]
     assert steps[1]["params"]["map_id"] == "map_kho"
+    assert all(s['params']['source_route_step_id'] == 'patrol' for s in steps[1:5])
     assert source[1]["type"] == "FOLLOW_ROUTE"
+
+
+@pytest.mark.asyncio
+async def test_adjacent_uses_of_the_same_route_remain_separate_workflow_steps():
+    repo = SimpleNamespace(get_by_id=AsyncMock(return_value=template()))
+    steps = await resolve_route_steps([
+        {'step_id': key, 'type': 'FOLLOW_ROUTE', 'params': {'route_id': 'route-1'}}
+        for key in ('outbound', 'return')
+    ], repo)
+    assert [step['params']['source_route_step_id'] for step in steps] == ['outbound', 'outbound', 'return', 'return']
 
 
 @pytest.mark.asyncio

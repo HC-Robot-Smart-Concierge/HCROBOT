@@ -562,6 +562,12 @@ export const CameraPreview = ({
               setSmileScore(0);
               setFrownScore(0);
               consecutiveUnhappyFramesRef.current = 0;
+              setCurrentEmotion((prev) => {
+                if (prev !== 'neutral') {
+                  if (onEmotionChange) onEmotionChange('neutral');
+                }
+                return 'neutral';
+              });
             }
           } catch (mpErr) {
             // Lỗi đọc frame tạm thời

@@ -464,8 +464,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const [suggestedPrompts, setSuggestedPrompts] = useState([]);
   const lastUnhappyAlertTimeRef = useRef(0);
   const [isUnhappyAssistanceOpen, setIsUnhappyAssistanceOpen] = useState(false);
+  const unhappyTimerRef = useRef(null);
 
   const handleConfirmCallConcierge = useCallback(async () => {
+    if (unhappyTimerRef.current) {
+      clearTimeout(unhappyTimerRef.current);
+      unhappyTimerRef.current = null;
+    }
     setIsUnhappyAssistanceOpen(false);
     try {
       const promptText =
@@ -499,6 +504,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [activeRoomNumber, language, speak]);
 
   const handleDismissUnhappyAssistance = useCallback(() => {
+    if (unhappyTimerRef.current) {
+      clearTimeout(unhappyTimerRef.current);
+      unhappyTimerRef.current = null;
+    }
     setIsUnhappyAssistanceOpen(false);
     try {
       const promptText =
@@ -512,14 +521,26 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const handleGuestEmotionDetected = useCallback(
     (emotion) => {
       setGuestEmotion(emotion);
-      if (emotion === 'unhappy') {
-        const now = Date.now();
-        // Cooldown 60s tranh spam lien tuc; khong tao thong bao concierge
-        if (now - lastUnhappyAlertTimeRef.current > 60000) {
-          lastUnhappyAlertTimeRef.current = now;
 
-          // Bat modal hoi khach hang truc tiep tren man hinh neu chua trong cuoc goi video
-          if (!isVideoCallOpenRef.current) {
+      if (emotion === 'unhappy') {
+        // Đang có timer đếm ngược hoặc video call đang mở hoặc popup đã mở -> Bỏ qua
+        if (unhappyTimerRef.current || isVideoCallOpenRef.current || isUnhappyAssistanceOpen) {
+          return;
+        }
+
+        const now = Date.now();
+        // Cooldown 60s giữa các lần hỏi để tránh spam
+        if (now - lastUnhappyAlertTimeRef.current <= 60000) {
+          return;
+        }
+
+        // Bắt đầu đếm nhăn mặt duy trì liên tục khoảng 2 giây (2000ms)
+        unhappyTimerRef.current = setTimeout(() => {
+          unhappyTimerRef.current = null;
+
+          // Kiểm tra lại trạng thái sau 2 giây: không gọi video, không đang nói
+          if (!isVideoCallOpenRef.current && !isSpeakingRef.current) {
+            lastUnhappyAlertTimeRef.current = Date.now();
             setIsUnhappyAssistanceOpen(true);
             const prompt =
               language === 'English'
@@ -529,10 +550,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               speak(prompt);
             } catch {}
           }
+        }, 2000);
+      } else {
+        // Nếu khách hết nhăn mặt (về neutral/happy hoặc cử động khác) trước 2s -> Hủy timer ngay
+        if (unhappyTimerRef.current) {
+          clearTimeout(unhappyTimerRef.current);
+          unhappyTimerRef.current = null;
         }
       }
     },
-    [language, speak]
+    [language, speak, isUnhappyAssistanceOpen]
   );
 
   // Lang nghe phan hoi bang giong noi khi Modal ho tro bieu cam dang mo
@@ -1033,6 +1060,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const handleGuestLeft = async () => {
     setGuestPresent(false);
+    if (unhappyTimerRef.current) {
+      clearTimeout(unhappyTimerRef.current);
+      unhappyTimerRef.current = null;
+    }
     if (requestPhase) {
       // Close the verified session when the visitor leaves the service form.
       stopWorkflow();

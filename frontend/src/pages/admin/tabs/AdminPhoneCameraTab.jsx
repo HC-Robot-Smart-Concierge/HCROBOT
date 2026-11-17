@@ -60,6 +60,15 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     });
   }, []);
 
+  // Che do hien thi khung hinh video: 'cover' (tran 100% do rong) | 'contain' (vua van nguyen ban)
+  const [fitMode, setFitMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('kiosk_video_fit');
+      if (saved) return saved;
+    } catch {}
+    return 'cover';
+  });
+
   // AI Emotion Recognition States
   const [isAiEmotionActive, setIsAiEmotionActive] = useState(true);
   const [visionModelReady, setVisionModelReady] = useState(false);
@@ -980,6 +989,45 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             ))}
           </div>
 
+          {/* Tùy chọn Tỷ lệ hiển thị (Vừa vặn / Tràn khung độ rộng) */}
+          <div
+            className="flex items-center rounded-lg border p-0.5 text-xs font-mono"
+            style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                setFitMode('contain');
+                try { localStorage.setItem('kiosk_video_fit', 'contain'); } catch {}
+              }}
+              className="px-2 py-0.5 rounded font-bold transition-all cursor-pointer text-[10px]"
+              style={
+                fitMode === 'contain'
+                  ? { background: '#262626', color: '#FFFFFF' }
+                  : { background: 'transparent', color: '#555555' }
+              }
+              title="Vừa vặn (Giữ nguyên toàn bộ khung hình gốc)"
+            >
+              Vừa vặn
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFitMode('cover');
+                try { localStorage.setItem('kiosk_video_fit', 'cover'); } catch {}
+              }}
+              className="px-2 py-0.5 rounded font-bold transition-all cursor-pointer text-[10px]"
+              style={
+                fitMode === 'cover'
+                  ? { background: '#262626', color: '#FFFFFF' }
+                  : { background: 'transparent', color: '#555555' }
+              }
+              title="Tràn khung (Mở rộng 100% độ rộng khung hình)"
+            >
+              Tràn khung (100% Rộng)
+            </button>
+          </div>
+
           {/* Nút Reconnect (Đen hệ thống) */}
           <button
             type="button"
@@ -1022,15 +1070,15 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           className="lg:col-span-6 flex flex-col border rounded-xl overflow-hidden relative shadow-xs"
           style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}
         >
-          <div className="relative flex items-center justify-center bg-stone-950 overflow-hidden p-2 rounded-t-xl h-[310px] sm:h-[340px] lg:h-[370px]">
+          <div className="flex-1 min-h-[380px] w-full relative flex items-center justify-center bg-stone-950 overflow-hidden p-2 rounded-t-xl">
             {/* Container chua Video va Canvas duoc Xoay dong bo */}
             <div
-              className="relative flex items-center justify-center transition-all duration-300"
+              className="relative flex items-center justify-center transition-all duration-300 w-full h-full"
               style={{
                 transform: `rotate(${videoRotation}deg)`,
-                width: videoRotation % 180 !== 0 ? '255px' : '100%',
-                height: videoRotation % 180 !== 0 ? '100%' : '100%',
-                maxHeight: videoRotation % 180 !== 0 ? '330px' : '350px',
+                width: videoRotation % 180 !== 0 ? (fitMode === 'cover' ? '100%' : '75%') : '100%',
+                height: videoRotation % 180 !== 0 ? (fitMode === 'cover' ? '100%' : '75%') : '100%',
+                maxHeight: '100%',
               }}
             >
               <video
@@ -1044,12 +1092,12 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 onCanPlay={(e) => {
                   e.target.play().catch(() => {});
                 }}
-                className={`w-full h-full object-contain ${!hasRemoteVideo && 'hidden'}`}
+                className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'} ${!hasRemoteVideo && 'hidden'}`}
               />
 
               <canvas
                 ref={canvasRef}
-                className={`absolute inset-0 w-full h-full object-contain pointer-events-none ${
+                className={`absolute inset-0 w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'} pointer-events-none ${
                   !hasRemoteVideo && 'hidden'
                 }`}
               />

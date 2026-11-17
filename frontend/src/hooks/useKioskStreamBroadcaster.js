@@ -74,14 +74,13 @@ export const useKioskStreamBroadcaster = ({
         throw new Error('Trinh duyet khong ho tro navigator.mediaDevices.getUserMedia');
       }
 
-      // Xin quyen camera truoc voi do phan giai ho tro ca Portrait va Landscape
+      // Xin quyen camera truoc: khong ep aspectRatio 0.5625 de giu nguyen toan bo do rong goc quay (Full Sensor FOV)
       const isLandscape = typeof window !== 'undefined' && window.innerWidth > window.innerHeight;
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: 'user' },
-          width: { ideal: isLandscape ? 1280 : 720, min: 480 },
-          height: { ideal: isLandscape ? 720 : 1280, min: 360 },
-          aspectRatio: { ideal: isLandscape ? 1.7777777778 : 0.5625 },
+          width: { ideal: isLandscape ? 1280 : 960, min: 480 },
+          height: { ideal: isLandscape ? 720 : 960, min: 360 },
           frameRate: { ideal: 24, max: 30 },
         },
         audio: false,

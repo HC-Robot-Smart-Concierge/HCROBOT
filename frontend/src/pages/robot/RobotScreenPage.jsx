@@ -2357,7 +2357,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           },
           chatRes.audio_base64,
           null,
-          { skipRemoteTts: !hasAudio }
+          { skipRemoteTts: false }
         );
       };
 

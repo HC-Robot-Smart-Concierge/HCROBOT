@@ -188,6 +188,7 @@ async def update_robot_voice_settings(req: VoiceSettingsRequest):
         speech_rate=req.speech_rate,
         vi_voice=req.vi_voice,
         en_voice=req.en_voice,
+        volume=req.volume,
     )
 
 

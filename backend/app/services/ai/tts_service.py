@@ -357,7 +357,7 @@ class TTSService:
     async def _synthesize_google_tts(self, text: str, lang_short: str = "vi") -> Optional[str]:
         return await synthesize_google_tts(text, lang_short=lang_short)
 
-    async def synthesize_chunk(self, text: str, voice: str = None, language: str = None) -> bytes:
+    async def synthesize_chunk(self, text: str, voice: Optional[str] = None, language: Optional[str] = None) -> bytes:
         """Synthesize a short streaming text clause into raw MP3 bytes."""
         clean_text = self.clean_text_for_tts(text)
         if not clean_text or edge_tts is None:

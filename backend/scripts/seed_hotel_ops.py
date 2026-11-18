@@ -1,5 +1,6 @@
 """Hotel operations, reception, human support, notifications, and ChromaDB seeding steps."""
 
+import importlib
 import logging
 
 from sqlalchemy import func, select
@@ -163,10 +164,7 @@ async def seed_operations(session):
     ]
     session.add_all(dirs)
 
-    try:
-        from app.models.stock import InventoryStock  # type: ignore[attr-defined]
-    except ImportError:
-        InventoryStock = None
+    InventoryStock = getattr(importlib.import_module("app.models.stock"), "InventoryStock", None)
 
     if InventoryStock is not None:
         stocks = [

@@ -1,14 +1,12 @@
+"""AI Voice Concierge TTS orchestration, settings persistence, and multi-tier audio caching."""
+
 import asyncio
 import base64
 import hashlib
 import json
 import logging
 import os
-import re
-import urllib.parse
-from typing import Optional, Tuple, Dict, Any
-
-import httpx
+from typing import Any, Dict, Optional, Tuple
 
 try:
     import edge_tts
@@ -16,6 +14,16 @@ except ImportError:
     edge_tts = None
 
 from app.core.config import settings
+from .tts_providers import (
+    clean_text_for_tts as _clean_text,
+    common_warmup_phrases,
+    is_vietnamese as _is_vi,
+    rate_float_to_percentage as _rate_to_pct,
+    synthesize_edge_tts_detailed,
+    synthesize_elevenlabs,
+    synthesize_google_tts,
+    synthesize_openai_tts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +41,10 @@ class TTSService:
         self.current_rate: float = 1.0
         self.current_rate_str: str = "+0%"
         self.default_volume: str = "+35%"
-        
-        # 1. Memory LRU/Cache
+
         self._memory_cache: Dict[str, str] = {}
         self._inflight_tasks: Dict[str, asyncio.Task] = {}
-        
-        # 2. Disk Cache Directory: backend/static/audio_cache
+
         current_dir = os.path.dirname(os.path.abspath(__file__))
         self._cache_dir = os.path.join(current_dir, "..", "..", "..", "static", "audio_cache")
         try:
@@ -46,29 +52,33 @@ class TTSService:
         except Exception as e:
             logger.warning(f"[TTSService] Cannot create audio_cache dir: {e}")
 
-        # 3. Disk Config File: backend/data/ai_voice_config.json
         self._config_file = os.path.join(current_dir, "..", "..", "..", "data", "ai_voice_config.json")
         if load_persisted:
             self._load_voice_config_from_disk()
 
     def _load_voice_config_from_disk(self) -> None:
         try:
-            if os.path.isfile(self._config_file):
-                with open(self._config_file, "r", encoding="utf-8") as f:
-                    saved = json.load(f)
-                    if isinstance(saved, dict):
-                        if saved.get("vi_voice"):
-                            self.default_vi_voice = saved["vi_voice"]
-                        if saved.get("en_voice"):
-                            self.default_en_voice = saved["en_voice"]
-                        if saved.get("volume"):
-                            self.default_volume = saved["volume"]
-                        if saved.get("speech_rate") is not None:
-                            clamped = max(0.5, min(2.0, float(saved["speech_rate"])))
-                            self.current_rate = clamped
-                            self.current_rate_str = self.rate_float_to_percentage(clamped)
-                            settings.TTS_RATE = self.current_rate_str
-                        logger.info(f"[TTSService] Loaded voice settings from disk: vi_voice={self.default_vi_voice}, rate={self.current_rate}, volume={self.default_volume}")
+            if not os.path.isfile(self._config_file):
+                return
+            with open(self._config_file, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            if not isinstance(saved, dict):
+                return
+            if saved.get("vi_voice"):
+                self.default_vi_voice = saved["vi_voice"]
+            if saved.get("en_voice"):
+                self.default_en_voice = saved["en_voice"]
+            if saved.get("volume"):
+                self.default_volume = saved["volume"]
+            if saved.get("speech_rate") is not None:
+                clamped = max(0.5, min(2.0, float(saved["speech_rate"])))
+                self.current_rate = clamped
+                self.current_rate_str = self.rate_float_to_percentage(clamped)
+                settings.TTS_RATE = self.current_rate_str
+            logger.info(
+                f"[TTSService] Loaded voice settings from disk: vi_voice={self.default_vi_voice}, "
+                f"rate={self.current_rate}, volume={self.default_volume}"
+            )
         except Exception as e:
             logger.warning(f"[TTSService] Failed to load voice config from disk: {e}")
 
@@ -88,38 +98,12 @@ class TTSService:
         except Exception as e:
             logger.error(f"[TTSService] Failed to save voice config to disk: {e}")
 
-    @staticmethod
-    def clean_text_for_tts(text: str) -> str:
-        """
-        Chuẩn hóa văn bản trước khi đưa vào EdgeTTS:
-        - Loại bỏ markdown, icon, ngoặc
-        - Xóa gạch đầu dòng danh sách (*, -, •)
-        - Thay thế dấu hai chấm (:), dấu chấm phẩy (;) thành dấu phẩy (,) để giọng đọc êm ái, KHÔNG ngắt nghỉ khựng 1 giây
-        - Rút gọn nhiều dấu chấm (...) thành (.)
-        - Gộp khoảng trắng và ngắt dòng
-        """
-        if not text:
-            return ""
-        t = re.sub(r'[*#_`\[\]()~]', '', str(text))
-        t = re.sub(r'[\U00010000-\U0010ffff]', '', t)
-        t = re.sub(r'^[\s*•\-–—]+\s*', '', t, flags=re.MULTILINE)
-        t = re.sub(r':\s*', ', ', t)
-        t = re.sub(r'\s*;\s*', ', ', t)
-        t = re.sub(r'\.{2,}', '.', t)
-        t = re.sub(r'!{2,}', '!', t)
-        t = re.sub(r'\?{2,}', '?', t)
-        t = re.sub(r'\s+', ' ', t).strip()
-        return t
-
-    @staticmethod
-    def rate_float_to_percentage(rate: float) -> str:
-        """Chuyển đổi tốc độ float (0.5 - 2.0) sang chuỗi phần trăm EdgeTTS (+10%, -15%, +0%)"""
-        clamped = max(0.5, min(2.0, float(rate)))
-        diff = round((clamped - 1.0) * 100)
-        return f"+{diff}%" if diff >= 0 else f"{diff}%"
+    clean_text_for_tts = staticmethod(_clean_text)
+    rate_float_to_percentage = staticmethod(_rate_to_pct)
+    is_vietnamese = staticmethod(_is_vi)
 
     def get_voice_settings(self) -> dict:
-        """Lấy cấu hình giọng nói và tốc độ hiện tại của robot"""
+        """Lấy cấu hình giọng nói và tốc độ hiện tại của robot."""
         rate = getattr(self, "current_rate", 1.0)
         return {
             "speech_rate": rate,
@@ -136,7 +120,7 @@ class TTSService:
         en_voice: Optional[str] = None,
         volume: Optional[str] = None,
     ) -> dict:
-        """Cập nhật tốc độ đọc, giọng nói và âm lượng của robot trên toàn hệ thống"""
+        """Cập nhật tốc độ đọc, giọng nói và âm lượng của robot trên toàn hệ thống."""
         clamped_rate = max(0.5, min(2.0, float(speech_rate)))
         self.current_rate = clamped_rate
         rate_str = self.rate_float_to_percentage(clamped_rate)
@@ -149,67 +133,52 @@ class TTSService:
         if volume:
             self.default_volume = volume
         self._save_voice_config_to_disk()
-        logger.info(f"[TTSService] Cập nhật cấu hình giọng nói AI: rate={clamped_rate} ({rate_str}), vi_voice={self.default_vi_voice}, volume={self.default_volume}")
+        logger.info(
+            f"[TTSService] Cập nhật cấu hình giọng nói AI: rate={clamped_rate} ({rate_str}), "
+            f"vi_voice={self.default_vi_voice}, volume={self.default_volume}"
+        )
 
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             if loop.is_running():
-                asyncio.create_task(self.warm_up_common_phrases(vi_voice=self.default_vi_voice, en_voice=self.default_en_voice))
-        except Exception:
+                asyncio.create_task(
+                    self.warm_up_common_phrases(vi_voice=self.default_vi_voice, en_voice=self.default_en_voice)
+                )
+        except RuntimeError:
             pass
 
         return self.get_voice_settings()
 
-    @staticmethod
-    def is_vietnamese(text: str) -> bool:
-        """Kiểm tra câu chữ có phải tiếng Việt không."""
-        if not text:
-            return True
-        if re.search(r'[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]', text, re.IGNORECASE):
-            return True
-        vi_words = [r'\bdạ\b', r'\bem\b', r'\banh\b', r'\bchị\b', r'\bquý khách\b', r'\bphòng\b', r'\bkhách sạn\b', r'\bạ\b']
-        return any(re.search(w, text, re.IGNORECASE) for w in vi_words)
-
     def _resolve_voice_and_lang(self, clean_text: str, language: Optional[str], voice: Optional[str]) -> Tuple[str, str]:
-        """Xác định cặp (target_voice, lang_short) phù hợp với ngôn ngữ đích và văn bản."""
         lang_norm = (language or "").strip().lower()
         if any(en in lang_norm for en in ["en", "english"]):
-            lang_short = "en"
-            target_voice = voice or self.default_en_voice
-        elif any(vi in lang_norm for vi in ["vi", "vietnamese"]):
-            lang_short = "vi"
-            target_voice = voice or self.default_vi_voice
-        else:
-            is_vi = self.is_vietnamese(clean_text)
-            lang_short = "vi" if is_vi else "en"
-            target_voice = (voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)
-        return target_voice, lang_short
+            return voice or self.default_en_voice, "en"
+        if any(vi in lang_norm for vi in ["vi", "vietnamese"]):
+            return voice or self.default_vi_voice, "vi"
+        is_vi = self.is_vietnamese(clean_text)
+        return ((voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)), ("vi" if is_vi else "en")
 
     def _get_cache_key(self, text: str, provider: str, voice: str, rate: str = "+0%", volume: str = "+35%") -> str:
-        clean = text.strip()
-        raw = f"{provider}:{voice}:{rate}:{volume}:{clean}"
+        raw = f"{provider}:{voice}:{rate}:{volume}:{text.strip()}"
         return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
     def _get_from_cache(self, cache_key: str) -> Optional[str]:
-        # 1. Kiểm tra RAM cache trước (< 0.1ms)
         if cache_key in self._memory_cache:
             return self._memory_cache[cache_key]
-        
-        # 2. Kiểm tra Disk cache (< 2ms)
         disk_path = os.path.join(self._cache_dir, f"{cache_key}.mp3")
         if os.path.isfile(disk_path):
             try:
                 with open(disk_path, "rb") as f:
                     data = f.read()
-                    if data and len(data) > 100:
-                        b64 = base64.b64encode(data).decode("utf-8")
-                        self._memory_cache[cache_key] = b64
-                        return b64
+                if data and len(data) > 100:
+                    b64 = base64.b64encode(data).decode("utf-8")
+                    self._memory_cache[cache_key] = b64
+                    return b64
             except Exception as e:
                 logger.warning(f"[TTSService] Failed to read disk cache: {e}")
         return None
 
-    def _save_to_cache(self, cache_key: str, audio_b64: str):
+    def _save_to_cache(self, cache_key: str, audio_b64: str) -> None:
         if not audio_b64:
             return
         self._memory_cache[cache_key] = audio_b64
@@ -219,6 +188,16 @@ class TTSService:
                 f.write(base64.b64decode(audio_b64))
         except Exception as e:
             logger.warning(f"[TTSService] Failed to write disk cache: {e}")
+
+    @staticmethod
+    def _ok_result(audio_b64: str, provider_used: str) -> Dict[str, Any]:
+        return {
+            "audio_base64": audio_b64,
+            "mime_type": "audio/mp3",
+            "provider_used": provider_used,
+            "error_code": None,
+            "error_detail": None,
+        }
 
     async def synthesize_with_details(
         self,
@@ -230,14 +209,7 @@ class TTSService:
         timeout: float = 7.5,
         allow_fallback: bool = True,
     ) -> Dict[str, Any]:
-        """
-        Tổng hợp giọng đọc kèm mã lỗi chuẩn hóa để phục vụ chẩn đoán cuộc gọi.
-        Mã lỗi chuẩn hóa:
-        - TTS_INPUT_EMPTY: Văn bản rỗng sau khi làm sạch.
-        - TTS_TIMEOUT: Quá thời gian chờ provider phản hồi.
-        - TTS_PROVIDER_ERROR: Lỗi từ thư viện/API TTS (NoAudioReceived, kết nối, HTTP error).
-        - TTS_AUDIO_EMPTY: Provider hoàn tất nhưng trả về 0 byte âm thanh.
-        """
+        """Tổng hợp giọng đọc kèm mã lỗi chuẩn hóa để phục vụ chẩn đoán cuộc gọi."""
         clean_text = self.clean_text_for_tts(text)
         if not clean_text:
             logger.warning("[TTSService] TTS_INPUT_EMPTY: Input text is empty after cleaning")
@@ -254,63 +226,34 @@ class TTSService:
         target_voice, lang_short = self._resolve_voice_and_lang(clean_text, language, voice)
         target_volume = getattr(self, "default_volume", "+35%")
 
-        # 0. KIỂM TRA AUDIO CACHE TRƯỚC (< 1ms)
         cache_key = self._get_cache_key(clean_text, selected_provider, target_voice, target_rate, target_volume)
         cached_audio = self._get_from_cache(cache_key)
         if cached_audio:
             logger.info(f"[TTSService Cache Hit] len={len(clean_text)} voice={target_voice}")
-            return {
-                "audio_base64": cached_audio,
-                "mime_type": "audio/mp3",
-                "provider_used": f"{selected_provider}_cached",
-                "error_code": None,
-                "error_detail": None,
-            }
+            return self._ok_result(cached_audio, f"{selected_provider}_cached")
 
         last_error_code: Optional[str] = None
         last_error_detail: Optional[str] = None
 
-        # 1. Thử nghiệm provider ElevenLabs
-        if selected_provider == "elevenlabs" and settings.ELEVENLABS_API_KEY:
-            try:
-                audio_b64 = await self._synthesize_elevenlabs(clean_text, voice)
-                if audio_b64:
-                    self._save_to_cache(cache_key, audio_b64)
-                    return {
-                        "audio_base64": audio_b64,
-                        "mime_type": "audio/mp3",
-                        "provider_used": "elevenlabs",
-                        "error_code": None,
-                        "error_detail": None,
-                    }
-                last_error_code = "TTS_AUDIO_EMPTY"
-                last_error_detail = "ElevenLabs returned empty audio"
-            except Exception as e:
-                last_error_code = "TTS_PROVIDER_ERROR"
-                last_error_detail = f"ElevenLabs error: {e}"
-                logger.warning(f"[TTSService] ElevenLabs synthesis failed: {e}. Fallback to EdgeTTS.")
+        cloud_providers = {
+            "elevenlabs": (settings.ELEVENLABS_API_KEY, self._synthesize_elevenlabs, "ElevenLabs"),
+            "openai": (settings.OPENAI_API_KEY, self._synthesize_openai, "OpenAI TTS"),
+        }
+        if selected_provider in cloud_providers:
+            api_key, fn, label = cloud_providers[selected_provider]
+            if api_key:
+                try:
+                    audio_b64 = await fn(clean_text, voice)
+                    if audio_b64:
+                        self._save_to_cache(cache_key, audio_b64)
+                        return self._ok_result(audio_b64, selected_provider)
+                    last_error_code = "TTS_AUDIO_EMPTY"
+                    last_error_detail = f"{label} returned empty audio"
+                except Exception as e:
+                    last_error_code = "TTS_PROVIDER_ERROR"
+                    last_error_detail = f"{label} error: {e}"
+                    logger.warning(f"[TTSService] {label} synthesis failed: {e}. Fallback to EdgeTTS.")
 
-        # 2. Thử nghiệm provider OpenAI TTS
-        if selected_provider == "openai" and settings.OPENAI_API_KEY:
-            try:
-                audio_b64 = await self._synthesize_openai(clean_text, voice)
-                if audio_b64:
-                    self._save_to_cache(cache_key, audio_b64)
-                    return {
-                        "audio_base64": audio_b64,
-                        "mime_type": "audio/mp3",
-                        "provider_used": "openai",
-                        "error_code": None,
-                        "error_detail": None,
-                    }
-                last_error_code = "TTS_AUDIO_EMPTY"
-                last_error_detail = "OpenAI TTS returned empty audio"
-            except Exception as e:
-                last_error_code = "TTS_PROVIDER_ERROR"
-                last_error_detail = f"OpenAI TTS error: {e}"
-                logger.warning(f"[TTSService] OpenAI TTS synthesis failed: {e}. Fallback to EdgeTTS.")
-
-        # 3. Mặc định dùng EdgeTTS Neural (Single-flight deduplication)
         try:
             inflight = self._inflight_tasks.get(cache_key)
             if inflight is None or inflight.done():
@@ -319,17 +262,9 @@ class TTSService:
                 )
                 self._inflight_tasks[cache_key] = inflight
 
-            edge_b64, edge_err_code, edge_err_detail = await asyncio.wait_for(
-                asyncio.shield(inflight), timeout=timeout
-            )
+            edge_b64, edge_err_code, edge_err_detail = await asyncio.wait_for(asyncio.shield(inflight), timeout=timeout)
             if edge_b64:
-                return {
-                    "audio_base64": edge_b64,
-                    "mime_type": "audio/mp3",
-                    "provider_used": "edge",
-                    "error_code": None,
-                    "error_detail": None,
-                }
+                return self._ok_result(edge_b64, "edge")
             last_error_code = edge_err_code or "TTS_AUDIO_EMPTY"
             last_error_detail = edge_err_detail or f"EdgeTTS returned no audio for voice={target_voice}"
         except asyncio.TimeoutError:
@@ -341,7 +276,6 @@ class TTSService:
             last_error_detail = f"EdgeTTS exception: {type(e).__name__}: {e}"
             logger.warning(f"[TTSService] {last_error_code}: {last_error_detail}")
 
-        # 4. Dự phòng nhanh qua Google Translate TTS HTTP endpoint khi EdgeTTS lỗi/timeout
         if allow_fallback:
             try:
                 g_b64 = await self._synthesize_google_tts(clean_text, lang_short)
@@ -351,17 +285,10 @@ class TTSService:
                         f"[TTSService] Google TTS fallback succeeded after {last_error_code} "
                         f"(lang={lang_short}, len={len(clean_text)})"
                     )
-                    return {
-                        "audio_base64": g_b64,
-                        "mime_type": "audio/mp3",
-                        "provider_used": "google_fallback",
-                        "error_code": None,
-                        "error_detail": None,
-                    }
+                    return self._ok_result(g_b64, "google_fallback")
             except Exception as fallback_err:
                 logger.warning(f"[TTSService] Google TTS fallback failed: {fallback_err}")
 
-        # 5. Trả về mã lỗi chuẩn hóa khi toàn bộ provider không tạo được audio
         final_error_code = last_error_code or "TTS_AUDIO_EMPTY"
         final_error_detail = last_error_detail or "TTS synthesis produced empty audio"
         logger.warning(f"[TTSService] Synthesis failed: code={final_error_code} detail={final_error_detail}")
@@ -381,23 +308,15 @@ class TTSService:
         language: Optional[str] = None,
         rate: Optional[str] = None,
     ) -> Tuple[str, str, str]:
-        """
-        Tổng hợp giọng đọc từ văn bản kèm bộ đệm âm thanh siêu tốc.
-        Trả về: (audio_base64, mime_type, provider_used)
-        """
+        """Tổng hợp giọng đọc từ văn bản kèm bộ đệm âm thanh siêu tốc."""
         res = await self.synthesize_with_details(
-            text=text,
-            provider=provider,
-            voice=voice,
-            language=language,
-            rate=rate,
+            text=text, provider=provider, voice=voice, language=language, rate=rate
         )
         return res["audio_base64"], res["mime_type"], res["provider_used"]
 
     async def _synthesize_and_cache_edge_tts_detailed(
         self, clean_text: str, voice: str, rate: str, cache_key: str
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """Thực thi single-flight cho mỗi cache_key, lưu cache ngay khi thành công và trả về chi tiết lỗi nếu thất bại."""
         try:
             if hasattr(self._synthesize_edge_tts, "assert_called") or getattr(self._synthesize_edge_tts, "_is_mock", False):
                 audio_b64 = await self._synthesize_edge_tts(clean_text, voice, rate)
@@ -421,134 +340,39 @@ class TTSService:
     async def _synthesize_and_cache_edge_tts(
         self, clean_text: str, voice: str, rate: str, cache_key: str
     ) -> Optional[str]:
-        """Tương thích ngược cho các hàm gọi cũ."""
         audio_b64, _, _ = await self._synthesize_and_cache_edge_tts_detailed(clean_text, voice, rate, cache_key)
         return audio_b64
 
     async def _synthesize_edge_tts_detailed(
         self, text: str, voice: str, rate: Optional[str] = None
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-        """EdgeTTS Neural Engine sinh âm thanh kèm phân loại lỗi chính xác và 1 lần retry ngắn."""
-        clean_text = self.clean_text_for_tts(text)
-        if not clean_text:
-            return None, "TTS_INPUT_EMPTY", "Cleaned text is empty"
-
-        selected_rate = rate or getattr(settings, "TTS_RATE", "+0%")
-        if not re.match(r'^[+-]\d+%$', str(selected_rate)):
-            selected_rate = "+0%"
-        selected_volume = getattr(self, "default_volume", "+35%")
-        if not re.match(r'^[+-]\d+%$', str(selected_volume)):
-            selected_volume = "+35%"
-
-        try:
-            import edge_tts as _edge_tts
-        except ImportError:
-            logger.info("[TTSService] edge_tts library not installed.")
-            return None, "TTS_PROVIDER_ERROR", "edge_tts library not installed"
-
-        last_err_code = "TTS_AUDIO_EMPTY"
-        last_err_detail = f"EdgeTTS returned 0 bytes for voice={voice}"
-
-        for attempt in range(2):
-            # Attempt 0: Thu giong yeu cau (vi du: vi-VN-NamMinhNeural)
-            # Attempt 1: Neu attempt 0 loi (vi du NoAudioReceived tren Azure TTS), tu dong thu giong Neural con lai
-            current_voice = voice
-            if attempt == 1:
-                if "NamMinh" in voice:
-                    current_voice = "vi-VN-HoaiMyNeural"
-                    logger.info(f"[TTSService] EdgeTTS attempt 2: Switch fallback voice to {current_voice}")
-                elif "HoaiMy" in voice:
-                    current_voice = "vi-VN-NamMinhNeural"
-                    logger.info(f"[TTSService] EdgeTTS attempt 2: Switch fallback voice to {current_voice}")
-
-            try:
-                communicate = _edge_tts.Communicate(clean_text, current_voice, rate=selected_rate, volume=selected_volume)
-                audio_bytes = b""
-                async for chunk in communicate.stream():
-                    if chunk.get("type") == "audio":
-                        audio_bytes += chunk.get("data", b"")
-                if audio_bytes and len(audio_bytes) > 100:
-                    return base64.b64encode(audio_bytes).decode("utf-8"), None, None
-                last_err_code = "TTS_AUDIO_EMPTY"
-                last_err_detail = f"EdgeTTS returned {len(audio_bytes)} bytes (voice={current_voice}, attempt={attempt + 1})"
-            except Exception as e:
-                last_err_code = "TTS_PROVIDER_ERROR"
-                last_err_detail = f"{type(e).__name__}: {e} (voice={current_voice}, attempt={attempt + 1})"
-                logger.warning(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
-            if attempt == 0:
-                await asyncio.sleep(0.1)
-
-        return None, last_err_code, last_err_detail
+        return await synthesize_edge_tts_detailed(
+            text, voice, rate=rate, default_volume=getattr(self, "default_volume", "+35%")
+        )
 
     async def _synthesize_edge_tts(self, text: str, voice: str, rate: Optional[str] = None) -> Optional[str]:
-        """EdgeTTS Neural Engine sinh âm thanh trực tiếp (hàm tương thích ngược)."""
         audio_b64, _, _ = await self._synthesize_edge_tts_detailed(text, voice, rate)
         return audio_b64
 
     async def _synthesize_google_tts(self, text: str, lang_short: str = "vi") -> Optional[str]:
-        """
-        Dự phòng tổng hợp âm thanh MP3 qua Google Translate TTS endpoint khi EdgeTTS bị nghẽn hoặc lỗi.
-        Chia nhỏ câu nếu dài quá 180 ký tự, giới hạn tối đa 2 đoạn để phản hồi dưới 0.6s.
-        """
-        clean = self.clean_text_for_tts(text)
-        if not clean:
-            return None
-        tl = "en" if lang_short.startswith("en") else "vi"
-        # Cắt đoạn tối đa 180 ký tự theo khoảng trắng
-        words = clean.split(" ")
-        segments = []
-        current = ""
-        for w in words:
-            if len(current) + len(w) + 1 <= 180:
-                current = f"{current} {w}".strip()
-            else:
-                if current:
-                    segments.append(current)
-                current = w[:180]
-        if current:
-            segments.append(current)
-
-        combined_bytes = b""
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        async with httpx.AsyncClient(timeout=2.0, headers=headers) as client:
-            for seg in segments[:2]:
-                q = urllib.parse.quote(seg)
-                url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl={tl}&q={q}"
-                resp = await client.get(url)
-                if resp.status_code == 200 and resp.content and len(resp.content) > 100:
-                    combined_bytes += resp.content
-                else:
-                    return None
-        if combined_bytes and len(combined_bytes) > 100:
-            return base64.b64encode(combined_bytes).decode("utf-8")
-        return None
+        return await synthesize_google_tts(text, lang_short=lang_short)
 
     async def synthesize_chunk(self, text: str, voice: str = None, language: str = None) -> bytes:
-        """
-        Tổng hợp giọng nói cho đoạn text ngắn (1 mệnh đề) → trả raw audio bytes.
-        Tối ưu cho Streaming Pipeline: không encode Base64, gửi thẳng qua WebSocket Binary Frame.
-        """
+        """Synthesize a short streaming text clause into raw MP3 bytes."""
         clean_text = self.clean_text_for_tts(text)
-        if not clean_text:
+        if not clean_text or edge_tts is None:
             return b""
-
-        if edge_tts is None:
-            return b""
-
         try:
             target_voice, _ = self._resolve_voice_and_lang(clean_text, language, voice)
-
             cache_key = self._get_cache_key(clean_text, "edge_chunk", target_voice)
             if cache_key in self._memory_cache:
                 return base64.b64decode(self._memory_cache[cache_key])
 
-            # Kiểm tra Redis Cloud Cache trước (< 5ms)
             try:
                 from app.services.cache.redis_service import redis_service
+
                 redis_audio = await redis_service.get_tts_audio(cache_key)
-                if redis_audio and len(redis_audio) > 0:
+                if redis_audio:
                     self._memory_cache[cache_key] = base64.b64encode(redis_audio).decode("utf-8")
                     return redis_audio
             except Exception:
@@ -558,8 +382,8 @@ class TTSService:
             if os.path.isfile(disk_path):
                 with open(disk_path, "rb") as f:
                     data = f.read()
-                    self._memory_cache[cache_key] = base64.b64encode(data).decode("utf-8")
-                    return data
+                self._memory_cache[cache_key] = base64.b64encode(data).decode("utf-8")
+                return data
 
             chunk_rate = getattr(settings, "TTS_RATE", "+0%")
             chunk_volume = getattr(self, "default_volume", "+35%")
@@ -576,91 +400,29 @@ class TTSService:
                         f.write(audio_bytes)
                 except Exception:
                     pass
-                # Lưu đồng thời lên Redis Cloud Cache
                 try:
                     from app.services.cache.redis_service import redis_service
+
                     await redis_service.set_tts_audio(cache_key, audio_bytes)
                 except Exception:
                     pass
-
             return audio_bytes
         except Exception as e:
             logger.warning(f"[TTSService] synthesize_chunk error: {e}")
             return b""
 
     async def _synthesize_elevenlabs(self, text: str, voice: Optional[str]) -> Optional[str]:
-        """ElevenLabs Text-to-Speech API."""
-        voice_id = voice or settings.ELEVENLABS_VOICE_ID or "21m00Tcm4TlvDq8ikWAM"
-        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-        headers = {
-            "Accept": "audio/mpeg",
-            "Content-Type": "application/json",
-            "xi-api-key": settings.ELEVENLABS_API_KEY,
-        }
-        payload = {
-            "text": text,
-            "model_id": "eleven_multilingual_v2",
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-        }
-
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            if resp.status_code == 200:
-                return base64.b64encode(resp.content).decode("utf-8")
-            else:
-                logger.error(f"[TTSService] ElevenLabs API error {resp.status_code}: {resp.text}")
-        return None
+        return await synthesize_elevenlabs(text, voice)
 
     async def _synthesize_openai(self, text: str, voice: Optional[str]) -> Optional[str]:
-        """OpenAI TTS API."""
-        url = "https://api.openai.com/v1/audio/speech"
-        headers = {
-            "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": "tts-1",
-            "input": text,
-            "voice": voice or settings.OPENAI_TTS_VOICE or "alloy",
-        }
+        return await synthesize_openai_tts(text, voice)
 
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(url, json=payload, headers=headers)
-            if resp.status_code == 200:
-                return base64.b64encode(resp.content).decode("utf-8")
-            else:
-                logger.error(f"[TTSService] OpenAI TTS API error {resp.status_code}: {resp.text}")
-        return None
-
-    async def warm_up_common_phrases(self, vi_voice: Optional[str] = None, en_voice: Optional[str] = None):
-        """Pre-cache câu đệm và câu chào phổ biến để phản hồi tức thì 0ms."""
+    async def warm_up_common_phrases(self, vi_voice: Optional[str] = None, en_voice: Optional[str] = None) -> None:
         target_vi = vi_voice or self.default_vi_voice
         target_en = en_voice or self.default_en_voice
-
-        common_phrases = [
-            ("Dạ đợi em một tí nhé ạ.", "vi-VN", target_vi),
-            ("Please wait a moment.", "en-US", target_en),
-            ("Dạ đợi em một tí ạ.", "vi-VN", target_vi),
-            ("Dạ vâng, em có thể hỗ trợ gì thêm cho quý khách ạ?", "vi-VN", target_vi),
-            ("You are welcome! How may I assist you further?", "en-US", target_en),
-            ("Dạ vâng, Rora rất vui được hỗ trợ quý khách! Quý khách dành chút thời gian đánh giá dịch vụ giúp em nhé ạ.", "vi-VN", target_vi),
-            ("Rora is delighted to assist you! Please take a quick moment to rate our service.", "en-US", target_en),
-            ("Dạ, đây là danh bạ hotline các hãng taxi uy tín tại Đà Nẵng ạ.", "vi-VN", target_vi),
-            ("Dạ em đã hủy yêu cầu đặt xe. Quý khách cần em hỗ trợ gì thêm không ạ?", "vi-VN", target_vi),
-            ("Rora cảm ơn quý khách! Quý khách chấm điểm dịch vụ giúp em nhé.", "vi-VN", target_vi),
-            ("Rora cảm ơn quý khách! Chúc quý khách kỳ nghỉ tuyệt vời.", "vi-VN", target_vi),
-            ("Rora xin ghi nhận ý kiến để hoàn thiện hơn. Cảm ơn quý khách.", "vi-VN", target_vi),
-            ("Dạ đây là toàn bộ cơ sở vật chất và tiện ích 5 sao của khách sạn ạ.", "vi-VN", target_vi),
-            ("Xin lỗi quý khách, không thể kết nối tới AI Server.", "vi-VN", target_vi),
-            ("Xác thực phòng thành công! Đơn phục vụ đã được tạo.", "vi-VN", target_vi),
-            ("Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.", "vi-VN", target_vi),
-            ("You can scan the QR code on the screen to save directions on your mobile phone.", "en-US", target_en),
-            ("Dạ em đã hiểu ạ.", "vi-VN", target_vi),
-            ("I understand.", "en-US", target_en),
-        ]
         rate_str = getattr(self, "current_rate_str", "+0%") or "+0%"
         volume_str = getattr(self, "default_volume", "+35%") or "+35%"
-        for phrase, lang, voice in common_phrases:
+        for phrase, lang, voice in common_warmup_phrases(target_vi, target_en):
             try:
                 cache_key = self._get_cache_key(phrase, "edge", voice, rate_str, volume_str)
                 if not self._get_from_cache(cache_key):
@@ -670,5 +432,4 @@ class TTSService:
                 logger.debug(f"[TTSService] Warmup skip for '{phrase}': {e}")
 
 
-# Singleton Instance
 tts_service = TTSService()

@@ -4,11 +4,12 @@ import logging
 import re
 from typing import Optional, Any, Dict
 
+aioredis: Optional[Any] = None
 try:
-    import redis.asyncio as aioredis
+    import redis.asyncio as _redis_async  # type: ignore[import-not-found]
+    aioredis = _redis_async
     HAS_REDIS = True
 except ImportError:
-    aioredis = None
     HAS_REDIS = False
 
 from app.core.config import settings
@@ -37,7 +38,7 @@ class RedisService:
 
     def get_client(self) -> Optional[Any]:
         """Khởi tạo hoặc trả về client async Redis với connection pool tối ưu."""
-        if not self.enabled or not HAS_REDIS:
+        if not self.enabled or not HAS_REDIS or aioredis is None:
             return None
 
         if self._client is None and self.redis_url:

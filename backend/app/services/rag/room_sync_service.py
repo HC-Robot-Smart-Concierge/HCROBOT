@@ -1,7 +1,7 @@
 import os
 import re
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,7 +11,7 @@ from app.models.hotel import Hotel, Floor, Room
 logger = logging.getLogger(__name__)
 
 
-def parse_rooms_from_rag_files(vault_dir: str = None) -> List[Dict[str, Any]]:
+def parse_rooms_from_rag_files(vault_dir: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Phân tích file RAG hotel_facilities_floor_layout_rag.md hoặc _vi.md
     để trích xuất danh sách các phòng hợp lệ của khách sạn.

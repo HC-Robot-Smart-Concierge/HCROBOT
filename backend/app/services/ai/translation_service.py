@@ -4,8 +4,6 @@ import logging
 from typing import Dict, Any, Optional, Tuple
 import httpx
 
-from app.core.config import settings
-
 logger = logging.getLogger(__name__)
 
 # Ký tự CJK (Trung, Nhật, Hàn) và các hệ chữ ngoại lai dễ bị nhận diện nhầm

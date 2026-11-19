@@ -2015,7 +2015,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         Boolean(chatRes.require_room_pin) ||
         Boolean(chatRes.pending_service_action);
 
-        const isRoomDirectionQuery = !isStatusInquiry && !isServiceAction && ['phòng', 'room', 'lên phòng', 'về phòng', 'đến phòng', 'tìm phòng'].some(k => lowerQuery.includes(k));
+        const isInvalidRoomReply = /không có phòng|does not have room|không tồn tại/i.test(replyText);
+        const isRoomDirectionQuery = !isInvalidRoomReply && !isStatusInquiry && !isServiceAction && !isOrderIntent && ['phòng', 'room', 'lên phòng', 'về phòng', 'đến phòng', 'tìm phòng'].some(k => lowerQuery.includes(k));
         const roomFallbackKey = isRoomDirectionQuery
           ? ((effectiveRoomNumber && isValidHotelRoom(effectiveRoomNumber)) ? `room_${String(effectiveRoomNumber).trim()}` : null)
           : null;
@@ -2023,7 +2024,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         // Nếu Backend đã xử lý hành động dịch vụ / tra cứu trạng thái -> Bỏ qua fastDestKey và fallback phòng
         const effectiveFastDest = isServiceAction ? null : fastDestKey;
         const rawNavKey = chatRes.destination_key || effectiveFastDest || roomFallbackKey;
-        let navTargetKey = (isStatusInquiry || isServiceAction) ? null : rawNavKey;
+        let navTargetKey = (isInvalidRoomReply || isStatusInquiry || isServiceAction) ? null : rawNavKey;
         if (navTargetKey && navTargetKey.startsWith('room_')) {
           const rNum = navTargetKey.replace('room_', '');
           if (!isValidHotelRoom(rNum)) {

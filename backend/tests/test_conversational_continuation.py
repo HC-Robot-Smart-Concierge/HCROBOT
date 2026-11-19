@@ -64,23 +64,32 @@ class TestConversationalContinuation:
         assert any("gym" in c.lower() or "map" in c.lower() or "direction" in c.lower() for c in chips_en)
 
     def test_fast_path_scenario_appends_continuation_hook(self):
-        scenario_service.scenarios = [
-            {
-                "id": "fp_pool",
-                "patterns": ["hồ bơi ở đâu", "be boi o dau"],
-                "responses": ["Hồ bơi vô cực nằm ở Tầng 5, mở cửa từ 06:00 đến 21:00."],
-                "category": "facility",
-                "language": "vi",
-                "confidence": 0.99,
-                "is_active": True,
-            }
-        ]
+        original_cache = list(scenario_service._cache)
+        try:
+            scenario_service.reload_cache_sync(
+                [
+                    {
+                        "id": "fp_pool",
+                        "title": "Hồ bơi vô cực",
+                        "match_keywords": ["hồ bơi ở đâu", "be boi o dau"],
+                        "match_type": "contains",
+                        "response_vi": "Hồ bơi vô cực nằm ở Tầng 5, mở cửa từ 06:00 đến 21:00.",
+                        "response_en": "The infinity pool is on Floor 5, open from 06:00 to 21:00.",
+                        "category": "facility",
+                        "is_fast_path": True,
+                        "is_active": True,
+                        "priority": 100,
+                    }
+                ]
+            )
 
-        match = scenario_service.match_fast_path("hồ bơi ở đâu", "vi")
-        assert match is not None
-        response_text = match[0]
-        assert "Tầng 5" in response_text
-        assert "Quý khách có muốn" in response_text or "chỉ đường" in response_text
+            match = scenario_service.match_fast_path("hồ bơi ở đâu", "vi-VN")
+            assert match is not None
+            response_text = match[0]
+            assert "Tầng 5" in response_text
+            assert "Quý khách có muốn" in response_text or "chỉ đường" in response_text
+        finally:
+            scenario_service.reload_cache_sync(original_cache)
 
     def test_system_prompt_injects_guest_profile_and_continuation_rule(self):
         # Ollama system prompt

@@ -2,7 +2,7 @@ import io
 import re
 import logging
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from typing import Optional, Dict, Any, Tuple
+from typing import Dict, Any, Tuple
 
 from app.core.config import settings
 
@@ -220,6 +220,20 @@ def _score_bilingual_candidates(
     return en_clean, "en", round(min(0.99, max(en_conf, 0.7)), 3)
 
 
+def _record_audio_data(wav_bytes: bytes) -> Tuple[Any, Any]:
+    import speech_recognition as sr
+
+    recognizer = sr.Recognizer()
+    with sr.AudioFile(io.BytesIO(wav_bytes)) as source:
+        audio_data = recognizer.record(source)
+    return recognizer, audio_data
+
+
+def _call_recognize_google(recognizer: Any, audio_data: Any, lang_code: str) -> Any:
+    recognize_google = getattr(recognizer, "recognize_google")
+    return recognize_google(audio_data, language=lang_code, with_confidence=True)
+
+
 def transcribe_audio_wav_detailed(
     wav_bytes: bytes,
     language: str = "auto",
@@ -234,11 +248,11 @@ def transcribe_audio_wav_detailed(
         "provider": str
     }
     """
-    pref = "vi" if str(preferred_lang or "").lower().startswith("vi") else "en"
+    pref = "vi" if (preferred_lang or "").lower().startswith("vi") else "en"
     if not wav_bytes or len(wav_bytes) < 2000:
         return {"text": "", "detected_language": pref, "confidence": 0.0, "provider": "none"}
 
-    is_auto = not language or str(language).lower() in ("auto", "bilingual", "all", "none")
+    is_auto = not language or language.lower() in ("auto", "bilingual", "all", "none")
 
     # --- 1. Chế độ Song ngữ Tự động (Auto Detect EN / VI từ Audio) ---
     if is_auto:
@@ -288,16 +302,11 @@ def transcribe_audio_wav_detailed(
 
         # Chạy song song Google Speech Recognition cho cả vi-VN và en-US kèm điểm tự tin âm học
         try:
-            import speech_recognition as sr
-
-            recognizer = sr.Recognizer()
-            bio = io.BytesIO(wav_bytes)
-            with sr.AudioFile(bio) as source:
-                audio_data = recognizer.record(source)
+            recognizer, audio_data = _record_audio_data(wav_bytes)
 
             def _rec_lang(lang_code: str) -> Tuple[str, float]:
                 try:
-                    raw = recognizer.recognize_google(audio_data, language=lang_code, with_confidence=True)
+                    raw = _call_recognize_google(recognizer, audio_data, lang_code)
                     return _parse_google_result(raw)
                 except Exception:
                     return "", 0.0
@@ -335,37 +344,32 @@ def transcribe_audio_wav_detailed(
         return {"text": "", "detected_language": pref, "confidence": 0.0, "provider": "none"}
 
     # --- 2. Chế độ Ngôn ngữ Cố định ('vi' hoặc 'en') ---
-    is_vi_target = str(language).lower().startswith("vi")
+    is_vi_target = language.lower().startswith("vi")
     lang_code = "vi-VN" if is_vi_target else "en-US"
     whisper_lang = "vi" if is_vi_target else "en"
 
     try:
-        import speech_recognition as sr
+        recognizer, audio_data = _record_audio_data(wav_bytes)
 
-        recognizer = sr.Recognizer()
-        bio = io.BytesIO(wav_bytes)
-        with sr.AudioFile(bio) as source:
-            audio_data = recognizer.record(source)
+        def _google_call():
+            return _call_recognize_google(recognizer, audio_data, lang_code)
 
-            def _google_call():
-                return recognizer.recognize_google(audio_data, language=lang_code, with_confidence=True)
-
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(_google_call)
-                try:
-                    raw = future.result(timeout=2.5)
-                    text, conf = _parse_google_result(raw)
-                    normalized_text = normalize_hotel_stt_transcript(text)
-                    if normalized_text:
-                        logger.info(f"[STT Service - Google {lang_code}] conf={conf:.2f} len={len(normalized_text)}")
-                        return {
-                            "text": normalized_text,
-                            "detected_language": whisper_lang,
-                            "confidence": round(conf, 3),
-                            "provider": f"google_{whisper_lang}",
-                        }
-                except FuturesTimeoutError:
-                    logger.warning("[STT Service - Google] Timeout after 2.5s, fallback to faster_whisper...")
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_google_call)
+            try:
+                raw = future.result(timeout=2.5)
+                text, conf = _parse_google_result(raw)
+                normalized_text = normalize_hotel_stt_transcript(text)
+                if normalized_text:
+                    logger.info(f"[STT Service - Google {lang_code}] conf={conf:.2f} len={len(normalized_text)}")
+                    return {
+                        "text": normalized_text,
+                        "detected_language": whisper_lang,
+                        "confidence": round(conf, 3),
+                        "provider": f"google_{whisper_lang}",
+                    }
+            except FuturesTimeoutError:
+                logger.warning("[STT Service - Google] Timeout after 2.5s, fallback to faster_whisper...")
     except Exception as e_sr:
         e_type = type(e_sr).__name__
         if "UnknownValueError" not in e_type:

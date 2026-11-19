@@ -343,7 +343,7 @@ class TTSService:
         if waiters is None:
             waiters = {}
             self._inflight_waiters = waiters
-        attempt_timeout = min(2.8, max(0.02, float(timeout) * 0.65))
+        attempt_timeout = min(4.5, max(1.0, float(timeout) * 0.75))
         inflight = None
         counted = False
         try:
@@ -532,7 +532,7 @@ class TTSService:
                 cache_key = self._get_cache_key(phrase, "edge", voice, rate_str, volume_str)
                 if not self._get_from_cache(cache_key):
                     res = await self.synthesize_with_details(
-                        phrase, provider="edge", language=lang, voice=voice, timeout=8.0, allow_fallback=False
+                        phrase, provider="edge", language=lang, voice=voice, timeout=8.0, allow_fallback=True
                     )
                     if res.get("audio_base64"):
                         logger.info(f"[TTSService] Pre-cached phrase: '{phrase}' ({voice})")

@@ -316,13 +316,35 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     };
   }, []);
 
-  // Lắng nghe lệnh đẩy quảng cáo từ Admin qua WebSocket
+  const handleGuestEmotionDetectedRef = useRef(null);
+  const handleGuestDemographicsDetectedRef = useRef(null);
+  const handleGuestApproachedRef = useRef(null);
+  const handleGuestLeftRef = useRef(null);
+  const guestPresentRef = useRef(false);
+
+  // Lắng nghe lệnh đẩy quảng cáo & đồng bộ nhận diện khách (Biểu cảm, Giới tính, Độ tuổi) từ Admin/Pi 5 qua WebSocket
   useNotificationWebSocket({
     department: 'All',
     onNotificationReceived: (event) => {
       if (event && event.type === 'ADVERTISEMENT_PUSH' && event.advertisement && !isServingGuest && !guestPresent && batteryGuard.canStartGuestSession) {
         setPushedAd(event.advertisement);
         setIsStandby(true);
+      }
+      if (event && event.type === 'GUEST_PERCEPTION_UPDATE') {
+        if (event.is_face_detected === true && !guestPresentRef.current) {
+          handleGuestApproachedRef.current?.();
+        } else if (event.is_face_detected === false && guestPresentRef.current) {
+          handleGuestLeftRef.current?.();
+        }
+        if (event.emotion) {
+          handleGuestEmotionDetectedRef.current?.(event.emotion);
+        }
+        if (event.gender || event.age_group) {
+          handleGuestDemographicsDetectedRef.current?.({
+            gender: event.gender,
+            ageGroup: event.age_group,
+          });
+        }
       }
     },
     // Studio "Gửi tới robot" -> chạy kịch bản trên màn hình này bằng cùng bộ quyết định rẽ nhánh
@@ -357,6 +379,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const [videoCallTicketCode, setVideoCallTicketCode] = useState(null);
 
   // Kiosk Phone Camera Broadcaster to Admin WebRTC (kiosk-live-feed)
+  // Da chuyen Face Detection sang Camera USB Pi 5 ket noi qua Tailscale.
+  // Dat enabled: false de giai phong hoan toan camera cho Video Call Concierge.
   const {
     stream: kioskCameraStream,
     isCameraActive: isKioskCameraActive,
@@ -364,7 +388,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     needsUserGesture: needsKioskCameraGesture,
     startCamera: startKioskCamera,
   } = useKioskStreamBroadcaster({
-    enabled: true,
+    enabled: false,
     isPaused: isVideoCallOpen,
   });
 
@@ -417,6 +441,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, []);
 
   const [guestPresent, setGuestPresent] = useState(false);
+  guestPresentRef.current = guestPresent;
   const pausedPromo = useRef(null);
 
   // Available Workflows State (for AUTO_DETECT and manual triggers)
@@ -594,6 +619,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     },
     [language, speak, isUnhappyAssistanceOpen]
   );
+  handleGuestEmotionDetectedRef.current = handleGuestEmotionDetected;
 
   const handleGuestDemographicsDetected = useCallback(({ gender, ageGroup }) => {
     if (gender && gender !== 'unknown') {
@@ -603,6 +629,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setGuestAgeGroup((prev) => (prev !== ageGroup ? ageGroup : prev));
     }
   }, []);
+  handleGuestDemographicsDetectedRef.current = handleGuestDemographicsDetected;
 
   // Lang nghe phan hoi bang giong noi khi Modal ho tro bieu cam dang mo
   useEffect(() => {
@@ -1162,6 +1189,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       }
     }
   };
+  handleGuestApproachedRef.current = handleGuestApproached;
 
   // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB, dọn dẹp âm thanh & chuyển sang ngủ nhẹ (RT-01)
   const handleGuestApproachedByTouch = () => {
@@ -1220,6 +1248,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     resetSession(sessionId);
     setCurrentState('RT-01');
   };
+  handleGuestLeftRef.current = handleGuestLeft;
 
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động rảnh tay)
   const handleStartTalk = (options = {}) => {
@@ -3045,9 +3074,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }}
       />
 
-      {/* Camera AI (Chạy ngầm nhận diện khách/cảm xúc và stream WebRTC về Admin) */}
+      {/* Camera AI (Da chuyen sang Camera USB Pi 5; de autoStart={false} de tranh xung dot camera tren dien thoai) */}
       <CameraPreview
-        autoStart={true}
+        autoStart={false}
         externalStream={kioskCameraStream}
         controlsClassName="robot-camera-control"
         onGuestApproached={handleGuestApproached}

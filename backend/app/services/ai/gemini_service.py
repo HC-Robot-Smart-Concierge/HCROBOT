@@ -50,8 +50,6 @@ class GeminiService:
 
     @property
     def is_configured(self) -> bool:
-        if time.time() < getattr(self, "_quota_exhausted_until", 0):
-            return False
         return bool(self.current_api_key.strip())
 
     @staticmethod
@@ -284,13 +282,7 @@ class GeminiService:
                             final_lang_name, final_lang_code = self.detect_language(reply)
                             return reply, final_lang_name, final_lang_code
                     else:
-                        if resp.status_code == 429:
-                            self._quota_exhausted_until = time.time() + 300
-                            logger.warning(
-                                f"[GeminiService] Model '{model}' status 429 (Quota Exhausted). Cooldown active for 5m: {resp.text[:120]}"
-                            )
-                        else:
-                            logger.warning(f"[GeminiService] Model '{model}' status {resp.status_code}: {resp.text[:150]}")
+                        logger.warning(f"[GeminiService] Model '{model}' status {resp.status_code}: {resp.text[:150]}")
             except Exception as e:
                 logger.warning(f"[GeminiService] Request error with model '{model}': {e}")
 

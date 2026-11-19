@@ -118,7 +118,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         try:
             audio_b64, mime_type, _ = await asyncio.wait_for(
                 tts_service.synthesize(reply, provider="edge", language=lang_code),
-                timeout=3.5
+                timeout=2.5
             )
         except Exception:
             audio_b64, mime_type = None, "audio/mp3"
@@ -176,37 +176,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     }
     t_start = time.perf_counter()
     graph_config: RunnableConfig = {"configurable": {"thread_id": sid}}
-    try:
-        graph_result = await asyncio.wait_for(
-            concierge_graph.ainvoke(initial_state, config=graph_config),
-            timeout=3.8
-        )
-    except asyncio.TimeoutError:
-        logger.warning(f"[AIChatService] LangGraph execution exceeded 3.8s for prompt '{request.prompt[:30]}', returning 5s SLA spoken reason...")
-        is_en = (cur_lang_code or "").startswith("en")
-        reason_text = (
-            "I apologize, our AI system took longer than 5 seconds to respond due to network latency. Please ask again or select a service on the screen."
-            if is_en
-            else "Dạ xin lỗi quý khách, hệ thống AI phản hồi quá 5 giây do nghẽn mạng máy chủ. Quý khách vui lòng hỏi lại hoặc chọn trực tiếp trên màn hình giúp em nhé ạ."
-        )
-        audio_b64, mime_type, _ = await tts_service.synthesize(reason_text, provider="piper", language=cur_lang_code)
-        session_manager.add_turn(sid, "user", request.prompt, language=cur_lang_code)
-        session_manager.add_turn(sid, "assistant", reason_text, language=cur_lang_code, intent_action="conversation")
-        return ChatResponse(
-            response=reason_text,
-            model_used="sla_5s_offline_fallback",
-            detected_language=cur_lang_name,
-            lang_code=cur_lang_code,
-            action="conversation",
-            session_id=sid,
-            current_room_number=(current_room if is_valid_hotel_room(current_room) else None),
-            destination_key=None,
-            trigger_video_call=False,
-            ticket_created=False,
-            audio_base64=audio_b64,
-            mime_type=mime_type or "audio/mp3",
-            suggested_prompts=[],
-        )
+    graph_result = await concierge_graph.ainvoke(initial_state, config=graph_config)
     t_graph = time.perf_counter()
 
     reply = graph_result.get("response", "")
@@ -220,11 +190,11 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     if act == "switch_language":
         session_manager.set_language(sid, detected_lang)
 
-    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang Piper Offline / WebSpeech)
+    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang Google TTS / WebSpeech)
     try:
         audio_b64, mime_type, _ = await asyncio.wait_for(
             tts_service.synthesize(reply, provider="edge", language=lang_code),
-            timeout=3.5
+            timeout=2.5
         )
     except Exception as e_tts:
         logger.warning(f"[AIChatService] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")

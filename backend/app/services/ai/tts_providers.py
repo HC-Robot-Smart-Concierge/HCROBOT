@@ -18,9 +18,7 @@ def clean_text_for_tts(text: str) -> str:
     """Strip markdown/emoji and normalize punctuation so speech sounds natural."""
     if not text:
         return ""
-    t = re.sub(r"&", " và ", text)
-    t = re.sub(r"[<>]", " ", t)
-    t = re.sub(r"[*#_`\[\]()~]", "", t)
+    t = re.sub(r"[*#_`\[\]()~]", "", text)
     t = re.sub(r"[\U00010000-\U0010ffff]", "", t)
     t = re.sub(r"^[\s*•\-–—]+\s*", "", t, flags=re.MULTILINE)
     t = re.sub(r":\s*", ", ", t)

@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 from typing import Any, Dict, Optional, Tuple
 
 try:
@@ -151,12 +152,26 @@ class TTSService:
 
     def _resolve_voice_and_lang(self, clean_text: str, language: Optional[str], voice: Optional[str]) -> Tuple[str, str]:
         lang_norm = (language or "").strip().lower()
-        if any(en in lang_norm for en in ["en", "english"]):
-            return voice or self.default_en_voice, "en"
-        if any(vi in lang_norm for vi in ["vi", "vietnamese"]):
-            return voice or self.default_vi_voice, "vi"
         is_vi = self.is_vietnamese(clean_text)
-        return ((voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)), ("vi" if is_vi else "en")
+        has_latin_words = bool(re.search(r"[a-zA-Z]{2,}", clean_text))
+
+        # 1. Text is clearly Vietnamese (contains Vietnamese accents or keywords)
+        if is_vi:
+            target_voice = voice if (voice and "vi-" in voice.lower()) else self.default_vi_voice
+            return target_voice, "vi"
+
+        # 2. Text has Latin words and is definitely NOT Vietnamese (e.g. English sentences)
+        if not is_vi and has_latin_words:
+            target_voice = voice if (voice and "en-" in voice.lower()) else self.default_en_voice
+            return target_voice, "en"
+
+        # 3. Fallback based on requested language
+        if any(en in lang_norm for en in ["en", "english"]):
+            target_voice = voice if (voice and "en-" in voice.lower()) else self.default_en_voice
+            return target_voice, "en"
+
+        target_voice = voice if (voice and "vi-" in voice.lower()) else self.default_vi_voice
+        return target_voice, "vi"
 
     def _get_cache_key(self, text: str, provider: str, voice: str, rate: str = "+0%", volume: str = "+0%") -> str:
         clean = text.strip()

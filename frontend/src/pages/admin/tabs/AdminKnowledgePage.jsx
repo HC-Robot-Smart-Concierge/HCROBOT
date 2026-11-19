@@ -196,10 +196,12 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
     speech_rate: 1.0,
     rate_percentage: '+0%',
     vi_voice: 'vi-VN-HoaiMyNeural',
+    en_voice: 'en-US-JennyNeural',
   });
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [tempRate, setTempRate] = useState(1.0);
   const [tempVoice, setTempVoice] = useState('vi-VN-HoaiMyNeural');
+  const [tempEnVoice, setTempEnVoice] = useState('en-US-JennyNeural');
   const [isSavingVoice, setIsSavingVoice] = useState(false);
   const [isTestSpeaking, setIsTestSpeaking] = useState(false);
 
@@ -214,6 +216,7 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
           setVoiceSettings(cfg);
           setTempRate(cfg.speech_rate || 1.0);
           setTempVoice(cfg.vi_voice || 'vi-VN-HoaiMyNeural');
+          setTempEnVoice(cfg.en_voice || 'en-US-JennyNeural');
         }
       })
       .catch((err) => console.warn('Could not load voice settings:', err));
@@ -222,6 +225,7 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
   const handleOpenVoiceModal = () => {
     setTempRate(voiceSettings.speech_rate || 1.0);
     setTempVoice(voiceSettings.vi_voice || 'vi-VN-HoaiMyNeural');
+    setTempEnVoice(voiceSettings.en_voice || 'en-US-JennyNeural');
     setIsVoiceModalOpen(true);
   };
 
@@ -231,20 +235,21 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
     setIsVoiceModalOpen(false);
   };
 
-  const handleTestVoice = () => {
+  const handleTestVoice = (lang = 'vi') => {
     if (isTestSpeaking) {
       stop();
       setIsTestSpeaking(false);
       return;
     }
-    const sampleText = isEN
+    const isEnTarget = lang === 'en';
+    const sampleText = isEnTarget
       ? 'Welcome to Aurora Grand Hotel. I am Robot Concierge, ready to assist you.'
       : 'Xin kính chào quý khách đến với khách sạn Aurora Grand. Em là Robot Lễ Tân, rất vui được hỗ trợ quý khách ạ.';
     setIsTestSpeaking(true);
     speak(sampleText, {
       rate: tempRate,
-      lang: isEN ? 'en-US' : 'vi-VN',
-      voice: tempVoice,
+      lang: isEnTarget ? 'en-US' : 'vi-VN',
+      voice: isEnTarget ? tempEnVoice : tempVoice,
       onEnd: () => setIsTestSpeaking(false),
       onError: () => setIsTestSpeaking(false),
     });
@@ -256,6 +261,7 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
       const updated = await updateVoiceSettings({
         speech_rate: tempRate,
         vi_voice: tempVoice,
+        en_voice: tempEnVoice,
       });
       setVoiceSettings(updated);
       setIsVoiceModalOpen(false);
@@ -551,6 +557,16 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.src = '';
+        audioPlayerRef.current = null;
+      }
+    };
+  }, []);
+
   const handlePlayAudio = (url) => {
     if (!url) return;
     if (playingAudioUrl === url) {
@@ -562,14 +578,43 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
       return;
     }
 
-    if (!audioPlayerRef.current) {
-      audioPlayerRef.current = new Audio();
+    try {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.currentTime = 0;
+      } else {
+        audioPlayerRef.current = new Audio();
+      }
+
       audioPlayerRef.current.onended = () => setPlayingAudioUrl(null);
-      audioPlayerRef.current.onerror = () => setPlayingAudioUrl(null);
+      audioPlayerRef.current.onerror = () => {
+        setPlayingAudioUrl(null);
+        showNotification(
+          isEN
+            ? 'Cannot play audio file (file missing or network error)'
+            : 'Không thể phát file âm thanh (file chưa tồn tại hoặc lỗi mạng)'
+        );
+      };
+
+      // Bust browser cache to prevent serving cached HTML from before proxy was active
+      const playUrl = url.includes('?') ? `${url}&_t=${Date.now()}` : `${url}?_t=${Date.now()}`;
+      audioPlayerRef.current.src = playUrl;
+      setPlayingAudioUrl(url);
+
+      const playPromise = audioPlayerRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          setPlayingAudioUrl(null);
+          showNotification(
+            isEN
+              ? 'Audio playback blocked by browser or unavailable'
+              : 'Trình duyệt chặn autoplay hoặc file âm thanh không khả dụng'
+          );
+        });
+      }
+    } catch {
+      setPlayingAudioUrl(null);
     }
-    audioPlayerRef.current.src = url;
-    audioPlayerRef.current.play().catch(() => setPlayingAudioUrl(null));
-    setPlayingAudioUrl(url);
   };
 
   const handleOpenCreateModal = () => {
@@ -1423,18 +1468,19 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
 
                             {/* OFFLINE AUDIO STATUS & CONTROLS */}
                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              {/* VI Audio */}
                               {item.has_audio_vi ? (
                                 <div className="inline-flex items-center gap-1">
                                   <span className="px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
                                     <Check className="w-2.5 h-2.5 text-emerald-600" />
-                                    <span>Audio Offline</span>
+                                    <span>Audio VI</span>
                                   </span>
                                   {item.audio_url_vi && (
                                     <button
                                       type="button"
                                       onClick={() => handlePlayAudio(item.audio_url_vi)}
                                       className="p-1 rounded text-stone-600 hover:text-emerald-700 hover:bg-emerald-50 border border-stone-200 cursor-pointer transition-colors"
-                                      title={isEN ? 'Play offline audio from backend folder' : 'Nghe thử file âm thanh từ folder backend'}
+                                      title={isEN ? 'Play Vietnamese audio' : 'Nghe giọng Tiếng Việt'}
                                     >
                                       {playingAudioUrl === item.audio_url_vi ? (
                                         <Square className="w-2.5 h-2.5 text-red-500 fill-current" />
@@ -1444,7 +1490,36 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
                                     </button>
                                   )}
                                 </div>
-                              ) : (
+                              ) : null}
+
+                              {/* EN Audio */}
+                              {item.response_en ? (
+                                item.has_audio_en ? (
+                                  <div className="inline-flex items-center gap-1">
+                                    <span className="px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-sky-50 text-sky-700 border border-sky-200 inline-flex items-center gap-1">
+                                      <Check className="w-2.5 h-2.5 text-sky-600" />
+                                      <span>Audio EN</span>
+                                    </span>
+                                    {item.audio_url_en && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handlePlayAudio(item.audio_url_en)}
+                                        className="p-1 rounded text-stone-600 hover:text-sky-700 hover:bg-sky-50 border border-stone-200 cursor-pointer transition-colors"
+                                        title={isEN ? 'Play English audio (Jenny/Guy)' : 'Nghe giọng Tiếng Anh (Jenny/Guy)'}
+                                      >
+                                        {playingAudioUrl === item.audio_url_en ? (
+                                          <Square className="w-2.5 h-2.5 text-red-500 fill-current" />
+                                        ) : (
+                                          <Play className="w-2.5 h-2.5 text-sky-600 fill-current" />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : null
+                              ) : null}
+
+                              {/* Generate button if either is missing */}
+                              {(!item.has_audio_vi || (item.response_en && !item.has_audio_en)) && (
                                 <button
                                   type="button"
                                   onClick={() => handleGenerateAudio(item.id)}
@@ -2106,44 +2181,59 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
                 </div>
               </div>
 
-              {/* Giọng đọc chuẩn của Robot Rora */}
-              <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border" style={{ borderColor: '#E9E5DC' }}>
-                <div>
-                  <div className="text-[11px] font-bold text-stone-700">{t('knowledgeVoiceSpeakerLabel')}</div>
-                  <div className="text-[10px] text-stone-500">{t('knowledgeVoiceSpeakerSub')}</div>
+              {/* Giọng đọc Tiếng Việt */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
+                  {isEN ? 'Vietnamese Voice (TTS)' : 'Giọng đọc Tiếng Việt'}
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={tempVoice}
+                    onChange={(e) => setTempVoice(e.target.value)}
+                    className="flex-1 px-3 py-2 border rounded-xl text-xs outline-none cursor-pointer bg-white"
+                    style={{ borderColor: '#BFBFBD', color: '#262626' }}
+                  >
+                    <option value="vi-VN-HoaiMyNeural">Hoài My (Nữ - Truyền cảm, êm ấm)</option>
+                    <option value="vi-VN-NamMinhNeural">Nam Minh (Nam - Trầm ấm, chững chạc)</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleTestVoice('vi')}
+                    className="px-2.5 py-2 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 flex items-center gap-1 cursor-pointer"
+                    title={isEN ? 'Test Vietnamese Voice' : 'Nghe thử giọng Việt'}
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                    <span>Test VI</span>
+                  </button>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  {t('knowledgeVoiceSpeakerName')}
-                </span>
               </div>
 
-              {/* Nút nghe thử trực tiếp */}
-              <div className="p-3 bg-stone-100 rounded-xl border flex items-center justify-between gap-3" style={{ borderColor: '#E9E5DC' }}>
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-stone-800 truncate">{t('knowledgeVoiceTestTitle')}</div>
-                  <div className="text-[10px] text-stone-500 truncate">{t('knowledgeVoiceTestSub')}</div>
+              {/* Giọng đọc Tiếng Anh */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
+                  {isEN ? 'English Voice (TTS)' : 'Giọng đọc Tiếng Anh'}
+                </label>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={tempEnVoice}
+                    onChange={(e) => setTempEnVoice(e.target.value)}
+                    className="flex-1 px-3 py-2 border rounded-xl text-xs outline-none cursor-pointer bg-white"
+                    style={{ borderColor: '#BFBFBD', color: '#262626' }}
+                  >
+                    <option value="en-US-JennyNeural">Jenny (Female - Warm & Professional)</option>
+                    <option value="en-US-GuyNeural">Guy (Male - Clear & Confident)</option>
+                    <option value="en-US-AriaNeural">Aria (Female - Expressive)</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => handleTestVoice('en')}
+                    className="px-2.5 py-2 rounded-xl text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200 hover:bg-sky-100 flex items-center gap-1 cursor-pointer"
+                    title={isEN ? 'Test English Voice (Jenny/Guy)' : 'Nghe thử giọng Anh (Jenny/Guy)'}
+                  >
+                    <Play className="w-3 h-3 fill-current" />
+                    <span>Test EN</span>
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleTestVoice}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    isTestSpeaking
-                      ? 'bg-rose-600 text-white animate-pulse'
-                      : 'bg-stone-900 text-stone-100 hover:bg-stone-800'
-                  }`}
-                >
-                  {isTestSpeaking ? (
-                    <>
-                      <Square className="w-3.5 h-3.5 fill-current" />
-                      <span>{t('knowledgeVoiceTestStop')}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>{t('knowledgeVoiceTestPlay')}</span>
-                    </>
-                  )}
-                </button>
               </div>
             </div>
 

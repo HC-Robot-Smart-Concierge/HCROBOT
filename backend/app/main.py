@@ -105,8 +105,11 @@ app = FastAPI(
 register_middlewares(app)
 
 # Mount Static Files for Uploads and Media
-os.makedirs("static/uploads", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+os.makedirs(_STATIC_DIR / "uploads", exist_ok=True)
+os.makedirs(_STATIC_DIR / "audio_cache", exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+app.mount("/api/v1/static", StaticFiles(directory=str(_STATIC_DIR)), name="api_static")
 
 # Mount Guest Map static assets (/maps/*.png & /map.html) over clean HTTP (Port 8000)
 # Giúp điện thoại quét QR qua Wi-Fi / Tailscale mở thẳng bản đồ tức thì, không bị cảnh báo SSL tự ký hay kẹt Service Worker cũ ở port 3000

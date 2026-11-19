@@ -181,8 +181,9 @@ def _build_matched_response(
             target_lang, target_lang_code = "Tiếng Việt", "vi-VN"
         lang_name, lang_code = target_lang, target_lang_code
 
+    target_is_en = lang_code == "en-US"
     resp_text = str(
-        (scn.get("response_en") if is_en and scn.get("response_en") else scn.get("response_vi"))
+        (scn.get("response_en") if target_is_en and scn.get("response_en") else scn.get("response_vi"))
         or scn.get("response_vi")
         or ""
     )

@@ -339,11 +339,14 @@ export const useSpeechSynthesis = () => {
     const hasVietnameseDiacritics = /[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i.test(cleanText);
     const hasVietnameseKeywords = /\b(dạ|em|anh|chị|quý khách|khách sạn|phòng|đã|rồi|ạ|hỗ trợ|yêu cầu|dịch vụ|không|có|tại|tầng|hồ bơi|cảm ơn|bảo trì|lễ tân|nhân viên|vận chuyển|hành lý)\b/i.test(cleanText);
     const isVietnameseText = hasVietnameseDiacritics || hasVietnameseKeywords;
+    const hasLatinWords = /[a-zA-Z]{2,}/.test(cleanText);
 
     let langTag = 'vi-VN';
     if (isVietnameseText) {
       langTag = 'vi-VN';
     } else if (typeof language === 'string' && (language.toLowerCase().includes('en') || language.toLowerCase().includes('english'))) {
+      langTag = 'en-US';
+    } else if (!isVietnameseText && hasLatinWords) {
       langTag = 'en-US';
     } else {
       langTag = 'vi-VN';
@@ -352,7 +355,18 @@ export const useSpeechSynthesis = () => {
     const availableVoices = voices.length > 0 ? voices : (window.speechSynthesis ? window.speechSynthesis.getVoices() : []);
     let targetVoice = null;
 
-    const activeVoice = options?.voice || (langTag.startsWith('vi') ? (viVoiceRef.current || 'vi-VN-HoaiMyNeural') : (enVoiceRef.current || 'en-US-JennyNeural'));
+    let activeVoice = options?.voice;
+    if (!activeVoice) {
+      activeVoice = langTag.startsWith('vi')
+        ? (viVoiceRef.current || 'vi-VN-HoaiMyNeural')
+        : (enVoiceRef.current || 'en-US-JennyNeural');
+    } else {
+      if (langTag.startsWith('en') && activeVoice.toLowerCase().startsWith('vi-')) {
+        activeVoice = enVoiceRef.current || 'en-US-JennyNeural';
+      } else if (langTag.startsWith('vi') && activeVoice.toLowerCase().startsWith('en-')) {
+        activeVoice = viVoiceRef.current || 'vi-VN-HoaiMyNeural';
+      }
+    }
     const isMaleVoice = activeVoice.toLowerCase().includes('namminh') || activeVoice.toLowerCase().includes('guy') || activeVoice.toLowerCase().includes('male');
 
     if (langTag.startsWith('vi')) {

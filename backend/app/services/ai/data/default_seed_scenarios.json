@@ -28,7 +28,7 @@
       "english please"
     ],
     "match_type": "keyword",
-    "response_vi": "Sure! I have switched our conversation language to English. How may I assist you today?",
+    "response_vi": "Dạ vâng, Rora đã chuyển sang giao tiếp bằng Tiếng Anh rồi ạ. How may I assist you today?",
     "response_en": "Sure! I have switched our conversation language to English. How may I assist you today?",
     "action_type": "switch_language",
     "action_payload": {
@@ -69,7 +69,7 @@
     ],
     "match_type": "keyword",
     "response_vi": "Dạ vâng, Rora đã chuyển sang giao tiếp bằng Tiếng Việt rồi ạ. Em có thể hỗ trợ gì cho mình ạ?",
-    "response_en": "Dạ vâng, Rora đã chuyển sang giao tiếp bằng Tiếng Việt rồi ạ. Em có thể hỗ trợ gì cho mình ạ?",
+    "response_en": "Sure! I have switched our conversation language back to Vietnamese. How can I help you today?",
     "action_type": "switch_language",
     "action_payload": {
       "target_language": "Tiếng Việt",
@@ -95,8 +95,8 @@
       "toggle language"
     ],
     "match_type": "keyword",
-    "response_vi": "I have switched to English. How can I help you?",
-    "response_en": "Dạ em đã chuyển sang Tiếng Việt rồi ạ. Em có thể giúp gì cho quý khách?",
+    "response_vi": "Dạ em đã chuyển sang Tiếng Việt rồi ạ. Em có thể giúp gì cho quý khách?",
+    "response_en": "I have switched to English. How can I help you?",
     "action_type": "switch_language",
     "action_payload": {
       "target_language": "toggle"

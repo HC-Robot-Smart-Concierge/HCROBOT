@@ -80,7 +80,7 @@ class VoiceSettingsRequest(BaseModel):
     speech_rate: float = Field(1.0, ge=0.5, le=2.0, description="Tốc độ nói từ 0.5x đến 2.0x")
     vi_voice: Optional[str] = Field("vi-VN-HoaiMyNeural", description="Giọng đọc tiếng Việt (VD: vi-VN-HoaiMyNeural, vi-VN-NamMinhNeural)")
     en_voice: Optional[str] = Field("en-US-JennyNeural", description="Giọng đọc tiếng Anh")
-    volume: Optional[str] = Field("+35%", description="Âm lượng EdgeTTS (+30%, +35%, +50%)")
+    volume: Optional[str] = Field("+0%", description="Âm lượng EdgeTTS (+0%, -10%, etc.)")
 
 
 class VoiceSettingsResponse(BaseModel):
@@ -88,7 +88,7 @@ class VoiceSettingsResponse(BaseModel):
     rate_percentage: str = Field("+0%", description="Tốc độ theo định dạng % của EdgeTTS")
     vi_voice: str = Field("vi-VN-HoaiMyNeural", description="Giọng tiếng Việt đang dùng")
     en_voice: str = Field("en-US-JennyNeural", description="Giọng tiếng Anh đang dùng")
-    volume: Optional[str] = Field("+35%", description="Âm lượng EdgeTTS đang dùng")
+    volume: Optional[str] = Field("+0%", description="Âm lượng EdgeTTS đang dùng")
 
 
 class PersonaSettingsRequest(BaseModel):

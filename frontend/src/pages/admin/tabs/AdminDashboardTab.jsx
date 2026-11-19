@@ -35,10 +35,13 @@ export const AdminDashboardTab = ({
     total_robots: 1,
     dept_distribution: {
       Reception: 0,
-      Housekeeping: 0,
+      Concierge: 0,
       'F&B': 0,
+      Kitchen: 0,
+      Housekeeping: 0,
       'Bell Services': 0,
       Maintenance: 0,
+      Taxi: 0,
     },
     recent_activities: [],
   });
@@ -89,13 +92,30 @@ export const AdminDashboardTab = ({
   const totalTasks = data.total_tasks || 1;
 
   const deptEntries = useMemo(() => {
-    const raw = [
-      { id: 'Reception', name: t('deptReception'), count: data.dept_distribution?.Reception || 0, color: '#262626' },
-      { id: 'F&B', name: t('deptFB'), count: data.dept_distribution?.['F&B'] || 0, color: '#525252' },
-      { id: 'Housekeeping', name: t('deptHousekeeping'), count: data.dept_distribution?.Housekeeping || 0, color: '#737373' },
-      { id: 'Bell Services', name: t('deptBell'), count: data.dept_distribution?.['Bell Services'] || 0, color: '#9E9E9C' },
-      { id: 'Maintenance', name: t('deptMaintenance'), count: data.dept_distribution?.Maintenance || 0, color: '#BFBFBD' },
+    const dist = data.dept_distribution || {};
+    const standardDepts = [
+      { id: 'Reception', name: t('deptReception'), count: dist.Reception || 0, color: '#1C1917' },
+      { id: 'Concierge', name: t('deptConcierge'), count: dist.Concierge || 0, color: '#334155' },
+      { id: 'F&B', name: t('deptFB'), count: dist['F&B'] || 0, color: '#57534E' },
+      { id: 'Kitchen', name: t('deptKitchen'), count: dist.Kitchen || 0, color: '#854D0E' },
+      { id: 'Housekeeping', name: t('deptHousekeeping'), count: dist.Housekeeping || 0, color: '#3F6212' },
+      { id: 'Bell Services', name: t('deptBell'), count: dist['Bell Services'] || 0, color: '#78716C' },
+      { id: 'Maintenance', name: t('deptMaintenance'), count: dist.Maintenance || 0, color: '#94A3B8' },
+      { id: 'Taxi', name: t('deptTaxi'), count: dist.Taxi || 0, color: '#A8A29E' },
     ];
+
+    const knownIds = new Set(standardDepts.map((d) => d.id));
+    const extraColors = ['#64748B', '#6B7280', '#71717A', '#A1A1AA'];
+    const extraDepts = Object.entries(dist)
+      .filter(([key, val]) => !knownIds.has(key) && Number(val) > 0)
+      .map(([key, val], idx) => ({
+        id: key,
+        name: key.toLowerCase() === 'directive' ? t('deptDirective') : key,
+        count: Number(val) || 0,
+        color: extraColors[idx % extraColors.length],
+      }));
+
+    const raw = [...standardDepts, ...extraDepts];
 
     return raw.map((d) => {
       const pct = Math.round((d.count / totalTasks) * 100);
@@ -106,7 +126,7 @@ export const AdminDashboardTab = ({
         rawPercent,
       };
     });
-  }, [data.dept_distribution, totalTasks]);
+  }, [data.dept_distribution, totalTasks, t]);
 
   // Donut SVG calculations
   const donutSlices = useMemo(() => {
@@ -257,7 +277,7 @@ export const AdminDashboardTab = ({
               <span className="text-xs" style={{ color: '#8C8C8C' }}>{t('dashCardStaffUnit')}</span>
             </div>
             <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
-              {t('dashCardStaffActive')}
+              {t('dashCardStaffActive').replace('{count}', deptEntries.length)}
             </div>
           </div>
 
@@ -296,7 +316,7 @@ export const AdminDashboardTab = ({
               <div>
                 <div className="text-xs font-bold flex items-center gap-1.5" style={{ color: '#262626' }}>
                   <PieChart className="w-3.5 h-3.5" />
-                  <span>{t('dashDeptDistribution')}</span>
+                  <span>{t('dashDeptDistribution').replace('{count}', deptEntries.length)}</span>
                 </div>
                 <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
                   {t('dashDeptDistributionSub')}

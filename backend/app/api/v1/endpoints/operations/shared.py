@@ -106,9 +106,11 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
         sr_res = await sr_repo.list_all_with_relations()
         for sr, st, dep in sr_res:
             dep_code = (dep.code if dep else (st.code if st else "")).upper()
+            raw_ticket_str = str(sr.ticket_code or sr.id or "").upper()
+            title_lower = (sr.title or "").lower()
             is_svc_req = (
                 bool((sr.extra_data or {}).get("is_service_request"))
-                or ("dịch vụ phòng" in (sr.title or "").lower())
+                or ("dịch vụ phòng" in title_lower)
                 or ("dịch vụ phòng" in (sr.description or "").lower())
             )
             if "HOUSEKEEPING" in dep_code:
@@ -117,7 +119,12 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             elif "BELL" in dep_code:
                 dept_label = "Bell Services"
                 tbl_type = "bell"
-            elif "TAXI" in dep_code:
+            elif (
+                "TAXI" in dep_code
+                or raw_ticket_str.startswith("TX-")
+                or raw_ticket_str.startswith("REQ-TX-")
+                or title_lower.startswith("taxi")
+            ):
                 dept_label = "Taxi"
                 tbl_type = "taxi"
             elif "MAINTENANCE" in dep_code:

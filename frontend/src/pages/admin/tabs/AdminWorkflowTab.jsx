@@ -21,13 +21,10 @@ import { WorkflowSimulatorModal } from './workflow/WorkflowSimulatorModal';
 import { WorkflowSimulatorStudio } from './workflow/WorkflowSimulatorStudio';
 
 import { useRobotControlText } from '../../../context/RobotControlLanguage';
-import { executionError, executionSummary } from '../../../utils/workflowExecution';
-import { explicitLinks } from '../../../utils/workflowGraph';
-import { useWorkflowEditing } from './workflow/useWorkflowEditing';
+import { executionConfig, executionError, executionSummary } from '../../../utils/workflowExecution';
 import { expandWorkflowRoutes, unconfiguredRouteSteps } from '../../../utils/physicalMapRoute';
 import { stepSetup } from '../../../utils/workflowStepSetup';
 import { WorkflowRunsPanel } from './workflow/WorkflowRunsPanel';
-import { RobotBatterySimulator } from '../../../components/robot/RobotBatterySimulator';
 
 export { OTTO_STEP_TYPES };
 
@@ -46,7 +43,6 @@ export const AdminWorkflowTab = () => {
   // Editor State
   const [editingWorkflow, setEditingWorkflow] = useState(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
-  const editing = useWorkflowEditing(setEditingWorkflow, setIsEditorOpen);
 
   // Simulation State
   const [simulatingWorkflow, setSimulatingWorkflow] = useState(null);
@@ -100,6 +96,56 @@ export const AdminWorkflowTab = () => {
     loadData();
   }, []);
 
+  const handleOpenCreate = () => {
+    setEditingWorkflow({
+      id: `wf-${Date.now().toString(36)}`,
+      name: 'Kịch bản phục vụ khách mới',
+      description: 'Mô tả chu trình hoạt động của robot...',
+      trigger_type: 'MANUAL',
+      execution_config: executionConfig(),
+      is_active: true,
+      steps: [
+        {
+          step_id: `step-${Date.now()}-1`,
+          type: 'MOVE',
+          title: 'Di chuyển lại gần khách tại Sảnh',
+          params: { ...OTTO_STEP_TYPES[0].defaultParams },
+        },
+        {
+          step_id: `step-${Date.now()}-2`,
+          type: 'GREET',
+          title: 'Chào hỏi và biểu cảm',
+          params: { ...OTTO_STEP_TYPES[1].defaultParams },
+        },
+        {
+          step_id: `step-${Date.now()}-3`,
+          type: 'SPEAK',
+          title: 'Phát âm thanh giới thiệu',
+          params: { ...OTTO_STEP_TYPES[2].defaultParams },
+        },
+      ],
+    });
+    setIsEditorOpen(true);
+  };
+
+  const handleOpenEdit = (wf) => {
+    setEditingWorkflow(JSON.parse(JSON.stringify(wf)));
+    setIsEditorOpen(true);
+  };
+
+  const handleCreateRouteWorkflow = () => {
+    setEditingWorkflow({
+      id: `wf-${Date.now().toString(36)}`, name: 'Chạy tuyến trên xe thật', description: '',
+      trigger_type: 'MANUAL', is_active: false,
+      execution_config: { ...executionConfig(), execution_mode: 'ROBOT' },
+      steps: [
+        { step_id: 'route', type: 'FOLLOW_ROUTE', title: 'Đi theo tuyến', params: { route_id: '', repeat_count: 1 } },
+        { step_id: 'wait', type: 'WAIT', title: 'Chờ tại điểm cuối', params: { duration_sec: 5 } },
+      ],
+    });
+    setIsEditorOpen(true);
+  };
+
   const handleSaveWorkflow = async () => {
     const pendingRoutes = unconfiguredRouteSteps(editingWorkflow);
     for (const step of editingWorkflow.steps || []) {
@@ -118,9 +164,7 @@ export const AdminWorkflowTab = () => {
     }
     try {
       setIsLoading(true);
-      // Canvas links are explicit so steps reached only by a branch never fall through.
-      const toSave = explicitLinks(editingWorkflow);
-      await saveWorkflow(pendingRoutes.length ? { ...toSave, is_active: false } : toSave);
+      await saveWorkflow(pendingRoutes.length ? { ...editingWorkflow, is_active: false } : editingWorkflow);
       showNotification(pendingRoutes.length
         ? `Đã lưu bản nháp "${editingWorkflow.name}". Sang Physical Map → Tuyến đường, chọn workflow và bước để gán tuyến.`
         : `Đã lưu kịch bản "${editingWorkflow.name}" thành công!`);
@@ -190,6 +234,59 @@ export const AdminWorkflowTab = () => {
     }
   };
 
+  // Step operations in builder
+  const handleAddStep = (stepType) => {
+    const stepDef = OTTO_STEP_TYPES.find((s) => s.type === stepType);
+    if (!stepDef) return;
+
+    const newStep = {
+      step_id: `step-${Date.now()}`,
+      type: stepDef.type,
+      title: stepDef.label,
+      params: JSON.parse(JSON.stringify(stepDef.defaultParams)),
+    };
+
+    setEditingWorkflow((prev) => ({
+      ...prev,
+      steps: [...(prev.steps || []), newStep],
+    }));
+  };
+
+  const handleRemoveStep = (index) => {
+    const updated = [...editingWorkflow.steps];
+    updated.splice(index, 1);
+    setEditingWorkflow({ ...editingWorkflow, steps: updated });
+  };
+
+  const handleMoveStep = (index, direction) => {
+    const newIdx = index + direction;
+    if (newIdx < 0 || newIdx >= editingWorkflow.steps.length) return;
+    const updated = [...editingWorkflow.steps];
+    const temp = updated[index];
+    updated[index] = updated[newIdx];
+    updated[newIdx] = temp;
+    setEditingWorkflow({ ...editingWorkflow, steps: updated });
+  };
+
+  // Functional update: one edit may change several params in a row (e.g. picking a MOVE target)
+  const handleStepParamChange = (stepIndex, paramKey, val) => {
+    setEditingWorkflow((prev) => {
+      const updated = [...prev.steps];
+      updated[stepIndex] = {
+        ...updated[stepIndex],
+        params: {
+          ...(updated[stepIndex].params || {}),
+          [paramKey]: val,
+        },
+      };
+      return { ...prev, steps: updated };
+    });
+  };
+
+  const handleWorkflowMetaChange = (key, val) => {
+    setEditingWorkflow((prev) => ({ ...prev, [key]: val }));
+  };
+
   return (
     <div
       className="flex h-full min-h-0 w-full flex-col overflow-hidden"
@@ -249,10 +346,10 @@ export const AdminWorkflowTab = () => {
 
         {activeView === 'list' && (
           <div className="flex items-center gap-2">
-          <button type="button" onClick={editing.openRouteWorkflow} className="rounded-lg border border-cyan-800 px-3 py-1.5 text-xs font-bold text-cyan-900">Tạo workflow chạy tuyến</button>
+          <button type="button" onClick={handleCreateRouteWorkflow} className="rounded-lg border border-cyan-800 px-3 py-1.5 text-xs font-bold text-cyan-900">Tạo workflow chạy tuyến</button>
           <button
             type="button"
-            onClick={editing.openCreate} title={rc('New workflow')} aria-label={rc('New workflow')}
+            onClick={handleOpenCreate} title={rc('New workflow')} aria-label={rc('New workflow')}
             className="px-3.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 shadow-2xs hover:bg-[#363636]"
             style={{ backgroundColor: '#262626', color: '#FFFFFF', borderColor: '#262626' }}
           >
@@ -284,7 +381,7 @@ export const AdminWorkflowTab = () => {
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 space-y-4" style={{ backgroundColor: '#F2EFE9' }}>
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 items-start"><WorkflowRunsPanel key={startedRunId || 'latest'} runId={startedRunId || undefined} /><RobotBatterySimulator /></div>
+        <WorkflowRunsPanel key={startedRunId || 'latest'} runId={startedRunId || undefined} />
         {/* Workflow Cards Grid - 2 Cột rộng rãi, màu xám #E9E5DC đồng bộ */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {workflows.length === 0 ? (
@@ -398,7 +495,7 @@ export const AdminWorkflowTab = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => editing.openEdit(wf)}
+                        onClick={() => handleOpenEdit(wf)}
                         className="p-1.5 rounded-lg border cursor-pointer hover:bg-[#F2EFE9] transition-colors"
                         style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
                         title="Chỉnh sửa kịch bản"
@@ -431,7 +528,7 @@ export const AdminWorkflowTab = () => {
         workflows={workflows}
         onSelectWorkflow={(id) => {
           const selected = workflows.find((item) => item.id === id);
-          if (selected) editing.openEdit(selected);
+          if (selected) handleOpenEdit(selected);
         }}
         waypoints={waypoints}
         routes={routes}
@@ -442,10 +539,11 @@ export const AdminWorkflowTab = () => {
           setEditingWorkflow(null);
         }}
         onSave={handleSaveWorkflow}
-        onWorkflowChange={editing.replaceWorkflow}
-        onRemoveStep={editing.removeStep}
-        onStepParamChange={editing.changeStepParam}
-        onWorkflowMetaChange={editing.changeMeta}
+        onAddStep={handleAddStep}
+        onRemoveStep={handleRemoveStep}
+        onMoveStep={handleMoveStep}
+        onStepParamChange={handleStepParamChange}
+        onWorkflowMetaChange={handleWorkflowMetaChange}
       />
 
       {/* MODAL 2: WORKFLOW SIMULATOR (Live Robot reactions & laptop audio) */}

@@ -1,4 +1,3 @@
-import os
 import socket
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -524,12 +523,6 @@ async def exchange_camera_webrtc_offer(
         )
 
 
-def pi5_api_url(path: str, query: str = "") -> str:
-    """Pi 5 API address; PI5_IP (LAN IP) avoids a slow Tailscale relay when on the same Wi-Fi."""
-    url = f"http://{os.getenv('PI5_IP', '100.99.72.51')}:8000/api/v1/{path}"
-    return f"{url}?{query}" if query else url
-
-
 @router.api_route(
     "/robot/pi5/{path:path}",
     methods=["GET", "POST", "PUT", "DELETE"],
@@ -537,7 +530,9 @@ def pi5_api_url(path: str, query: str = "") -> str:
     summary="Reverse Proxy các request điều khiển phần cứng Pi 5 (tránh Mixed Content trên HTTPS)",
 )
 async def proxy_pi5_hardware_api(request: Request, path: str):
-    target_url = pi5_api_url(path, request.url.query)
+    target_url = f"http://100.99.72.51:8000/api/v1/{path}"
+    if request.url.query:
+        target_url = f"{target_url}?{request.url.query}"
 
     body = None
     if request.method in ["POST", "PUT", "PATCH"]:

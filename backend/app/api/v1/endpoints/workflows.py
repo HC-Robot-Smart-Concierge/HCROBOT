@@ -1,7 +1,6 @@
 import logging
 import uuid
-from typing import List, Literal
-from pydantic import BaseModel, Field
+from typing import List
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -229,18 +228,6 @@ from app.services.notification_manager import notification_manager
 async def recent_workflow_runs(workflow_id: str = None):
     from app.services.workflow_runtime import workflow_runtime
     return await workflow_runtime.list_runs(workflow_id)
-
-
-class GuestReport(BaseModel):
-    robot_id: str = "RC-001"
-    state: Literal["ENGAGED", "DONE"]
-    idle_ms: int = Field(default=0, ge=0, le=600000)
-
-
-@router.post("/runs/guest", summary="Màn hình robot báo đang có khách / khách xong (dừng xe thật để trò chuyện)")
-async def report_run_guest(payload: GuestReport):
-    from app.services.workflow_runtime import workflow_runtime
-    return workflow_runtime.report_guest(payload.robot_id, payload.state, payload.idle_ms)
 
 
 @router.post("/runs/{run_id}/cancel", summary="Dừng lượt chạy xe thật")

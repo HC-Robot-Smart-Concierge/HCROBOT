@@ -1,4 +1,4 @@
-import { executionConfig, executionError, isChargerMove } from './workflowExecution';
+import { executionConfig, executionError } from './workflowExecution';
 
 export function unconfiguredRouteSteps(workflow) {
   return (workflow.steps || []).filter((step) => step.type === 'FOLLOW_ROUTE' && !step.params?.route_id);
@@ -18,7 +18,7 @@ export function physicalWorkflowForMap(workflow, routes, mapId) {
   const expanded = expandWorkflowRoutes(candidate, routes.filter((route) => route.is_active));
   const moves = expanded.steps.filter((step) => step.type === 'MOVE');
   if (!moves.length) throw new Error('Workflow cần ít nhất một bước di chuyển.');
-  if (moves.some((step) => step.params?.map_id !== mapId && !isChargerMove(step))) throw new Error('Các bước di chuyển phải dùng cùng bản đồ đang mở.');
+  if (moves.some((step) => step.params?.map_id !== mapId)) throw new Error('Các bước di chuyển phải dùng cùng bản đồ đang mở.');
   return candidate;
 }
 

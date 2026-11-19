@@ -200,16 +200,6 @@ def detect_esp32_port(exclude_ports=None) -> Optional[str]:
     return candidates[0] if candidates else None
 
 
-# One ESP32 packet is ~400 bytes (4 distances, accel, gyro, yaw rate, 4 encoders). Dropping
-# whenever more than 256 bytes waited threw away the packet that was just arriving, so
-# encoder/gyro telemetry went stale for ~1 s under load. Only drop a real backlog.
-DRAIN_BACKLOG_BYTES = 1000  # > 2 packets
-
-
-def should_drain_backlog(in_waiting: int) -> bool:
-    return in_waiting > DRAIN_BACKLOG_BYTES
-
-
 class UltrasonicSerialReader:
     """Reader tương thích cũ, nay expose cả khoảng cách và dữ liệu IMU."""
 
@@ -332,7 +322,7 @@ class UltrasonicSerialReader:
                 logger.info("Đã kết nối ESP32 tại %s @ %d baud", port, self.baudrate)
 
                 while not self._stop_event.is_set():
-                    if should_drain_backlog(connection.in_waiting):
+                    if connection.in_waiting > 256:
                         connection.reset_input_buffer()
                         connection.readline(512)
                     raw_line = connection.readline(512)

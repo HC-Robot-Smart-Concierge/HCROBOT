@@ -6,10 +6,6 @@ amcl:
     # tren Web (test 08/11). (0,0,0) khong chac la Dock nhung KHONG nguy hiem: localization_manager
     # chan moi goal toi khi co /initialpose (Web/khoi phuc pose cu) VA LiDAR khop map.
     set_initial_pose: true
-    # Turn-in-place heading from odometry can be off by 10-30 % (gyro rate sampled during
-    # ~80 deg/s turn pulses; LiDAR check 18/11). Spread heading particles more per turn so the
-    # scan, not odometry, decides the heading. Translation noise stays at the base 0.2.
-    alpha1: 0.5
     # Correct small motions before a 10 cm / 6 degree error reaches costmaps.
     update_min_d: 0.025
     update_min_a: 0.04

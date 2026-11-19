@@ -4,7 +4,6 @@ import { currentWorkflowRunLog } from '../../../../utils/workflowRunLog';
 
 const labels = { PENDING: 'Chờ thực thi', RUNNING: 'Đang chạy', CANCELLING: 'Đang dừng',
   CANCELLED: 'Đã dừng', COMPLETED: 'Hoàn thành', FAILED: 'Thất bại', SKIPPED: 'Bỏ qua do robot bận' };
-const eventLabels = { STEP_RETRY: 'Thử lại', STEP_FAILED_HANDLED: 'Bỏ qua lỗi', EVENT_TRIGGERED: 'Pin yếu' };
 
 export function WorkflowRunsPanel({ workflowId, runId } = {}) {
   const [runs, setRuns] = useState([]);
@@ -48,9 +47,9 @@ export function WorkflowRunsPanel({ workflowId, runId } = {}) {
         </div>
         <p className="text-stone-500">{run.id} · {run.completed_steps} bước hoàn tất · {run.round_index} vòng hoàn tất</p>
         {run.status === 'RUNNING' && <p>Đang xử lý bước {run.current_step_index + 1}/{run.total_steps}</p>}
-        {run.error && <p className={run.status === 'COMPLETED' ? 'text-amber-700' : 'text-rose-700'}>{run.error}</p>}
+        {run.error && <p className="text-rose-700">{run.error}</p>}
         {['PENDING', 'RUNNING', 'CANCELLING'].includes(run.status) && <button type="button" disabled={busy === run.id || run.status === 'CANCELLING'} onClick={() => stop(run.id)} className="rounded-lg border border-rose-300 px-3 py-1.5 text-rose-800 disabled:opacity-50">{run.status === 'CANCELLING' ? 'Chờ robot xác nhận dừng…' : 'Dừng lượt chạy'}</button>}
-        {run.events?.length > 0 && <details><summary className="cursor-pointer text-stone-500">Nhật ký từng bước</summary><ol className="mt-2 space-y-1">{run.events.map((event, i) => <li key={i}>{eventLabels[event.type] || event.type} · vòng {event.round_index + 1} · bước {event.step_index + 1}{event.message ? ` · ${event.message}` : ''}</li>)}</ol></details>}
+        {run.events?.length > 0 && <details><summary className="cursor-pointer text-stone-500">Nhật ký từng bước</summary><ol className="mt-2 space-y-1">{run.events.map((event, i) => <li key={i}>{event.type} · vòng {event.round_index + 1} · bước {event.step_index + 1}{event.message ? ` · ${event.message}` : ''}</li>)}</ol></details>}
       </li>)}
     </ol>
   </section>;

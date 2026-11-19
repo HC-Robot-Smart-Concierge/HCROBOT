@@ -21,18 +21,14 @@ from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Empty, String
 from tf2_ros import Buffer, TransformListener
-from workflow_navigation_logic import (
-    readiness_reason, readiness_issue, goal_cell_allowed, route_pose_targets, route_window_end,
-    low_battery_branch, low_battery_percent, guest_branch, guest_hold_active,
-)
-from workflow_flow import FlowPolicyMixin, GuestHold, LowBattery, NavigationError, SafetyStop
+from workflow_navigation_logic import readiness_reason, goal_cell_allowed, route_segment_end, route_pose_targets, route_window_end
 
 
 class RunCancelled(Exception):
     pass
 
 
-class Executor(FlowPolicyMixin, Node):
+class Executor(Node):
     def __init__(self, plan, control, events):
         super().__init__('workflow_executor')
         self.plan, self.control = plan, control
@@ -50,12 +46,6 @@ class Executor(FlowPolicyMixin, Node):
         self.finished_goal_ids = set()
         self.interrupted = False
         self.round = self.index = 0
-        self.battery_branch = low_battery_branch(plan['config'])
-        self.battery_triggered = self.battery_armed = False
-        self.guest_branch = guest_branch(plan['config'])
-        self.guest_holding = self.in_battery_branch = False
-        self.guest_cooldown_until = 0.0
-        self.last_control = {}
         latched = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
                             durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(String, '/localization/state', self.on_localization, latched)
@@ -112,52 +102,24 @@ class Executor(FlowPolicyMixin, Node):
         try:
             control = json.loads(self.control.read_text(encoding='utf-8'))
         except (OSError, ValueError) as exc:
-            raise SafetyStop('Mất kênh điều khiển backend.') from exc
-        self.last_control = control
+            raise RuntimeError('Mất kênh điều khiển backend.') from exc
         if control.get('cancel'):
             if control.get('stop_reason'):
-                raise SafetyStop(control['stop_reason'])
+                raise RuntimeError(control['stop_reason'])
             raise RunCancelled('Admin đã dừng lượt chạy.')
         if control.get('expires_at', 0) < time.time():
-            raise SafetyStop('Quá hạn tín hiệu duy trì lượt chạy (lease): backend chưa gia hạn kịp.')
-        # Both event branches are armed only after STARTED, never during the readiness wait.
-        if self.battery_armed and not self.battery_triggered:
-            percent = low_battery_percent(control, self.battery_branch, time.time())
-            # While a guest is talking only a critical (< 10 %) battery interrupts the conversation.
-            if percent is not None and not (self.guest_holding and percent >= 10):
-                self.battery_triggered = True
-                raise LowBattery(percent)
-        if (self.battery_armed and not self.guest_holding and not self.in_battery_branch
-                and guest_hold_active(control, self.guest_branch, time.time(), self.guest_cooldown_until)):
-            self.guest_holding = True
-            raise GuestHold()
+            raise RuntimeError('Quá hạn tín hiệu duy trì lượt chạy (lease): backend chưa gia hạn kịp.')
 
     def reason(self):
         return readiness_reason(self.localization, self.loc_at, self.health, self.health_at,
                                 self.plan['map_id'], time.monotonic())
 
-    def readiness(self):
-        return readiness_issue(self.localization, self.loc_at, self.health, self.health_at,
-                               self.plan['map_id'], time.monotonic())
-
-    def _monotonic(self):
-        return time.monotonic()
-
-    def _wall(self):
-        return time.time()
-
-    def _settle_after_cancel(self, seconds=1.0):
-        until = time.monotonic() + seconds
-        while time.monotonic() < until:
-            rclpy.spin_once(self, timeout_sec=0.1)
-            self.check_control()
-
     def spin_checked(self):
         rclpy.spin_once(self, timeout_sec=0.1)
         self.check_control()
-        issue = self.readiness()
-        if issue:
-            raise (SafetyStop if issue[0] == 'SAFETY' else NavigationError)(issue[1])
+        reason = self.reason()
+        if reason:
+            raise RuntimeError(reason)
 
     def wait(self, seconds):
         until = time.monotonic() + seconds
@@ -168,7 +130,7 @@ class Executor(FlowPolicyMixin, Node):
         while not future.done():
             self.spin_checked()
             if time.monotonic() >= deadline:
-                raise NavigationError('Quá thời gian chờ Nav2.')
+                raise TimeoutError('Quá thời gian chờ Nav2.')
         return future.result()
 
     def _required_navigation_clients(self):
@@ -208,11 +170,11 @@ class Executor(FlowPolicyMixin, Node):
 
     def move(self, params):
         if self.active_goals:
-            raise SafetyStop('Nav2 đang có goal khác; không ghi đè nhiệm vụ đang chạy.')
+            raise RuntimeError('Nav2 đang có goal khác; không ghi đè nhiệm vụ đang chạy.')
         if self.costmap is None or time.monotonic() - self.costmap_at > 3:
-            raise NavigationError('Chưa có costmap Nav2 mới.')
+            raise RuntimeError('Chưa có costmap Nav2 mới.')
         if not goal_cell_allowed(self.costmap, params['target_x'], params['target_y']):
-            raise NavigationError('Điểm đến ngoài map, chưa biết hoặc nằm trong vật cản/vùng cấm.')
+            raise RuntimeError('Điểm đến ngoài map, chưa biết hoặc nằm trong vật cản/vùng cấm.')
         goal = NavigateToPose.Goal()
         goal.pose.header.frame_id = 'map'
         goal.pose.header.stamp = self.get_clock().now().to_msg()
@@ -226,10 +188,10 @@ class Executor(FlowPolicyMixin, Node):
         self.goal = self.future_result(self.goal_future, deadline)
         if not self.goal.accepted:
             self.goal = self.goal_future = None
-            raise NavigationError('Nav2 từ chối goal.')
+            raise RuntimeError('Nav2 từ chối goal.')
         result = self.future_result(self.goal.get_result_async(), deadline)
         if result.status != GoalStatus.STATUS_SUCCEEDED:
-            raise NavigationError(f'Nav2 không hoàn thành goal (status={result.status}).')
+            raise RuntimeError(f'Nav2 không hoàn thành goal (status={result.status}).')
         self.finished_goal_ids.add(bytes(self.goal.goal_id.uuid))
         self._refresh_active_goals()
         self.goal = self.goal_future = None
@@ -269,7 +231,7 @@ class Executor(FlowPolicyMixin, Node):
             transform = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
             return transform.transform.translation.x, transform.transform.translation.y
         except Exception as exc:
-            raise NavigationError('Chưa có vị trí robot trên map để bắt đầu tuyến.') from exc
+            raise RuntimeError('Chưa có vị trí robot trên map để bắt đầu tuyến.') from exc
 
     def _send_route_window(self, start, end, deadline):
         context = self.route_context
@@ -292,7 +254,7 @@ class Executor(FlowPolicyMixin, Node):
             goal, feedback_callback=lambda msg: self._on_route_feedback(msg, sequence))
         replacement = self.future_result(self.goal_future, deadline)
         if not replacement.accepted:
-            raise NavigationError('Nav2 từ chối tuyến.')
+            raise RuntimeError('Nav2 từ chối tuyến.')
         self.goal = replacement
         if previous is not None:
             self.finished_goal_ids.add(bytes(previous.goal_id.uuid))
@@ -300,26 +262,22 @@ class Executor(FlowPolicyMixin, Node):
 
     def follow_route(self, steps):
         if self.active_goals:
-            raise SafetyStop('Nav2 đang có goal khác; không ghi đè nhiệm vụ đang chạy.')
+            raise RuntimeError('Nav2 đang có goal khác; không ghi đè nhiệm vụ đang chạy.')
         if not self.route_client.server_is_ready():
             deadline = time.monotonic() + 5.0
             while not self.route_client.server_is_ready():
                 self.spin_checked()
                 if time.monotonic() >= deadline:
-                    raise NavigationError('Không kết nối được Nav2 /navigate_through_poses sau 5 giây. Kiểm tra Navigation.')
+                    raise RuntimeError('Không kết nối được Nav2 /navigate_through_poses sau 5 giây. Kiểm tra Navigation.')
         if self.costmap is None or time.monotonic() - self.costmap_at > 3:
-            raise NavigationError('Chưa có costmap Nav2 mới.')
+            raise RuntimeError('Chưa có costmap Nav2 mới.')
         targets = route_pose_targets(steps)
         for target in targets:
             if not goal_cell_allowed(self.costmap, target['target_x'], target['target_y']):
-                raise NavigationError('Điểm tuyến ngoài map, chưa biết hoặc nằm trong vật cản/vùng cấm.')
+                raise RuntimeError('Điểm tuyến ngoài map, chưa biết hoặc nằm trong vật cản/vùng cấm.')
         end = route_window_end(targets, 0, self._route_robot_xy())
-        if not end and len(targets) == 1:
-            # Only the final point is left and the robot is already within the window
-            # clearance of it (e.g. resumed after a guest hold at the stop): it is reached.
-            return
         if not end:
-            raise NavigationError('Các điểm tuyến quá gần vị trí hiện tại để phân biệt chặng đi; giãn các điểm trên map.')
+            raise RuntimeError('Các điểm tuyến quá gần vị trí hiện tại để phân biệt chặng đi; giãn các điểm trên map.')
         context = dict(start=self.index, steps=steps, targets=targets, completed=0)
         self.route_context = context
         deadline = time.monotonic() + sum(target.get('timeout_sec', 120) for target in targets)
@@ -335,7 +293,7 @@ class Executor(FlowPolicyMixin, Node):
                     result = future.result()
                     if result.status != GoalStatus.STATUS_SUCCEEDED:
                         detail = getattr(getattr(result, 'result', None), 'error_msg', '')
-                        raise NavigationError(f'Nav2 không hoàn thành tuyến (status={result.status}). {detail}'.strip())
+                        raise RuntimeError(f'Nav2 không hoàn thành tuyến (status={result.status}). {detail}'.strip())
                     if context['window_end'] == len(steps):
                         break
                     # A short window may finish before a feedback update permits
@@ -344,11 +302,11 @@ class Executor(FlowPolicyMixin, Node):
                     self._advance_route_progress(start)
                     end = route_window_end(targets, start, self._route_robot_xy())
                     if end == start:
-                        raise NavigationError('Các điểm còn lại quá gần để phân biệt tiến trình của tuyến.')
+                        raise RuntimeError('Các điểm còn lại quá gần để phân biệt tiến trình của tuyến.')
                     future = self._send_route_window(start, end, deadline)
                 self.spin_checked()
                 if time.monotonic() >= deadline:
-                    raise NavigationError('Quá thời gian chờ Nav2 hoàn thành tuyến.')
+                    raise TimeoutError('Quá thời gian chờ Nav2 hoàn thành tuyến.')
             self._advance_route_progress(len(steps) - 1)
             self.finished_goal_ids.add(bytes(self.goal.goal_id.uuid))
             self._refresh_active_goals()
@@ -389,19 +347,35 @@ class Executor(FlowPolicyMixin, Node):
         config, steps = self.plan['config'], self.plan['steps']
         ids = {step['step_id']: i for i, step in enumerate(steps)}
         self.emit('STARTED')
-        # The low-battery branch only interrupts a started run, never the readiness wait.
-        self.battery_armed = True
-        try:
-            while config['repeat_mode'] == 'CONTINUOUS' or self.round < config['repeat_count']:
-                self.index = 0
-                self._run_flow(steps, ids)
-                self.round += 1
-                self.emit('ROUND_COMPLETED')
-                if config['repeat_mode'] == 'CONTINUOUS' or self.round < config['repeat_count']:
-                    self._wait_between_rounds(config['interval_seconds'])
-        except LowBattery as low:
-            self._run_battery_branch(steps, ids, low.percent)
-            return
+        while config['repeat_mode'] == 'CONTINUOUS' or self.round < config['repeat_count']:
+            self.index = 0
+            visits = 0
+            while self.index < len(steps):
+                self.spin_checked()
+                visits += 1
+                if visits > 10000:
+                    raise RuntimeError('Vượt 10000 lần chuyển bước trong một vòng; kiểm tra nhánh lặp.')
+                step = steps[self.index]
+                self.emit('STEP_STARTED', step.get('title'))
+                if step['type'] == 'MOVE':
+                    end = route_segment_end(steps, self.index)
+                    if end > self.index:
+                        self.follow_route(steps[self.index:end])
+                        self.index = end - 1
+                        step = steps[self.index]
+                    else:
+                        self.move(step['params'])
+                elif step['type'] == 'WAIT':
+                    self.wait(step['params'].get('duration_sec', 5))
+                else:
+                    raise RuntimeError(f"Loại bước chưa được hỗ trợ: {step['type']}")
+                self.emit('STEP_COMPLETED')
+                next_id = step.get('params', {}).get('next_step_id')
+                self.index = len(steps) if next_id == 'END' else ids[next_id] if next_id else self.index + 1
+            self.round += 1
+            self.emit('ROUND_COMPLETED')
+            if config['repeat_mode'] == 'CONTINUOUS' or self.round < config['repeat_count']:
+                self.wait(config['interval_seconds'])
         self.emit('COMPLETED')
 
 

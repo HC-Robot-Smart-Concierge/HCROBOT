@@ -20,7 +20,6 @@ from machine import I2C, Pin
 from encoder import EncoderManager, QuadratureEncoder
 from motor import DCMotor, FourWheelDrive
 from mpu import ROBOT_AXIS_MAP, detect_mpu
-from gyro_integrator import GyroIntegrator
 from ultrasonic import create_sensors, read_ultrasonic_packet
 
 # ==============================================================================
@@ -95,18 +94,11 @@ def create_i2c(frequency=I2C_FREQUENCY_HZ):
     )
 
 
-def start_mpu(i2c, bias=None):
+def start_mpu(i2c):
     try:
         mpu = detect_mpu(i2c, axis_map=ROBOT_AXIS_MAP)
         if mpu is None:
             return None
-        if bias is not None:
-            # Re-init after an I2C glitch: keep the boot-time bias. Recalibrating would stop
-            # telemetry for 1.5 s (Pi blocks motion as stale) and, with the robot moving or
-            # turning, measure motion as bias.
-            mpu.gyro_bias = bias
-            print("# MPU re-initialized, gyro bias kept")
-            return mpu
         mpu.calibrate_gyro(
             samples=GYRO_CALIBRATION_SAMPLES,
             delay_ms=GYRO_CALIBRATION_DELAY_MS,
@@ -126,12 +118,12 @@ def empty_mpu_payload():
     }
 
 
-def initialize_mpu_bus(bias=None):
+def initialize_mpu_bus():
     last_i2c = None
     for frequency in (I2C_FREQUENCY_HZ, I2C_FALLBACK_FREQUENCY_HZ):
         try:
             last_i2c = create_i2c(frequency)
-            mpu = start_mpu(last_i2c, bias)
+            mpu = start_mpu(last_i2c)
             if mpu is not None:
                 return last_i2c, mpu
         except Exception as exc:
@@ -271,25 +263,6 @@ def run():
     last_retry_ms = time.ticks_ms()
     failure_count = 0
     motors_active = False
-    # The robot turns in short ~80 deg/s pulses: sample the gyro many times per packet and
-    # send the average rate over the packet interval (see gyro_integrator.py).
-    gyro = GyroIntegrator(ticks_diff=time.ticks_diff)
-    imu = {"mpu": mpu, "failures": 0, "last": None,
-           "bias": mpu.gyro_bias if mpu is not None else None}
-
-    def sample_gyro():
-        if imu["mpu"] is None:
-            return
-        try:
-            reading = imu["mpu"].read_all()
-        except (OSError, RuntimeError, ValueError):
-            imu["failures"] += 1
-            if imu["failures"] >= MPU_FAILURE_LIMIT:
-                imu["mpu"] = None
-            return
-        imu["failures"] = 0
-        imu["last"] = reading
-        gyro.sample(reading["yaw_rate_dps"], time.ticks_us())
 
     print("# System initialized. Motors STOPPED until command received.")
 
@@ -313,27 +286,28 @@ def run():
         # 3. Update Encoder RPM and Ticks
         encoders.updateAll()
 
-        # 4. Read Ultrasonic Sensors (gyro sampled after each sensor)
-        sample_gyro()
-        packet = read_ultrasonic_packet(sensors, between=sample_gyro)
+        # 4. Read Ultrasonic Sensors
+        packet = read_ultrasonic_packet(sensors)
         packet.update(empty_mpu_payload())
 
-        # 5. MPU-9250 / 6500 IMU: yaw rate = average over this packet interval
-        sample_gyro()
-        if imu["mpu"] is not None and imu["last"] is not None:
-            reading = imu["last"]
-            average = gyro.average_rate(time.ticks_us())
-            packet["mpu_available"] = True
-            packet["accel"] = reading["accel"]
-            packet["gyro"] = reading["gyro"]
-            packet["yaw_rate_dps"] = round(average if average is not None else reading["yaw_rate_dps"], 2)
-        elif imu["mpu"] is None and time.ticks_diff(time.ticks_ms(), last_retry_ms) >= MPU_RETRY_MS:
+        # 5. Read MPU-9250 / 6500 IMU
+        if mpu is not None:
+            try:
+                reading = mpu.read_all()
+                packet["mpu_available"] = True
+                packet["accel"] = reading["accel"]
+                packet["gyro"] = reading["gyro"]
+                packet["yaw_rate_dps"] = reading["yaw_rate_dps"]
+                failure_count = 0
+            except (OSError, RuntimeError, ValueError) as exc:
+                failure_count += 1
+                if failure_count >= MPU_FAILURE_LIMIT:
+                    mpu = None
+                    last_retry_ms = time.ticks_ms()
+        elif time.ticks_diff(time.ticks_ms(), last_retry_ms) >= MPU_RETRY_MS:
             last_retry_ms = time.ticks_ms()
-            i2c, mpu = initialize_mpu_bus(bias=imu["bias"])
-            imu["mpu"], imu["failures"], imu["last"] = mpu, 0, None
-            if mpu is not None and imu["bias"] is None:
-                imu["bias"] = mpu.gyro_bias
-            gyro = GyroIntegrator(ticks_diff=time.ticks_diff)
+            i2c, mpu = initialize_mpu_bus()
+            failure_count = 0
 
         # 6. Attach Encoder Telemetry to Output Packet
         packet["encoders"] = encoders.getAllSnapshot()
@@ -341,13 +315,11 @@ def run():
         # 7. Transmit JSON Line to Raspberry Pi (Clean high-speed telemetry)
         print(json.dumps(packet))
 
-        # 9. Maintain update cycle rate, sampling the gyro every ~2 ms while waiting
-        while True:
-            remaining_ms = UPDATE_PERIOD_MS - time.ticks_diff(time.ticks_ms(), cycle_started)
-            if remaining_ms <= 0:
-                break
-            sample_gyro()
-            time.sleep_ms(min(2, remaining_ms))
+        # 9. Maintain update cycle rate
+        elapsed_ms = time.ticks_diff(time.ticks_ms(), cycle_started)
+        remaining_ms = UPDATE_PERIOD_MS - elapsed_ms
+        if remaining_ms > 0:
+            time.sleep_ms(remaining_ms)
 
 
 if __name__ == "__main__":

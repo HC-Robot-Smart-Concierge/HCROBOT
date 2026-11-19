@@ -28,7 +28,7 @@ import time
 import rclpy
 from action_msgs.msg import GoalStatus, GoalStatusArray
 from action_msgs.srv import CancelGoal
-from geometry_msgs.msg import PoseWithCovarianceStamped, Twist
+from geometry_msgs.msg import PoseWithCovarianceStamped
 from lifecycle_msgs.msg import State as LifecycleState
 from lifecycle_msgs.srv import GetState
 from nav_msgs.msg import OccupancyGrid, Odometry
@@ -38,7 +38,6 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profi
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Empty, String
-from std_srvs.srv import Empty as EmptySrv
 from tf2_ros import Buffer, TransformListener
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -46,8 +45,6 @@ from localization_logic import (  # noqa: E402
     LOCALIZED, LOST, UNLOCALIZED, LocalizationStateMachine, load_last_pose, near_wall_mask,
     save_last_pose, scan_match,
 )
-from relocalize_policy import RelocalizePolicy  # noqa: E402
-from scan_relocalizer import Candidate, apply_correction, choose_correction, search  # noqa: E402
 
 ACTIVE_GOAL = (GoalStatus.STATUS_ACCEPTED, GoalStatus.STATUS_EXECUTING)
 LATCHED = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
@@ -95,26 +92,12 @@ class LocalizationManager(Node):
         self.last_cancel = 0.0
         self.last_save = 0.0
         self.last_publish = 0.0
-        # Continuous re-localization (see relocalize_policy.py / scan_relocalizer.py).
-        self.relocalize = bool(p("relocalize", True).value)
-        self.policy = RelocalizePolicy()
-        self.moving = False
-        self.stationary_since = None
-        self.match_laser = None
-        self.auto_stamps = set()
-        self.relocalize_count = 0
-        self.last_relocalize = None
-        # Last turn-in-place COMMAND (Nav2 or manual): the gyro cannot be trusted to detect it.
-        self.last_turn_cmd = None
-        self.turn_hold_sec = float(p("turn_hold_sec", 1.5).value)
 
         self.create_subscription(OccupancyGrid, "/map", self._on_map, LATCHED)
         self.create_subscription(LaserScan, "/scan", self._on_scan, qos_profile_sensor_data)
         self.create_subscription(Odometry, "/odom", self._on_odom, qos_profile_sensor_data)
         self.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", self._on_amcl, 10)
         self.create_subscription(PoseWithCovarianceStamped, "/initialpose", self._on_initial_pose, 10)
-        self.create_subscription(Twist, "/cmd_vel", self._on_cmd_vel, 10)
-        self.create_subscription(Twist, "/robot/manual_cmd_vel", self._on_cmd_vel, 10)
         self.create_subscription(GoalStatusArray, "/navigate_to_pose/_action/status", self._on_goal_status, LATCHED)
         self.create_subscription(GoalStatusArray, "/navigate_through_poses/_action/status",
                                  lambda msg: self._on_goal_status(msg, 'route'), LATCHED)
@@ -126,7 +109,6 @@ class LocalizationManager(Node):
         # Khoi phuc pose cu chi khi AMCL da active: gui som AMCL bo qua => khong co frame map,
         # global costmap cho TF qua lau va lifecycle manager huy ca Nav2.
         self.amcl_state_client = self.create_client(GetState, "/amcl/get_state")
-        self.nomotion_client = self.create_client(EmptySrv, "/request_nomotion_update")
         self.amcl_active = False
         self.amcl_state_future = None
         self.tf_buffer = Buffer()
@@ -148,34 +130,13 @@ class LocalizationManager(Node):
     def _on_scan(self, msg):
         self.scan, self.scan_at = msg, time.monotonic()
 
-    def _on_odom(self, msg):
-        now = time.monotonic()
-        self.odom_at = now
-        twist = msg.twist.twist
-        self.moving = abs(twist.linear.x) > 0.02 or abs(twist.angular.z) > 0.05
-        if self.moving:
-            self.stationary_since = None
-        elif self.stationary_since is None:
-            self.stationary_since = now
-
-    def _on_cmd_vel(self, msg):
-        if abs(msg.linear.x) < 0.05 and abs(msg.angular.z) > 0.1:
-            self.last_turn_cmd = time.monotonic()
-
-    def _turning(self, now):
-        return self.last_turn_cmd is not None and now - self.last_turn_cmd < self.turn_hold_sec
+    def _on_odom(self, _msg):
+        self.odom_at = time.monotonic()
 
     def _on_amcl(self, msg):
         self.amcl = msg
 
     def _on_initial_pose(self, msg):
-        key = (msg.header.stamp.sec, msg.header.stamp.nanosec)
-        if key in self.auto_stamps:
-            # Our own correction: AMCL re-seeds, the verified state and running goals stay.
-            self.auto_stamps.discard(key)
-            self.amcl = None
-            self._publish_state()
-            return
         source = self.pending_source or "web"
         self.pending_source = None
         self.restore_tried = True  # nguoi dung da dat tay => khong khoi phuc pose cu nua
@@ -232,7 +193,6 @@ class LocalizationManager(Node):
         laser = self._lookup(s.header.frame_id.lstrip("/"), s.header.stamp)
         if laser is None:
             return None
-        self.match_laser = laser
         match = scan_match(list(s.ranges), s.angle_min, s.angle_increment, max(s.range_min, 0.05),
                            s.range_max, laser, self.mask, self.grid)
         if match is None:
@@ -285,13 +245,9 @@ class LocalizationManager(Node):
         self.match = self._compute_match() if inputs_ok else None
         if inputs_ok and self.match is None and self.match_failure_reason:
             inputs_ok, missing = False, self.match_failure_reason
-        turning = self._turning(now)
-        if self.relocalize and inputs_ok and not turning:
-            self._relocalize(now)  # a scan smeared by a turn pulse must not move the pose
         sigma_xy, sigma_yaw = self._sigmas()
         before, source = self.sm.state, self.sm.source
-        if self.sm.update(now, inputs_ok, missing, self.match, sigma_xy, sigma_yaw,
-                          unfixable=self.relocalize and self.policy.unfixable, turning=turning):
+        if self.sm.update(now, inputs_ok, missing, self.match, sigma_xy, sigma_yaw):
             if self.sm.state == UNLOCALIZED and source == "restore":
                 self.sm.reason = ("Vị trí lưu lần trước không khớp LiDAR (xe đã bị dời?). "
                                   "Đặt vị trí ban đầu trên Web.")
@@ -310,54 +266,6 @@ class LocalizationManager(Node):
         if self.sm.state == LOCALIZED and self.persist_pose and now - self.last_save >= self.save_period:
             self._save_pose()
             self.last_save = now
-
-    def _relocalize(self, now):
-        """Nudge AMCL when stopped and search for a clearly better pose when the fit is poor."""
-        m, laser = self.match, self.match_laser
-        current = Candidate(laser, m.score, m.weak_sector) if m is not None and laser is not None else None
-        stationary_for = 0.0 if self.moving or self.stationary_since is None else now - self.stationary_since
-        for action in self.policy.actions(now, self.sm.state, self.moving, stationary_for, current):
-            if action[0] == "nomotion":
-                if self.nomotion_client.service_is_ready():
-                    self.nomotion_client.call_async(EmptySrv.Request())
-                continue
-            _, xy_range, yaw_range = action
-            scan = self.scan
-            ranges = list(scan.ranges)
-            args = (scan.angle_min, scan.angle_increment, max(scan.range_min, 0.05), scan.range_max)
-
-            def score(pose):
-                return scan_match(ranges, *args, pose, self.mask, self.grid, max_beams=60)
-            started = time.monotonic()
-            best = choose_correction(current, search(score, laser, xy_range, yaw_range))
-            self.policy.result(best is not None)
-            if best is not None:
-                self._publish_correction(laser, best, time.monotonic() - started)
-
-    def _publish_correction(self, old_laser, best, took):
-        base_now = self._lookup("base_link")
-        if base_now is None:
-            return
-        x, y, yaw = apply_correction(base_now, old_laser, best.pose)
-        msg = PoseWithCovarianceStamped()
-        msg.header.frame_id = "map"
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.pose.pose.position.x, msg.pose.pose.position.y = x, y
-        msg.pose.pose.orientation.z = math.sin(yaw / 2.0)
-        msg.pose.pose.orientation.w = math.cos(yaw / 2.0)
-        msg.pose.covariance[0] = msg.pose.covariance[7] = 0.05 ** 2
-        msg.pose.covariance[35] = math.radians(3.0) ** 2
-        self.auto_stamps.add((msg.header.stamp.sec, msg.header.stamp.nanosec))
-        self.relocalize_count += 1
-        dyaw = math.degrees(math.atan2(math.sin(yaw - base_now[2]), math.cos(yaw - base_now[2])))
-        shift = math.hypot(x - base_now[0], y - base_now[1])
-        self.last_relocalize = {"at": time.time(), "shift_m": round(shift, 3), "yaw_deg": round(dyaw, 1),
-                                "score": round(best.score, 3)}
-        self.get_logger().info(
-            f"🧭 Tự định vị lại: dịch {shift:.2f} m, xoay {dyaw:+.0f}°, LiDAR khớp "
-            f"{self.match.score if self.match else 0:.0%} → {best.score:.0%} ({took * 1000:.0f} ms)"
-        )
-        self.initial_pub.publish(msg)
 
     def _gate_goals(self):
         if self.active_goals and self.sm.should_cancel_goals():
@@ -399,8 +307,6 @@ class LocalizationManager(Node):
             "sigma_xy": round(sigma_xy, 3) if sigma_xy is not None else None,
             "sigma_yaw": round(sigma_yaw, 3) if sigma_yaw is not None else None,
             "good_score": self.sm.good_score,
-            "relocalize_count": self.relocalize_count,
-            "last_relocalize": self.last_relocalize,
             "match_failure_reason": self.match_failure_reason,
         }
         self.state_pub.publish(String(data=json.dumps(state, ensure_ascii=False)))

@@ -93,8 +93,7 @@ class LocalizationStateMachine:
 
     def __init__(self, good_score: float = 0.6, lost_score: float = 0.35, confirm_sec: float = 2.0,
                  lost_sec: float = 3.0, localize_timeout_sec: float = 20.0,
-                 max_sigma_xy: float = 0.35, max_sigma_yaw: float = 0.35, min_sector_score: float = 0.3,
-                 degraded_score: float = 0.55, degraded_sec: float = 4.0):
+                 max_sigma_xy: float = 0.35, max_sigma_yaw: float = 0.35, min_sector_score: float = 0.3):
         self.good_score = good_score
         self.lost_score = lost_score
         self.min_sector_score = min_sector_score
@@ -103,12 +102,6 @@ class LocalizationStateMachine:
         self.localize_timeout_sec = localize_timeout_sec
         self.max_sigma_xy = max_sigma_xy
         self.max_sigma_yaw = max_sigma_yaw
-        # A fit between lost_score and degraded_score is only LOST once the re-localizer
-        # has searched and found no clear fix for degraded_sec (a person blocking part of
-        # the scan keeps the score above this).
-        self.degraded_score = degraded_score
-        self.degraded_sec = degraded_sec
-        self._degraded_since: Optional[float] = None
         self.state = UNLOCALIZED
         self.reason = "Vừa khởi động: chưa có vị trí trên map."
         self._input_reason = True  # reason hien tai noi ve dau vao (thay duoc), khong phai that bai
@@ -133,12 +126,11 @@ class LocalizationStateMachine:
         changed = state != self.state
         self.state, self.reason = state, reason
         self._input_reason = False
-        self._good_since = self._bad_since = self._degraded_since = None
+        self._good_since = self._bad_since = None
         return changed
 
     def update(self, now: float, inputs_ok: bool, missing_reason: str, match: Optional[ScanMatch],
-               sigma_xy: Optional[float], sigma_yaw: Optional[float], unfixable: bool = False,
-               turning: bool = False) -> bool:
+               sigma_xy: Optional[float], sigma_yaw: Optional[float]) -> bool:
         """Goi dinh ky. Tra ve True neu doi trang thai."""
         confident = (sigma_xy is not None and sigma_yaw is not None
                      and sigma_xy <= self.max_sigma_xy and sigma_yaw <= self.max_sigma_yaw)
@@ -175,11 +167,6 @@ class LocalizationStateMachine:
             return False
 
         if self.state == LOCALIZED:
-            if turning and inputs_ok:
-                # Turning in place: pulses at 65-136 deg/s smear a LiDAR revolution, so the fit
-                # says nothing; the robot does not translate. Judge again once the turn ends.
-                self._bad_since = self._degraded_since = None
-                return False
             # Missing scan/TF is not evidence that localization is still valid.
             # Keep the existing grace period for brief gaps during turn pulses.
             bad = not inputs_ok or match is None or score < self.lost_score
@@ -192,14 +179,6 @@ class LocalizationStateMachine:
                     return self._set(LOST, f"Mất định vị: {why}. Đã gửi yêu cầu dừng xe.")
             else:
                 self._bad_since = None
-                degraded = score is not None and score < self.degraded_score and unfixable
-                if degraded:
-                    self._degraded_since = self._degraded_since if self._degraded_since is not None else now
-                    if now - self._degraded_since >= self.degraded_sec:
-                        return self._set(LOST, f"Mất định vị: LiDAR chỉ khớp {pct} bản đồ và không tự "
-                                               "định vị lại được. Đã gửi yêu cầu dừng xe.")
-                else:
-                    self._degraded_since = None
                 if score is not None:
                     self.reason = f"Đã định vị: LiDAR khớp bản đồ {pct}."
             return False

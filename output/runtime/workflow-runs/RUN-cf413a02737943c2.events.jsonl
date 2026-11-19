@@ -1,7 +1,0 @@
-{"type": "STARTED", "message": null, "step_index": 0, "round_index": 0, "at": 1794992254.867338}
-{"type": "STEP_STARTED", "message": "Test workflow đi theo path  · Đi theo tuyến (FOLLOW_ROUTE) · map_tetttt · vòng 1 · Điểm trung gian", "step_index": 0, "round_index": 0, "at": 1794992254.8696527}
-{"type": "STEP_COMPLETED", "message": null, "step_index": 0, "round_index": 0, "at": 1794992336.702349}
-{"type": "STEP_STARTED", "message": "Test workflow đi theo path  · Đi theo tuyến (FOLLOW_ROUTE) · map_tetttt · vòng 1 · Điểm trung gian", "step_index": 1, "round_index": 0, "at": 1794992336.7041285}
-{"type": "STEP_RETRY", "message": "Thử lại 1/5: Nav2 không hoàn thành tuyến (status=6).", "step_index": 1, "round_index": 0, "at": 1794992355.1384044}
-{"type": "STEP_RETRY", "message": "Thử lại 2/5: Nav2 không hoàn thành tuyến (status=5).", "step_index": 1, "round_index": 0, "at": 1794992410.2673838}
-{"type": "FAILED", "message": "ENCODER_M1_M2_DISAGREEMENT (M1=+0.28, M2=+0.00 m/s)", "step_index": 1, "round_index": 0, "at": 1794992410.2790687}

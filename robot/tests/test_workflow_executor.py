@@ -1,13 +1,79 @@
 """Test the real executor logic with fake action futures; never start ROS/motors."""
+import ast
 import json
 import math
+from pathlib import Path
+import sys
 from types import SimpleNamespace as NS
 from unittest.mock import Mock
 
 import pytest
 
-from conftest import Future, route_steps
-from workflow_navigation_logic import route_segment_end, route_window_end
+CONFIG = Path(__file__).resolve().parents[1] / 'ros2_configs'
+sys.path.insert(0, str(CONFIG))
+from workflow_navigation_logic import goal_cell_allowed, route_segment_end, route_pose_targets, route_window_end
+
+
+class Future:
+    def __init__(self, result): self.value = result
+    def done(self): return True
+    def result(self): return self.value
+
+
+@pytest.fixture
+def worker(tmp_path):
+    tree = ast.parse((CONFIG / 'workflow_executor.py').read_text(encoding='utf-8'))
+    nodes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+    for n in nodes:
+        if n.name == 'Executor':
+            n.body = [method for method in n.body if getattr(method, 'name', None) != '__init__']
+    clock = NS(value=100.0)
+    def spin(*args, **kwargs): clock.value += .1
+    def goal():
+        return NS(pose=NS(header=NS(), pose=NS(position=NS(), orientation=NS())))
+    env = {'Node': object, 'time': NS(monotonic=lambda: clock.value, time=lambda: clock.value),
+           'rclpy': NS(spin_once=spin), 'json': json, 'math': math, 'Empty': object,
+           'NavigateToPose': NS(Goal=goal), 'NavigateThroughPoses': NS(Goal=lambda: NS(poses=[])),
+           'PoseStamped': lambda: goal().pose, 'Path': Path, '__file__': str(CONFIG / 'workflow_executor.py'),
+           'GoalStatus': NS(STATUS_SUCCEEDED=4), 'route_segment_end': route_segment_end,
+           'route_pose_targets': route_pose_targets, 'route_window_end': route_window_end,
+           'goal_cell_allowed': goal_cell_allowed}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), 'executor', 'exec'), env)
+    worker = env['Executor']()
+    worker.control = tmp_path / 'control.json'
+    worker.control.write_text(json.dumps({'cancel': False, 'expires_at': 200}))
+    worker.interrupted = False
+    worker.round = worker.index = 0
+    worker.statuses, worker.finished_goal_ids = [], set()
+    worker.active_goals = 0
+    worker.goal = worker.goal_future = None
+    worker.emit = Mock()
+    worker.reason = Mock(return_value=None)
+    worker.check_control = Mock(wraps=worker.check_control)
+    worker.spin_checked = Mock(side_effect=lambda: spin())
+    origin = NS(position=NS(x=0, y=0), orientation=NS(x=0, y=0, z=0, w=1))
+    worker.costmap = NS(info=NS(width=4, height=4, resolution=1, origin=origin), data=[0]*16)
+    worker.costmap_at = 100
+    worker.get_clock = lambda: NS(now=lambda: NS(to_msg=lambda: NS(sec=100, nanosec=0)))
+    handle = NS(accepted=True, goal_id=NS(uuid=[1]*16),
+                get_result_async=Mock(return_value=Future(NS(status=4))),
+                cancel_goal_async=Mock(return_value=Future(None)))
+    worker.client = NS(send_goal_async=Mock(return_value=Future(handle)), server_is_ready=lambda: True)
+    worker.route_client = NS(send_goal_async=Mock(return_value=Future(handle)), server_is_ready=lambda: True)
+    worker.route_context = None
+    worker.route_sequence = 0
+    worker._route_robot_xy = Mock(return_value=(0, 0))
+    worker.stop_pub = NS(publish=Mock())
+    worker.handle, worker.clock = handle, clock
+    worker.cancel_exception = env['RunCancelled']
+    return worker
+
+
+def route_steps():
+    return [{'step_id': f'p{i}', 'type': 'MOVE', 'title': f'Point {i}', 'params': {
+        'source_route_id': 'route', 'source_route_step_id': 'patrol',
+        'target_x': x, 'target_y': y, 'target_yaw': .7, 'timeout_sec': 120,
+    }} for i, (x, y) in enumerate([(1, 1), (2, 1), (2, 2)])]
 
 
 def test_route_uses_one_through_poses_action_without_stop_or_individual_move(worker):

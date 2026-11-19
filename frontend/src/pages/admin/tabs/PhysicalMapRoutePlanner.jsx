@@ -4,8 +4,6 @@ import { fetchWorkflows, saveWorkflow, deleteWorkflow, bindWorkflowRoute, activa
 import { newMapRoute, routePoint, routeWorkflow, moveRoutePoint, workflowRouteTargets, routeStepOnMap, routeIsClosed, closeRoutePoints, routePointRole, physicalWorkflowForMap } from '../../../utils/physicalMapRoute';
 import { PhysicalMapWorkflowRunControls } from './PhysicalMapWorkflowRunControls';
 import { WorkflowRunsPanel } from './workflow/WorkflowRunsPanel';
-import { RobotBatterySimulator } from '../../../components/robot/RobotBatterySimulator';
-import { eventBranch } from '../../../utils/workflowGraph';
 
 export function PhysicalMapRoutePlanner({ mapId, endpoints, draft, onDraftChange, onPickPoints, validatePoint, onRouteSaved, binding, onBindingChange }) {
   const [routes, setRoutes] = useState([]);
@@ -205,7 +203,6 @@ export function PhysicalMapRoutePlanner({ mapId, endpoints, draft, onDraftChange
     {workflow && selectedStep && <>
       <PhysicalMapWorkflowRunControls workflow={workflow} issue={runIssue} needsSave={needsSave} busy={busy} feedback={message}
         onActivate={() => runAction(true)} onStart={() => runAction(false)} />
-      <RobotBatterySimulator variant="dark" threshold={eventBranch(workflow, 'LOW_BATTERY')?.threshold_percent ?? 20} />
       <WorkflowRunsPanel key={`${workflow.id}:${startedRun?.workflowId === workflow.id ? startedRun.runId : ''}`}
         workflowId={workflow.id} runId={startedRun?.workflowId === workflow.id ? startedRun.runId : undefined} />
     </>}

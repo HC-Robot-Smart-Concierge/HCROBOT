@@ -1,9 +1,0 @@
-{"type": "STARTED", "message": null, "step_index": 0, "round_index": 0, "at": 1795013307.3350308}
-{"type": "STEP_STARTED", "message": "Test workflow đi theo path  · Đi theo tuyến (FOLLOW_ROUTE) · map_tetttt · vòng 1 · Điểm trung gian", "step_index": 0, "round_index": 0, "at": 1795013307.3367474}
-{"type": "STEP_COMPLETED", "message": null, "step_index": 0, "round_index": 0, "at": 1795013320.235096}
-{"type": "STEP_STARTED", "message": "Test workflow đi theo path  · Đi theo tuyến (FOLLOW_ROUTE) · map_tetttt · vòng 1 · Điểm trung gian", "step_index": 1, "round_index": 0, "at": 1795013320.2372806}
-{"type": "STEP_COMPLETED", "message": null, "step_index": 1, "round_index": 0, "at": 1795013320.2392676}
-{"type": "STEP_STARTED", "message": "Test workflow đi theo path  · Đi theo tuyến (FOLLOW_ROUTE) · map_tetttt · vòng 1 · Điểm trung gian", "step_index": 2, "round_index": 0, "at": 1795013320.2432644}
-{"type": "STEP_COMPLETED", "message": null, "step_index": 2, "round_index": 0, "at": 1795013320.245918}
-{"type": "STEP_STARTED", "message": "Test workflow đi theo path  · Đi theo tuyến (FOLLOW_ROUTE) · map_tetttt · vòng 2 · Điểm trung gian", "step_index": 3, "round_index": 0, "at": 1795013320.2471743}
-{"type": "FAILED", "message": "Dữ liệu encoder đã cũ.", "step_index": 3, "round_index": 0, "at": 1795013324.836293}

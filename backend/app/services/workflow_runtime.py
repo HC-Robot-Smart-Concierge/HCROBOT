@@ -7,8 +7,6 @@ from pathlib import Path
 import subprocess
 import time
 import uuid
-
-import httpx
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, update
@@ -19,7 +17,6 @@ from app.repositories.workflow_repository import WorkflowRepository
 from app.schemas.workflow import WorkflowExecutionConfig
 from app.services.workflow_plan import physical_plan
 from app.services.workflow_schedule import ZONE_OFFSETS
-from app.services.workflow_run_status import guest_branch_of, run_phase, status_payload
 
 logger = logging.getLogger(__name__)
 TERMINAL = {"COMPLETED", "FAILED", "CANCELLED", "SKIPPED"}
@@ -27,9 +24,6 @@ LEASE_SECONDS = 10.0
 CONTROL_INTERVAL_SECONDS = 1.0
 # Stop before the database's 25 s stale-owner recovery can release the robot.
 DATABASE_AUTHORIZATION_SECONDS = 20.0
-BATTERY_INTERVAL_SECONDS = 2.0
-STATUS_REFRESH_SECONDS = 10.0
-PI_POWER_URL = f"http://{os.getenv('PI5_IP', '100.99.72.51')}:8000/api/v1/system/power"
 
 
 def due_slot(workflow, now):
@@ -80,9 +74,6 @@ class WorkflowRuntime:
         self.running = {}
         self.task = None
         self.control_task = None
-        self.battery_task = None
-        # Latest Pi 5 battery estimate; only polled while a run has a low-battery branch.
-        self.battery = {'percent': None, 'at': None}
 
     async def enqueue(self, workflow, repo, robot_id='RC-001', slot=None):
         plan = await physical_plan(workflow, repo)
@@ -154,11 +145,10 @@ class WorkflowRuntime:
     def start(self):
         self.directory.mkdir(parents=True, exist_ok=True)
         self.control_task = asyncio.create_task(self.control_loop())
-        self.battery_task = asyncio.create_task(self.battery_loop())
         self.task = asyncio.create_task(self.loop())
 
     async def close(self):
-        tasks = [task for task in (self.task, self.control_task, self.battery_task) if task is not None]
+        tasks = [task for task in (self.task, self.control_task) if task is not None]
         for task in tasks:
             task.cancel()
         for task in tasks:
@@ -188,73 +178,7 @@ class WorkflowRuntime:
             'expires_at': now + max(0.0, min(LEASE_SECONDS, authorization_left)),
             'issued_at': now, 'sequence': item['control_sequence'],
             'stop_reason': item.get('stop_reason'),
-            'battery_percent': self.battery['percent'], 'battery_at': self.battery['at'],
-            'guest_hold_until': (item.get('guest') or {}).get('hold_until'),
-            'guest_since': (item.get('guest') or {}).get('since'),
         })
-
-    def report_guest(self, robot_id, state, idle_ms):
-        """Kiosk guest engagement: ENGAGED renews the hold, DONE releases the robot at once."""
-        found = next(((run_id, item) for run_id, item in self.running.items()
-                      if item.get('robot_id') == robot_id and item.get('guest_branch')
-                      and item['process'].poll() is None), None)
-        if found is None:
-            return {'accepted': False, 'run_id': None}
-        run_id, item = found
-        now = time.time()
-        guest = item.setdefault('guest', {'hold_until': None, 'since': None})
-        if state == 'DONE':
-            guest.update(hold_until=None, since=None)
-        else:
-            # A kiosk that stops reporting (closed, offline) lets the hold lapse after idle_timeout_sec.
-            guest['hold_until'] = now - idle_ms / 1000 + item['guest_branch'].get('idle_timeout_sec', 20)
-            guest['since'] = guest.get('since') or now
-        self.refresh_control(item)
-        return {'accepted': True, 'run_id': run_id}
-
-    async def publish_status(self, payload):
-        from app.services.notification_manager import notification_manager
-        await notification_manager.broadcast_to_department(None, payload)
-
-    async def maybe_publish(self, run, item, force=False):
-        """Tell the robot screen on a phase change, and every 10 s so a reopened screen catches up."""
-        now = time.monotonic()
-        if not force and item.get('phase_sent') == item.get('phase') \
-                and now - item.get('status_sent_at', 0) < STATUS_REFRESH_SECONDS:
-            return
-        item['phase_sent'], item['status_sent_at'] = item.get('phase'), now
-        try:
-            await self.publish_status(status_payload(run, item))
-        except Exception:
-            logger.exception('Cannot publish workflow run status %s', run.id)
-
-    async def read_pi_battery(self):
-        """Pi 5 time-based battery estimate in percent, or None when unknown or unreachable."""
-        try:
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                response = await client.get(PI_POWER_URL)
-                response.raise_for_status()
-                battery = response.json().get('battery') or {}
-        except Exception:
-            return None
-        percent = battery.get('percent') if battery.get('available') else None
-        return float(percent) if isinstance(percent, (int, float)) and not isinstance(percent, bool) else None
-
-    async def poll_battery_once(self):
-        if not any(item.get('needs_battery') and item['process'].poll() is None
-                   for item in self.running.values()):
-            return
-        percent = await self.read_pi_battery()
-        if percent is not None:
-            self.battery = {'percent': percent, 'at': time.time()}
-
-    async def battery_loop(self):
-        while True:
-            try:
-                await self.poll_battery_once()
-            except Exception:
-                logger.exception('Cannot read Pi battery for workflow runs')
-            await asyncio.sleep(BATTERY_INTERVAL_SECONDS)
 
     async def control_loop(self):
         while True:
@@ -327,10 +251,7 @@ class WorkflowRuntime:
             finally:
                 log.close()
             self.running[run.id] = dict(process=process, control=control, events=events, offset=0, terminal=None,
-                                       db_confirmed_at=time.monotonic(), cancel_requested=False,
-                                       needs_battery=bool((run.payload.get('config') or {}).get('event_branches')),
-                                       robot_id=run.robot_id, phase='MOVING',
-                                       guest_branch=guest_branch_of(run.payload.get('config')))
+                                       db_confirmed_at=time.monotonic(), cancel_requested=False)
         except OSError as exc:
             await self.finish(run.id, 'FAILED', str(exc))
 
@@ -365,23 +286,14 @@ class WorkflowRuntime:
                             run.events = [*(run.events or [])[-99:], event]
                             run.current_step_index = event.get('step_index', run.current_step_index)
                             run.round_index = event.get('round_index', run.round_index)
-                            item['phase'] = run_phase(item.get('phase'), event['type'])
-                            if event['type'] == 'STEP_STARTED':
-                                item['step_title'] = event.get('message')
                             if event['type'] == 'STEP_COMPLETED':
                                 run.completed_steps += 1
                             if event['type'] in {'COMPLETED', 'FAILED', 'CANCELLED'}:
                                 item['terminal'] = event
                 await db.commit()
-                await self.maybe_publish(run, item)
         if item['process'].poll() is not None:
             event = item['terminal'] or {'type': 'FAILED', 'message': 'ROS worker dừng mà chưa xác nhận kết quả.'}
-            # A COMPLETED message explains an early finish, e.g. the low-battery branch.
-            await self.finish(run_id, event['type'], event.get('message'))
-            if run is not None:
-                item['phase'] = 'DONE'
-                run.status = event['type']
-                await self.maybe_publish(run, item, force=True)
+            await self.finish(run_id, event['type'], event.get('message') if event['type'] != 'COMPLETED' else None)
             del self.running[run_id]
 
 

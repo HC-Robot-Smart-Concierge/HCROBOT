@@ -44,9 +44,6 @@ async def resolve_route_steps(steps, repo):
                         "target_yaw": point.yaw, "speed": 0.12, "timeout_sec": 120,
                     },
                 })
-                if params.get("on_error"):
-                    # Every point of the route shares the FOLLOW_ROUTE step's error policy.
-                    result[-1]["params"]["on_error"] = deepcopy(params["on_error"])
         if params.get("next_step_id"):
             result[-1]["params"]["next_step_id"] = params["next_step_id"]
     if len(result) > 2000:

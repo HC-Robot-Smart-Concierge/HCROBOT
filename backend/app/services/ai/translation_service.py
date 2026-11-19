@@ -197,7 +197,7 @@ class TranslationService:
         - Nếu khác ngôn ngữ -> Dịch sang target_lang và tổng hợp TTS nếu with_audio=True.
         """
         clean_text = (text or "").strip()
-        target_code = self.normalize_lang_code(target_lang, default="vi")
+        target_code = self.normalize_lang_code(target_lang, default="vi") or "vi"
 
         if not clean_text:
             return {

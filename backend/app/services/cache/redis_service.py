@@ -22,8 +22,8 @@ class RedisService:
     Dịch vụ quản trị kết nối và bộ nhớ đệm phân tán Redis Cloud cho HC-Robot.
     Hỗ trợ:
     1. AI Query Cache: Trả lời siêu tốc (< 5ms) cho các câu hỏi phổ biến của khách sạn.
-    2. TTS Audio Cache: Lưu trữ audio chunk MP3 để phát lại tức thì không cần gọi Edge-TTS.
-    3. Session State Cache: Duy trì ngữ cảnh phiên hội thoại & số phòng bền vững khi restart server.
+    2. Session State Cache: Duy trì ngữ cảnh phiên hội thoại & số phòng bền vững khi restart server.
+    (Không lưu trữ audio giọng nói trong Redis để tránh xung đột giọng và tối ưu băng thông).
     """
 
     def __init__(self):
@@ -45,7 +45,7 @@ class RedisService:
             try:
                 self._client = aioredis.from_url(
                     self.redis_url,
-                    decode_responses=False,  # Binary safe cho cả Text JSON lẫn Audio MP3 bytes
+                    decode_responses=False,  # UTF-8 bytes cho dữ liệu JSON (AI Query & Session Cache)
                     socket_connect_timeout=2.5,
                     socket_timeout=3.0,
                     retry_on_timeout=True,
@@ -155,38 +155,7 @@ class RedisService:
             return False
 
     # =========================================================================
-    # 2. TTS AUDIO CHUNK CACHE (MP3 BINARY)
-    # =========================================================================
-
-    async def get_tts_audio(self, cache_key: str) -> Optional[bytes]:
-        """Lấy đoạn âm thanh MP3 binary từ Redis (< 5ms)."""
-        client = self.get_client()
-        if not client:
-            return None
-        try:
-            key = f"hcrobot:tts:{cache_key}"
-            audio_bytes = await client.get(key)
-            if audio_bytes and len(audio_bytes) > 0:
-                return audio_bytes
-        except Exception as e:
-            logger.debug(f"[RedisCache] get_tts_audio error: {e}")
-        return None
-
-    async def set_tts_audio(self, cache_key: str, audio_bytes: bytes, ttl: int = 604800) -> bool:
-        """Lưu đoạn âm thanh MP3 binary vào Redis (mặc định 7 ngày)."""
-        client = self.get_client()
-        if not client or not audio_bytes:
-            return False
-        try:
-            key = f"hcrobot:tts:{cache_key}"
-            await client.setex(key, ttl, audio_bytes)
-            return True
-        except Exception as e:
-            logger.debug(f"[RedisCache] set_tts_audio error: {e}")
-            return False
-
-    # =========================================================================
-    # 3. SESSION & ROOM MEMORY CACHE
+    # 2. SESSION & ROOM MEMORY CACHE
     # =========================================================================
 
     async def get_session(self, session_id: str) -> Optional[Dict[str, Any]]:

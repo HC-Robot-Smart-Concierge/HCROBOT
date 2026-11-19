@@ -86,7 +86,14 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     if cached_ai and cached_ai.get("full_text"):
         reply = cached_ai["full_text"]
         if not request.language or request.language.lower() in ("auto", "bilingual"):
-            detected_lang, lang_code = ollama_service.detect_language(request.prompt)
+            cached_lang_code = (cached_ai.get("lang_code") or "").strip()
+            if cached_lang_code:
+                lang_code = cached_lang_code
+                detected_lang = cached_ai.get("detected_language") or (
+                    "English" if "en" in lang_code.lower() else "Tiếng Việt"
+                )
+            else:
+                detected_lang, lang_code = ollama_service.detect_language(reply)
         else:
             detected_lang = cached_ai.get("detected_language") or ("English" if "en" in (request.language or "").lower() else "Tiếng Việt")
             lang_code = cached_ai.get("lang_code") or ("en-US" if detected_lang == "English" else "vi-VN")

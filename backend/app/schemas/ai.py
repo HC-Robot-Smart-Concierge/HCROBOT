@@ -80,7 +80,7 @@ class VoiceSettingsRequest(BaseModel):
     speech_rate: float = Field(1.0, ge=0.5, le=2.0, description="Tốc độ nói từ 0.5x đến 2.0x")
     vi_voice: Optional[str] = Field("vi-VN-HoaiMyNeural", description="Giọng đọc tiếng Việt (VD: vi-VN-HoaiMyNeural, vi-VN-NamMinhNeural)")
     en_voice: Optional[str] = Field("en-US-JennyNeural", description="Giọng đọc tiếng Anh")
-    volume: Optional[str] = Field("+0%", description="Âm lượng EdgeTTS (+0%, -10%, etc.)")
+    volume: Optional[str] = Field("+0%", description="Âm lượng EdgeTTS an toàn (+0%; khuếch đại bằng GainNode ở frontend)")
 
 
 class VoiceSettingsResponse(BaseModel):

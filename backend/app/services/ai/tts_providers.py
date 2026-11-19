@@ -18,7 +18,7 @@ def clean_text_for_tts(text: str) -> str:
     """Strip markdown/emoji and normalize punctuation so speech sounds natural."""
     if not text:
         return ""
-    t = re.sub(r"[*#_`\[\]()~]", "", str(text))
+    t = re.sub(r"[*#_`\[\]()~]", "", text)
     t = re.sub(r"[\U00010000-\U0010ffff]", "", t)
     t = re.sub(r"^[\s*•\-–—]+\s*", "", t, flags=re.MULTILINE)
     t = re.sub(r":\s*", ", ", t)
@@ -60,7 +60,7 @@ async def synthesize_edge_tts_detailed(
     rate: Optional[str] = None,
     default_volume: str = "+0%",
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """Synthesize MP3 audio via EdgeTTS Neural with voice swap retry and classified error codes."""
+    """Synthesize MP3 audio via EdgeTTS Neural with same-voice retry and classified error codes."""
     clean_text = clean_text_for_tts(text)
     if not clean_text:
         return None, "TTS_INPUT_EMPTY", "Cleaned text is empty"
@@ -68,9 +68,8 @@ async def synthesize_edge_tts_detailed(
     selected_rate = rate or getattr(settings, "TTS_RATE", "+0%")
     if not re.match(r"^[+-]\d+%$", str(selected_rate)):
         selected_rate = "+0%"
-    selected_volume = default_volume or "+0%"
-    if not re.match(r"^[+-]\d+%$", str(selected_volume)) or (str(selected_volume).startswith("+") and selected_volume != "+0%"):
-        selected_volume = "+0%"
+    # Luôn dùng +0% khi gọi EdgeTTS để tránh lỗi NoAudioReceived; khuếch đại âm lượng được xử lý qua GainNode ở frontend.
+    selected_volume = "+0%"
 
     try:
         import edge_tts as _edge_tts
@@ -84,12 +83,7 @@ async def synthesize_edge_tts_detailed(
     for attempt in range(2):
         current_voice = voice
         if attempt == 1:
-            if "NamMinh" in voice:
-                current_voice = "vi-VN-HoaiMyNeural"
-                logger.info(f"[TTSService] EdgeTTS attempt 2: Switch fallback voice to {current_voice}")
-            elif "HoaiMy" in voice:
-                current_voice = "vi-VN-NamMinhNeural"
-                logger.info(f"[TTSService] EdgeTTS attempt 2: Switch fallback voice to {current_voice}")
+            logger.info(f"[TTSService] EdgeTTS attempt 2: Retrying same voice {current_voice}")
 
         try:
             communicate = _edge_tts.Communicate(
@@ -163,12 +157,15 @@ async def _post_tts_audio(
 
 
 async def synthesize_elevenlabs(text: str, voice: Optional[str]) -> Optional[str]:
+    api_key = settings.ELEVENLABS_API_KEY
+    if not api_key:
+        return None
     voice_id = voice or settings.ELEVENLABS_VOICE_ID or "21m00Tcm4TlvDq8ikWAM"
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
     headers = {
         "Accept": "audio/mpeg",
         "Content-Type": "application/json",
-        "xi-api-key": settings.ELEVENLABS_API_KEY,
+        "xi-api-key": api_key,
     }
     payload = {
         "text": text,

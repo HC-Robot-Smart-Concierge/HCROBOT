@@ -161,6 +161,7 @@ async def synthesize_voice_speech(request: TTSRequest):
             audio_base64=tts_res.get("audio_base64", ""),
             mime_type=tts_res.get("mime_type", "audio/mp3"),
             provider_used=tts_res.get("provider_used", "none"),
+            audio_url=tts_res.get("audio_url"),
             error_code=tts_res.get("error_code"),
             error_detail=tts_res.get("error_detail"),
         )
@@ -170,6 +171,7 @@ async def synthesize_voice_speech(request: TTSRequest):
             audio_base64="",
             mime_type="audio/mp3",
             provider_used="none",
+            audio_url=None,
             error_code="TTS_PROVIDER_ERROR",
             error_detail=str(e),
         )

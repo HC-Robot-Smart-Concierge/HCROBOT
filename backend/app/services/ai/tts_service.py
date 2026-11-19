@@ -32,7 +32,7 @@ class TTSService:
         self.default_en_voice = "en-US-JennyNeural"
         self.current_rate: float = 1.0
         self.current_rate_str: str = "+0%"
-        self.default_volume: str = "+35%"
+        self.default_volume: str = "+0%"
         
         # 1. Memory LRU/Cache
         self._memory_cache: Dict[str, str] = {}
@@ -126,7 +126,7 @@ class TTSService:
             "rate_percentage": self.rate_float_to_percentage(rate),
             "vi_voice": self.default_vi_voice,
             "en_voice": self.default_en_voice,
-            "volume": getattr(self, "default_volume", "+35%"),
+            "volume": getattr(self, "default_volume", "+0%"),
         }
 
     def update_voice_settings(
@@ -185,7 +185,7 @@ class TTSService:
             target_voice = (voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)
         return target_voice, lang_short
 
-    def _get_cache_key(self, text: str, provider: str, voice: str, rate: str = "+0%", volume: str = "+35%") -> str:
+    def _get_cache_key(self, text: str, provider: str, voice: str, rate: str = "+0%", volume: str = "+0%") -> str:
         clean = text.strip()
         raw = f"{provider}:{voice}:{rate}:{volume}:{clean}"
         return hashlib.md5(raw.encode("utf-8")).hexdigest()
@@ -220,6 +220,69 @@ class TTSService:
         except Exception as e:
             logger.warning(f"[TTSService] Failed to write disk cache: {e}")
 
+    def get_audio_cache_info(
+        self,
+        text: str,
+        language: Optional[str] = None,
+        voice: Optional[str] = None,
+        rate: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Kiểm tra thông tin file audio đã lưu trong thư mục static/audio_cache.
+        Trả về: {"exists": bool, "file_path": str, "audio_url": str, "file_size": int, "cache_key": str, "voice": str}
+        """
+        clean_text = self.clean_text_for_tts(text)
+        if not clean_text:
+            return {
+                "exists": False,
+                "file_path": "",
+                "audio_url": "",
+                "file_size": 0,
+                "cache_key": "",
+                "voice": "",
+            }
+
+        target_voice, _ = self._resolve_voice_and_lang(clean_text, language, voice)
+        target_rate = rate or getattr(self, "current_rate_str", "+0%") or "+0%"
+        target_volume = getattr(self, "default_volume", "+0%") or "+0%"
+        cache_key = self._get_cache_key(clean_text, "edge", target_voice, target_rate, target_volume)
+        disk_path = os.path.join(self._cache_dir, f"{cache_key}.mp3")
+
+        exists = os.path.isfile(disk_path) and os.path.getsize(disk_path) > 100
+        file_size = os.path.getsize(disk_path) if exists else 0
+        audio_url = f"/static/audio_cache/{cache_key}.mp3" if exists else ""
+
+        return {
+            "exists": exists,
+            "file_path": disk_path if exists else "",
+            "audio_url": audio_url,
+            "file_size": file_size,
+            "cache_key": cache_key,
+            "voice": target_voice,
+        }
+
+    async def pre_generate_audio_file(
+        self,
+        text: str,
+        language: Optional[str] = None,
+        voice: Optional[str] = None,
+        rate: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Sinh trước file audio MP3 cho văn bản và lưu trực tiếp vào thư mục backend/static/audio_cache.
+        """
+        info = self.get_audio_cache_info(text, language=language, voice=voice, rate=rate)
+        if info["exists"]:
+            return info
+
+        clean_text = self.clean_text_for_tts(text)
+        if not clean_text:
+            return info
+
+        target_voice, _ = self._resolve_voice_and_lang(clean_text, language, voice)
+        await self.synthesize(text, provider="edge", language=language, voice=target_voice, rate=rate)
+        return self.get_audio_cache_info(text, language=language, voice=voice, rate=rate)
+
     async def synthesize_with_details(
         self,
         text: str,
@@ -252,17 +315,19 @@ class TTSService:
         selected_provider = (provider or settings.TTS_PROVIDER or "edge").lower()
         target_rate = rate or getattr(self, "current_rate_str", getattr(settings, "TTS_RATE", "+0%"))
         target_voice, lang_short = self._resolve_voice_and_lang(clean_text, language, voice)
-        target_volume = getattr(self, "default_volume", "+35%")
+        target_volume = getattr(self, "default_volume", "+0%")
 
         # 0. KIỂM TRA AUDIO CACHE TRƯỚC (< 1ms)
         cache_key = self._get_cache_key(clean_text, selected_provider, target_voice, target_rate, target_volume)
         cached_audio = self._get_from_cache(cache_key)
+        audio_static_url = f"/static/audio_cache/{cache_key}.mp3"
         if cached_audio:
             logger.info(f"[TTSService Cache Hit] len={len(clean_text)} voice={target_voice}")
             return {
                 "audio_base64": cached_audio,
                 "mime_type": "audio/mp3",
                 "provider_used": f"{selected_provider}_cached",
+                "audio_url": audio_static_url,
                 "error_code": None,
                 "error_detail": None,
             }
@@ -280,6 +345,7 @@ class TTSService:
                         "audio_base64": audio_b64,
                         "mime_type": "audio/mp3",
                         "provider_used": "elevenlabs",
+                        "audio_url": audio_static_url,
                         "error_code": None,
                         "error_detail": None,
                     }
@@ -300,6 +366,7 @@ class TTSService:
                         "audio_base64": audio_b64,
                         "mime_type": "audio/mp3",
                         "provider_used": "openai",
+                        "audio_url": audio_static_url,
                         "error_code": None,
                         "error_detail": None,
                     }
@@ -327,6 +394,7 @@ class TTSService:
                     "audio_base64": edge_b64,
                     "mime_type": "audio/mp3",
                     "provider_used": "edge",
+                    "audio_url": audio_static_url,
                     "error_code": None,
                     "error_detail": None,
                 }
@@ -355,6 +423,7 @@ class TTSService:
                         "audio_base64": g_b64,
                         "mime_type": "audio/mp3",
                         "provider_used": "google_fallback",
+                        "audio_url": audio_static_url,
                         "error_code": None,
                         "error_detail": None,
                     }
@@ -369,6 +438,7 @@ class TTSService:
             "audio_base64": "",
             "mime_type": "audio/mp3",
             "provider_used": "browser",
+            "audio_url": "",
             "error_code": final_error_code,
             "error_detail": final_error_detail,
         }
@@ -436,9 +506,9 @@ class TTSService:
         selected_rate = rate or getattr(settings, "TTS_RATE", "+0%")
         if not re.match(r'^[+-]\d+%$', str(selected_rate)):
             selected_rate = "+0%"
-        selected_volume = getattr(self, "default_volume", "+35%")
-        if not re.match(r'^[+-]\d+%$', str(selected_volume)):
-            selected_volume = "+35%"
+        selected_volume = getattr(self, "default_volume", "+0%")
+        if not re.match(r'^[+-]\d+%$', str(selected_volume)) or (str(selected_volume).startswith("+") and selected_volume != "+0%"):
+            selected_volume = "+0%"
 
         try:
             import edge_tts as _edge_tts
@@ -562,7 +632,7 @@ class TTSService:
                     return data
 
             chunk_rate = getattr(settings, "TTS_RATE", "+0%")
-            chunk_volume = getattr(self, "default_volume", "+35%")
+            chunk_volume = "+0%"
             communicate = edge_tts.Communicate(clean_text, target_voice, rate=chunk_rate, volume=chunk_volume)
             audio_bytes = b""
             async for chunk in communicate.stream():
@@ -659,7 +729,7 @@ class TTSService:
             ("I understand.", "en-US", target_en),
         ]
         rate_str = getattr(self, "current_rate_str", "+0%") or "+0%"
-        volume_str = getattr(self, "default_volume", "+35%") or "+35%"
+        volume_str = getattr(self, "default_volume", "+0%") or "+0%"
         for phrase, lang, voice in common_phrases:
             try:
                 cache_key = self._get_cache_key(phrase, "edge", voice, rate_str, volume_str)

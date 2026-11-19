@@ -43,6 +43,10 @@ class DialogueScenarioResponse(DialogueScenarioBase):
     id: str
     created_at: datetime
     updated_at: datetime
+    has_audio_vi: bool = False
+    has_audio_en: bool = False
+    audio_url_vi: Optional[str] = None
+    audio_url_en: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -50,3 +54,12 @@ class DialogueScenarioResponse(DialogueScenarioBase):
 class DialogueScenarioListResponse(BaseModel):
     total: int
     items: List[DialogueScenarioResponse]
+
+
+class ScenarioAudioSyncResponse(BaseModel):
+    success: bool
+    total_scenarios: int
+    newly_generated: int
+    already_cached: int
+    failed: int
+    message: str

@@ -1,23 +1,16 @@
+import asyncio
 import datetime
-
 import logging
-
 import re
-
 from typing import Any, Dict, List, Optional, Tuple
 
-
-
 from sqlalchemy import select
-
 from sqlalchemy.ext.asyncio import AsyncSession
-
-
 
 from app.models.scenario import DialogueScenario
 from app.services.ai.session_manager import is_valid_hotel_room, extract_room_number
-
 from app.schemas.scenario import DialogueScenarioCreate, DialogueScenarioUpdate
+from app.services.ai.tts_service import tts_service
 from app.services.ai.constants import (
     SERVICE_KEYWORDS,
     MAINTENANCE_MENU_TRIGGER_KEYWORDS,
@@ -3753,6 +3746,14 @@ class ScenarioService:
 
             self._cache.sort(key=lambda x: x.get("priority", 0), reverse=True)
 
+            if item.is_fast_path:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(self.pre_generate_scenario_audio(item))
+                except Exception:
+                    pass
+
             return item
 
         except Exception as e:
@@ -3815,6 +3816,14 @@ class ScenarioService:
 
             self._cache.sort(key=lambda x: x.get("priority", 0), reverse=True)
 
+            if item.is_fast_path:
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(self.pre_generate_scenario_audio(item))
+                except Exception:
+                    pass
+
             return item
 
         except Exception as e:
@@ -3870,6 +3879,101 @@ class ScenarioService:
             logger.error(f"[ScenarioService delete_scenario Error] {e}")
 
             raise
+
+    def attach_audio_status(self, item: DialogueScenario) -> Dict[str, Any]:
+        """
+        Gắn thông tin trạng thái file audio tĩnh (Folder backend/static/audio_cache) vào đối tượng kịch bản.
+        """
+        vi_info = tts_service.get_audio_cache_info(item.response_vi, language="vi-VN")
+        en_info = tts_service.get_audio_cache_info(item.response_en, language="en-US") if item.response_en else None
+
+        return {
+            "id": item.id,
+            "title": item.title,
+            "category": item.category,
+            "match_keywords": item.match_keywords or [],
+            "match_type": item.match_type,
+            "response_vi": item.response_vi,
+            "response_en": item.response_en,
+            "action_type": item.action_type,
+            "action_payload": item.action_payload,
+            "is_fast_path": item.is_fast_path,
+            "is_active": item.is_active,
+            "is_system": item.is_system,
+            "is_custom_edited": item.is_custom_edited,
+            "priority": item.priority,
+            "created_at": item.created_at,
+            "updated_at": item.updated_at,
+            "has_audio_vi": vi_info.get("exists", False),
+            "has_audio_en": en_info.get("exists", False) if en_info else False,
+            "audio_url_vi": vi_info.get("audio_url") if vi_info.get("exists") else None,
+            "audio_url_en": en_info.get("audio_url") if (en_info and en_info.get("exists")) else None,
+        }
+
+    async def pre_generate_scenario_audio(
+        self,
+        item: DialogueScenario,
+        vi_voice: Optional[str] = None,
+        en_voice: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Sinh trước file audio MP3 cho kịch bản và lưu trực tiếp vào backend/static/audio_cache.
+        """
+        try:
+            if item.response_vi:
+                await tts_service.pre_generate_audio_file(item.response_vi, language="vi-VN", voice=vi_voice)
+            if item.response_en:
+                await tts_service.pre_generate_audio_file(item.response_en, language="en-US", voice=en_voice)
+        except Exception as e:
+            logger.warning(f"[ScenarioService] Pre-generate audio for {item.id} failed: {e}")
+        return self.attach_audio_status(item)
+
+    async def batch_pre_generate_all(
+        self,
+        db: AsyncSession,
+        only_fast_path: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Duyệt qua tất cả kịch bản (mặc định Fast-Path) và sinh sẵn file MP3 vào folder backend/static/audio_cache.
+        """
+        stmt = select(DialogueScenario).where(DialogueScenario.is_active == True)
+        if only_fast_path:
+            stmt = stmt.where(DialogueScenario.is_fast_path == True)
+        result = await db.execute(stmt)
+        items = list(result.scalars().all())
+
+        newly_gen = 0
+        already_cached = 0
+        failed = 0
+
+        for sc in items:
+            try:
+                vi_info = tts_service.get_audio_cache_info(sc.response_vi, language="vi-VN")
+                if not vi_info.get("exists"):
+                    await tts_service.pre_generate_audio_file(sc.response_vi, language="vi-VN")
+                    newly_gen += 1
+                else:
+                    already_cached += 1
+
+                if sc.response_en:
+                    en_info = tts_service.get_audio_cache_info(sc.response_en, language="en-US")
+                    if not en_info.get("exists"):
+                        await tts_service.pre_generate_audio_file(sc.response_en, language="en-US")
+                        newly_gen += 1
+                    else:
+                        already_cached += 1
+            except Exception as ex:
+                logger.error(f"[ScenarioService batch_pre_generate error on {sc.id}]: {ex}")
+                failed += 1
+
+        return {
+            "success": True,
+            "total_scenarios": len(items),
+            "newly_generated": newly_gen,
+            "already_cached": already_cached,
+            "failed": failed,
+            "message": f"Hoàn tất đồng bộ âm thanh: {newly_gen} file mới tạo, {already_cached} file đã có sẵn, {failed} lỗi.",
+        }
 
 
 

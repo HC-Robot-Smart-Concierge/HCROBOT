@@ -119,3 +119,54 @@ export const reloadScenariosCache = async () => {
     throw new Error(`Lỗi khi tải lại cache kịch bản: ${error.message}`);
   }
 };
+
+/**
+ * Sinh file giọng nói offline cho 1 kịch bản và lưu vào thư mục static/audio_cache của backend.
+ */
+export const generateScenarioAudio = async (id) => {
+  try {
+    const res = await fetch(`${SCENARIOS_BASE_URL}/${id}/generate-audio`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP error! status: ${res.status}`);
+    }
+    return await res.json();
+  } catch (error) {
+    throw new Error(`Lỗi khi sinh giọng nói: ${error.message}`);
+  }
+};
+
+/**
+ * Đồng bộ sinh trước toàn bộ file giọng nói offline cho tất cả kịch bản Fast-Path vào folder backend.
+ */
+export const generateAllScenariosAudio = async (onlyFastPath = true) => {
+  try {
+    const res = await fetch(`${SCENARIOS_BASE_URL}/generate-all-audio?only_fast_path=${onlyFastPath}`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.detail || `HTTP error! status: ${res.status}`);
+    }
+    return await res.json();
+  } catch (error) {
+    throw new Error(`Lỗi khi đồng bộ tất cả giọng nói: ${error.message}`);
+  }
+};
+
+/**
+ * Lấy trạng thái file audio tĩnh của kịch bản từ folder backend.
+ */
+export const fetchScenarioAudioStatus = async (id) => {
+  try {
+    const res = await fetch(`${SCENARIOS_BASE_URL}/${id}/audio-status`);
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+    return await res.json();
+  } catch (error) {
+    throw new Error(`Lỗi khi kiểm tra audio: ${error.message}`);
+  }
+};

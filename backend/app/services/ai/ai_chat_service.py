@@ -609,7 +609,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         try:
             audio_b64, mime_type, _ = await asyncio.wait_for(
                 tts_service.synthesize(reply, provider="edge", language=lang_code),
-                timeout=12.0
+                timeout=2.5
             )
         except Exception:
             audio_b64, mime_type = None, "audio/mp3"
@@ -685,7 +685,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     try:
         audio_b64, mime_type, _ = await asyncio.wait_for(
             tts_service.synthesize(reply, provider="edge", language=lang_code),
-            timeout=8.0
+            timeout=2.5
         )
     except Exception as e_tts:
         logger.warning(f"[AIChatService] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
@@ -878,7 +878,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             try:
                 audio_b64, mime_type, _ = await asyncio.wait_for(
                     tts_service.synthesize(reply, provider="edge", language=lang_code),
-                    timeout=5.0
+                    timeout=2.5
                 )
             except Exception:
                 audio_b64, mime_type = None, "audio/mp3"

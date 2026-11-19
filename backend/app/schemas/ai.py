@@ -71,6 +71,7 @@ class TTSResponse(BaseModel):
     audio_base64: str = Field(..., description="Dữ liệu âm thanh MP3 mã hóa Base64")
     mime_type: str = Field("audio/mp3", description="MIME type của âm thanh")
     provider_used: str = Field("edge", description="Provider TTS đã được sử dụng thực tế (edge, elevenlabs, openai, browser)")
+    audio_url: Optional[str] = Field(None, description="URL tĩnh của file MP3 nếu đã lưu vào backend static cache")
     error_code: Optional[str] = Field(None, description="Mã lỗi chuẩn hóa khi TTS không tạo được audio (TTS_INPUT_EMPTY, TTS_TIMEOUT, TTS_PROVIDER_ERROR, TTS_AUDIO_EMPTY)")
     error_detail: Optional[str] = Field(None, description="Chi tiết lỗi cụ thể từ provider TTS")
 

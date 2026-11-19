@@ -5,6 +5,8 @@ import {
   updateScenario,
   deleteScenario,
   reloadScenariosCache,
+  generateScenarioAudio,
+  generateAllScenariosAudio,
 } from '../../../services/scenariosApi';
 import {
   fetchRAGStats,
@@ -180,6 +182,12 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
   // Markdown Authoring Guide State
   const [isShowMdGuide, setIsShowMdGuide] = useState(false);
   const [isTemplateCopied, setIsTemplateCopied] = useState(false);
+
+  // Offline Voice Cache State
+  const [isSyncingAllAudio, setIsSyncingAllAudio] = useState(false);
+  const [generatingAudioId, setGeneratingAudioId] = useState(null);
+  const [playingAudioUrl, setPlayingAudioUrl] = useState(null);
+  const audioPlayerRef = useRef(null);
 
   // =========================================================================
   // VOICE & SPEED SETTINGS STATE (ROBOT TTS NEURAL)
@@ -515,6 +523,55 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
     }
   };
 
+  const handleGenerateAudio = async (scenarioId) => {
+    setGeneratingAudioId(scenarioId);
+    try {
+      const updated = await generateScenarioAudio(scenarioId);
+      setScenarios((prev) =>
+        prev.map((s) => (s.id === scenarioId ? { ...s, ...updated } : s))
+      );
+      showNotification(isEN ? 'Generated offline audio in backend folder!' : 'Đã sinh file âm thanh vào folder backend thành công!');
+    } catch (err) {
+      showNotification(err.message || 'Lỗi khi sinh giọng nói');
+    } finally {
+      setGeneratingAudioId(null);
+    }
+  };
+
+  const handleGenerateAllAudio = async () => {
+    setIsSyncingAllAudio(true);
+    try {
+      const res = await generateAllScenariosAudio(true);
+      showNotification(res.message || (isEN ? 'All Fast-Path audio synced!' : 'Đã đồng bộ toàn bộ giọng Fast-Path!'));
+      await loadScenariosData();
+    } catch (err) {
+      showNotification(err.message || 'Lỗi khi đồng bộ âm thanh');
+    } finally {
+      setIsSyncingAllAudio(false);
+    }
+  };
+
+  const handlePlayAudio = (url) => {
+    if (!url) return;
+    if (playingAudioUrl === url) {
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current.pause();
+        audioPlayerRef.current.currentTime = 0;
+      }
+      setPlayingAudioUrl(null);
+      return;
+    }
+
+    if (!audioPlayerRef.current) {
+      audioPlayerRef.current = new Audio();
+      audioPlayerRef.current.onended = () => setPlayingAudioUrl(null);
+      audioPlayerRef.current.onerror = () => setPlayingAudioUrl(null);
+    }
+    audioPlayerRef.current.src = url;
+    audioPlayerRef.current.play().catch(() => setPlayingAudioUrl(null));
+    setPlayingAudioUrl(url);
+  };
+
   const handleOpenCreateModal = () => {
     setEditingId(null);
     setFormData(DEFAULT_FORM_STATE);
@@ -776,6 +833,19 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
 
           {currentTab === 'scenarios' && (
             <>
+              <button
+                onClick={handleGenerateAllAudio}
+                disabled={isSyncingAllAudio || isLoadingScenarios}
+                className="px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 hover:bg-emerald-50 text-emerald-800 border-emerald-300"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                }}
+                title={isEN ? 'Pre-generate all Fast-Path MP3 files to backend static folder' : 'Sinh trước toàn bộ giọng nói Fast-Path vào thư mục backend/static'}
+              >
+                <Volume2 className={`w-3.5 h-3.5 ${isSyncingAllAudio ? 'animate-pulse text-emerald-600' : 'text-emerald-700'}`} />
+                <span>{isSyncingAllAudio ? (isEN ? 'Syncing Audio...' : 'Đang đồng bộ...') : (isEN ? 'Sync Offline Audio' : 'Đồng bộ giọng Offline')}</span>
+              </button>
+
               <button
                 onClick={handleReloadCache}
                 disabled={isLoadingScenarios}
@@ -1350,6 +1420,47 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
                                 EN: {item.response_en}
                               </p>
                             )}
+
+                            {/* OFFLINE AUDIO STATUS & CONTROLS */}
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                              {item.has_audio_vi ? (
+                                <div className="inline-flex items-center gap-1">
+                                  <span className="px-1.5 py-0.5 rounded text-[9.5px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+                                    <Check className="w-2.5 h-2.5 text-emerald-600" />
+                                    <span>Audio Offline</span>
+                                  </span>
+                                  {item.audio_url_vi && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handlePlayAudio(item.audio_url_vi)}
+                                      className="p-1 rounded text-stone-600 hover:text-emerald-700 hover:bg-emerald-50 border border-stone-200 cursor-pointer transition-colors"
+                                      title={isEN ? 'Play offline audio from backend folder' : 'Nghe thử file âm thanh từ folder backend'}
+                                    >
+                                      {playingAudioUrl === item.audio_url_vi ? (
+                                        <Square className="w-2.5 h-2.5 text-red-500 fill-current" />
+                                      ) : (
+                                        <Play className="w-2.5 h-2.5 text-emerald-600 fill-current" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleGenerateAudio(item.id)}
+                                  disabled={generatingAudioId === item.id}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9.5px] font-medium bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 cursor-pointer transition-colors"
+                                  title={isEN ? 'Generate and save MP3 to backend folder' : 'Sinh file âm thanh vào folder backend'}
+                                >
+                                  {generatingAudioId === item.id ? (
+                                    <RefreshCw className="w-2.5 h-2.5 animate-spin text-amber-600" />
+                                  ) : (
+                                    <Sparkles className="w-2.5 h-2.5 text-amber-600" />
+                                  )}
+                                  <span>{generatingAudioId === item.id ? (isEN ? 'Generating...' : 'Đang sinh...') : (isEN ? 'Generate Audio' : 'Sinh giọng Offline')}</span>
+                                </button>
+                              )}
+                            </div>
                           </td>
 
                           {/* Action & Eye Expression */}

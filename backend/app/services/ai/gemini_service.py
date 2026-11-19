@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import httpx
@@ -36,9 +37,8 @@ class GeminiService:
         self.model = settings.GEMINI_MODEL or "gemini-2.5-flash"
         self.fallback_models = [
             self.model,
-            "gemini-flash-lite-latest",
             "gemini-2.5-flash",
-            "gemini-1.5-flash",
+            "gemini-flash-lite-latest",
             "gemini-flash-latest",
         ]
         seen = set()
@@ -98,11 +98,22 @@ class GeminiService:
         payload: Dict[str, Any] = {
             "system_instruction": {"parts": [{"text": system_prompt}]},
             "contents": contents,
-            "generationConfig": {"temperature": 0.1 if json_mode else 0.7},
+            "generationConfig": {
+                "temperature": 0.1 if json_mode else 0.7,
+                "maxOutputTokens": 220,
+            },
         }
         if json_mode:
             payload["generationConfig"]["response_mime_type"] = "application/json"
         return payload
+
+    @staticmethod
+    def _payload_for_model(base_payload: Dict[str, Any], model: str) -> Dict[str, Any]:
+        """Disable hidden thinking budget on Gemini 2.5 models to keep latency ~1s."""
+        gen_cfg = dict(base_payload.get("generationConfig") or {})
+        if "2.5" in (model or ""):
+            gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+        return {**base_payload, "generationConfig": gen_cfg}
 
     async def _call_groq_fallback(
         self,
@@ -199,11 +210,14 @@ class GeminiService:
         has_yielded = False
         for model in self.candidate_models:
             stream_url = f"{GEMINI_API_BASE}/models/{model}:streamGenerateContent?alt=sse&key={self.current_api_key}"
+            model_payload = self._payload_for_model(payload, model)
             try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)) as client:
-                    async with client.stream("POST", stream_url, json=payload, headers={"Content-Type": "application/json"}) as resp:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(connect=3.0, read=10.0, write=3.0, pool=3.0)) as client:
+                    async with client.stream("POST", stream_url, json=model_payload, headers={"Content-Type": "application/json"}) as resp:
                         if resp.status_code != 200:
                             err_text = await resp.aread()
+                            if resp.status_code == 429:
+                                self._quota_exhausted_until = time.time() + 300
                             logger.warning(
                                 f"[GeminiService] Model '{model}' stream status {resp.status_code}: "
                                 f"{err_text.decode('utf-8', errors='ignore')[:150]}"
@@ -270,9 +284,10 @@ class GeminiService:
 
         for model in self.candidate_models:
             url = f"{GEMINI_API_BASE}/models/{model}:generateContent?key={self.current_api_key}"
+            model_payload = self._payload_for_model(payload, model)
             try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)) as client:
-                    resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                async with httpx.AsyncClient(timeout=httpx.Timeout(connect=3.0, read=5.0, write=3.0, pool=3.0)) as client:
+                    resp = await client.post(url, json=model_payload, headers={"Content-Type": "application/json"})
                     if resp.status_code == 200:
                         candidates = resp.json().get("candidates", [])
                         parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
@@ -368,9 +383,10 @@ class GeminiService:
 
         for model in self.candidate_models:
             url = f"{GEMINI_API_BASE}/models/{model}:generateContent?key={self.current_api_key}"
+            model_payload = self._payload_for_model(payload, model)
             try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=12.0, write=5.0, pool=5.0)) as client:
-                    resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
+                async with httpx.AsyncClient(timeout=httpx.Timeout(connect=3.0, read=5.0, write=3.0, pool=3.0)) as client:
+                    resp = await client.post(url, json=model_payload, headers={"Content-Type": "application/json"})
                     if resp.status_code == 200:
                         content = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
                         parsed_json = json.loads(content)

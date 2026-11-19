@@ -64,7 +64,7 @@ async def retrieval_node(state: ConciergeState) -> Dict[str, Any]:
     rag_context = ""
     try:
         from app.services.rag.chroma import query_rag_context
-        rag_context = await query_rag_context(prompt, n_results=4)
+        rag_context = await query_rag_context(prompt, n_results=2)
         if rag_context:
             logger.info(f"[Harness Retrieval] Retrieved {len(rag_context)} chars of RAG context via Hybrid Search.")
     except Exception as ex:
@@ -337,9 +337,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
     is_authenticated = bool(state.get("is_room_authenticated", False))
     if action == "cancel_service":
         if lang_code == "en-US":
-            confirm_reply = f"Rora has received your cancellation request for Room {current_room}. The relevant department has been notified to cancel your request immediately!"
+            confirm_reply = f"Rora has received your cancellation request for Room {current_room}. The relevant department has been notified immediately! Is there anything else I can assist you with?"
         else:
-            confirm_reply = f"Dạ Rora đã tiếp nhận yêu cầu hủy dịch vụ cho Phòng {current_room} rồi ạ! Em đã gửi thông báo tới các bộ phận liên quan ngay lập tức."
+            confirm_reply = f"Dạ Rora đã tiếp nhận yêu cầu hủy dịch vụ cho Phòng {current_room} rồi ạ! Em đã gửi thông báo tới các bộ phận liên quan ngay lập tức. Quý khách có cần em hỗ trợ thêm gì nữa không ạ?"
         return {
             "missing_room_number": False,
             "room_number": current_room,
@@ -368,9 +368,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
             }
         else:
             if lang_code == "en-US":
-                confirm_reply = f"Rora has received your {dept_name} request for Room {current_room} and notified the team immediately!"
+                confirm_reply = f"Rora has received your {dept_name} request for Room {current_room} and notified the team immediately! Is there anything else I can assist you with?"
             else:
-                confirm_reply = f"Dạ Rora đã tiếp nhận yêu cầu {dept_name} cho Phòng {current_room} rồi ạ! Em đã gửi thông báo tới các bộ phận liên quan ngay lập tức."
+                confirm_reply = f"Dạ Rora đã tiếp nhận yêu cầu {dept_name} cho Phòng {current_room} rồi ạ! Em đã gửi thông báo tới các bộ phận liên quan ngay lập tức. Quý khách có cần em hỗ trợ thêm gì nữa không ạ?"
             return {
                 "missing_room_number": False,
                 "room_number": current_room,
@@ -421,7 +421,11 @@ async def generator_node(state: ConciergeState) -> Dict[str, Any]:
     emotion = state.get("emotion")
     history = state.get("chat_history") or []
     current_room = state.get("room_number")
+    # Pass explicit "" when skipping retrieval (chitchat) or when retrieval yielded "",
+    # preventing _prepare_chat_context from re-running ChromaDB unnecessarily.
     rag_context = state.get("rag_context")
+    if rag_context is None:
+        rag_context = ""
 
     reply, detected_lang, final_code = await ollama_service.generate_response(
         prompt=prompt,

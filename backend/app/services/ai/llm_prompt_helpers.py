@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 
 import httpx
@@ -242,6 +243,72 @@ def build_openai_messages(
     return messages
 
 
+_GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
+_GROQ_FALLBACK_MODELS = ("openai/gpt-oss-120b", "openai/gpt-oss-20b")
+_GROQ_MODEL_COOLDOWN_UNTIL: Dict[str, float] = {}
+
+
+def _groq_candidate_models(primary: Optional[str]) -> List[str]:
+    """Return ordered active Groq models, skipping models currently in 429 cooldown."""
+    now = time.time()
+    ordered: List[str] = []
+    for candidate in (primary or "qwen/qwen3.8-27b", *_GROQ_FALLBACK_MODELS):
+        if candidate and candidate not in ordered and _GROQ_MODEL_COOLDOWN_UNTIL.get(candidate, 0.0) <= now:
+            ordered.append(candidate)
+    return ordered
+
+
+def _build_groq_payload(
+    model_name: str,
+    messages: List[Dict[str, str]],
+    *,
+    max_tokens: int,
+    json_mode: bool = False,
+    stream: bool = False,
+) -> Dict[str, Any]:
+    """Construct Groq payload with safe reasoning_effort/max_tokens defaults for gpt-oss models."""
+    effective_max = max_tokens
+    payload: Dict[str, Any] = {
+        "model": model_name,
+        "messages": messages,
+        "temperature": 0.0 if json_mode else 0.4,
+    }
+    if "gpt-oss" in model_name:
+        payload["reasoning_effort"] = "low"
+        effective_max = max(max_tokens, 200)
+    payload["max_tokens"] = effective_max
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
+    if stream:
+        payload["stream"] = True
+    return payload
+
+
+def _handle_groq_429(
+    model_name: str, headers: httpx.Headers, log_prefix: str
+) -> Optional[float]:
+    """Record cooldown on TPD/long 429s; return brief wait seconds only for short transient limits."""
+    should_retry = headers.get("x-should-retry", "").strip().lower()
+    raw_retry = headers.get("retry-after")
+    retry_sec: Optional[float] = None
+    if raw_retry:
+        try:
+            retry_sec = float(raw_retry)
+        except ValueError:
+            retry_sec = None
+
+    if should_retry == "false" or (retry_sec is not None and retry_sec > 1.8):
+        cooldown = min(retry_sec if retry_sec is not None else 120.0, 300.0)
+        _GROQ_MODEL_COOLDOWN_UNTIL[model_name] = time.time() + cooldown
+        logger.warning(
+            f"{log_prefix} Model '{model_name}' rate limited (retry-after={raw_retry}, x-should-retry={should_retry or 'unset'}); "
+            f"cooling down {cooldown:.0f}s and switching model immediately."
+        )
+        return None
+
+    return max(0.3, min(retry_sec or 0.8, 1.0))
+
+
 async def call_groq_chat(
     messages: List[Dict[str, str]],
     *,
@@ -251,51 +318,45 @@ async def call_groq_chat(
     max_tokens: int = 150,
     log_prefix: str = "[Groq API]",
 ) -> Optional[str]:
-    """Call Groq OpenAI-compatible chat completion API with smart 429 retry and retry-after header parsing."""
+    """Call Groq chat completions with fast SLA-safe 429 cooldown and automatic model failover."""
     if not api_key:
         return None
-    url = "https://api.groq.com/openai/v1/chat/completions"
+    candidates = _groq_candidate_models(model)
+    if not candidates:
+        logger.warning(f"{log_prefix} All Groq models are in rate-limit cooldown, skipping to next tier.")
+        return None
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "User-Agent": "curl/8.0.1",
     }
-    payload: Dict[str, Any] = {
-        "model": model or "qwen/qwen3.8-27b",
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": 0.0 if json_mode else 0.4,
-    }
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
+    timeout = httpx.Timeout(connect=2.5, read=3.0, write=2.5, pool=2.5)
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            for attempt in range(3):
-                res = await client.post(url, headers=headers, json=payload)
-                if res.status_code == 200:
-                    return res.json()["choices"][0]["message"]["content"]
-                if res.status_code == 429:
-                    if attempt < 2:
-                        raw_retry = res.headers.get("retry-after")
-                        wait_sec = 1.4 if attempt == 0 else 2.2
-                        if raw_retry:
-                            try:
-                                wait_sec = max(1.0, min(float(raw_retry), 3.5))
-                            except ValueError:
-                                pass
-                        logger.warning(
-                            f"{log_prefix} Rate limited (429), waiting {wait_sec:.1f}s (attempt {attempt + 1}/3)..."
-                        )
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for candidate in candidates:
+                payload = _build_groq_payload(candidate, messages, max_tokens=max_tokens, json_mode=json_mode)
+                for attempt in range(2):
+                    res = await client.post(_GROQ_CHAT_URL, headers=headers, json=payload)
+                    if res.status_code == 200:
+                        content = (res.json()["choices"][0]["message"].get("content") or "").strip()
+                        if content:
+                            return content
+                        logger.warning(f"{log_prefix} Model '{candidate}' returned empty content, trying next model...")
+                        break
+                    if res.status_code == 429:
+                        wait_sec = _handle_groq_429(candidate, res.headers, log_prefix)
+                        if wait_sec is None or attempt == 1 or len(candidates) > 1:
+                            if wait_sec is not None:
+                                _GROQ_MODEL_COOLDOWN_UNTIL[candidate] = time.time() + 15.0
+                            break
                         await asyncio.sleep(wait_sec)
                         continue
-                    logger.warning(f"{log_prefix} Retry failed status=429 after 3 attempts")
-                    return None
-                logger.warning(f"{log_prefix} Warning status={res.status_code}: {res.text[:120]}")
-                return None
+                    logger.warning(f"{log_prefix} Warning ({candidate}) status={res.status_code}: {res.text[:120]}")
+                    break
     except Exception as e:
         logger.warning(f"{log_prefix} Error: {e}")
-        return None
     return None
 
 
@@ -308,45 +369,38 @@ async def stream_groq_chat(
     log_prefix: str = "[Groq Stream]",
     raise_on_error: bool = True,
 ) -> AsyncGenerator[str, None]:
-    """Stream tokens from Groq chat completions SSE endpoint."""
+    """Stream tokens from Groq chat completions SSE endpoint with instant 429 failover."""
     if not api_key:
         return
-    url = "https://api.groq.com/openai/v1/chat/completions"
+    candidates = _groq_candidate_models(model)
+    if not candidates:
+        logger.warning(f"{log_prefix} All Groq models are in rate-limit cooldown, skipping to next tier.")
+        return
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "Accept": "text/event-stream",
         "User-Agent": "curl/8.0.1",
     }
-    payload: Dict[str, Any] = {
-        "model": model or "qwen/qwen3.8-27b",
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": 0.4,
-        "stream": True,
-    }
+    timeout = httpx.Timeout(connect=2.5, read=8.0, write=2.5, pool=2.5)
+
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            for attempt in range(2):
-                async with client.stream("POST", url, headers=headers, json=payload) as response:
-                    if response.status_code == 429 and attempt == 0:
-                        raw_retry = response.headers.get("retry-after")
-                        wait_sec = 1.4
-                        if raw_retry:
-                            try:
-                                wait_sec = max(1.0, min(float(raw_retry), 3.5))
-                            except ValueError:
-                                pass
-                        logger.warning(f"{log_prefix} Rate limited (429), waiting {wait_sec:.1f}s before stream retry...")
-                        await asyncio.sleep(wait_sec)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for candidate in candidates:
+                payload = _build_groq_payload(candidate, messages, max_tokens=max_tokens, stream=True)
+                async with client.stream("POST", _GROQ_CHAT_URL, headers=headers, json=payload) as response:
+                    if response.status_code == 429:
+                        _handle_groq_429(candidate, response.headers, log_prefix)
                         continue
                     if response.status_code != 200:
                         err_text = await response.aread()
                         logger.warning(
-                            f"{log_prefix} Warning status={response.status_code}: "
+                            f"{log_prefix} Warning ({candidate}) status={response.status_code}: "
                             f"{err_text[:120].decode('utf-8', errors='ignore')}"
                         )
-                        return
+                        continue
+                    yielded = False
                     async for line in response.aiter_lines():
                         if not line or not line.startswith("data: "):
                             continue
@@ -358,10 +412,12 @@ async def stream_groq_chat(
                             if choices:
                                 content = choices[0].get("delta", {}).get("content", "")
                                 if content:
+                                    yielded = True
                                     yield content
                         except json.JSONDecodeError:
                             continue
-                    return
+                    if yielded:
+                        return
     except Exception as e:
         logger.warning(f"{log_prefix} Error: {e}")
         if raise_on_error:

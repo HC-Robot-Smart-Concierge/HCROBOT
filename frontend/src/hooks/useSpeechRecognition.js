@@ -167,6 +167,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const commitFinalTranscript = useCallback((text) => {
     const clean = (text || '').trim();
     if (!clean) return;
+    if (callbacksRef.current?.isSpeaking) return;
     if (utteranceCommittedRef.current && clean === lastCommittedTextRef.current) return;
     utteranceCommittedRef.current = true;
     lastCommittedTextRef.current = clean;
@@ -526,6 +527,13 @@ export const useSpeechRecognition = (callbacks = {}) => {
       recognition.onresult = (event) => {
         if (!shouldListenRef.current) return;
         latestResultsLengthRef.current = event.results.length;
+        // Chống Echo / Self-hearing cho cả Web Speech API: bỏ qua âm thanh khi Robot đang nói/chuẩn bị nói
+        if (callbacksRef.current?.isSpeaking) {
+          resultOffsetRef.current = event.results.length;
+          lastFinalTranscriptRef.current = '';
+          clearSpeechFinalizeTimer();
+          return;
+        }
         const startIdx = Math.min(resultOffsetRef.current, event.results.length);
         let fullTranscript = '';
         for (let i = startIdx; i < event.results.length; i++) {
@@ -764,7 +772,12 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
   const stopListening = useCallback(() => {
     shouldListenRef.current = false;
+    listenEpochRef.current += 1;
     clearRestartTimer();
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
     liveRef.current = false;
     inlineCallbacksRef.current = {};
     if (recognitionRef.current) {

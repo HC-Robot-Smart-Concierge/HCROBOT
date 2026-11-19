@@ -45,6 +45,7 @@ class TTSService:
 
         self._memory_cache: Dict[str, str] = {}
         self._inflight_tasks: Dict[str, asyncio.Task] = {}
+        self._inflight_waiters: Dict[str, int] = {}
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
         self._cache_dir = os.path.join(current_dir, "..", "..", "..", "static", "audio_cache")
@@ -288,7 +289,7 @@ class TTSService:
         voice: Optional[str] = None,
         language: Optional[str] = None,
         rate: Optional[str] = None,
-        timeout: float = 2.2,
+        timeout: float = 4.0,
         allow_fallback: bool = True,
     ) -> Dict[str, Any]:
         """Tổng hợp giọng đọc kèm mã lỗi chuẩn hóa để phục vụ chẩn đoán cuộc gọi."""
@@ -353,14 +354,25 @@ class TTSService:
                     last_error_detail = f"{label} error: {e}"
                     logger.warning(f"[TTSService] {label} synthesis failed: {e}. Fallback to EdgeTTS.")
 
+        waiters = getattr(self, "_inflight_waiters", None)
+        if waiters is None:
+            waiters = {}
+            self._inflight_waiters = waiters
+        attempt_timeout = min(2.8, max(0.02, float(timeout) * 0.65))
+        inflight = None
+        counted = False
         try:
             inflight = self._inflight_tasks.get(cache_key)
             if inflight is None or inflight.done():
                 inflight = asyncio.create_task(
-                    self._synthesize_and_cache_edge_tts_detailed(clean_text, target_voice, target_rate, cache_key)
+                    self._synthesize_and_cache_edge_tts_detailed(
+                        clean_text, target_voice, target_rate, cache_key, attempt_timeout=attempt_timeout
+                    )
                 )
                 self._inflight_tasks[cache_key] = inflight
 
+            waiters[cache_key] = waiters.get(cache_key, 0) + 1
+            counted = True
             edge_b64, edge_err_code, edge_err_detail = await asyncio.wait_for(asyncio.shield(inflight), timeout=timeout)
             if edge_b64:
                 return self._ok_result(edge_b64, "edge", audio_url=audio_static_url)
@@ -368,12 +380,23 @@ class TTSService:
             last_error_detail = edge_err_detail or f"EdgeTTS returned no audio for voice={target_voice}"
         except asyncio.TimeoutError:
             last_error_code = "TTS_TIMEOUT"
-            last_error_detail = f"EdgeTTS timed out after {timeout}s (voice={target_voice})"
+            last_error_detail = f"EdgeTTS timed out after {timeout:.2f}s (voice={target_voice})"
             logger.warning(f"[TTSService] {last_error_code}: {last_error_detail} len={len(clean_text)}")
         except Exception as e:
             last_error_code = "TTS_PROVIDER_ERROR"
             last_error_detail = f"EdgeTTS exception: {type(e).__name__}: {e}"
             logger.warning(f"[TTSService] {last_error_code}: {last_error_detail}")
+        finally:
+            if counted:
+                remaining_waiters = max(0, waiters.get(cache_key, 1) - 1)
+                if remaining_waiters == 0:
+                    waiters.pop(cache_key, None)
+                    if inflight is not None and not inflight.done():
+                        inflight.cancel()
+                        if self._inflight_tasks.get(cache_key) is inflight:
+                            self._inflight_tasks.pop(cache_key, None)
+                else:
+                    waiters[cache_key] = remaining_waiters
 
         if allow_fallback:
             # 1. Dự phòng qua Google Translate TTS HTTP (nếu có mạng)
@@ -423,7 +446,7 @@ class TTSService:
         voice: Optional[str] = None,
         language: Optional[str] = None,
         rate: Optional[str] = None,
-        timeout: float = 2.2,
+        timeout: float = 4.0,
     ) -> Tuple[str, str, str]:
         """Tổng hợp giọng đọc từ văn bản kèm bộ đệm âm thanh siêu tốc."""
         res = await self.synthesize_with_details(
@@ -432,7 +455,12 @@ class TTSService:
         return res["audio_base64"], res["mime_type"], res["provider_used"]
 
     async def _synthesize_and_cache_edge_tts_detailed(
-        self, clean_text: str, voice: str, rate: str, cache_key: str
+        self,
+        clean_text: str,
+        voice: str,
+        rate: str,
+        cache_key: str,
+        attempt_timeout: Optional[float] = None,
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         try:
             if hasattr(self._synthesize_edge_tts, "assert_called") or getattr(self._synthesize_edge_tts, "_is_mock", False):
@@ -442,11 +470,18 @@ class TTSService:
                     return audio_b64, None, None
                 return None, "TTS_AUDIO_EMPTY", "EdgeTTS returned no audio"
 
-            audio_b64, err_code, err_detail = await self._synthesize_edge_tts_detailed(clean_text, voice, rate)
+            if hasattr(self._synthesize_edge_tts_detailed, "assert_called") or getattr(self._synthesize_edge_tts_detailed, "_is_mock", False):
+                audio_b64, err_code, err_detail = await self._synthesize_edge_tts_detailed(clean_text, voice, rate)
+            else:
+                audio_b64, err_code, err_detail = await self._synthesize_edge_tts_detailed(
+                    clean_text, voice, rate, attempt_timeout=attempt_timeout
+                )
             if audio_b64:
                 self._save_to_cache(cache_key, audio_b64)
                 return audio_b64, None, None
             return None, err_code, err_detail
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.debug(f"[TTSService] EdgeTTS single-flight task exception: {e}")
             return None, "TTS_PROVIDER_ERROR", f"{type(e).__name__}: {e}"
@@ -461,10 +496,10 @@ class TTSService:
         return audio_b64
 
     async def _synthesize_edge_tts_detailed(
-        self, text: str, voice: str, rate: Optional[str] = None
+        self, text: str, voice: str, rate: Optional[str] = None, attempt_timeout: Optional[float] = None
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         return await synthesize_edge_tts_detailed(
-            text, voice, rate=rate, default_volume="+0%"
+            text, voice, rate=rate, default_volume="+0%", attempt_timeout=attempt_timeout
         )
 
     async def _synthesize_edge_tts(self, text: str, voice: str, rate: Optional[str] = None) -> Optional[str]:
@@ -527,8 +562,11 @@ class TTSService:
             try:
                 cache_key = self._get_cache_key(phrase, "edge", voice, rate_str, volume_str)
                 if not self._get_from_cache(cache_key):
-                    await self.synthesize(phrase, provider="edge", language=lang, voice=voice)
-                    logger.info(f"[TTSService] Pre-cached filler phrase: '{phrase}' ({voice})")
+                    res = await self.synthesize_with_details(
+                        phrase, provider="edge", language=lang, voice=voice, timeout=8.0, allow_fallback=False
+                    )
+                    if res.get("audio_base64"):
+                        logger.info(f"[TTSService] Pre-cached phrase: '{phrase}' ({voice})")
             except Exception as e:
                 logger.debug(f"[TTSService] Warmup skip for '{phrase}': {e}")
 

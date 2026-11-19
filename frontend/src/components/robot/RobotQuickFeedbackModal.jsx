@@ -10,8 +10,10 @@ export const RobotQuickFeedbackModal = ({
   sessionId,
   roomNumber,
   guestName = 'Khách tại Kiosk',
+  language = 'Tiếng Việt',
   onCompleted,
 }) => {
+  const isEn = language === 'English';
   const [rating, setRating] = useState(5);
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,8 +42,11 @@ export const RobotQuickFeedbackModal = ({
         setIsSubmitting(false);
         setIsSuccess(true);
         setTimeout(() => {
-          if (onCompleted) onCompleted(targetRating);
-          if (onClose) onClose();
+          if (onCompleted) {
+            onCompleted(targetRating);
+          } else if (onClose) {
+            onClose();
+          }
         }, 1000);
       }
     },
@@ -88,7 +93,7 @@ export const RobotQuickFeedbackModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn select-none">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn select-none">
       <div className="relative w-full max-w-sm bg-stone-900 border border-stone-700/80 rounded-3xl p-6 shadow-2xl text-center space-y-4 text-stone-100">
         {/* Nút Đóng / Bỏ qua */}
         <button
@@ -98,7 +103,7 @@ export const RobotQuickFeedbackModal = ({
             if (onClose) onClose();
           }}
           className="absolute top-4 right-4 p-1.5 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition-colors cursor-pointer"
-          title="Bỏ qua đánh giá"
+          title={isEn ? 'Skip feedback' : 'Bỏ qua đánh giá'}
         >
           <X className="w-5 h-5" />
         </button>
@@ -109,10 +114,12 @@ export const RobotQuickFeedbackModal = ({
               <Check className="w-6 h-6" />
             </div>
             <h3 className="text-base font-bold text-white tracking-wide">
-              Cảm Ơn Quý Khách!
+              {isEn ? 'Thank You!' : 'Cảm Ơn Quý Khách!'}
             </h3>
             <p className="text-xs text-stone-400">
-              Đánh giá {rating} sao của quý khách đã được ghi nhận.
+              {isEn
+                ? `Your ${rating}-star rating has been recorded.`
+                : `Đánh giá ${rating} sao của quý khách đã được ghi nhận.`}
             </p>
           </div>
         ) : (
@@ -120,8 +127,8 @@ export const RobotQuickFeedbackModal = ({
             {/* Thanh đếm ngược tiến trình */}
             <div className="space-y-1.5 text-left">
               <div className="flex items-center justify-between text-[10px] font-mono font-bold text-stone-400 uppercase tracking-wider">
-                <span>Khảo sát nhanh</span>
-                <span>Tự đóng sau {countdown}s</span>
+                <span>{isEn ? 'Quick Survey' : 'Khảo sát nhanh'}</span>
+                <span>{isEn ? `Auto-close in ${countdown}s` : `Tự đóng sau ${countdown}s`}</span>
               </div>
               <div className="w-full h-1 bg-stone-800 rounded-full overflow-hidden">
                 <div
@@ -134,10 +141,10 @@ export const RobotQuickFeedbackModal = ({
             {/* Tiêu đề ngắn gọn */}
             <div className="space-y-1">
               <h3 className="text-base font-bold text-white tracking-tight">
-                Chấm Điểm Dịch Vụ
+                {isEn ? 'Rate Our Service' : 'Chấm Điểm Dịch Vụ'}
               </h3>
               <p className="text-xs text-stone-400">
-                Chạm vào số sao quý khách muốn đánh giá
+                {isEn ? 'Tap a star to submit your rating' : 'Chạm vào số sao quý khách muốn đánh giá'}
               </p>
             </div>
 

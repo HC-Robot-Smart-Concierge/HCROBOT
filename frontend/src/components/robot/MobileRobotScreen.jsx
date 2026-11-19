@@ -145,6 +145,7 @@ export const MobileRobotScreen = ({
   isListening = false,
   isProcessing = false,
   isSpeaking = false,
+  isSpeechActive = false,
   language = 'Tiếng Việt',
   onLogout,
   onResetSession,
@@ -897,15 +898,15 @@ export const MobileRobotScreen = ({
               if (typeof onStartKioskCamera === 'function' && !isKioskCameraActive) {
                 onStartKioskCamera(true);
               }
-              if (isSpeaking && onStopSpeaking) {
-                onStopSpeaking();
+              if (isSpeaking || isSpeechActive) {
+                // Không dập tắt giọng đọc robot khi chạm vào khoảng trống màn hình
                 return;
               }
               if (isListening && transcript && onSubmitTalk) {
                 onSubmitTalk();
                 return;
               }
-              if (!isSpeaking && !isBusy && onStartTalk) {
+              if (!isSpeaking && !isSpeechActive && !isBusy && onStartTalk) {
                 if (onPrime) onPrime();
                 onStartTalk();
               }

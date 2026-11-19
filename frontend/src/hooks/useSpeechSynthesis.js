@@ -6,13 +6,18 @@ const clientAudioCache = new Map();
 
 export const useSpeechSynthesis = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isSpeechPending, setIsSpeechPending] = useState(false);
   const [voices, setVoices] = useState([]);
   const audioRef = useRef(null);
   const persistentAudioRef = useRef(null);
+  const unlockAudioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const activeSourceNodeRef = useRef(null);
   const activeUtteranceRef = useRef(null);
   const safetyTimerRef = useRef(null);
+  const browserNoStartTimerRef = useRef(null);
+  const browserKeepAliveRef = useRef(null);
+  const isSpeechActiveRef = useRef(false);
 
   // Epoch ID cho TTS: Ngăn chặn race condition khi câu trước load chậm không được phát lồng vào câu sau
   const activeSpeechIdRef = useRef(0);
@@ -115,11 +120,14 @@ export const useSpeechSynthesis = () => {
       source.onended = () => {
         activeSourceNodeRef.current = null;
         if (!speechId || speechId === activeSpeechIdRef.current) {
+          isSpeechActiveRef.current = false;
+          setIsSpeechPending(false);
           setIsSpeaking(false);
           if (onEndCallback) onEndCallback();
         }
       };
 
+      setIsSpeechPending(false);
       setIsSpeaking(true);
       if (onStartCallback) onStartCallback();
       source.start(0);
@@ -250,8 +258,10 @@ export const useSpeechSynthesis = () => {
     };
   }, []);
 
-  // Unlock TTS Audio Engine on Mobile / Kiosk Gesture
+  // Unlock TTS Audio Engine on Mobile / Kiosk Gesture (never interrupt active speech)
   const prime = () => {
+    if (isSpeechActiveRef.current) return;
+
     // 0. Unlock Web Audio Context
     try {
       const ctx = getAudioContext();
@@ -260,8 +270,8 @@ export const useSpeechSynthesis = () => {
       }
     } catch (e) {}
 
-    // 1. Unlock Web Speech Synthesis
-    if ('speechSynthesis' in window) {
+    // 1. Unlock Web Speech Synthesis without cancelling active utterances
+    if ('speechSynthesis' in window && !window.speechSynthesis.speaking) {
       try {
         window.speechSynthesis.resume();
         const silentUtterance = new SpeechSynthesisUtterance('');
@@ -273,19 +283,24 @@ export const useSpeechSynthesis = () => {
       }
     }
 
-    // 2. Unlock HTML5 Audio cho EdgeTTS playback trên iOS
+    // 2. Unlock HTML5 Audio via a dedicated throwaway element so persistentAudioRef is never overwritten
     try {
-      const audio = getAudioPlayer();
-      if (audio) {
-        audio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
-        audio.volume = 0.01;
-        const playPromise = audio.play();
+      if (!unlockAudioRef.current && typeof window !== 'undefined') {
+        unlockAudioRef.current = new Audio();
+        unlockAudioRef.current.preload = 'auto';
+        unlockAudioRef.current.setAttribute('playsinline', 'true');
+        unlockAudioRef.current.setAttribute('webkit-playsinline', 'true');
+      }
+      const unlockAudio = unlockAudioRef.current;
+      if (unlockAudio) {
+        unlockAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+        unlockAudio.volume = 0.01;
+        const playPromise = unlockAudio.play();
         if (playPromise !== undefined) {
           playPromise
             .then(() => {
-              audio.pause();
-              audio.currentTime = 0;
-              audio.volume = 1.0;
+              unlockAudio.pause();
+              unlockAudio.currentTime = 0;
             })
             .catch(() => {});
         }
@@ -309,10 +324,20 @@ export const useSpeechSynthesis = () => {
       clearTimeout(safetyTimerRef.current);
       safetyTimerRef.current = null;
     }
+    if (browserNoStartTimerRef.current) {
+      clearTimeout(browserNoStartTimerRef.current);
+      browserNoStartTimerRef.current = null;
+    }
+    if (browserKeepAliveRef.current) {
+      clearInterval(browserKeepAliveRef.current);
+      browserKeepAliveRef.current = null;
+    }
 
     if (speechId !== activeSpeechIdRef.current) {
       return;
     }
+    isSpeechActiveRef.current = true;
+    setIsSpeechPending(true);
 
     // Chuẩn hóa văn bản: loại bỏ ký tự rác, markdown, định dạng danh sách và chuẩn hóa dấu câu
     // để mô hình TTS đọc liền mạch, êm ái, KHÔNG bị giật hay ngắt quãng đột ngột.
@@ -331,6 +356,8 @@ export const useSpeechSynthesis = () => {
       .trim();
 
     if (!cleanText) {
+      isSpeechActiveRef.current = false;
+      setIsSpeechPending(false);
       if (onStartCallback) onStartCallback();
       if (onEndCallback) onEndCallback();
       return;
@@ -445,6 +472,7 @@ export const useSpeechSynthesis = () => {
           }
           hasPlayed = true;
           recovered = true;
+          setIsSpeechPending(false);
           setIsSpeaking(true);
           if (onStartCallback) onStartCallback();
         };
@@ -454,6 +482,8 @@ export const useSpeechSynthesis = () => {
             window._activeAudioPlayer = null;
           }
           if (speechId === activeSpeechIdRef.current) {
+            isSpeechActiveRef.current = false;
+            setIsSpeechPending(false);
             setIsSpeaking(false);
             audioRef.current = null;
             if (onEndCallback) onEndCallback();
@@ -476,6 +506,8 @@ export const useSpeechSynthesis = () => {
               stopCurrentAudio();
               recoverWebSpeech();
             } else {
+              isSpeechActiveRef.current = false;
+              setIsSpeechPending(false);
               setIsSpeaking(false);
               if (onEndCallback) onEndCallback();
             }
@@ -540,6 +572,8 @@ export const useSpeechSynthesis = () => {
     stopCurrentAudio();
 
     if (!('speechSynthesis' in window)) {
+      isSpeechActiveRef.current = false;
+      setIsSpeechPending(false);
       if (onStartCallback) onStartCallback();
       if (onEndCallback) onEndCallback();
       return;
@@ -595,12 +629,21 @@ export const useSpeechSynthesis = () => {
       }
 
       let hasFinished = false;
+      let hasStarted = false;
       const finishOnce = () => {
         if (hasFinished) return;
         hasFinished = true;
         if (safetyTimerRef.current) {
           clearTimeout(safetyTimerRef.current);
           safetyTimerRef.current = null;
+        }
+        if (browserNoStartTimerRef.current) {
+          clearTimeout(browserNoStartTimerRef.current);
+          browserNoStartTimerRef.current = null;
+        }
+        if (browserKeepAliveRef.current) {
+          clearInterval(browserKeepAliveRef.current);
+          browserKeepAliveRef.current = null;
         }
         activeUtteranceRef.current = null;
         if (typeof window !== 'undefined') {
@@ -609,6 +652,8 @@ export const useSpeechSynthesis = () => {
         if (speechId && speechId !== activeSpeechIdRef.current) {
           return;
         }
+        isSpeechActiveRef.current = false;
+        setIsSpeechPending(false);
         setIsSpeaking(false);
         if (onEndCallback) onEndCallback();
       };
@@ -620,6 +665,12 @@ export const useSpeechSynthesis = () => {
           } catch (e) {}
           return;
         }
+        hasStarted = true;
+        if (browserNoStartTimerRef.current) {
+          clearTimeout(browserNoStartTimerRef.current);
+          browserNoStartTimerRef.current = null;
+        }
+        setIsSpeechPending(false);
         setIsSpeaking(true);
         if (onStartCallback) onStartCallback();
       };
@@ -633,35 +684,53 @@ export const useSpeechSynthesis = () => {
         finishOnce();
       };
 
-      // Safety timeout: đảm bảo onEndCallback luôn được kích hoạt kể cả khi browser nuốt mất onend
-      // Tính theo tốc độ đọc rate để câu dài không bị timeout cắt ngang giữa chừng
+      // Chrome desktop pauses SpeechSynthesis after ~15s; periodic resume keeps long sentences continuous.
+      if (browserKeepAliveRef.current) {
+        clearInterval(browserKeepAliveRef.current);
+      }
+      browserKeepAliveRef.current = setInterval(() => {
+        if (hasFinished || (speechId && speechId !== activeSpeechIdRef.current)) {
+          clearInterval(browserKeepAliveRef.current);
+          browserKeepAliveRef.current = null;
+          return;
+        }
+        try {
+          if (window.speechSynthesis?.speaking && !window.speechSynthesis?.paused) {
+            window.speechSynthesis.pause();
+            window.speechSynthesis.resume();
+          }
+        } catch (e) {}
+      }, 10000);
+
+      // Safety timeout: đủ dài để không cắt ngang giữa câu, chỉ giải phóng nếu browser thực sự nuốt sự kiện onend
       const wordCount = cleanText.split(/\s+/).length;
       const rateFactor = Math.max(0.5, rate || 1.0);
-      const maxMs = Math.max((wordCount / rateFactor) * 700 + 4000, 8000);
+      const maxMs = Math.max((wordCount / rateFactor) * 1100 + 8000, 14000);
       safetyTimerRef.current = setTimeout(() => {
         if (!speechId || speechId === activeSpeechIdRef.current) {
           finishOnce();
         }
       }, maxMs);
 
-      // Auto-release dự phòng khi trình duyệt thiếu voice engine tiếng Việt (ví dụ Chrome trên Windows)
+      // Chỉ auto-release nếu browser thực sự thiếu voice và utterance KHÔNG hề cất tiếng sau 1.4s.
+      // Tuyệt đối không cắt ngang ở 5.5s khi utterance đã bắt đầu phát tiếng (hasStarted === true).
       if (!selectedVoice && langTag.startsWith('vi')) {
-        setTimeout(() => {
-          if (!hasFinished && (!speechId || speechId === activeSpeechIdRef.current)) {
+        if (browserNoStartTimerRef.current) {
+          clearTimeout(browserNoStartTimerRef.current);
+        }
+        browserNoStartTimerRef.current = setTimeout(() => {
+          if (!hasStarted && !hasFinished && (!speechId || speechId === activeSpeechIdRef.current)) {
             if (onStartCallback) onStartCallback();
-          }
-        }, 120);
-        const fallbackReadMs = Math.min(Math.max(wordCount * 280, 2500), 5500);
-        setTimeout(() => {
-          if (!hasFinished && (!speechId || speechId === activeSpeechIdRef.current)) {
             finishOnce();
           }
-        }, fallbackReadMs);
+        }, 1400);
       }
 
       window.speechSynthesis.speak(utterance);
     } catch (err) {
       console.warn("TTS Error:", err);
+      isSpeechActiveRef.current = false;
+      setIsSpeechPending(false);
       setIsSpeaking(false);
       if (onStartCallback) onStartCallback();
       if (onEndCallback) onEndCallback();
@@ -846,11 +915,15 @@ export const useSpeechSynthesis = () => {
     }
 
     if (!text || !text.trim()) {
+      isSpeechActiveRef.current = false;
+      setIsSpeechPending(false);
       if (actualOnStart) actualOnStart();
       if (actualOnEnd) actualOnEnd();
       return;
     }
 
+    isSpeechActiveRef.current = true;
+    setIsSpeechPending(true);
     const currentSpeechId = ++activeSpeechIdRef.current;
     abortControllerRef.current = new AbortController();
     const currentSignal = abortControllerRef.current.signal;
@@ -914,6 +987,7 @@ export const useSpeechSynthesis = () => {
           if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
             try { window.speechSynthesis.cancel(); } catch (e) {}
           }
+          setIsSpeechPending(false);
           setIsSpeaking(true);
           if (actualOnStart) actualOnStart();
         };
@@ -923,6 +997,8 @@ export const useSpeechSynthesis = () => {
             window._activeAudioPlayer = null;
           }
           if (currentSpeechId === activeSpeechIdRef.current) {
+            isSpeechActiveRef.current = false;
+            setIsSpeechPending(false);
             setIsSpeaking(false);
             audioRef.current = null;
             if (actualOnEnd) actualOnEnd();
@@ -944,6 +1020,8 @@ export const useSpeechSynthesis = () => {
               }
               triggerSingleRecovery();
             } else {
+              isSpeechActiveRef.current = false;
+              setIsSpeechPending(false);
               setIsSpeaking(false);
               if (actualOnEnd) actualOnEnd();
             }
@@ -999,6 +1077,16 @@ export const useSpeechSynthesis = () => {
       clearTimeout(safetyTimerRef.current);
       safetyTimerRef.current = null;
     }
+    if (browserNoStartTimerRef.current) {
+      clearTimeout(browserNoStartTimerRef.current);
+      browserNoStartTimerRef.current = null;
+    }
+    if (browserKeepAliveRef.current) {
+      clearInterval(browserKeepAliveRef.current);
+      browserKeepAliveRef.current = null;
+    }
+    isSpeechActiveRef.current = false;
+    setIsSpeechPending(false);
     queueRef.current = [];
     isPlayingQueueRef.current = false;
     streamEndedRef.current = false;
@@ -1027,6 +1115,8 @@ export const useSpeechSynthesis = () => {
     cancel,
     stop: cancel,
     isSpeaking,
+    isSpeechPending,
+    isSpeechActive: isSpeaking || isSpeechPending,
     voices,
     speechRate,
     setSpeechRate: updateSpeechRate,

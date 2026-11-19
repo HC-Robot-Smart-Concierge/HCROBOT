@@ -59,6 +59,17 @@ class ConciergeState(TypedDict, total=False):
     trigger_menu: Optional[str]
 
 
+_BARE_NO_MORE_HELP_RE = re.compile(
+    r"^(?:(?:dạ|da|vâng|vang|ok|thôi|thoi|tôi|toi|mình|minh|em|anh|chị|chi)\s+)*"
+    r"(?:không cần(?: gì)?(?: thêm| nữa)?|khong can(?: gi)?(?: them| nua)?|"
+    r"không còn(?: gì)?(?: cần)?(?: hỗ trợ)?(?: gì)?(?: nữa)?|"
+    r"khong con(?: gi)?(?: can)?(?: ho tro)?(?: gi)?(?: nua)?|"
+    r"no thanks|no thank you|nothing else|no more help|no further assistance|i'?m good|all good|that'?s all)"
+    r"(?:\s+(?:đâu|dau|nữa|nua|ạ|a|nhé|nhe|nha|em|rora|robot))*[\s.,!?]*$",
+    re.IGNORECASE,
+)
+
+
 async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
     """
     Node 1: Dynamic Fast-Path Rule Engine.
@@ -150,6 +161,32 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
             "fast_path_hit": False,
             "lang_name": lang_name,
             "lang_code": lang_code,
+        }
+
+    # Khi khách từ chối hỗ trợ thêm ("không cần nữa", "tôi không còn hỗ trợ gì", ...) và không có yêu cầu/hủy đơn cụ thể
+    # -> Trả lời đóng phiên lịch sự ngay lập tức (<1ms, khớp câu đã pre-warm trong TTS cache) thay vì hỏi số phòng hủy dịch vụ.
+    if _BARE_NO_MORE_HELP_RE.match(prompt.strip()):
+        if not language or language.lower() in ["auto", ""]:
+            lang_name, lang_code = ollama_service.detect_language(prompt)
+        else:
+            lang_name = language
+            lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
+        closing_reply = (
+            "Rora is delighted to assist you! Please take a quick moment to rate our service."
+            if lang_code == "en-US"
+            else "Dạ vâng, Rora rất vui được hỗ trợ quý khách! Quý khách dành chút thời gian đánh giá dịch vụ giúp em nhé ạ."
+        )
+        return {
+            "fast_path_hit": True,
+            "response": closing_reply,
+            "lang_name": lang_name,
+            "lang_code": lang_code,
+            "language": lang_name,
+            "intent_category": "fast_path",
+            "action": "none",
+            "destination_key": None,
+            "trigger_video_call": False,
+            "trigger_menu": None,
         }
 
     # Nếu khách yêu cầu dịch vụ phòng thực tế (Actionable Service Request) -> Bỏ qua fast-path để intent_router & service_fsm xử lý
@@ -424,7 +461,10 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
         "chỗ nào", "quán ăn", "quán hải sản", "ăn hải sản", "mua sắm", "check in", "checkin", "ngắm cảnh",
         "nearby", "around here", "night market", "attractions", "sightseeing", "places to visit", "beach"
     ]
-    has_co_khong = bool(re.search(r"\bcó\b.+\bkhông\b", prompt_lower))
+    _chitchat_co_khong_re = re.compile(
+        r"\b(bị ngu|ngu|ngáo|khùng|điên|dốt|ngốc|khỏe|mệt|buồn|vui|chán|rảnh|ngủ|biết hát|biết nhảy|có người yêu|ế)\b"
+    )
+    has_co_khong = bool(re.search(r"\bcó\b.+\bkhông\b", prompt_lower)) and not _chitchat_co_khong_re.search(prompt_lower)
     is_asking_info = any(kw in prompt_lower for kw in faq_keywords) or has_co_khong
 
     action = None
@@ -502,3 +542,70 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
         "room_number": current_room,
         "session_id": session_id,
     }
+
+
+_FOLLOWUP_SKIP_ACTIONS = {
+    "taxi",
+    "book_taxi",
+    "taxi_booking",
+    "concierge",
+    "provide_room_number",
+    "invalid_room",
+    "open_food_menu",
+    "open_room_service_menu",
+    "open_maintenance_menu",
+    "open_bellman_menu",
+    "show_facilities",
+}
+_FOLLOWUP_SKIP_TEXT_RE = re.compile(
+    r"(không có phòng|does not have room|không tồn tại|chưa làm thủ tục nhận phòng|chưa check-in|"
+    r"xin số phòng|nhập mã pin|4-digit room pin|enter your pin|"
+    r"đánh giá dịch vụ|rate our service|tạm biệt|goodbye|hẹn gặp lại)",
+    re.IGNORECASE,
+)
+_FOLLOWUP_ALREADY_RE = re.compile(
+    r"(hỗ trợ\s+(?:gì\s+thêm|thêm\s+gì)|"
+    r"(?:muốn|cần)\s+(?:em\s+|rora\s+)?hỗ\s+trợ|"
+    r"cần\s+(?:rora|em)\s+hỗ\s+trợ|"
+    r"giúp\s+gì\s+(?:cho\s+)?quý\s+khách|"
+    r"giúp\s+gì\s+thêm|"
+    r"further\s+assistance|"
+    r"assist\s+you\s+(?:further|today)|"
+    r"help\s+you\s+(?:further|today)|"
+    r"anything\s+else\s+(?:i|we)\s+can\s+(?:help|assist)|"
+    r"how\s+may\s+i\s+(?:help|assist)|"
+    r"how\s+can\s+i\s+help)",
+    re.IGNORECASE,
+)
+
+
+def has_followup_question(text: Optional[str]) -> bool:
+    """Return True when reply already asks if the guest needs/wants further assistance."""
+    return bool(text and _FOLLOWUP_ALREADY_RE.search(text))
+
+
+def ensure_followup_question(
+    reply: Optional[str],
+    *,
+    action: Optional[str] = None,
+    lang_code: str = "vi-VN",
+    missing_room: bool = False,
+    require_pin: bool = False,
+    trigger_menu: Optional[str] = None,
+    trigger_video_call: bool = False,
+) -> str:
+    """Append a polite further-assistance question after every completed request."""
+    base = (reply or "").strip()
+    if not base:
+        return base
+    if missing_room or require_pin or trigger_menu or trigger_video_call:
+        return base
+    if (action or "") in _FOLLOWUP_SKIP_ACTIONS:
+        return base
+    if _FOLLOWUP_SKIP_TEXT_RE.search(base) or has_followup_question(base):
+        return base
+
+    is_en = bool(lang_code and str(lang_code).lower().startswith("en"))
+    suffix = "Would you like any further assistance?" if is_en else "Quý khách có muốn em hỗ trợ gì thêm không ạ?"
+    separator = " " if base.endswith((".", "!", "?", "…")) else ". "
+    return f"{base}{separator}{suffix}"

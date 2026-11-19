@@ -19,6 +19,7 @@ from app.services.ai.ai_ticket_service import (
     create_live_call_session,
 )
 from app.services.ai.concierge_graph import concierge_graph
+from app.services.ai.concierge_router_nodes import ensure_followup_question
 from app.services.ai.ollama_service import ollama_service
 from app.services.ai.session_manager import (
     extract_room_number,
@@ -99,6 +100,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
             lang_code = cached_ai.get("lang_code") or ("en-US" if detected_lang == "English" else "vi-VN")
         act = cached_ai.get("action", "conversation")
         dest_key = cached_ai.get("destination_key")
+        reply = ensure_followup_question(reply, action=act, lang_code=lang_code)
 
         # Đảm bảo không bị mất destination_key nếu cache cũ lưu None
         if not dest_key:
@@ -117,8 +119,8 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
 
         try:
             audio_b64, mime_type, _ = await asyncio.wait_for(
-                tts_service.synthesize(reply, provider="edge", language=lang_code),
-                timeout=3.5
+                tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=3.2),
+                timeout=3.8
             )
         except Exception:
             audio_b64, mime_type = None, "audio/mp3"
@@ -179,17 +181,23 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     try:
         graph_result = await asyncio.wait_for(
             concierge_graph.ainvoke(initial_state, config=graph_config),
-            timeout=3.8
+            timeout=4.8
         )
     except asyncio.TimeoutError:
-        logger.warning(f"[AIChatService] LangGraph execution exceeded 3.8s for prompt '{request.prompt[:30]}', returning 5s SLA spoken reason...")
+        logger.warning(f"[AIChatService] LangGraph execution exceeded 4.8s for prompt '{request.prompt[:30]}', returning 5s SLA spoken reason...")
         is_en = (cur_lang_code or "").startswith("en")
         reason_text = (
             "I apologize, our AI system took longer than 5 seconds to respond due to network latency. Please ask again or select a service on the screen."
             if is_en
             else "Dạ xin lỗi quý khách, hệ thống AI phản hồi quá 5 giây do nghẽn mạng máy chủ. Quý khách vui lòng hỏi lại hoặc chọn trực tiếp trên màn hình giúp em nhé ạ."
         )
-        audio_b64, mime_type, _ = await tts_service.synthesize(reason_text, provider="piper", language=cur_lang_code)
+        try:
+            audio_b64, mime_type, _ = await asyncio.wait_for(
+                tts_service.synthesize(reason_text, provider="piper", language=cur_lang_code),
+                timeout=2.5
+            )
+        except Exception:
+            audio_b64, mime_type = None, "audio/mp3"
         session_manager.add_turn(sid, "user", request.prompt, language=cur_lang_code)
         session_manager.add_turn(sid, "assistant", reason_text, language=cur_lang_code, intent_action="conversation")
         return ChatResponse(
@@ -213,6 +221,20 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     detected_lang = graph_result.get("lang_name", "Tiếng Việt")
     lang_code = graph_result.get("lang_code", "vi-VN")
     act = graph_result.get("action", "conversation")
+    missing_room = bool(graph_result.get("missing_room_number", False))
+    require_pin = bool(graph_result.get("require_room_pin", False))
+    is_video_call = bool(graph_result.get("trigger_video_call") or act == "concierge")
+    trigger_menu_val = graph_result.get("trigger_menu")
+
+    reply = ensure_followup_question(
+        reply,
+        action=act,
+        lang_code=lang_code,
+        missing_room=missing_room,
+        require_pin=require_pin,
+        trigger_menu=trigger_menu_val,
+        trigger_video_call=is_video_call,
+    )
 
     # Thêm lượt nói vào bộ nhớ RAM của phiên để duy trì ngữ cảnh nhiều lượt
     session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
@@ -221,10 +243,14 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         session_manager.set_language(sid, detected_lang)
 
     # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang Piper Offline / WebSpeech)
+    # Tự động cân đối ngân sách thời gian còn lại để tổng phản hồi không chạm ngưỡng 5s SLA ở frontend.
+    elapsed_graph = max(0.0, t_graph - t_start)
+    remaining_for_tts = max(1.6, 4.2 - elapsed_graph)
+    edge_timeout = min(3.2, max(1.6, remaining_for_tts - 0.5))
     try:
         audio_b64, mime_type, _ = await asyncio.wait_for(
-            tts_service.synthesize(reply, provider="edge", language=lang_code),
-            timeout=3.5
+            tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=edge_timeout),
+            timeout=remaining_for_tts
         )
     except Exception as e_tts:
         logger.warning(f"[AIChatService] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
@@ -277,10 +303,11 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
             if act == "maintenance":
                 call_ticket_code, notice = await _submit_maintenance_for_chat(db, current_room, items, lang_code.startswith("en"))
                 if notice:
-                    reply = notice
+                    reply = ensure_followup_question(notice, action=act, lang_code=lang_code)
                     audio_b64 = None  # Do not play the earlier "new ticket" response.
             elif act == "bellman":
-                call_ticket_code, reply = await _submit_bell_for_chat(db, current_room, items, lang_code.startswith("en"))
+                call_ticket_code, bell_reply = await _submit_bell_for_chat(db, current_room, items, lang_code.startswith("en"))
+                reply = ensure_followup_question(bell_reply, action=act, lang_code=lang_code)
                 audio_b64 = None  # The reply now carries the real ticket code.
             else:
                 asyncio.create_task(

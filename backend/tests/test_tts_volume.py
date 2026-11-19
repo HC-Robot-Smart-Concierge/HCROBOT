@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -143,3 +144,60 @@ async def test_redis_ai_cache_hit_auto_lang_prefers_cached_lang_code_or_reply():
     assert resp2.detected_language == "Tiếng Việt"
     synth_mock_2.assert_awaited_once()
     assert synth_mock_2.await_args.kwargs["language"] == "vi-VN"
+
+
+@pytest.mark.asyncio
+async def test_edge_tts_attempt_timeout_bounds_stalled_stream():
+    """Per-attempt timeout must bound a stalled EdgeTTS stream without leaving callers hung."""
+    class StalledCommunicate:
+        def __init__(self, text, voice, rate="+0%", volume="+0%"):
+            pass
+
+        async def stream(self):
+            await asyncio.Event().wait()
+            yield {"type": "audio", "data": b"never"}
+
+    fake_edge_tts = MagicMock()
+    fake_edge_tts.Communicate = StalledCommunicate
+
+    with patch.dict("sys.modules", {"edge_tts": fake_edge_tts}):
+        b64, err_code, err_detail = await synthesize_edge_tts_detailed(
+            "Dạ vâng ạ.",
+            "vi-VN-HoaiMyNeural",
+            attempt_timeout=0.05,
+        )
+
+    assert b64 is None
+    assert err_code == "TTS_TIMEOUT"
+    assert "attempt 2 timed out" in err_detail
+
+
+@pytest.mark.asyncio
+async def test_synthesize_with_details_cancels_orphaned_edge_task_on_timeout(tmp_path):
+    """When wait_for times out and no other caller waits, inflight EdgeTTS task must be cancelled."""
+    svc = TTSService(load_persisted=False)
+    svc._cache_dir = str(tmp_path)
+    cancelled_flag = False
+
+    async def slow_edge(*args, **kwargs):
+        nonlocal cancelled_flag
+        try:
+            await asyncio.sleep(2.0)
+            return base64.b64encode(b"late" * 50).decode("utf-8"), None, None
+        except asyncio.CancelledError:
+            cancelled_flag = True
+            raise
+
+    with patch.object(svc, "_synthesize_edge_tts_detailed", new=slow_edge):
+        res = await svc.synthesize_with_details(
+            "Xin chào quý khách.",
+            provider="edge",
+            language="vi-VN",
+            timeout=0.05,
+            allow_fallback=False,
+        )
+        await asyncio.sleep(0.02)
+
+    assert res["error_code"] == "TTS_TIMEOUT"
+    assert cancelled_flag is True
+    assert svc._inflight_tasks == {}

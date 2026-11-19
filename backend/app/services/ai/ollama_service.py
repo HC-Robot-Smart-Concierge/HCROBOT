@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 import ollama
@@ -47,6 +48,7 @@ class OllamaService:
         self.model = settings.OLLAMA_MODEL
         self.embed_model = getattr(settings, "OLLAMA_EMBED_MODEL", None)
         self._client = ollama.AsyncClient(host=self.host)
+        self._ollama_offline_until: float = 0.0
 
     async def _call_groq(self, messages: List[Dict[str, str]], json_mode: bool = False, max_tokens: int = 150) -> Optional[str]:
         return await call_groq_chat(
@@ -119,7 +121,7 @@ class OllamaService:
         age_group: Optional[str],
         gender: Optional[str],
     ) -> Tuple[str, str, str, List[Dict[str, str]]]:
-        if not rag_context:
+        if rag_context is None:
             try:
                 from app.services.rag.chroma import query_rag_context
 
@@ -203,35 +205,40 @@ class OllamaService:
                 if has_yielded_gemini:
                     return
 
-        try:
-            logger.info(f"[AI Stream Tier 3] Đang gọi Ollama Local Stream (model: {self.model})...")
-            response_stream = await self._client.chat(
-                model=self.model,
-                messages=messages,
-                stream=True,
-                options={
-                    "temperature": 0.7,
-                    "top_p": 0.9,
-                    "num_ctx": 1024,
-                    "num_predict": 70,
-                    "num_thread": 8,
-                    "repeat_penalty": 1.1,
-                },
-                keep_alive="30m",
-            )
-            async for chunk in response_stream:
-                token = chunk.get("message", {}).get("content", "")
-                if token:
-                    yield token
-            return
-        except Exception as e:
-            logger.warning(f"[AI Stream Tier 3] Ollama offline ({e}), kích hoạt Smart Offline Knowledge Fallback...")
-            yield self.generate_offline_fallback_response(
-                prompt=prompt,
-                lang_code=lang_code,
-                rag_context=rag_context,
-                stored_room_number=stored_room_number,
-            )
+        if time.time() >= self._ollama_offline_until:
+            try:
+                logger.info(f"[AI Stream Tier 3] Đang gọi Ollama Local Stream (model: {self.model})...")
+                response_stream = await asyncio.wait_for(
+                    self._client.chat(
+                        model=self.model,
+                        messages=messages,
+                        stream=True,
+                        options={
+                            "temperature": 0.7,
+                            "top_p": 0.9,
+                            "num_ctx": 1024,
+                            "num_predict": 70,
+                            "num_thread": 8,
+                            "repeat_penalty": 1.1,
+                        },
+                        keep_alive="30m",
+                    ),
+                    timeout=1.5,
+                )
+                async for chunk in response_stream:
+                    token = chunk.get("message", {}).get("content", "")
+                    if token:
+                        yield token
+                return
+            except Exception as e:
+                self._ollama_offline_until = time.time() + 60.0
+                logger.warning(f"[AI Stream Tier 3] Ollama offline ({e}), kích hoạt Smart Offline Knowledge Fallback...")
+        yield self.generate_offline_fallback_response(
+            prompt=prompt,
+            lang_code=lang_code,
+            rag_context=rag_context,
+            stored_room_number=stored_room_number,
+        )
 
     async def generate_response(
         self,
@@ -291,30 +298,32 @@ class OllamaService:
             except Exception as e_gemini:
                 logger.warning(f"[AI Tier 2] Gemini Cloud không khả dụng ({e_gemini}), tự động fallback sang Ollama Local...")
 
-        try:
-            logger.info(f"[AI Tier 3] Gửi Ollama Local (model: {self.model})...")
-            response = await asyncio.wait_for(
-                self._client.chat(
-                    model=self.model,
-                    messages=messages,
-                    options={
-                        "temperature": 0.7,
-                        "top_p": 0.9,
-                        "num_ctx": 1024,
-                        "num_predict": 45,
-                        "num_thread": 8,
-                        "repeat_penalty": 1.1,
-                    },
-                    keep_alive="30m",
-                ),
-                timeout=4.0,
-            )
-            reply = self.format_and_clean_reply(response["message"]["content"].strip(), lang_code)
-            final_lang_name, final_lang_code = resolve_reply_language(reply, lang_code, self.detect_language)
-            logger.info("[AI Tier 3] Thành công từ Ollama Local!")
-            return reply, final_lang_name, final_lang_code
-        except Exception as e_ollama:
-            logger.warning(f"[AI Tier 3] Ollama Local offline ({e_ollama}), kích hoạt Smart Offline Knowledge Fallback...")
+        if time.time() >= self._ollama_offline_until:
+            try:
+                logger.info(f"[AI Tier 3] Gửi Ollama Local (model: {self.model})...")
+                response = await asyncio.wait_for(
+                    self._client.chat(
+                        model=self.model,
+                        messages=messages,
+                        options={
+                            "temperature": 0.7,
+                            "top_p": 0.9,
+                            "num_ctx": 1024,
+                            "num_predict": 45,
+                            "num_thread": 8,
+                            "repeat_penalty": 1.1,
+                        },
+                        keep_alive="30m",
+                    ),
+                    timeout=1.5,
+                )
+                reply = self.format_and_clean_reply(response["message"]["content"].strip(), lang_code)
+                final_lang_name, final_lang_code = resolve_reply_language(reply, lang_code, self.detect_language)
+                logger.info("[AI Tier 3] Thành công từ Ollama Local!")
+                return reply, final_lang_name, final_lang_code
+            except Exception as e_ollama:
+                self._ollama_offline_until = time.time() + 60.0
+                logger.warning(f"[AI Tier 3] Ollama Local offline ({e_ollama}), kích hoạt Smart Offline Knowledge Fallback...")
 
         fallback = self.generate_offline_fallback_response(
             prompt=prompt,

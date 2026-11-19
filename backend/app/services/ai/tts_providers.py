@@ -55,14 +55,24 @@ def is_vietnamese(text: str) -> bool:
     return any(re.search(w, text, re.IGNORECASE) for w in vi_words)
 
 
+async def _collect_edge_audio(communicate: Any) -> bytes:
+    """Drain audio chunks from an EdgeTTS Communicate stream."""
+    audio_bytes = b""
+    async for chunk in communicate.stream():
+        if chunk.get("type") == "audio":
+            audio_bytes += chunk.get("data", b"")
+    return audio_bytes
+
+
 async def synthesize_edge_tts_detailed(
     text: str,
     voice: str,
     *,
     rate: Optional[str] = None,
     default_volume: str = "+0%",
+    attempt_timeout: Optional[float] = None,
 ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """Synthesize MP3 audio via EdgeTTS Neural with same-voice retry and classified error codes."""
+    """Synthesize MP3 audio via EdgeTTS Neural with bounded per-attempt timeout and same-voice retry."""
     clean_text = clean_text_for_tts(text)
     if not clean_text:
         return None, "TTS_INPUT_EMPTY", "Cleaned text is empty"
@@ -72,6 +82,7 @@ async def synthesize_edge_tts_detailed(
         selected_rate = "+0%"
     # Luôn dùng +0% khi gọi EdgeTTS để tránh lỗi NoAudioReceived; khuếch đại âm lượng được xử lý qua GainNode ở frontend.
     selected_volume = "+0%"
+    per_attempt_timeout = max(0.02, float(attempt_timeout)) if attempt_timeout is not None else 3.2
 
     try:
         import edge_tts as _edge_tts
@@ -91,20 +102,28 @@ async def synthesize_edge_tts_detailed(
             communicate = _edge_tts.Communicate(
                 clean_text, current_voice, rate=selected_rate, volume=selected_volume
             )
-            audio_bytes = b""
-            async for chunk in communicate.stream():
-                if chunk.get("type") == "audio":
-                    audio_bytes += chunk.get("data", b"")
+            audio_bytes = await asyncio.wait_for(
+                _collect_edge_audio(communicate),
+                timeout=per_attempt_timeout,
+            )
             if audio_bytes and len(audio_bytes) > 100:
                 return base64.b64encode(audio_bytes).decode("utf-8"), None, None
             last_err_code = "TTS_AUDIO_EMPTY"
             last_err_detail = f"EdgeTTS returned {len(audio_bytes)} bytes (voice={current_voice}, attempt={attempt + 1})"
+        except asyncio.CancelledError:
+            raise
+        except asyncio.TimeoutError:
+            last_err_code = "TTS_TIMEOUT"
+            last_err_detail = f"EdgeTTS attempt {attempt + 1} timed out after {per_attempt_timeout:.1f}s (voice={current_voice})"
+            log_fn = logger.warning if attempt == 1 else logger.info
+            log_fn(f"[TTSService] {last_err_detail}")
         except Exception as e:
             last_err_code = "TTS_PROVIDER_ERROR"
             last_err_detail = f"{type(e).__name__}: {e} (voice={current_voice}, attempt={attempt + 1})"
-            logger.warning(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
+            log_fn = logger.warning if attempt == 1 else logger.info
+            log_fn(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
         if attempt == 0:
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.05)
 
     return None, last_err_code, last_err_detail
 
@@ -197,6 +216,10 @@ def common_warmup_phrases(target_vi: str, target_en: str):
         ("Please wait a moment.", "en-US", target_en),
         ("Dạ đợi em một tí ạ.", "vi-VN", target_vi),
         ("Dạ vâng, em có thể hỗ trợ gì thêm cho quý khách ạ?", "vi-VN", target_vi),
+        ("Quý khách có muốn em hỗ trợ gì thêm không ạ?", "vi-VN", target_vi),
+        ("Would you like any further assistance?", "en-US", target_en),
+        ("Dạ em có thể hỗ trợ thêm gì cho quý khách nữa không ạ?", "vi-VN", target_vi),
+        ("Quý khách có cần em hỗ trợ thêm gì cho quý khách nữa không ạ?", "vi-VN", target_vi),
         ("You are welcome! How may I assist you further?", "en-US", target_en),
         ("Dạ vâng, Rora rất vui được hỗ trợ quý khách! Quý khách dành chút thời gian đánh giá dịch vụ giúp em nhé ạ.", "vi-VN", target_vi),
         ("Rora is delighted to assist you! Please take a quick moment to rate our service.", "en-US", target_en),

@@ -15,6 +15,7 @@ from app.services.ai.ai_ticket_service import (
     create_maintenance_voice_ticket,
 )
 from app.services.ai.concierge_graph import intent_router_node, retrieval_node, service_fsm_node
+from app.services.ai.concierge_router_nodes import ensure_followup_question
 from app.services.ai.ollama_service import ollama_service
 from app.services.ai.session_manager import (
     extract_room_number,
@@ -96,6 +97,13 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
         fast_hit = None if is_action_svc else ollama_service.check_fast_path_full(request.prompt, request.language)
         if fast_hit:
             reply, _lang_name, lang_code, act_type, act_payload = fast_hit
+            reply = ensure_followup_question(
+                reply,
+                action=act_type or "fast_path",
+                lang_code=lang_code,
+                trigger_menu=act_payload.get("trigger_menu") if isinstance(act_payload, dict) else None,
+                trigger_video_call=act_type in ("trigger_video_call", "call_reception"),
+            )
             dest_key = act_payload.get("destination_key") if isinstance(act_payload, dict) else None
             if not dest_key and act_type != "none":
                 dest_key = _detect_destination_poi(request.prompt, reply, current_room, session_id=sid)
@@ -123,8 +131,8 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
 
             try:
                 audio_b64, mime_type, _ = await asyncio.wait_for(
-                    tts_service.synthesize(reply, provider="edge", language=lang_code),
-                    timeout=2.5
+                    tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=3.2),
+                    timeout=3.8
                 )
             except Exception:
                 audio_b64, mime_type = None, "audio/mp3"
@@ -196,6 +204,17 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
                     )
                 logger.info(f"[AIChatStream] Dispatched ticket creation for '{action}' (Room {effective_room}): {fsm_items}")
 
+            _, final_lang_code = ollama_service.detect_language(fsm_reply)
+            fsm_reply = ensure_followup_question(
+                fsm_reply,
+                action=fsm_action,
+                lang_code=final_lang_code,
+                missing_room=missing_room,
+                require_pin=bool(fsm_state.get("require_room_pin")),
+                trigger_menu=fsm_state.get("trigger_menu"),
+                trigger_video_call=is_call,
+            )
+
             logger.info(f"[AIChatStream FSM] Trả lời FSM tức thì <2ms cho action: '{action}'")
 
             words = fsm_reply.split(" ")
@@ -204,7 +223,6 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
                 yield f"data: {json.dumps({'event': 'token', 'token': token_piece}, ensure_ascii=False)}\n\n"
                 await asyncio.sleep(0.008)
 
-            _, final_lang_code = ollama_service.detect_language(fsm_reply)
             session_manager.add_turn(sid, "user", request.prompt, language=final_lang_code)
             session_manager.add_turn(sid, "assistant", fsm_reply, language=final_lang_code, intent_action=fsm_action)
 
@@ -228,20 +246,20 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
             return
 
-        # 3. TRUY VẤN VÀ CẮT GỌT RAG CONTEXT TỪ KNOWLEDGE BASE CHO CÂU HỎI THÔNG TIN
+        # 3. TRUY VẤN VÀ CẮT GỌT RAG CONTEXT TỪ KNOWLEDGE BASE CHO CÂU HỎI FAQ
         rag_context = request.rag_context
-        if category in ("faq", "conversation", "chitchat") and not rag_context and len(request.prompt.strip()) > 3:
+        if category == "faq" and not rag_context and len(request.prompt.strip()) > 3:
             try:
                 retrieval_res = await retrieval_node({"prompt": request.prompt})
                 rag_context = retrieval_res.get("rag_context", "")
             except Exception as ex_rag:
                 logger.warning(f"[AIChatStream] Retrieval error: {ex_rag}")
 
-        # 4. TRÒ CHUYỆN TỰ DO: STREAM OLLAMA TOKENS TỪ LLM
+        # 4. TRÒ CHUYỆN TỰ DO: STREAM TOKENS TỪ LLM (truyền "" khi bỏ qua RAG để tránh query lại ChromaDB)
         full_text = ""
         async for token in ollama_service.generate_response_stream(
             prompt=request.prompt,
-            rag_context=rag_context,
+            rag_context=rag_context if rag_context is not None else "",
             language=request.language,
             emotion=request.emotion,
             chat_history=history,
@@ -253,6 +271,12 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             yield f"data: {json.dumps({'event': 'token', 'token': token}, ensure_ascii=False)}\n\n"
 
         _, final_lang_code = ollama_service.detect_language(full_text)
+        base_trimmed = full_text.strip()
+        updated_full = ensure_followup_question(base_trimmed, action="conversation", lang_code=final_lang_code)
+        if len(updated_full) > len(base_trimmed):
+            extra_followup = updated_full[len(base_trimmed):]
+            full_text = updated_full
+            yield f"data: {json.dumps({'event': 'token', 'token': extra_followup}, ensure_ascii=False)}\n\n"
 
         session_manager.add_turn(sid, "user", request.prompt, language=final_lang_code)
         session_manager.add_turn(sid, "assistant", full_text, language=final_lang_code, intent_action="conversation")

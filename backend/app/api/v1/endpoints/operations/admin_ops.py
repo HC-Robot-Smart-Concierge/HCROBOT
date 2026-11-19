@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 import re
-from datetime import datetime
+from datetime import datetime, date
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,8 @@ from app.models import (
     ChatMessage,
     SupportRequest,
     RoomServiceOrder,
+    Room,
+    Feedback,
 )
 from app.schemas.operations import (
     AdminOperationsSummary,
@@ -86,84 +88,65 @@ async def get_admin_operations_summary(db: AsyncSession = Depends(get_db)):
     return summary
 
 
-@router.get(
-    "/tasks",
-    tags=TAG_OPS,
-    summary="Danh sách tất cả yêu cầu dịch vụ / Tasks toàn khách sạn",
-)
-@router.get(
-    "/admin/tasks",
-    include_in_schema=False,
-)
-async def get_tasks(
+def _normalize_task_record(t: Dict[str, Any]) -> Dict[str, Any]:
+    """Chuẩn hóa bản ghi nhiệm vụ/dịch vụ sang dạng dict tương thích camelCase & snake_case."""
+    guest_val = t.get("guestName") or t.get("guest_name") or "Hotel Guest"
+    assigned_val = t.get("assignedTo") or t.get("assigned_to")
+    notes_val = t.get("notes") or t.get("description") or ""
+    raw_ticket = t.get("ticket_code") or t.get("raw_id") or t["id"]
+    clean_ticket = str(raw_ticket).replace("REQ-", "")
+
+    return {
+        "id": t["id"],
+        "raw_id": t["raw_id"],
+        "ticket_code": t.get("ticket_code") or clean_ticket,
+        "department": t["department"],
+        "table_type": t.get("table_type"),
+        "title": t["title"],
+        "location": t["location"],
+        "room_number": t.get("room_number") or "",
+        "guest_name": guest_val,
+        "guestName": guest_val,
+        "status": t.get("status") or "Pending",
+        "time": t.get("time") or "Recent",
+        "time_label": t.get("time_label") or t.get("time") or "Recent",
+        "assigned_to": assigned_val,
+        "assignedTo": assigned_val,
+        "assigned_staff_name": assigned_val,
+        "assigned_robot": t.get("assigned_robot"),
+        "notes": notes_val,
+        "description": notes_val,
+        "source": t.get("source") or "From HCRobot",
+        "created_at": t.get("created_at"),
+        "items": t.get("items") or [],
+        "total_amount": t.get("total_amount") or 0,
+        "progress": t.get("progress") or 0,
+        "est_completion": t.get("est_completion"),
+        "guest_phone": t.get("guest_phone") or t.get("guestPhone"),
+        "guestPhone": t.get("guestPhone") or t.get("guest_phone"),
+        "room_phone": t.get("room_phone") or t.get("roomPhone"),
+        "roomPhone": t.get("roomPhone") or t.get("room_phone"),
+        "is_service_request": bool(t.get("is_service_request")),
+    }
+
+
+def _filter_task_records(
+    tasks: List[Dict[str, Any]],
+    room_number: Optional[str] = None,
     department: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
-    room_number: Optional[str] = None,
-    limit: Optional[int] = None,
-    offset: Optional[int] = None,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Trả về danh sách đầy đủ tất cả các yêu cầu dịch vụ (Service Requests) toàn khách sạn cho Admin Portal.
-    Hỗ trợ bộ lọc linh hoạt theo phòng ban, trạng thái, số phòng và từ khóa tìm kiếm.
-    """
-    raw_list = await _fetch_all_raw_requests(db)
-
-    # Normalize fields for frontend compatibility (both camelCase and snake_case)
-    tasks = []
-    for t in raw_list:
-        guest_val = t.get("guestName") or t.get("guest_name") or "Hotel Guest"
-        assigned_val = t.get("assignedTo") or t.get("assigned_to")
-        notes_val = t.get("notes") or t.get("description") or ""
-        raw_ticket = t.get("ticket_code") or t.get("raw_id") or t["id"]
-        clean_ticket = str(raw_ticket).replace("REQ-", "")
-
-        tasks.append({
-            "id": t["id"],
-            "raw_id": t["raw_id"],
-            "ticket_code": t.get("ticket_code") or clean_ticket,
-            "department": t["department"],
-            "table_type": t.get("table_type"),
-            "title": t["title"],
-            "location": t["location"],
-            "room_number": t.get("room_number") or "",
-            "guest_name": guest_val,
-            "guestName": guest_val,
-            "status": t.get("status") or "Pending",
-            "time": t.get("time") or "Recent",
-            "time_label": t.get("time_label") or t.get("time") or "Recent",
-            "assigned_to": assigned_val,
-            "assignedTo": assigned_val,
-            "assigned_staff_name": assigned_val,
-            "assigned_robot": t.get("assigned_robot"),
-            "notes": notes_val,
-            "description": notes_val,
-            "source": t.get("source") or "From HCRobot",
-            "created_at": t.get("created_at"),
-            "items": t.get("items") or [],
-            "total_amount": t.get("total_amount") or 0,
-            "progress": t.get("progress") or 0,
-            "est_completion": t.get("est_completion"),
-            "guest_phone": t.get("guest_phone") or t.get("guestPhone"),
-            "guestPhone": t.get("guestPhone") or t.get("guest_phone"),
-            "room_phone": t.get("room_phone") or t.get("roomPhone"),
-            "roomPhone": t.get("roomPhone") or t.get("room_phone"),
-            "is_service_request": bool(t.get("is_service_request")),
-        })
-
-    # Room number filter
+) -> List[Dict[str, Any]]:
+    """Áp dụng bộ lọc phòng, phòng ban, trạng thái và từ khóa tìm kiếm trên danh sách task."""
     if isinstance(room_number, str) and room_number.strip():
         clean_rn = room_number.upper().replace("ROOM", "").replace("PHÒNG", "").strip()
-        filtered = []
-        for item in tasks:
-            item_rn = str(item.get("room_number") or "").upper().strip()
-            item_loc = str(item.get("location") or "").upper().strip()
-            if clean_rn in item_rn or clean_rn in item_loc or clean_rn == item_rn:
-                filtered.append(item)
-        tasks = filtered
+        tasks = [
+            item for item in tasks
+            if clean_rn in str(item.get("room_number") or "").upper().strip()
+            or clean_rn in str(item.get("location") or "").upper().strip()
+            or clean_rn == str(item.get("room_number") or "").upper().strip()
+        ]
 
-    # Department filter
     if isinstance(department, str) and department.strip().lower() != "all":
         dept_q = department.strip().lower()
         filtered = []
@@ -188,7 +171,6 @@ async def get_tasks(
                 filtered.append(item)
         tasks = filtered
 
-    # Status filter
     if isinstance(status, str) and status.strip().lower() != "all":
         st_q = status.strip().lower()
         filtered = []
@@ -203,25 +185,61 @@ async def get_tasks(
             elif st_q in ["completed", "done"]:
                 if s in ["completed", "closed", "delivered", "done", "hoàn tất", "hoàn thành"] or "completed" in s:
                     filtered.append(item)
+            elif st_q in ["cancelled", "rejected"]:
+                if s in ["cancelled", "canceled", "rejected", "đã hủy", "từ chối"] or "cancel" in s or "reject" in s:
+                    filtered.append(item)
             elif st_q in s:
                 filtered.append(item)
         tasks = filtered
 
-    # Search query filter
     if isinstance(search, str) and search.strip():
         sq = search.strip().lower()
         filtered = []
         for item in tasks:
             searchable = (
-                f"{item.get('id', '')} {item.get('title', '')} {item.get('location', '')} "
-                f"{item.get('room_number', '')} {item.get('guest_name', '')} {item.get('notes', '')} "
-                f"{item.get('assigned_to', '')}"
+                f"{item.get('id', '')} {item.get('ticket_code', '')} {item.get('title', '')} "
+                f"{item.get('location', '')} {item.get('room_number', '')} {item.get('guest_name', '')} "
+                f"{item.get('notes', '')} {item.get('assigned_to', '')}"
             ).lower()
             if sq in searchable:
                 filtered.append(item)
         tasks = filtered
 
-    # Offset & Limit slicing
+    return tasks
+
+
+@router.get(
+    "/tasks",
+    tags=TAG_OPS,
+    summary="Danh sách tất cả yêu cầu dịch vụ / Tasks toàn khách sạn",
+)
+@router.get(
+    "/admin/tasks",
+    include_in_schema=False,
+)
+async def get_tasks(
+    department: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    room_number: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Trả về danh sách đầy đủ tất cả các yêu cầu dịch vụ (Service Requests) toàn khách sạn cho Admin Portal.
+    Hỗ trợ bộ lọc linh hoạt theo phòng ban, trạng thái, số phòng và từ khóa tìm kiếm.
+    """
+    raw_list = await _fetch_all_raw_requests(db)
+    tasks = [_normalize_task_record(t) for t in raw_list]
+    tasks = _filter_task_records(
+        tasks,
+        room_number=room_number,
+        department=department,
+        status=status,
+        search=search,
+    )
+
     if isinstance(offset, int) and offset > 0:
         tasks = tasks[offset:]
     if isinstance(limit, int) and limit > 0:
@@ -845,4 +863,388 @@ async def get_analytics_summary(
         "total_robots": total_robots,
         "dept_distribution": dept_distribution,
         "recent_activities": recent_activities,
+    }
+
+
+def _normalize_room_key(raw_room: Optional[str]) -> str:
+    """Chuẩn hóa mã phòng để gom nhóm hồ sơ dịch vụ khách hàng nhất quán."""
+    if not raw_room:
+        return "Main Lobby"
+    txt = str(raw_room).strip()
+    low = txt.lower()
+    if not txt or "lobby" in low or "sảnh" in low or "kiosk" in low:
+        return "Main Lobby"
+    cleaned = re.sub(r"^(room|phòng)\s*", "", txt, flags=re.IGNORECASE).strip()
+    return cleaned or "Main Lobby"
+
+
+def _parse_iso_date(date_str: Optional[str]) -> Optional[date]:
+    if not date_str or not isinstance(date_str, str):
+        return None
+    try:
+        return datetime.strptime(date_str.strip()[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _classify_record_status(status_val: Optional[str]) -> str:
+    s = (status_val or "").strip().lower()
+    if any(k in s for k in ("cancel", "reject", "hủy", "từ chối")):
+        return "cancelled"
+    if any(k in s for k in ("complet", "closed", "done", "deliver", "hoàn tất", "hoàn thành")):
+        return "completed"
+    return "active"
+
+
+def _is_generic_guest_name(name: Optional[str]) -> bool:
+    if not name:
+        return True
+    return str(name).strip().lower() in {
+        "hotel guest",
+        "quý khách",
+        "khách lưu trú",
+        "khách hàng",
+        "khách tại sảnh",
+        "khách",
+        "guest",
+    }
+
+
+@router.get(
+    "/admin/guest-service-records",
+    tags=TAG_ADMIN,
+    summary="Admin: Hồ sơ Dịch vụ Khách hàng toàn diện (Guest Service Records)",
+)
+async def get_guest_service_records(
+    department: Optional[str] = None,
+    status: Optional[str] = None,
+    room_number: Optional[str] = None,
+    source: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Tổng hợp toàn bộ Hồ sơ Dịch vụ Khách hàng (Guest Service Records) cho Admin Portal:
+    - Danh sách chi tiết từng yêu cầu dịch vụ / đơn đặt phòng / đơn F&B / đặt xe / hỗ trợ kỹ thuật.
+    - Hồ sơ tổng hợp theo từng Phòng & Khách lưu trú (kèm đánh giá Feedback, phiên chat AI & video call).
+    - Các chỉ số thống kê hiệu suất phục vụ, doanh thu dịch vụ và tỉ lệ hài lòng.
+    """
+    raw_list = await _fetch_all_raw_requests(db)
+
+    # Chỉ lấy các bản ghi dịch vụ phục vụ khách (loại bỏ chỉ thị nội bộ ManagementDirective)
+    guest_raw = [t for t in raw_list if t.get("table_type") != "directive"]
+    records = [_normalize_task_record(t) for t in guest_raw]
+    records = _filter_task_records(
+        records,
+        room_number=room_number,
+        department=department,
+        status=status,
+        search=search,
+    )
+
+    if isinstance(source, str) and source.strip() and source.strip().lower() != "all":
+        src_q = source.strip().lower()
+        filtered_src = []
+        for rec in records:
+            rec_src = (rec.get("source") or "").lower()
+            if src_q == "robot":
+                if "robot" in rec_src or "kiosk" in rec_src:
+                    filtered_src.append(rec)
+            elif src_q in rec_src:
+                filtered_src.append(rec)
+        records = filtered_src
+
+    start_d = _parse_iso_date(start_date)
+    end_d = _parse_iso_date(end_date)
+    if start_d or end_d:
+        date_filtered = []
+        for rec in records:
+            dt = rec.get("created_at")
+            if isinstance(dt, str):
+                try:
+                    dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+                except ValueError:
+                    dt = None
+            if not isinstance(dt, datetime):
+                continue
+            rec_date = dt.date()
+            if start_d and rec_date < start_d:
+                continue
+            if end_d and rec_date > end_d:
+                continue
+            date_filtered.append(rec)
+        records = date_filtered
+
+    # Truy vấn dữ liệu bổ trợ: Room, Feedback, HumanSupportSession, ChatSession
+    rooms_by_key: Dict[str, Room] = {}
+    feedbacks_list: List[Feedback] = []
+    support_sessions: List[HumanSupportSession] = []
+    chat_sessions: List[ChatSession] = []
+
+    try:
+        rooms_res = await db.execute(select(Room).order_by(Room.room_number))
+        for r in rooms_res.scalars().all():
+            rooms_by_key[_normalize_room_key(r.room_number)] = r
+    except Exception as exc:
+        logger.warning(f"[GuestServiceRecords] Failed to query Room: {exc}")
+
+    try:
+        fb_res = await db.execute(select(Feedback).order_by(desc(Feedback.created_at)))
+        feedbacks_list = list(fb_res.scalars().all())
+    except Exception as exc:
+        logger.warning(f"[GuestServiceRecords] Failed to query Feedback: {exc}")
+
+    try:
+        sup_res = await db.execute(select(HumanSupportSession))
+        support_sessions = list(sup_res.scalars().all())
+    except Exception as exc:
+        logger.warning(f"[GuestServiceRecords] Failed to query HumanSupportSession: {exc}")
+
+    try:
+        chat_res = await db.execute(select(ChatSession))
+        chat_sessions = list(chat_res.scalars().all())
+    except Exception as exc:
+        logger.warning(f"[GuestServiceRecords] Failed to query ChatSession: {exc}")
+
+    # Chuẩn hóa records để trả JSON an toàn + tính metrics
+    completed_records = 0
+    active_records = 0
+    cancelled_records = 0
+    total_revenue = 0.0
+    robot_assisted_count = 0
+
+    serialized_records: List[Dict[str, Any]] = []
+    for rec in records:
+        dt = rec.get("created_at")
+        iso_dt = dt.isoformat() if isinstance(dt, datetime) else (str(dt) if dt else None)
+        room_key = _normalize_room_key(rec.get("room_number") or rec.get("location"))
+        is_robot = bool(
+            rec.get("assigned_robot")
+            or "robot" in (rec.get("source") or "").lower()
+            or "kiosk" in (rec.get("source") or "").lower()
+        )
+        cls_status = _classify_record_status(rec.get("status"))
+        if cls_status == "completed":
+            completed_records += 1
+        elif cls_status == "cancelled":
+            cancelled_records += 1
+        else:
+            active_records += 1
+
+        if is_robot:
+            robot_assisted_count += 1
+        total_revenue += float(rec.get("total_amount") or 0)
+
+        item_out = {
+            **rec,
+            "created_at": iso_dt,
+            "room_key": room_key,
+            "status_group": cls_status,
+            "is_robot_assisted": is_robot,
+        }
+        serialized_records.append(item_out)
+
+    # Gom hồ sơ theo Khách hàng & Lượt lưu trú / Vãng lai (Guest Dossiers)
+    # Tách biệt: (1) Khách đăng ký phòng theo từng tên khách (tránh gộp nhầm khi đổi khách ở cùng phòng),
+    #            (2) Khách vãng lai tại sảnh (theo tên/SĐT hoặc nhóm vãng lai chưa định danh).
+    profiles_map: Dict[str, Dict[str, Any]] = {}
+    room_dossiers_index: Dict[str, List[str]] = {}
+
+    def _resolve_dossier_identity(
+        rk: str,
+        raw_guest_name: Optional[str],
+        raw_phone: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        room_obj = rooms_by_key.get(rk)
+        is_occupied = bool(room_obj and (room_obj.status or "").upper() == "OCCUPIED")
+        current_room_guest = (room_obj.current_guest_name or "").strip() if room_obj and is_occupied else ""
+        current_room_guest_low = current_room_guest.lower()
+
+        clean_name = (raw_guest_name or "").strip()
+        if _is_generic_guest_name(clean_name):
+            clean_name = ""
+
+        clean_phone = re.sub(r"\s+", "", str(raw_phone or ""))
+
+        if rk == "Main Lobby":
+            guest_type = "walkin"
+            stay_status = "WALK_IN"
+            if clean_phone:
+                d_key = f"walkin::phone::{clean_phone}"
+                display_name = clean_name or f"Khách vãng lai ({clean_phone})"
+            elif clean_name:
+                d_key = f"walkin::name::{clean_name.lower()}"
+                display_name = clean_name
+            else:
+                d_key = "walkin::anonymous"
+                display_name = "Khách vãng lai (Sảnh)"
+            return {
+                "dossier_key": d_key,
+                "guest_type": guest_type,
+                "stay_status": stay_status,
+                "display_name": display_name,
+            }
+
+        # Khách đăng ký phòng
+        guest_type = "registered"
+        if not clean_name and current_room_guest:
+            clean_name = current_room_guest
+
+        if clean_name:
+            name_low = clean_name.lower()
+            d_key = f"room::{rk}::{name_low}"
+            is_current = bool(is_occupied and current_room_guest_low == name_low)
+            stay_status = "CURRENT_STAY" if is_current else "PAST_STAY"
+            display_name = clean_name
+        else:
+            d_key = f"room::{rk}::anonymous"
+            stay_status = "PAST_STAY"
+            display_name = f"Khách phòng {rk}"
+
+        return {
+            "dossier_key": d_key,
+            "guest_type": guest_type,
+            "stay_status": stay_status,
+            "display_name": display_name,
+        }
+
+    def _ensure_profile(rk: str, identity: Dict[str, Any]) -> Dict[str, Any]:
+        d_key = identity["dossier_key"]
+        if d_key not in profiles_map:
+            room_obj = rooms_by_key.get(rk)
+            is_walkin = identity["guest_type"] == "walkin"
+            is_current_stay = identity["stay_status"] == "CURRENT_STAY"
+            profiles_map[d_key] = {
+                "dossier_key": d_key,
+                "room_key": rk,
+                "room_number": "Kiosk / Sảnh chính" if is_walkin else f"Phòng {rk}",
+                "room_type": "Khách vãng lai" if is_walkin else (room_obj.room_type if room_obj else "Standard"),
+                "room_status": room_obj.status if (room_obj and not is_walkin) else "N/A",
+                "guest_type": identity["guest_type"],
+                "stay_status": identity["stay_status"],
+                "guest_name": identity["display_name"],
+                "guest_phone": (room_obj.current_guest_phone if room_obj and is_current_stay else None),
+                "room_phone": room_obj.room_phone if (room_obj and not is_walkin) else None,
+                "total_services": 0,
+                "completed_services": 0,
+                "active_services": 0,
+                "total_spend": 0.0,
+                "video_call_count": 0,
+                "chat_session_count": 0,
+                "feedbacks": [],
+                "avg_rating": None,
+                "latest_activity_at": None,
+                "services": [],
+            }
+            room_dossiers_index.setdefault(rk, []).append(d_key)
+        return profiles_map[d_key]
+
+    for rec in serialized_records:
+        rk = rec["room_key"]
+        identity = _resolve_dossier_identity(rk, rec.get("guest_name"), rec.get("guest_phone"))
+        rec["dossier_key"] = identity["dossier_key"]
+        rec["guest_type"] = identity["guest_type"]
+
+        prof = _ensure_profile(rk, identity)
+        prof["services"].append(rec)
+        prof["total_services"] += 1
+        if rec["status_group"] == "completed":
+            prof["completed_services"] += 1
+        elif rec["status_group"] == "active":
+            prof["active_services"] += 1
+        prof["total_spend"] += float(rec.get("total_amount") or 0)
+
+        if not prof["guest_phone"] and rec.get("guest_phone"):
+            prof["guest_phone"] = rec["guest_phone"]
+
+        rec_dt = rec.get("created_at")
+        if rec_dt and (not prof["latest_activity_at"] or rec_dt > prof["latest_activity_at"]):
+            prof["latest_activity_at"] = rec_dt
+
+    def _match_dossier_key(rk: str, guest_name: Optional[str]) -> Optional[str]:
+        ident = _resolve_dossier_identity(rk, guest_name)
+        if ident["dossier_key"] in profiles_map:
+            return ident["dossier_key"]
+        candidates = room_dossiers_index.get(rk, [])
+        if len(candidates) == 1:
+            return candidates[0]
+        # Ưu tiên khớp vào hồ sơ CURRENT_STAY của phòng đó nếu có
+        for ck in candidates:
+            if profiles_map[ck]["stay_status"] == "CURRENT_STAY":
+                return ck
+        return candidates[0] if candidates else None
+
+    # Gắn Feedback vào đúng hồ sơ khách hàng
+    serialized_feedbacks: List[Dict[str, Any]] = []
+    for fb in feedbacks_list:
+        rk = _normalize_room_key(fb.room_number)
+        fb_obj = {
+            "id": fb.id,
+            "room_number": fb.room_number or rk,
+            "room_key": rk,
+            "guest_name": fb.guest_name or "Hotel Guest",
+            "rating": fb.rating,
+            "category": fb.category,
+            "comment": fb.comment,
+            "created_at": fb.created_at.isoformat() if fb.created_at else None,
+        }
+        serialized_feedbacks.append(fb_obj)
+        matched_key = _match_dossier_key(rk, fb.guest_name)
+        if matched_key and matched_key in profiles_map:
+            profiles_map[matched_key]["feedbacks"].append(fb_obj)
+
+    for sup in support_sessions:
+        rk = _normalize_room_key(sup.room_number)
+        matched_key = _match_dossier_key(rk, getattr(sup, "guest_name", None))
+        if matched_key and matched_key in profiles_map:
+            profiles_map[matched_key]["video_call_count"] += 1
+
+    for cs in chat_sessions:
+        rk = _normalize_room_key(cs.room_number)
+        matched_key = _match_dossier_key(rk, getattr(cs, "guest_name", None))
+        if matched_key and matched_key in profiles_map:
+            profiles_map[matched_key]["chat_session_count"] += 1
+
+    # Tính điểm đánh giá trung bình theo từng phòng và tổng thể
+    for prof in profiles_map.values():
+        fbs = prof["feedbacks"]
+        if fbs:
+            prof["avg_rating"] = round(sum(f["rating"] for f in fbs) / len(fbs), 1)
+        prof["total_spend"] = round(prof["total_spend"], 0)
+
+    guest_profiles = sorted(
+        profiles_map.values(),
+        key=lambda p: (p["latest_activity_at"] or "", p["total_services"]),
+        reverse=True,
+    )
+
+    total_records = len(serialized_records)
+    completion_rate = round((completed_records / total_records) * 100, 1) if total_records > 0 else 100.0
+    robot_rate = round((robot_assisted_count / total_records) * 100, 1) if total_records > 0 else 0.0
+    avg_rating = (
+        round(sum(f["rating"] for f in serialized_feedbacks) / len(serialized_feedbacks), 1)
+        if serialized_feedbacks
+        else None
+    )
+
+    return {
+        "metrics": {
+            "total_records": total_records,
+            "completed_records": completed_records,
+            "active_records": active_records,
+            "cancelled_records": cancelled_records,
+            "completion_rate": completion_rate,
+            "total_revenue": round(total_revenue, 0),
+            "robot_assisted_count": robot_assisted_count,
+            "robot_rate": robot_rate,
+            "total_feedbacks": len(serialized_feedbacks),
+            "avg_rating": avg_rating,
+            "total_rooms_served": len(room_dossiers_index),
+            "total_dossiers": len(guest_profiles),
+        },
+        "records": serialized_records,
+        "guest_profiles": guest_profiles,
+        "feedbacks": serialized_feedbacks[:50],
     }

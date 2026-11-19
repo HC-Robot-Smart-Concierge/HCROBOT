@@ -629,6 +629,37 @@ export const fetchAdminConversationDetail = async (sessionId) => {
   );
 };
 
+export const fetchAdminGuestServiceRecords = async (params = {}) => {
+  const query = new URLSearchParams();
+  if (params.department && params.department !== 'All') query.append('department', params.department);
+  if (params.status && params.status !== 'All') query.append('status', params.status);
+  if (params.room_number) query.append('room_number', params.room_number);
+  if (params.source && params.source !== 'All') query.append('source', params.source);
+  if (params.search) query.append('search', params.search);
+  if (params.start_date) query.append('start_date', params.start_date);
+  if (params.end_date) query.append('end_date', params.end_date);
+
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/admin/guest-service-records${qs}`, {}, {
+    metrics: {
+      total_records: 0,
+      completed_records: 0,
+      active_records: 0,
+      cancelled_records: 0,
+      completion_rate: 0,
+      total_revenue: 0,
+      robot_assisted_count: 0,
+      robot_rate: 0,
+      total_feedbacks: 0,
+      avg_rating: null,
+      total_rooms_served: 0,
+    },
+    records: [],
+    guest_profiles: [],
+    feedbacks: [],
+  });
+};
+
 // ---------------------------------------------------------
 // 10. Department & System Notification Center
 // ---------------------------------------------------------

@@ -11,6 +11,7 @@ import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
 import { AdminAdvertisementsTab } from './tabs/AdminAdvertisementsTab';
 import { AdminVideoCallsTab } from './tabs/AdminVideoCallsTab';
+import { AdminGuestServiceRecordsTab } from './tabs/AdminGuestServiceRecordsTab';
 import { useLanguage } from '../../context/LanguageContext';
 import {
   fetchNotifications,
@@ -28,6 +29,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       const validTabs = [
         'Dashboard',
         'Operations',
+        'Guest Service Records',
         'Robot Control',
         'Manage Robot',
         'Knowledge',
@@ -173,6 +175,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   const menuItems = [
     { id: 'Dashboard',     label: t('adminDashboard') },
     { id: 'Operations',    label: t('adminOperations') },
+    { id: 'Guest Service Records', label: t('adminGuestServiceRecords') },
     { id: 'Robot Control', label: t('adminRobotControl') },
     { id: 'Manage Robot',  label: t('adminManageRobot') },
     { id: 'Knowledge',     label: t('adminKnowledge') },
@@ -567,6 +570,13 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               onNotify={onNotify}
               subTabProp={operationsSubTab}
               onSelectSubTab={setOperationsSubTab}
+            />
+          )}
+
+          {activeMenu === 'Guest Service Records' && (
+            <AdminGuestServiceRecordsTab
+              currentUser={currentUser}
+              onNotify={onNotify}
             />
           )}
 

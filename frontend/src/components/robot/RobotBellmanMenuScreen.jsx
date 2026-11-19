@@ -3,13 +3,13 @@ import {
   AlertCircle,
   ArchiveRestore,
   ArrowDownToLine,
+  ArrowLeft,
   ArrowUpFromLine,
   Building,
   CheckCircle2,
   Clock,
   DoorOpen,
   Edit3,
-  Layers,
   Luggage,
   RefreshCw,
   Send,
@@ -69,7 +69,6 @@ export const BELL_SERVICE_OPTIONS = [
 ];
 
 const GROUPS = [
-  { id: 'all', nameVi: 'Tất Cả', nameEn: 'All', icon: Layers },
   { id: 'luggage', nameVi: 'Hành Lý', nameEn: 'Luggage', icon: Luggage },
   { id: 'room_move', nameVi: 'Chuyển Phòng', nameEn: 'Room Move', icon: DoorOpen },
 ];
@@ -118,16 +117,16 @@ export const RobotBellmanMenuScreen = ({
   language = 'English',
   activeRoomNumber = '',
   authenticatedRoom = null,
-  onPinVerifiedSuccess = () => {},
-  onRoomChange = () => {},
-  onClose = () => {},
-  onRequestSuccess = () => {},
-  onNotCheckedIn = () => {},
+  onPinVerifiedSuccess = () => { },
+  onRoomChange = () => { },
+  onClose = () => { },
+  onRequestSuccess = () => { },
+  onNotCheckedIn = () => { },
 }) => {
   // Follow the guest conversation, independently of the staff portal language.
   const isEn = language === 'English' || language === 'EN';
 
-  const [activeGroup, setActiveGroup] = useState('all');
+  const [activeGroup, setActiveGroup] = useState(GROUPS[0].id);
   const [selected, setSelected] = useState(null);
   const [bagCount, setBagCount] = useState('1');
   const [timePref, setTimePref] = useState('now');
@@ -148,7 +147,7 @@ export const RobotBellmanMenuScreen = ({
 
   const isRoomAuth = Boolean(
     targetRoom &&
-      ((authenticatedRoom && String(authenticatedRoom).trim() === String(targetRoom).trim()) || isLocalPinVerified)
+    ((authenticatedRoom && String(authenticatedRoom).trim() === String(targetRoom).trim()) || isLocalPinVerified)
   );
 
   useEffect(() => {
@@ -156,6 +155,22 @@ export const RobotBellmanMenuScreen = ({
       setTargetRoom(String(activeRoomNumber).trim());
     }
   }, [activeRoomNumber]);
+
+  useEffect(() => {
+    if (!selected || isRoomPickerOpen || isPinModalOpen) return;
+
+    const handleTouchMove = (e) => {
+      const isInsideDrawer = e.target?.closest?.('.bellman-drawer-scrollable');
+      if (!isInsideDrawer) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    return () => {
+      window.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [selected, isRoomPickerOpen, isPinModalOpen]);
 
   const handleTargetRoomChange = (room) => {
     setTargetRoom(room);
@@ -166,7 +181,7 @@ export const RobotBellmanMenuScreen = ({
   };
 
   const services = useMemo(
-    () => (activeGroup === 'all' ? BELL_SERVICE_OPTIONS : BELL_SERVICE_OPTIONS.filter((s) => s.group === activeGroup)),
+    () => BELL_SERVICE_OPTIONS.filter((s) => s.group === activeGroup),
     [activeGroup]
   );
 
@@ -270,13 +285,9 @@ export const RobotBellmanMenuScreen = ({
   return (
     <div className="fixed inset-0 w-full h-[100dvh] max-h-[100dvh] bg-[#F5F2EB] text-[#1A1917] select-none flex overflow-hidden font-sans z-50 overscroll-none touch-none">
       {/* 1. LEFT SIDEBAR: NHÓM DỊCH VỤ & THOÁT VỀ ROBOT */}
-      <aside className="w-36 sm:w-44 shrink-0 bg-[#EFECE4] border-r border-[#E3DFD5] flex flex-col h-full pl-[max(0.75rem,env(safe-area-inset-left,0px))]">
-        <div className="p-3 border-b border-[#E3DFD5]">
-          <div className="flex items-center gap-1.5 text-stone-500 text-[10px] uppercase font-bold tracking-wider">
-            <Luggage className="w-3.5 h-3.5 text-stone-600" />
-            <span>Bellman</span>
-          </div>
-          <h2 className="text-xs sm:text-sm font-black text-stone-900 mt-0.5">{isEn ? 'Luggage' : 'Hành Lý'}</h2>
+      <aside className="w-[calc(10rem+env(safe-area-inset-left,0px))] sm:w-[calc(11.5rem+env(safe-area-inset-left,0px))] shrink-0 bg-[#EFECE4] border-r border-[#E3DFD5] flex flex-col h-full pl-[max(0.75rem,env(safe-area-inset-left,0px))]">
+        <div className="h-12 sm:h-14 px-3 border-b border-[#E3DFD5] flex items-center shrink-0">
+          <h2 className="text-xs sm:text-sm font-black text-stone-900 truncate">{isEn ? 'Luggage' : 'Hành Lý'}</h2>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-2 space-y-1.5 custom-scrollbar">
@@ -289,9 +300,8 @@ export const RobotBellmanMenuScreen = ({
                 type="button"
                 onClick={() => setActiveGroup(group.id)}
                 aria-pressed={isActive}
-                className={`w-full p-2.5 rounded-xl text-left flex items-center gap-2.5 transition-all cursor-pointer ${
-                  isActive ? 'bg-[#1A1917] text-white shadow-xs font-bold' : 'hover:bg-[#E5E1D8] text-stone-700 font-medium'
-                }`}
+                className={`w-full p-2.5 rounded-xl text-left flex items-center gap-2.5 transition-all cursor-pointer ${isActive ? 'bg-[#1A1917] text-white shadow-xs font-bold' : 'hover:bg-[#E5E1D8] text-stone-700 font-medium'
+                  }`}
               >
                 <GroupIcon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-stone-500'}`} />
                 <span className="text-xs truncate">{isEn ? group.nameEn : group.nameVi}</span>
@@ -299,60 +309,43 @@ export const RobotBellmanMenuScreen = ({
             );
           })}
         </nav>
-
-        <div className="p-2 border-t border-[#E3DFD5]">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full py-2 px-3 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <X className="w-3.5 h-3.5" />
-            <span>{isEn ? 'Back to Robot' : 'Về Robot'}</span>
-          </button>
-        </div>
       </aside>
 
       {/* 2. MAIN AREA: HEADER + LƯỚI DỊCH VỤ */}
       <main className="flex-1 flex flex-col h-full min-w-0 bg-[#F5F2EB]">
-        <header className="h-12 sm:h-14 px-3 sm:px-5 border-b border-[#E3DFD5] flex items-center justify-between shrink-0 gap-2">
+        <header className="h-12 sm:h-14 px-3 sm:px-5 pr-[max(0.75rem,env(safe-area-inset-right,0px))] border-b border-[#E3DFD5] flex items-center justify-between shrink-0 gap-2">
           <h1 className="text-xs sm:text-sm font-black text-stone-900 truncate min-w-0">
             {isEn ? 'Luggage & Bell Services' : 'Hành Lý & Bellman'}
           </h1>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleOpenStatusModal}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-stone-50 border border-[#E3DFD5] hover:border-stone-400 text-[11px] font-bold text-stone-700 shadow-2xs transition-all cursor-pointer active:scale-95"
-              title={isEn ? 'Check request progress (requires PIN)' : 'Tra cứu tiến độ yêu cầu (cần mã PIN)'}
-            >
-              <Clock className="w-3.5 h-3.5 text-stone-500" />
-              <span>{isEn ? 'Status' : 'Tiến độ'}</span>
-            </button>
-
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => setIsRoomPickerOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-stone-50 border border-[#E3DFD5] hover:border-stone-400 text-[11px] font-bold text-stone-800 shadow-2xs transition-all cursor-pointer active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-stone-50 border border-[#E3DFD5] hover:border-stone-400 text-[11px] font-bold text-stone-800 shadow-sm transition-all cursor-pointer active:scale-95 shrink-0 whitespace-nowrap"
               title={isEn ? 'Tap to select or change your room' : 'Chạm để chọn hoặc đổi số phòng'}
             >
-              <span className={`w-2 h-2 rounded-full ${targetRoom ? 'bg-emerald-500' : 'bg-stone-400'}`} />
+              <span className={`w-2 h-2 rounded-full shrink-0 ${targetRoom ? 'bg-emerald-500' : 'bg-stone-400'}`} />
               <span>{roomText}</span>
-              <Edit3 className="w-3 h-3 text-stone-400" />
+              <Edit3 className="w-3 h-3 text-stone-400 shrink-0" />
             </button>
 
             <button
               type="button"
               onClick={onClose}
-              className="w-8 h-8 rounded-full hover:bg-stone-200 text-stone-600 flex items-center justify-center transition-colors cursor-pointer"
-              title={isEn ? 'Close' : 'Đóng'}
+              className="h-8 px-3.5 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-sm shrink-0 whitespace-nowrap"
+              title={isEn ? 'Back to Robot' : 'Quay lại giao diện Robot'}
             >
-              <X className="w-4 h-4" />
+              <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+              <span>{isEn ? 'Back to Robot' : 'Quay lại Robot'}</span>
             </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4 custom-scrollbar">
+        <div
+          className={`flex-1 min-h-0 ${selected ? 'overflow-hidden pointer-events-none' : 'overflow-y-auto'
+            } overscroll-contain touch-pan-y p-3 sm:p-4 pr-[max(0.75rem,env(safe-area-inset-right,0px))] custom-scrollbar`}
+        >
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3 pb-8">
             {services.map((service) => {
               const ServiceIcon = service.icon;
@@ -392,111 +385,110 @@ export const RobotBellmanMenuScreen = ({
         </div>
       </main>
 
-      {/* 3. MODAL XÁC NHẬN YÊU CẦU */}
+      {/* 3. DRAWER BÊN PHẢI: XÁC NHẬN YÊU CẦU */}
       {selected && (
         <div
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-stretch justify-end animate-fadeIn overscroll-none touch-none"
           onClick={() => setSelected(null)}
         >
           <div
-            className="w-full max-w-md max-h-[calc(100dvh-1.5rem)] overflow-y-auto bg-white rounded-3xl border border-[#E3DFD5] shadow-2xl p-4 sm:p-5 flex flex-col gap-3"
+            className="w-full max-w-[380px] sm:max-w-md h-full max-h-[100dvh] bg-[#FAF8F5] border-l border-[#E3DFD5] text-[#1A1917] shadow-2xl flex flex-col justify-between animate-in slide-in-from-right duration-200 overscroll-contain touch-none"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between pb-2.5 border-b border-[#E3DFD5]">
-              <h3 className="text-xs sm:text-sm font-bold text-stone-900">
-                {isEn ? 'Confirm Bellman Request' : 'Xác nhận yêu cầu Bellman'}
+            {/* Header Drawer */}
+            <div className="h-12 sm:h-14 shrink-0 px-4 sm:px-5 pr-[max(1rem,env(safe-area-inset-right,0px))] border-b border-[#E3DFD5] bg-white flex items-center justify-between gap-2 touch-none">
+              <h3 className="text-xs sm:text-sm font-bold text-stone-900 truncate">
+                {isEn ? selected.nameEn : selected.nameVi}
               </h3>
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="w-7 h-7 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 flex items-center justify-center cursor-pointer"
+                className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 hover:text-stone-800 transition-colors flex items-center justify-center cursor-pointer shrink-0"
                 title={isEn ? 'Close' : 'Đóng'}
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-3 rounded-2xl bg-[#F5F2EB] border border-[#E3DFD5]">
-              <p className="text-xs sm:text-sm font-bold text-stone-900">{isEn ? selected.nameEn : selected.nameVi}</p>
-              <p className="text-[11px] text-stone-600 mt-1">{isEn ? selected.descEn : selected.descVi}</p>
-            </div>
+            {/* Thân Drawer cuộn bên trong */}
+            <div className="bellman-drawer-scrollable flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 pr-[max(0.75rem,env(safe-area-inset-right,0px))] space-y-3 custom-scrollbar overscroll-contain touch-pan-y">
 
-            <div className="flex items-center justify-between p-2.5 rounded-2xl bg-white border border-[#E3DFD5]">
-              <div className="flex items-center gap-2 min-w-0">
-                <Building className="w-4 h-4 text-stone-500 shrink-0" />
-                <span className="text-xs font-semibold text-stone-700">{isEn ? 'Room:' : 'Phòng:'}</span>
-                <span className="text-xs font-mono font-black text-stone-900 truncate">
-                  {targetRoom || (isEn ? 'Not selected' : 'Chưa chọn')}
-                </span>
+              <div className="flex items-center justify-between gap-2 p-2.5 sm:p-3 rounded-2xl bg-white border border-[#E3DFD5] shadow-2xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Building className="w-4 h-4 text-stone-500 shrink-0" />
+                  <span className="text-xs font-semibold text-stone-700 shrink-0">{isEn ? 'Room:' : 'Phòng:'}</span>
+                  <span className="text-xs font-mono font-black text-stone-900 truncate">
+                    {targetRoom || (isEn ? 'Not selected' : 'Chưa chọn')}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsRoomPickerOpen(true)}
+                  className="text-xs font-bold text-stone-800 px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-stone-200 border border-stone-300 cursor-pointer active:scale-95 flex items-center gap-1 shrink-0 whitespace-nowrap"
+                >
+                  <span>{targetRoom ? (isEn ? 'Change' : 'Đổi phòng') : isEn ? 'Select' : 'Chọn phòng'}</span>
+                  <Edit3 className="w-3 h-3 text-stone-500 shrink-0" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsRoomPickerOpen(true)}
-                className="text-xs font-bold text-stone-800 px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-stone-200 border border-stone-300 cursor-pointer active:scale-95 flex items-center gap-1"
-              >
-                <span>{targetRoom ? (isEn ? 'Change' : 'Đổi phòng') : isEn ? 'Select' : 'Chọn phòng'}</span>
-                <Edit3 className="w-3 h-3 text-stone-500" />
-              </button>
-            </div>
 
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1">
-                {isEn ? 'Number of bags' : 'Số kiện hành lý'}
-              </p>
-              <div className="grid grid-cols-4 gap-2" role="group">
-                {BAG_OPTIONS.map((count) => (
-                  <button
-                    key={count}
-                    type="button"
-                    onClick={() => setBagCount(count)}
-                    aria-pressed={bagCount === count}
-                    className={`py-2 rounded-xl border text-xs font-bold cursor-pointer transition-all ${
-                      bagCount === count
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">
+                  {isEn ? 'Number of bags' : 'Số kiện hành lý'}
+                </p>
+                <div className="grid grid-cols-4 gap-2" role="group">
+                  {BAG_OPTIONS.map((count) => (
+                    <button
+                      key={count}
+                      type="button"
+                      onClick={() => setBagCount(count)}
+                      aria-pressed={bagCount === count}
+                      className={`py-2 rounded-xl border text-xs font-bold cursor-pointer transition-all ${bagCount === count
                         ? 'bg-[#1A1917] text-white border-[#1A1917]'
-                        : 'bg-[#F5F2EB] text-stone-700 border-[#E3DFD5] hover:bg-stone-200'
-                    }`}
-                  >
-                    {count}
-                  </button>
-                ))}
+                        : 'bg-white text-stone-700 border-[#E3DFD5] hover:bg-stone-100'
+                        }`}
+                    >
+                      {count}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1">
-                {isEn ? 'When' : 'Thời gian'}
-              </p>
-              <div className="grid grid-cols-3 gap-2" role="group">
-                {TIME_OPTIONS.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setTimePref(option.id)}
-                    aria-pressed={timePref === option.id}
-                    className={`py-2 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${
-                      timePref === option.id
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">
+                  {isEn ? 'When' : 'Thời gian'}
+                </p>
+                <div className="grid grid-cols-3 gap-2" role="group">
+                  {TIME_OPTIONS.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setTimePref(option.id)}
+                      aria-pressed={timePref === option.id}
+                      className={`py-2 rounded-xl border text-xs font-semibold cursor-pointer transition-all ${timePref === option.id
                         ? 'bg-[#1A1917] text-white border-[#1A1917]'
-                        : 'bg-[#F5F2EB] text-stone-700 border-[#E3DFD5] hover:bg-stone-200'
-                    }`}
-                  >
-                    {isEn ? option.en : option.vi}
-                  </button>
-                ))}
+                        : 'bg-white text-stone-700 border-[#E3DFD5] hover:bg-stone-100'
+                        }`}
+                    >
+                      {isEn ? option.en : option.vi}
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {errorMsg && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
             </div>
 
-            {errorMsg && (
-              <div className="p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-1.5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{errorMsg}</span>
-              </div>
-            )}
-
-            <div className="pt-1 flex items-center gap-2">
+            {/* Footer Drawer */}
+            <div className="shrink-0 p-3 sm:p-4 pr-[max(0.75rem,env(safe-area-inset-right,0px))] pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] border-t border-[#E3DFD5] bg-white flex items-center gap-2 touch-none">
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="flex-1 py-2 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-800 text-xs font-bold cursor-pointer"
+                className="px-4 py-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold cursor-pointer shrink-0 whitespace-nowrap transition-colors"
               >
                 {isEn ? 'Cancel' : 'Hủy'}
               </button>
@@ -504,9 +496,9 @@ export const RobotBellmanMenuScreen = ({
                 type="button"
                 disabled={isSubmitting}
                 onClick={handleConfirmSubmit}
-                className="flex-2 py-2 rounded-xl bg-[#1A1917] hover:bg-stone-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:bg-stone-300"
+                className="flex-1 py-2.5 px-3 rounded-2xl bg-[#1A1917] hover:bg-stone-800 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-md disabled:bg-stone-300 transition-all active:scale-95 whitespace-nowrap"
               >
-                {isSubmitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                {isSubmitting ? <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" /> : <Send className="w-3.5 h-3.5 shrink-0" />}
                 <span>{isEn ? 'Send Request' : 'Gửi yêu cầu'}</span>
               </button>
             </div>
@@ -616,8 +608,15 @@ export const RobotBellmanMenuScreen = ({
           setIsRoomPickerOpen(false);
         }}
         initialFloor={targetRoom && String(targetRoom).startsWith('4') ? '4' : '3'}
+        selectedRoom={targetRoom}
+        variant="light"
         title={isEn ? 'Select Guest Room' : 'Chọn Số Phòng Lưu Trú'}
-        subtitle={isEn ? 'Tap your room number on the screen' : 'Chạm trực tiếp vào số phòng của quý khách trên màn hình'}
+        subtitle={isEn ? 'Tap your room number' : 'Chạm chọn số phòng của quý khách'}
+        floorLabels={
+          isEn
+            ? { floor3: 'Floor 3 (R.301 - 310)', floor4: 'Floor 4 (R.401 - 410)' }
+            : { floor3: 'Tầng 3 (P.301 - 310)', floor4: 'Tầng 4 (P.401 - 410)' }
+        }
         iconType="concierge"
       />
 

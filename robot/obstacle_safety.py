@@ -153,24 +153,17 @@ class ObstacleSafetyController:
             return tuple(r for r in base if r[0] not in self.ignored_sensors)
         return base
 
-    def _packet_resume_state(self, snapshot, motion):
-        """'clear' / 'blocked' / 'unknown' cho chuỗi resume; chỉ dùng số đo hiện tại.
-
-        Packet null không mang thông tin: không cộng vào chuỗi nhưng cũng không xoá
-        chuỗi. Trước đây 1 packet null là reset về 0; sonar null 40-75% packet nên
-        khoá an toàn gần như không bao giờ mở (log 19/11: "hiện có 0" khi xoay).
-        Chỉ một số đo THẬT dưới ngưỡng mới xoá chuỗi.
-        """
-        unknown = False
+    def _packet_is_clear_for_resume(self, snapshot, motion):
+        """Resume chỉ dùng số đo hiện tại, tuyệt đối không dùng giá trị giữ tạm."""
         for sensor_name, stop_threshold in self._requirements(motion):
             if sensor_name in self.ignored_sensors:
                 continue
             distance = snapshot.distance(sensor_name)
             if distance is None:
-                unknown = True
-            elif distance <= stop_threshold + self.resume_margin_cm:
-                return "blocked"
-        return "unknown" if unknown else "clear"
+                return False
+            if distance <= stop_threshold + self.resume_margin_cm:
+                return False
+        return True
 
     def _refresh(self, snapshot):
         """Cập nhật trạng thái đúng một lần cho mỗi packet Serial."""
@@ -190,10 +183,9 @@ class ObstacleSafetyController:
                 state.consecutive_invalid = 0
 
         for motion in self._clear_streak:
-            state = self._packet_resume_state(snapshot, motion)
-            if state == "clear":
+            if self._packet_is_clear_for_resume(snapshot, motion):
                 self._clear_streak[motion] += 1
-            elif state == "blocked":
+            else:
                 self._clear_streak[motion] = 0
 
     def _distance_for_safety(self, snapshot, sensor_name, now):

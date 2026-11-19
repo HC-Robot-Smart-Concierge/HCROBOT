@@ -148,11 +148,9 @@ print(("READY " if ok else "WAIT ") + (", ".join(reasons) or "-"))
     ros2 launch "$SCRIPT_DIR/nav2/navigation_launch.py" slam:=true use_sim_time:=False \
       params_file:="$SCRIPT_DIR/nav2/nav2_params.yaml" autostart:=True &
     NAV_PID=$!
-    # Khong cho co dinh 8 s cho Nav2: explorer tu doi Nav2 active (navigate_to_pose) va /map
-    # roi moi gui dich, nen dem nguoc chay SONG SONG luc Nav2 dang khoi dong (nhanh hon ~15 s).
-    COUNTDOWN="${EXPLORE_COUNTDOWN:-3}"
-    echo "!!! XE THAT SE TU CHAY KHI NAV2 SAN SANG (~${COUNTDOWN}-10 GIAY). Dung xa xe ra. Ctrl+C de huy."
-    for ((i = COUNTDOWN; i > 0; i--)); do echo "   $i..."; sleep 1; done
+    sleep 8
+    echo "!!! XE THAT SE TU CHAY SAU 10 GIAY. Dung xa xe ra. Ctrl+C de huy/dung bat ky luc nao."
+    for i in 10 9 8 7 6 5 4 3 2 1; do echo "   $i..."; sleep 1; done
     # EXPLORE_SAVE khong dat -> ten tu dong; dat rong (EXPLORE_SAVE=, Web) -> quet xong KHONG tu
     # luu, Web hoi ten roi luu. Khong truyen "-p save_map_name:=" rong: rcl khong parse duoc gia
     # tri rong => explorer chet ngay luc khoi dong, xe khong bao gio tu chay.

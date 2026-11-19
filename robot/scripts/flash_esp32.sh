@@ -29,8 +29,7 @@ tar -C "$STAGE" -cf - "${MODULES[@]}" | ssh -o ConnectTimeout=8 "$PI" \
   "mkdir -p '$REMOTE_DIR/esp32' && tar -C '$REMOTE_DIR/esp32' -xf -"
 
 echo "== Nạp vào ESP32"
-# "auto" thay cho rỗng: ssh nối tham số thành 1 chuỗi, tham số rỗng sẽ biến mất.
-ssh "$PI" bash -s -- "$REMOTE_DIR" "${ESP32_PORT:-auto}" "${MODULES[@]}" <<'EOS'
+ssh "$PI" bash -s -- "$REMOTE_DIR" "${ESP32_PORT:-}" "${MODULES[@]}" <<'EOS'
 set -euo pipefail
 cd "$1"; PORT="$2"; shift 2
 
@@ -48,7 +47,6 @@ else
   exit 1
 fi
 
-[ "$PORT" = auto ] && PORT=""
 if [ -z "$PORT" ]; then
   # ESP32 dùng CH340 (1a86) / Espressif; RPLiDAR dùng CP2102 nên không được chọn ở đây.
   PORT="$(ls /dev/serial/by-id/*1a86* /dev/serial/by-id/*Espressif* 2>/dev/null | head -1 || true)"

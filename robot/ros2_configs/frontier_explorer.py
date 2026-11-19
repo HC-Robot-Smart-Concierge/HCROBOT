@@ -53,7 +53,7 @@ from frontier_logic import (  # noqa: E402
 EXIT_DELAY_SEC = 3.0
 from robot_status import lidar_clearances  # noqa: E402
 from retreat_logic import (  # noqa: E402
-    RetreatTrail, ReverseFollower, blind_sector_ids, body_scan, turn_clear,
+    RetreatTrail, ReverseFollower, body_scan, turn_clear,
 )
 from recovery_costmap import CostmapGrid, grid_sweep_clear, scan_sweep_clear  # noqa: E402
 from robot_geometry import TURN_CLEARANCE_RADIUS_M  # noqa: E402
@@ -94,12 +94,6 @@ class FrontierExplorer(Node):
         self.retreat_speed = float(p("retreat_speed", 0.08).value)
         self.turn_radius_m = float(p("retreat_turn_radius_m", TURN_CLEARANCE_RADIUS_M).value)
         self.scan_timeout_sec = float(p("retreat_scan_timeout_sec", 0.8).value)
-        # Measured 19/11: 105-135 deg (rear-left) never returns rays because a part of the
-        # robot sits inside the LiDAR minimum range there, so recovery waited forever for
-        # "24 sectors". Those sectors are not required; the Pi rear/left sonar still guards
-        # them. Set to "" once the obstruction is removed.
-        self.blind_spec = str(p("lidar_blind_deg", "105-150").value)
-        self.blind_sectors = blind_sector_ids(self.blind_spec)
         self.trail = RetreatTrail(max_length=float(p("retreat_history_m", 8.0).value))
         self.scan_received_at = None
         self.recovery_blocked = False
@@ -160,8 +154,7 @@ class FrontierExplorer(Node):
         self._publish_status({"state": "EXPLORING", "message": "Robot đang tự quét map."})
         self.get_logger().info(
             f"🧭 Frontier explorer sẵn sàng (đích cách vật cản ≥ {self.goal_clearance_m:.2f} m, "
-            f"đứng yên {self.stuck_timeout_sec:.0f} s là thoát kẹt, LiDAR bị che cố định "
-            f"{self.blind_spec or 'không'}° -> sonar Pi lo), chờ /map và Nav2..."
+            f"đứng yên {self.stuck_timeout_sec:.0f} s là thoát kẹt), chờ /map và Nav2..."
         )
 
     def _publish_status(self, result):
@@ -255,8 +248,7 @@ class FrontierExplorer(Node):
         if not (0 <= now - self.scan_received_at <= self.scan_timeout_sec
                 and 0 <= now - stamp <= self.scan_timeout_sec):
             return [], False
-        return body_scan(s.angle_min, s.angle_increment, s.ranges, s.range_min, s.range_max,
-                         self.blind_sectors)
+        return body_scan(s.angle_min, s.angle_increment, s.ranges, s.range_min, s.range_max)
 
     def _needs_retreat(self):
         if self._now() < self.retreat_retry_after:
@@ -584,8 +576,7 @@ class FrontierExplorer(Node):
                     missing.append(f"scan chưa mới: nhận {receive_age:.2f} s, timestamp {scan_age:.2f} s "
                                    f"(giới hạn {self.scan_timeout_sec:.2f} s)")
                 else:
-                    missing.append("scan chưa đủ 24 vùng góc (ngoài vùng che cố định "
-                                   f"{self.blind_spec or 'không có'}°)")
+                    missing.append("scan chưa đủ 24 vùng góc")
         if snapshot is None:
             missing.append("local costmap chưa sẵn sàng/mới trong 1.5 s")
         return "; ".join(missing)

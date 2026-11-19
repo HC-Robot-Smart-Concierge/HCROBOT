@@ -13,36 +13,11 @@ def angle_error(target, current):
     return (target - current + math.pi) % (2 * math.pi) - math.pi
 
 
-SECTORS = 24
-MAX_BLIND_SECTORS = 3  # > 45 deg unseen would make the coverage gate meaningless
-
-
-def blind_sector_ids(spec):
-    """Sectors (15 deg each, 0 = front, CCW) hidden by the robot's own parts, e.g. "105-150".
-
-    Rays there never return (object closer than the LiDAR minimum range), so requiring
-    them would block recovery forever. The Pi sonar remains the last guard for them.
-    """
-    spec = (spec or "").strip()
-    if not spec:
-        return frozenset()
-    try:
-        start, end = (float(v) for v in spec.split("-"))
-    except ValueError:
-        raise ValueError(f"lidar blind range must look like '105-150', got {spec!r}")
-    width = 360.0 / SECTORS
-    ids = frozenset(k for k in range(SECTORS) if start < (k + 1) * width and k * width < end)
-    if not ids or len(ids) > MAX_BLIND_SECTORS:
-        raise ValueError(f"lidar blind range {spec!r} must cover 1..{MAX_BLIND_SECTORS} sectors of 15 deg")
-    return ids
-
-
-def body_scan(angle_min, angle_increment, ranges, range_min, range_max, blind_sectors=frozenset()):
+def body_scan(angle_min, angle_increment, ranges, range_min, range_max):
     """Return body-frame hits and whether all 24 angular sectors have observations.
 
     Positive infinity is a valid no-return ray; NaN, zero, and out-of-range finite
     measurements do not establish coverage. Hits outside max range are omitted.
-    `blind_sectors` (see blind_sector_ids) are permanently occluded and not required.
     """
     sectors, points = set(), []
     for i, distance in enumerate(ranges):
@@ -51,10 +26,10 @@ def body_scan(angle_min, angle_increment, ranges, range_min, range_max, blind_se
         if not math.isinf(distance) and distance > range_max:
             continue
         angle = angle_min + i * angle_increment
-        sectors.add(int((angle % (2 * math.pi)) / (2 * math.pi) * SECTORS) % SECTORS)
+        sectors.add(int((angle % (2 * math.pi)) / (2 * math.pi) * 24) % 24)
         if math.isfinite(distance):
             points.append((LIDAR_X_M + distance * math.cos(angle), distance * math.sin(angle)))
-    return points, len(sectors | set(blind_sectors)) == SECTORS
+    return points, len(sectors) == 24
 
 
 def turn_clear(points, coverage, radius=TURN_CLEARANCE_RADIUS_M):

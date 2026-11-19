@@ -40,7 +40,7 @@ class TTSService:
         self.default_en_voice = "en-US-JennyNeural"
         self.current_rate: float = 1.0
         self.current_rate_str: str = "+0%"
-        self.default_volume: str = "+35%"
+        self.default_volume: str = "+0%"
 
         self._memory_cache: Dict[str, str] = {}
         self._inflight_tasks: Dict[str, asyncio.Task] = {}
@@ -69,7 +69,8 @@ class TTSService:
             if saved.get("en_voice"):
                 self.default_en_voice = saved["en_voice"]
             if saved.get("volume"):
-                self.default_volume = saved["volume"]
+                # Không gửi volume dương (+35%...) vào EdgeTTS để tránh lỗi NoAudioReceived; giữ +0% an toàn
+                self.default_volume = "+0%"
             if saved.get("speech_rate") is not None:
                 clamped = max(0.5, min(2.0, float(saved["speech_rate"])))
                 self.current_rate = clamped
@@ -110,7 +111,7 @@ class TTSService:
             "rate_percentage": self.rate_float_to_percentage(rate),
             "vi_voice": self.default_vi_voice,
             "en_voice": self.default_en_voice,
-            "volume": getattr(self, "default_volume", "+35%"),
+            "volume": getattr(self, "default_volume", "+0%"),
         }
 
     def update_voice_settings(
@@ -130,8 +131,9 @@ class TTSService:
             self.default_vi_voice = vi_voice
         if en_voice:
             self.default_en_voice = en_voice
-        if volume:
-            self.default_volume = volume
+        if volume is not None:
+            # Luôn giữ +0% cho EdgeTTS (khuếch đại âm lượng do GainNode ở frontend đảm nhiệm)
+            self.default_volume = "+0%"
         self._save_voice_config_to_disk()
         logger.info(
             f"[TTSService] Cập nhật cấu hình giọng nói AI: rate={clamped_rate} ({rate_str}), "
@@ -158,7 +160,7 @@ class TTSService:
         is_vi = self.is_vietnamese(clean_text)
         return ((voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)), ("vi" if is_vi else "en")
 
-    def _get_cache_key(self, text: str, provider: str, voice: str, rate: str = "+0%", volume: str = "+35%") -> str:
+    def _get_cache_key(self, text: str, provider: str, voice: str, rate: str = "+0%", volume: str = "+0%") -> str:
         raw = f"{provider}:{voice}:{rate}:{volume}:{text.strip()}"
         return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
@@ -224,7 +226,7 @@ class TTSService:
         selected_provider = (provider or settings.TTS_PROVIDER or "edge").lower()
         target_rate = rate or getattr(self, "current_rate_str", getattr(settings, "TTS_RATE", "+0%"))
         target_voice, lang_short = self._resolve_voice_and_lang(clean_text, language, voice)
-        target_volume = getattr(self, "default_volume", "+35%")
+        target_volume = "+0%"
 
         cache_key = self._get_cache_key(clean_text, selected_provider, target_voice, target_rate, target_volume)
         cached_audio = self._get_from_cache(cache_key)
@@ -280,10 +282,10 @@ class TTSService:
             try:
                 g_b64 = await self._synthesize_google_tts(clean_text, lang_short)
                 if g_b64:
-                    self._save_to_cache(cache_key, g_b64)
+                    # Không lưu audio google_fallback vào cache_key của edge để tránh ghi đè giọng chuẩn
                     logger.info(
                         f"[TTSService] Google TTS fallback succeeded after {last_error_code} "
-                        f"(lang={lang_short}, len={len(clean_text)})"
+                        f"(lang={lang_short}, len={len(clean_text)}) - not cached under edge key"
                     )
                     return self._ok_result(g_b64, "google_fallback")
             except Exception as fallback_err:
@@ -347,7 +349,7 @@ class TTSService:
         self, text: str, voice: str, rate: Optional[str] = None
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         return await synthesize_edge_tts_detailed(
-            text, voice, rate=rate, default_volume=getattr(self, "default_volume", "+35%")
+            text, voice, rate=rate, default_volume="+0%"
         )
 
     async def _synthesize_edge_tts(self, text: str, voice: str, rate: Optional[str] = None) -> Optional[str]:
@@ -364,19 +366,11 @@ class TTSService:
             return b""
         try:
             target_voice, _ = self._resolve_voice_and_lang(clean_text, language, voice)
-            cache_key = self._get_cache_key(clean_text, "edge_chunk", target_voice)
+            chunk_rate = getattr(self, "current_rate_str", getattr(settings, "TTS_RATE", "+0%"))
+            chunk_volume = "+0%"
+            cache_key = self._get_cache_key(clean_text, "edge_chunk", target_voice, chunk_rate, chunk_volume)
             if cache_key in self._memory_cache:
                 return base64.b64decode(self._memory_cache[cache_key])
-
-            try:
-                from app.services.cache.redis_service import redis_service
-
-                redis_audio = await redis_service.get_tts_audio(cache_key)
-                if redis_audio:
-                    self._memory_cache[cache_key] = base64.b64encode(redis_audio).decode("utf-8")
-                    return redis_audio
-            except Exception:
-                pass
 
             disk_path = os.path.join(self._cache_dir, f"{cache_key}.mp3")
             if os.path.isfile(disk_path):
@@ -385,8 +379,6 @@ class TTSService:
                 self._memory_cache[cache_key] = base64.b64encode(data).decode("utf-8")
                 return data
 
-            chunk_rate = getattr(settings, "TTS_RATE", "+0%")
-            chunk_volume = getattr(self, "default_volume", "+35%")
             communicate = edge_tts.Communicate(clean_text, target_voice, rate=chunk_rate, volume=chunk_volume)
             audio_bytes = b""
             async for chunk in communicate.stream():
@@ -398,12 +390,6 @@ class TTSService:
                 try:
                     with open(disk_path, "wb") as f:
                         f.write(audio_bytes)
-                except Exception:
-                    pass
-                try:
-                    from app.services.cache.redis_service import redis_service
-
-                    await redis_service.set_tts_audio(cache_key, audio_bytes)
                 except Exception:
                     pass
             return audio_bytes
@@ -421,7 +407,7 @@ class TTSService:
         target_vi = vi_voice or self.default_vi_voice
         target_en = en_voice or self.default_en_voice
         rate_str = getattr(self, "current_rate_str", "+0%") or "+0%"
-        volume_str = getattr(self, "default_volume", "+35%") or "+35%"
+        volume_str = "+0%"
         for phrase, lang, voice in common_warmup_phrases(target_vi, target_en):
             try:
                 cache_key = self._get_cache_key(phrase, "edge", voice, rate_str, volume_str)

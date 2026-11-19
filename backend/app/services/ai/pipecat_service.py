@@ -186,7 +186,11 @@ class PipecatPipelineService:
             cached_data = await redis_service.get_ai_cache(user_speech, language=lang_code)
             if cached_data and cached_data.get("full_text"):
                 cached_text = cached_data["full_text"]
-                cached_lang = cached_data.get("lang_code", lang_code)
+                cached_lang = (cached_data.get("lang_code") or "").strip() or (
+                    ollama_service.detect_language(cached_text)[1]
+                    if not lang_code or lang_code.lower() in ("auto", "bilingual")
+                    else lang_code
+                )
                 cached_dest = cached_data.get("destination_key")
                 cached_vcall = cached_data.get("trigger_video_call", False)
 

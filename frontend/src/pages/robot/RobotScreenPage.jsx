@@ -45,6 +45,8 @@ import {
 } from '../../utils/batteryPolicy';
 import { fetchActiveAdvertisements } from '../../services/advertisementApi';
 import { RobotAdPlayer } from '../../components/robot/RobotAdPlayer';
+import { RobotRunStatusBar } from '../../components/robot/RobotRunStatusBar';
+import { useRobotRunSync } from '../../hooks/useRobotRunSync';
 import { RoomPinModal } from '../../components/robot/RoomPinModal';
 import { RoomPickerModal } from '../../components/robot/RoomPickerModal';
 import { extractSpokenRoomNumber, isValidHotelRoom } from '../../utils/roomHelper';
@@ -318,6 +320,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         setIsStandby(true);
       }
     },
+    onRobotRunStatus: (payload) => runSync.handleRunStatus(payload),
     // Studio "Gửi tới robot" -> chạy kịch bản trên màn hình này bằng cùng bộ quyết định rẽ nhánh
     onWorkflowDispatch: (event) => {
       // Pin yếu: chỉ nhận kịch bản về trạm sạc
@@ -633,6 +636,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     transcript,
     resetTranscript,
     isListening,
+  });
+
+  // Xe thật đang chạy workflow: hiện trạng thái, phát quảng cáo khi đi tuần, báo khách để xe dừng
+  const runSync = useRobotRunSync({
+    guestPresent,
+    busy: isSpeaking || isProcessing || Boolean(transcript),
+    lastInteractionRef: lastInteractionTimeRef,
   });
 
   // Pin yếu: cùng quy tắc với Studio (utils/batteryPolicy). Pin ước tính từ Pi 5 đại diện cho cả pin động cơ.
@@ -1049,6 +1059,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       announceLowBattery();
       return;
     }
+    runSync.onGuestApproached();
     setIsStandby(false);
     resetStandbyTimer();
 
@@ -1088,12 +1099,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB, dọn dẹp âm thanh & chuyển sang ngủ nhẹ (RT-01)
   const handleGuestApproachedByTouch = () => {
     if (!batteryGuard.canStartGuestSession) { announceLowBattery(); return; }
+    runSync.onGuestApproached();
     pausePromoForGuest();
     handleStartTalk();
   };
 
   const handleGuestLeft = async () => {
     setGuestPresent(false);
+    runSync.onGuestLeft();
     if (unhappyTimerRef.current) {
       clearTimeout(unhappyTimerRef.current);
       unhappyTimerRef.current = null;
@@ -2884,7 +2897,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     <div className="w-full h-[100dvh] bg-aurora-canvas overflow-hidden font-sans select-none relative">
       {/* Màn hình Trình chiếu Quảng cáo Cloudinary (Khi rảnh rỗi hoặc nhận lệnh push từ Admin) */}
       <RobotAdPlayer
-        isOpen={isStandby && !isWorkflowRunning && !guestPresent}
+        isOpen={(isStandby || (runSync.patrolAds && !isServingGuest)) && !isWorkflowRunning && !guestPresent}
         onClose={() => {
           setIsStandby(false);
           resetStandbyTimer();
@@ -2892,10 +2905,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         ads={activeAds}
         pushedAd={pushedAd}
         onUserInteract={() => {
+          if (runSync.patrolAds) {
+            // Touching the patrol ad: close it for a minute; stop the robot only if a guest session may start.
+            runSync.dismissPatrolAds();
+            if (batteryGuard.canStartGuestSession) runSync.onGuestApproached();
+          }
           setIsStandby(false);
           resetStandbyTimer();
         }}
       />
+      <RobotRunStatusBar run={runSync.run} />
 
       {/* Camera AI (Chạy ngầm nhận diện khách/cảm xúc và stream WebRTC về Admin) */}
       <CameraPreview

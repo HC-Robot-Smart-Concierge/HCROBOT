@@ -49,23 +49,58 @@ def route_window_end(targets, start, robot, clearance=0.35):
     return start
 
 
-def readiness_reason(localization, loc_at, health, health_at, map_id, now):
+def readiness_issue(localization, loc_at, health, health_at, map_id, now):
+    """('NAVIGATION'|'SAFETY', message) or None. Only localization may be retried."""
     if not loc_at or now - loc_at > 3:
-        return 'Không có trạng thái định vị mới.'
+        return 'NAVIGATION', 'Không có trạng thái định vị mới.'
     if localization.get('map') != map_id:
-        return 'Map đang định vị không khớp map của workflow.'
+        return 'SAFETY', 'Map đang định vị không khớp map của workflow.'
     if localization.get('state') != 'LOCALIZED':
-        return localization.get('reason') or 'Robot chưa định vị hoặc đã mất định vị.'
+        return 'NAVIGATION', localization.get('reason') or 'Robot chưa định vị hoặc đã mất định vị.'
     if not health_at or now - health_at > 3:
-        return 'Mất dữ liệu sức khỏe robot.'
+        return 'SAFETY', 'Mất dữ liệu sức khỏe robot.'
     if not health.get('pi_ws_connected') or not health.get('lidar_live'):
-        return 'Pi hoặc LiDAR không sẵn sàng.'
+        return 'SAFETY', 'Pi hoặc LiDAR không sẵn sàng.'
     if health.get('encoder_valid') is not True:
-        return health.get('encoder_fault') or 'Encoder chưa được xác nhận hợp lệ.'
+        return 'SAFETY', health.get('encoder_fault') or 'Encoder chưa được xác nhận hợp lệ.'
     age = health.get('last_encoder_age_sec')
-    if not isinstance(age, (int, float)) or not math.isfinite(age) or not 0 <= age <= 0.5:
-        return 'Dữ liệu encoder đã cũ.'
+    # 1.0 s: ride out a short ESP32 -> Pi -> WebSocket hiccup; the Pi itself already stops
+    # the motors when ESP32 data is older than 0.8 s.
+    if not isinstance(age, (int, float)) or not math.isfinite(age) or not 0 <= age <= 1.0:
+        return 'SAFETY', 'Dữ liệu encoder đã cũ.'
     return None
+
+
+def readiness_reason(localization, loc_at, health, health_at, map_id, now):
+    issue = readiness_issue(localization, loc_at, health, health_at, map_id, now)
+    return issue[1] if issue else None
+
+
+def step_error_policy(params):
+    """A step's on_error with defaults; no on_error keeps the old stop-on-first-error behavior."""
+    raw = (params or {}).get('on_error') or {}
+    return {
+        'retry_count': int(raw.get('retry_count', 0) or 0),
+        'retry_wait_sec': int(raw.get('retry_wait_sec', 5) or 5),
+        'action': raw.get('action') or 'STOP',
+        'next_step_id': raw.get('next_step_id') or None,
+    }
+
+
+def low_battery_branch(config):
+    return next((b for b in (config or {}).get('event_branches') or [] if b.get('event') == 'LOW_BATTERY'), None)
+
+
+def low_battery_percent(control, branch, now, max_age_sec=10.0):
+    """Percent that must trigger the branch, or None for no branch, unknown or stale readings."""
+    if not branch:
+        return None
+    percent, at = control.get('battery_percent'), control.get('battery_at')
+    if isinstance(percent, bool) or not isinstance(percent, (int, float)) or not math.isfinite(percent):
+        return None
+    if not isinstance(at, (int, float)) or now - at > max_age_sec:
+        return None
+    return percent if percent < branch.get('threshold_percent', 20) else None
 
 
 def goal_cell_allowed(grid, x, y):
@@ -78,3 +113,15 @@ def goal_cell_allowed(grid, x, y):
     if not 0 <= gx < info.width or not 0 <= gy < info.height:
         return False
     return 0 <= grid.data[gy * info.width + gx] < 100
+
+
+def guest_branch(config):
+    return next((b for b in (config or {}).get('event_branches') or [] if b.get('event') == 'GUEST_DETECTED'), None)
+
+
+def guest_hold_active(control, branch, now, cooldown_until):
+    """The kiosk asked to hold (renewed hold time still in the future) outside the cooldown."""
+    if not branch or now < cooldown_until:
+        return False
+    until = control.get('guest_hold_until')
+    return isinstance(until, (int, float)) and not isinstance(until, bool) and now < until

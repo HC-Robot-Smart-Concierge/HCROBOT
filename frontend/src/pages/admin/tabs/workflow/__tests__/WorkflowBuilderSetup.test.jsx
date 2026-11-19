@@ -10,13 +10,12 @@ describe('Workflow builder selected-step layout', () => {
       { step_id: 'speech', type: 'SPEAK', title: 'Announcement', params: { speech_text: 'SECOND_STEP_TEXT' } },
     ] };
     const html = renderToStaticMarkup(<WorkflowBuilderModal isOpen workflow={workflow} />);
-    expect(html).toContain('Danh sách bước workflow');
-    expect(html).toContain('Announcement');
+    expect(html).toContain('Sơ đồ workflow');
+    expect(html).toContain('aria-selected="true"');
     expect(html).toContain('Cấu hình bước 1');
     expect(html).toContain('Cấu hình tuyến trên map');
     expect(html).not.toContain('value="SECOND_STEP_TEXT"');
     expect(html).toContain('Cần hoàn thiện');
-    expect(html).toContain('aria-pressed="true"');
     expect(html).toContain('Lưu bản nháp · cấu hình tuyến sau');
     expect(html).toContain('sang Physical Map');
   });

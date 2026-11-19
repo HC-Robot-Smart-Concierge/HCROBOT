@@ -55,6 +55,7 @@ function playNotificationChime() {
  * @param {string} options.department - Tên phòng ban cần lắng nghe (vd: 'Housekeeping', 'F&B', 'All')
  * @param {Function} options.onNotificationReceived - Callback nhận object thông báo mới
  * @param {Function} options.onWorkflowDispatch - Callback nhận lệnh WORKFLOW_DISPATCH ({ workflow, robot_id })
+ * @param {Function} options.onRobotRunStatus - Callback nhận ROBOT_RUN_STATUS (lượt chạy xe thật)
  * @param {boolean} options.enabled - Bật/tắt kết nối (vd: khi user đã login)
  */
 export function useNotificationWebSocket({
@@ -63,6 +64,7 @@ export function useNotificationWebSocket({
   onStatusUpdated,
   onOrderCreated,
   onWorkflowDispatch,
+  onRobotRunStatus,
   enabled = true,
 }) {
   const socketRef = useRef(null);
@@ -74,6 +76,7 @@ export function useNotificationWebSocket({
   const onStatusUpdatedRef = useRef(onStatusUpdated);
   const onOrderCreatedRef = useRef(onOrderCreated);
   const onWorkflowDispatchRef = useRef(onWorkflowDispatch);
+  const onRobotRunStatusRef = useRef(onRobotRunStatus);
 
   // Giữ callback mới nhất mà không trigger re-connect
   useEffect(() => {
@@ -83,6 +86,10 @@ export function useNotificationWebSocket({
   useEffect(() => {
     onWorkflowDispatchRef.current = onWorkflowDispatch;
   }, [onWorkflowDispatch]);
+
+  useEffect(() => {
+    onRobotRunStatusRef.current = onRobotRunStatus;
+  }, [onRobotRunStatus]);
 
   useEffect(() => {
     onStatusUpdatedRef.current = onStatusUpdated;
@@ -189,6 +196,10 @@ export function useNotificationWebSocket({
             console.log('[NotificationWS] Incoming advertisement push:', payload);
             if (onNotificationReceivedRef.current) {
               onNotificationReceivedRef.current(payload);
+            }
+          } else if (payload.type === 'ROBOT_RUN_STATUS') {
+            if (onRobotRunStatusRef.current) {
+              onRobotRunStatusRef.current(payload);
             }
           } else if (payload.type === 'WORKFLOW_DISPATCH') {
             if (onWorkflowDispatchRef.current) {

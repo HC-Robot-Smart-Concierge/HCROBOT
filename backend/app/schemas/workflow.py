@@ -70,6 +70,24 @@ class WorkflowRoute(BaseModel):
     points: List[WorkflowRoutePoint] = Field(min_length=2, max_length=200)
 
 
+class WorkflowEventBranch(BaseModel):
+    """Interrupts a real-robot run: LOW_BATTERY runs its steps then ends the run;
+    GUEST_DETECTED pauses for the kiosk conversation and resumes the route."""
+    event: Literal["LOW_BATTERY", "GUEST_DETECTED"]
+    threshold_percent: int = Field(default=20, ge=5, le=90, strict=True)
+    next_step_id: Optional[str] = Field(default=None, min_length=1)
+    idle_timeout_sec: int = Field(default=20, ge=5, le=120, strict=True)
+    max_duration_sec: int = Field(default=180, ge=30, le=600, strict=True)
+    cooldown_sec: int = Field(default=60, ge=0, le=600, strict=True)
+    ui_position: Optional[Dict[str, float]] = None
+
+    @model_validator(mode="after")
+    def battery_needs_target(self):
+        if self.event == "LOW_BATTERY" and not self.next_step_id:
+            raise ValueError("Nhánh pin yếu cần bước đích")
+        return self
+
+
 class WorkflowExecutionConfig(BaseModel):
     execution_mode: Literal["SCREEN", "ROBOT"] = "SCREEN"
     robot_id: Literal["RC-001"] = "RC-001"
@@ -78,6 +96,14 @@ class WorkflowExecutionConfig(BaseModel):
     interval_seconds: int = Field(default=0, ge=0, le=86400, strict=True)
     schedules: List[WorkflowScheduleItem] = Field(default_factory=list, max_length=20)
     route: Optional[WorkflowRoute] = None
+    event_branches: List[WorkflowEventBranch] = Field(default_factory=list, max_length=2)
+
+    @model_validator(mode="after")
+    def unique_event_branches(self):
+        events = [branch.event for branch in self.event_branches]
+        if len(events) != len(set(events)):
+            raise ValueError("Mỗi loại nhánh sự kiện chỉ được có một")
+        return self
 
     @model_validator(mode="after")
     def unique_schedule_slots(self):

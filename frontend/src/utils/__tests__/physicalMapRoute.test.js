@@ -154,3 +154,16 @@ describe('Map routes with schedules', () => {
     expect(() => routeWorkflow(draft)).toThrow('Tọa độ');
   });
 });
+
+describe('charger MOVE on the Physical Map', () => {
+  it('starts a workflow whose charger MOVE has no map yet', async () => {
+    const { physicalWorkflowForMap: start } = await import('../physicalMapRoute');
+    const route = { id: 'r1', is_active: true, name: 'Sảnh', execution_config: { route: { map_id: 'lab', frame_id: 'map', points: [
+      { id: 'a', name: 'A', x: 0, y: 0, yaw: 0 }, { id: 'b', name: 'B', x: 1, y: 0, yaw: 0 }] } } };
+    const wf = { id: 'wf', is_active: true, trigger_type: 'MANUAL', execution_config: { execution_mode: 'ROBOT' }, steps: [
+      { step_id: 'patrol', type: 'FOLLOW_ROUTE', params: { route_id: 'r1', repeat_count: 1 } },
+      { step_id: 'go', type: 'MOVE', params: { target_type: 'CHARGER', target_value: 'CHARGER_STATION' } },
+    ] };
+    expect(() => start(wf, [route], 'lab')).not.toThrow();
+  });
+});

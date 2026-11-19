@@ -36,6 +36,17 @@ async def test_route_reference_expands_only_the_route_and_preserves_branch_targe
 
 
 @pytest.mark.asyncio
+async def test_route_on_error_is_copied_to_every_expanded_point():
+    repo = SimpleNamespace(get_by_id=AsyncMock(return_value=template()))
+    policy = {'retry_count': 1, 'action': 'CONTINUE'}
+    steps = await resolve_route_steps([{'step_id': 'patrol', 'type': 'FOLLOW_ROUTE', 'params': {
+        'route_id': 'route-1', 'repeat_count': 2, 'on_error': policy}}], repo)
+    assert len(steps) == 4
+    assert all(s['params']['on_error'] == policy for s in steps)
+    assert steps[0]['params']['on_error'] is not steps[1]['params']['on_error']
+
+
+@pytest.mark.asyncio
 async def test_adjacent_uses_of_the_same_route_remain_separate_workflow_steps():
     repo = SimpleNamespace(get_by_id=AsyncMock(return_value=template()))
     steps = await resolve_route_steps([

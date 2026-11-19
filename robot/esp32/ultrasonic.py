@@ -74,10 +74,13 @@ def create_sensors():
     return [HCSR04(*config) for config in SENSOR_PINS]
 
 
-def read_ultrasonic_packet(sensors, gap_ms=SENSOR_GAP_MS):
+def read_ultrasonic_packet(sensors, gap_ms=SENSOR_GAP_MS, between=None):
+    """`between()` runs after each sensor (the main loop samples the gyro there)."""
     packet = {}
     for sensor in sensors:
         packet[sensor.name] = sensor.read_filtered_cm()
+        if between is not None:
+            between()
         time.sleep_ms(gap_ms)
     return packet
 

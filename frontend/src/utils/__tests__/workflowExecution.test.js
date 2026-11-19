@@ -50,3 +50,15 @@ describe('Workflow execution settings', () => {
     expect(executionError({ execution_config: { interval_seconds: -1 } })).toContain('Thời gian nghỉ');
   });
 });
+
+describe('charger MOVE on the real robot', () => {
+  it('accepts a charger MOVE without map_id because the backend resolves the CHARGER endpoint', async () => {
+    const { executionError: check } = await import('../workflowExecution');
+    const wf = { trigger_type: 'MANUAL', execution_config: { execution_mode: 'ROBOT' }, steps: [
+      { step_id: 'r', type: 'FOLLOW_ROUTE', params: { route_id: 'x', repeat_count: 1 } },
+      { step_id: 'go', type: 'MOVE', params: { target_type: 'CHARGER', target_value: 'CHARGER_STATION' } },
+    ] };
+    expect(check(wf)).toBe('');
+    expect(check({ ...wf, steps: [{ step_id: 'm', type: 'MOVE', params: { target_x: 1, target_y: 2 } }] })).toMatch('gắn map');
+  });
+});

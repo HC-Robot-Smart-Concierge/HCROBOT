@@ -1,0 +1,104 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Background, Controls, MarkerType, MiniMap, ReactFlow, applyNodeChanges } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import {
+  BATTERY, GUEST, addBatteryBranch, addGuestBranch, appendStep, eventBranch, connect, disconnect, markSelected, removeStep, setBatteryThreshold, setPosition, workflowToGraph,
+} from '../../../../../utils/workflowGraph';
+import { stepSetup } from '../../../../../utils/workflowStepSetup';
+import { BATTERY_COLOR, ERROR_COLOR, NODE_TYPES, OK_COLOR } from './WorkflowCanvasNodes';
+import { NodePalette } from './NodePalette';
+
+const ROBOT_TYPES = new Set(['MOVE', 'FOLLOW_ROUTE', 'WAIT']);
+
+function edgeStyle(edge) {
+  const color = edge.data?.error ? ERROR_COLOR : edge.data?.battery ? BATTERY_COLOR : OK_COLOR;
+  return {
+    ...edge, type: 'smoothstep', animated: Boolean(edge.data?.battery),
+    style: { stroke: color, strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color },
+    labelStyle: { fontSize: 10, fill: color }, labelBgStyle: { fill: '#fff' },
+  };
+}
+
+/** Keep auto-laid-out nodes where they are when a structural edit would re-run the layout. */
+function freezePositions(workflow, nodes) {
+  return nodes.reduce((wf, node) => {
+    const event = node.id === BATTERY ? 'LOW_BATTERY' : node.id === GUEST ? 'GUEST_DETECTED' : null;
+    const unsaved = event
+      ? !eventBranch(wf, event)?.ui_position
+      : node.type === 'step' && !wf.steps.find((s) => s.step_id === node.id)?.params?.ui_position;
+    return unsaved ? setPosition(wf, node.id, node.position) : wf;
+  }, workflow);
+}
+
+/**
+ * n8n-style editor. The parent owns the workflow; every edit returns a whole new
+ * workflow through onChange. Links are explicit, so branch-only steps never fall through.
+ */
+export function WorkflowCanvas({ workflow, routes = [], selectedId, onSelect, onChange }) {
+  const robotMode = workflow.execution_config?.execution_mode === 'ROBOT';
+  const hasBatteryBranch = Boolean(eventBranch(workflow, 'LOW_BATTERY'));
+  const hasGuestBranch = Boolean(eventBranch(workflow, 'GUEST_DETECTED'));
+
+  const graph = useMemo(() => {
+    const { nodes, edges } = workflowToGraph(workflow);
+    const decorated = nodes.map((node) => {
+      if (node.type === 'battery') {
+        return { ...node, data: { ...node.data, onThreshold: (value) => onChange(setBatteryThreshold(workflow, value)) } };
+      }
+      if (node.type !== 'step') return { ...node, draggable: false, selectable: false };
+      const issues = [...stepSetup(node.data.step, routes).issues];
+      if (robotMode && !ROBOT_TYPES.has(node.data.step.type)) issues.push('Xe thật chưa chạy được loại bước này.');
+      return { ...node, data: { ...node.data, issues } };
+    });
+    return { nodes: decorated, edges: edges.map(edgeStyle) };
+  }, [workflow, routes, robotMode, onChange]);
+
+  const [nodes, setNodes] = useState(() => markSelected(graph.nodes, selectedId));
+  useEffect(() => { setNodes(markSelected(graph.nodes, selectedId)); }, [graph, selectedId]);
+
+  const commit = useCallback((edit) => onChange(edit(freezePositions(workflow, nodes))), [workflow, nodes, onChange]);
+
+  const onNodesChange = useCallback((changes) => {
+    setNodes((current) => applyNodeChanges(changes.filter((c) => c.type !== 'remove'), current));
+  }, []);
+
+  const addStep = (step) => {
+    const last = nodes.filter((n) => n.type === 'step').reduce((max, n) => Math.max(max, n.position.y), 0);
+    commit((wf) => appendStep(wf, step, { x: 260, y: last + 160 }));
+    onSelect(step.step_id);
+  };
+
+  return <div className="relative h-full w-full bg-stone-50" aria-label="Sơ đồ workflow">
+    <NodePalette robotMode={robotMode} hasBatteryBranch={hasBatteryBranch} hasGuestBranch={hasGuestBranch} onAdd={addStep}
+      onAddBattery={() => { commit((wf) => addBatteryBranch(wf)); onSelect(BATTERY); }}
+      onAddGuest={() => { commit((wf) => addGuestBranch(wf)); onSelect(GUEST); }} />
+    <ReactFlow
+      nodes={nodes}
+      edges={graph.edges}
+      nodeTypes={NODE_TYPES}
+      onNodesChange={onNodesChange}
+      onNodeDragStop={(_, node) => onChange(setPosition(workflow, node.id, node.position))}
+      onConnect={(connection) => commit((wf) => connect(wf, connection))}
+      onDelete={({ nodes: gone = [], edges: cut = [] }) => {
+        // One commit: React Flow reports a node's edges too, and two commits from the same
+        // workflow snapshot would overwrite each other.
+        const removed = new Set(gone.map((node) => node.id));
+        commit((wf) => gone.reduce((acc, node) => removeStep(acc, node.id),
+          cut.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target))
+            .reduce((acc, edge) => disconnect(acc, edge), wf)));
+        if (removed.has(selectedId)) onSelect(null);
+      }}
+      onNodeClick={(_, node) => onSelect(['step', 'battery', 'guest'].includes(node.type) ? node.id : null)}
+      onPaneClick={() => onSelect(null)}
+      deleteKeyCode={['Backspace', 'Delete']}
+      fitView
+      fitViewOptions={{ padding: 0.2 }}
+      minZoom={0.2}
+      proOptions={{ hideAttribution: true }}
+    >
+      <Background gap={20} color="#d6d3d1" />
+      <Controls showInteractive={false} />
+      <MiniMap pannable zoomable nodeStrokeWidth={3} />
+    </ReactFlow>
+  </div>;
+}

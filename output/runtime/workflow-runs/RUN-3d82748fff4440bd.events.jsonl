@@ -1,0 +1,9 @@
+{"type": "STARTED", "message": null, "step_index": 0, "round_index": 0, "at": 1795013244.2056718}
+{"type": "STEP_STARTED", "message": "Test workflow đi theo path  · Đi theo tuyến (FOLLOW_ROUTE) · map_tetttt · vòng 1 · Điểm trung gian", "step_index": 0, "round_index": 0, "at": 1795013244.2076733}
+{"type": "STEP_COMPLETED", "message": null, "step_index": 0, "round_index": 0, "at": 1795013248.6262016}
+{"type": "STEP_STARTED", "message": "Test workflow đi theo path  · Đi theo tuyến (FOLLOW_ROUTE) · map_tetttt · vòng 1 · Điểm trung gian", "step_index": 1, "round_index": 0, "at": 1795013248.6273901}
+{"type": "STEP_COMPLETED", "message": null, "step_index": 1, "round_index": 0, "at": 1795013252.778197}
+{"type": "STEP_STARTED", "message": "Test workflow đi theo path  · Đi theo tuyến (FOLLOW_ROUTE) · map_tetttt · vòng 1 · Điểm trung gian", "step_index": 2, "round_index": 0, "at": 1795013252.7803411}
+{"type": "STEP_RETRY", "message": "Thử lại 1/3: Mất định vị: LiDAR chỉ còn khớp 23% bản đồ. Đã gửi yêu cầu dừng xe.", "step_index": 2, "round_index": 0, "at": 1795013259.064753}
+{"type": "EVENT_TRIGGERED", "message": "Pin 10% < 20%", "step_index": 2, "round_index": 0, "at": 1795013262.2160368}
+{"type": "COMPLETED", "message": "Dừng tuyến do pin yếu (10%) — đã về trạm sạc.", "step_index": 6, "round_index": 0, "at": 1795013262.2176747}

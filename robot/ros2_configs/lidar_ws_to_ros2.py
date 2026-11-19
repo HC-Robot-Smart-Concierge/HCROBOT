@@ -395,6 +395,8 @@ class LidarWsToRos2Bridge(Node):
             "pi_ws_connected": self.pi_ws_connected,
             "encoder_valid": self.encoder_guard.valid,
             "encoder_fault": self.encoder_guard.fault,
+            # Samples where a glitching wheel was replaced by its same-side partner.
+            "encoder_dropped_samples": dict(self.encoder_guard.dropped),
             "wheel_radius_m": self.wheel_radius,
             "wheel_base_m": self.wheel_sep,
             "encoder_cpr": self.encoder_cpr,
@@ -827,12 +829,18 @@ class LidarWsToRos2Bridge(Node):
                 self._freeze_invalid_encoder()
                 return
 
+            # Commanded side speeds let the guard keep the wheel that matches the
+            # drive command when one encoder of a pair glitches.
+            vx, wz = getattr(self, 'current_vx', 0.0), getattr(self, 'current_wz', 0.0)
+            half_track = getattr(self, 'yaw_track', 0.17) / 2.0
             valid_encoder = self.encoder_guard.check(
                 motor_ticks, self.prev_motor_ticks, self.encoder_signs, dt,
-                self.wheel_radius, self.encoder_cpr
+                self.wheel_radius, self.encoder_cpr,
+                expected={'left': vx - wz * half_track, 'right': vx + wz * half_track},
             )
-            delta_left_ticks = left_ticks - self.prev_left_ticks
-            delta_right_ticks = right_ticks - self.prev_right_ticks
+            # Side distances from the guard: a glitching wheel is replaced by its partner.
+            delta_left_ticks = self.encoder_guard.side_tick_deltas['left']
+            delta_right_ticks = self.encoder_guard.side_tick_deltas['right']
             self.prev_left_ticks = left_ticks
             self.prev_right_ticks = right_ticks
             self.prev_motor_ticks = motor_ticks

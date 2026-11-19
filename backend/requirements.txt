@@ -22,3 +22,5 @@ cloudinary>=1.38.0
 redis>=5.0.0
 SpeechRecognition>=3.14.0
 faster-whisper>=1.0.0
+piper-tts>=1.8.0
+lameenc>=1.9.0

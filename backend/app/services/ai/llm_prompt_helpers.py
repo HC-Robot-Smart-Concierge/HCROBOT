@@ -251,7 +251,7 @@ async def call_groq_chat(
     max_tokens: int = 150,
     log_prefix: str = "[Groq API]",
 ) -> Optional[str]:
-    """Call Groq OpenAI-compatible chat completion API with single 429 retry."""
+    """Call Groq OpenAI-compatible chat completion API with smart 429 retry and retry-after header parsing."""
     if not api_key:
         return None
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -271,22 +271,32 @@ async def call_groq_chat(
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            res = await client.post(url, headers=headers, json=payload)
-            if res.status_code == 200:
-                return res.json()["choices"][0]["message"]["content"]
-            if res.status_code == 429:
-                logger.warning(f"{log_prefix} Rate limited (429), waiting 0.8s...")
-                await asyncio.sleep(0.8)
-                res_retry = await client.post(url, headers=headers, json=payload)
-                if res_retry.status_code == 200:
-                    return res_retry.json()["choices"][0]["message"]["content"]
-                logger.warning(f"{log_prefix} Retry failed status={res_retry.status_code}")
+            for attempt in range(3):
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code == 200:
+                    return res.json()["choices"][0]["message"]["content"]
+                if res.status_code == 429:
+                    if attempt < 2:
+                        raw_retry = res.headers.get("retry-after")
+                        wait_sec = 1.4 if attempt == 0 else 2.2
+                        if raw_retry:
+                            try:
+                                wait_sec = max(1.0, min(float(raw_retry), 3.5))
+                            except ValueError:
+                                pass
+                        logger.warning(
+                            f"{log_prefix} Rate limited (429), waiting {wait_sec:.1f}s (attempt {attempt + 1}/3)..."
+                        )
+                        await asyncio.sleep(wait_sec)
+                        continue
+                    logger.warning(f"{log_prefix} Retry failed status=429 after 3 attempts")
+                    return None
+                logger.warning(f"{log_prefix} Warning status={res.status_code}: {res.text[:120]}")
                 return None
-            logger.warning(f"{log_prefix} Warning status={res.status_code}: {res.text[:120]}")
-            return None
     except Exception as e:
         logger.warning(f"{log_prefix} Error: {e}")
         return None
+    return None
 
 
 async def stream_groq_chat(
@@ -317,28 +327,41 @@ async def stream_groq_chat(
     }
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            async with client.stream("POST", url, headers=headers, json=payload) as response:
-                if response.status_code != 200:
-                    err_text = await response.aread()
-                    logger.warning(
-                        f"{log_prefix} Warning status={response.status_code}: "
-                        f"{err_text[:120].decode('utf-8', errors='ignore')}"
-                    )
+            for attempt in range(2):
+                async with client.stream("POST", url, headers=headers, json=payload) as response:
+                    if response.status_code == 429 and attempt == 0:
+                        raw_retry = response.headers.get("retry-after")
+                        wait_sec = 1.4
+                        if raw_retry:
+                            try:
+                                wait_sec = max(1.0, min(float(raw_retry), 3.5))
+                            except ValueError:
+                                pass
+                        logger.warning(f"{log_prefix} Rate limited (429), waiting {wait_sec:.1f}s before stream retry...")
+                        await asyncio.sleep(wait_sec)
+                        continue
+                    if response.status_code != 200:
+                        err_text = await response.aread()
+                        logger.warning(
+                            f"{log_prefix} Warning status={response.status_code}: "
+                            f"{err_text[:120].decode('utf-8', errors='ignore')}"
+                        )
+                        return
+                    async for line in response.aiter_lines():
+                        if not line or not line.startswith("data: "):
+                            continue
+                        data_str = line[6:].strip()
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            choices = json.loads(data_str).get("choices", [])
+                            if choices:
+                                content = choices[0].get("delta", {}).get("content", "")
+                                if content:
+                                    yield content
+                        except json.JSONDecodeError:
+                            continue
                     return
-                async for line in response.aiter_lines():
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[6:].strip()
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        choices = json.loads(data_str).get("choices", [])
-                        if choices:
-                            content = choices[0].get("delta", {}).get("content", "")
-                            if content:
-                                yield content
-                    except json.JSONDecodeError:
-                        continue
     except Exception as e:
         logger.warning(f"{log_prefix} Error: {e}")
         if raise_on_error:

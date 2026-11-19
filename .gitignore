@@ -65,6 +65,7 @@ scratch/
 **/audio_cache/
 backend/static/audio_cache/
 static/audio_cache/
+backend/models/piper/*.onnx
 
 # Uploads directory (chỉ giữ file mẫu hoặc .gitkeep, không commit file upload runtime)
 backend/static/uploads/*

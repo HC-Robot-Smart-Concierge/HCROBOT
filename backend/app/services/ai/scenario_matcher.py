@@ -10,7 +10,11 @@ from app.services.ai.constants import (
     ORDER_OR_SERVICE_EXCLUSION_REGEX,
     STATUS_QUERY_REGEX,
 )
-from app.services.ai.session_manager import extract_room_number, is_valid_hotel_room
+from app.services.ai.session_manager import (
+    extract_room_number,
+    format_invalid_room_reply,
+    is_valid_hotel_room,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -244,11 +248,7 @@ def match_fast_path_scenarios(
 
     room_candidate = extract_room_number(normalized)
     if room_candidate and not is_valid_hotel_room(room_candidate) and _ROOM_QUERY_INTENT_RE.search(normalized):
-        reply_text = (
-            f"Aurora Grand Hotel does not have room {room_candidate}. Our guest rooms are located on Level 3 (rooms 301 to 310) and Level 4 (rooms 401 to 410). Please double check your room number."
-            if is_en
-            else f"Dạ khách sạn Aurora Grand hiện không có phòng {room_candidate} ạ. Khách sạn chỉ có các phòng lưu trú từ 301 đến 310 tại Tầng 3 và từ 401 đến 410 tại Tầng 4. Quý khách vui lòng kiểm tra lại số phòng nhé ạ."
-        )
+        reply_text = format_invalid_room_reply(room_candidate, is_en=is_en)
         logger.info(f"[ScenarioService FastPath] Non-existent room query intercepted for '{room_candidate}'. Rejecting session room save.")
         return reply_text, lang_name, lang_code, "conversation", {"destination_key": None, "invalid_room": room_candidate}
 

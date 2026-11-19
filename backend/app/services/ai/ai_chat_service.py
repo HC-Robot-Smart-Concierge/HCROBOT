@@ -198,7 +198,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
 
     # Cập nhật số phòng mới nhất từ kết quả Graph hoặc Session Manager
     updated_room = graph_result.get("room_number") or session_manager.get_room_number(sid)
-    if updated_room:
+    if updated_room and is_valid_hotel_room(updated_room):
         session_manager.set_room_number(sid, updated_room)
         current_room = updated_room
 
@@ -304,7 +304,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         lang_code=lang_code,
         action=act,
         session_id=sid,
-        current_room_number=current_room,
+        current_room_number=(current_room if is_valid_hotel_room(current_room) else None),
         missing_room_number=missing_room,
         trigger_video_call=is_video_call,
         support_session_id=support_session_id,

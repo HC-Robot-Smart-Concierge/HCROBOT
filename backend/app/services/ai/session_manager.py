@@ -32,6 +32,21 @@ def is_valid_hotel_room(room_number: Optional[str]) -> bool:
     return str(room_number).strip() in VALID_HOTEL_ROOMS
 
 
+def format_invalid_room_reply(room_number: str, is_en: bool = False) -> str:
+    """Thông báo chuẩn khi khách nhắc tới số phòng không tồn tại trong hệ thống."""
+    if is_en:
+        return (
+            f"Aurora Grand Hotel does not have room {room_number}. "
+            "Our guest rooms are located on Level 3 (rooms 301 to 310) and Level 4 (rooms 401 to 410). "
+            "Please double check your room number."
+        )
+    return (
+        f"Dạ khách sạn Aurora Grand hiện không có phòng {room_number} ạ. "
+        "Khách sạn chỉ có các phòng lưu trú từ 301 đến 310 tại Tầng 3 và từ 401 đến 410 tại Tầng 4. "
+        "Quý khách vui lòng kiểm tra lại số phòng nhé ạ."
+    )
+
+
 
 def extract_room_number(text: str, is_answering_room: bool = False) -> Optional[str]:
     """
@@ -58,7 +73,7 @@ def extract_room_number(text: str, is_answering_room: bool = False) -> Optional[
 
     # 2. Các mẫu cụm từ chứa 'phòng' / 'room' / 'p.' / 'số phòng': vd "phòng 402", "room 402", "p.305", "số phòng của tôi là 402", "phòng em là 301"
     pattern_explicit = re.search(
-        r'(?:phòng|phong|room|p\.|p|số phòng|so phong)\s*(?:(?:của\s+)?(?:tôi|em|anh|chị|mình|khách)\s*)?(?:là|la|số|so)?\s*([1-9][0-9]{2,3})\b',
+        r'(?<!\w)(?:phòng|phong|room|p\.|p|số phòng|so phong)\s*(?:(?:của\s+)?(?:tôi|em|anh|chị|mình|khách)\s*)?(?:là|la|số|so)?\s*([0-9]{3,4})\b',
         clean,
         re.IGNORECASE
     )
@@ -87,7 +102,7 @@ def extract_room_number(text: str, is_answering_room: bool = False) -> Optional[
             return f"{d1}0{d2}"
 
     pat_spoken2 = re.search(
-        r'(?:phòng|phong|room|p\.|p)\s*(?:số|so)?\s*\b(một|hai|ba|bốn|tư|năm|sáu|bảy|bẩy|tám|chín|[1-9])\s+(không|khong|linh|một|hai|ba|bốn|tư|năm|sáu|bảy|bẩy|tám|chín|[0-9])\s+(một|mốt|hai|ba|bốn|tư|năm|lăm|sáu|bảy|bẩy|tám|chín|[0-9])\b',
+        r'(?<!\w)(?:phòng|phong|room|p\.|p)\s*(?:số|so)?\s*\b(một|hai|ba|bốn|tư|năm|sáu|bảy|bẩy|tám|chín|[1-9])\s+(không|khong|linh|một|hai|ba|bốn|tư|năm|sáu|bảy|bẩy|tám|chín|[0-9])\s+(một|mốt|hai|ba|bốn|tư|năm|lăm|sáu|bảy|bẩy|tám|chín|[0-9])\b',
         clean,
         re.IGNORECASE
     )

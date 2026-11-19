@@ -25,7 +25,11 @@ from app.services.ai.constants import (
     is_lost_found_text,
 )
 from app.services.ai.ollama_service import ollama_service
-from app.services.ai.session_manager import session_manager
+from app.services.ai.session_manager import (
+    format_invalid_room_reply,
+    is_valid_hotel_room,
+    session_manager,
+)
 from app.services.bell_request_service import classify_bell_request
 
 logger = logging.getLogger(__name__)
@@ -80,6 +84,27 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
     items = state.get("items") or "dịch vụ"
     lang_code = state.get("lang_code", "vi-VN")
 
+    is_en = (lang_code == "en-US")
+
+    # Chặn tuyệt đối nếu số phòng không tồn tại trong hệ thống (trước mọi nhánh mở menu/tạo ticket)
+    if action == "invalid_room" or (current_room and not is_valid_hotel_room(current_room)):
+        invalid_room = str(current_room or "").strip()
+        logger.info(f"[ConciergeGraph FSM] Blocked non-existent room '{invalid_room}' for action '{action}' in session '{session_id}'")
+        return {
+            "missing_room_number": False,
+            "room_number": None,
+            "target_room_number": None,
+            "action": "conversation",
+            "trigger_menu": None,
+            "trigger_video_call": False,
+            "destination_key": None,
+            "require_room_pin": False,
+            "pending_service_action": None,
+            "pending_service_items": None,
+            "status_query_type": None,
+            "response": format_invalid_room_reply(invalid_room, is_en=is_en),
+        }
+
     # Trường hợp 1: Khách yêu cầu Live Video Call với Concierge / Nhân viên
     if action == "concierge":
         effective_room = current_room or "Main Lobby Kiosk"
@@ -94,8 +119,6 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
             "response": call_reply,
             "trigger_video_call": True,
         }
-
-    is_en = (lang_code == "en-US")
 
 
     # Trường hợp 2: Khách hỏi kiểm tra tiến độ / trạng thái món hoặc dịch vụ (KHÔNG CẦN PIN, KHÔNG MỞ MAP)

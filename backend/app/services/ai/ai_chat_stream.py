@@ -16,7 +16,11 @@ from app.services.ai.ai_ticket_service import (
 )
 from app.services.ai.concierge_graph import intent_router_node, retrieval_node, service_fsm_node
 from app.services.ai.ollama_service import ollama_service
-from app.services.ai.session_manager import extract_room_number, session_manager
+from app.services.ai.session_manager import (
+    extract_room_number,
+    is_valid_hotel_room,
+    session_manager,
+)
 from app.services.ai.tts_service import tts_service
 from app.services.bell_request_service import bell_request_message
 from app.services.maintenance_request_service import (
@@ -150,7 +154,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
 
         if category == "service":
             effective_room = router_state.get("room_number") or current_room
-            if effective_room:
+            if effective_room and is_valid_hotel_room(effective_room):
                 session_manager.set_room_number(sid, effective_room)
                 current_room = effective_room
 
@@ -202,8 +206,10 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
 
             _, final_lang_code = ollama_service.detect_language(fsm_reply)
             session_manager.add_turn(sid, "user", request.prompt, language=final_lang_code)
-            session_manager.add_turn(sid, "assistant", fsm_reply, language=final_lang_code, intent_action=action)
+            session_manager.add_turn(sid, "assistant", fsm_reply, language=final_lang_code, intent_action=fsm_action)
 
+            response_room = fsm_state.get("room_number")
+            valid_response_room = response_room if is_valid_hotel_room(response_room) else (current_room if is_valid_hotel_room(current_room) else None)
             done_payload = {
                 "event": "done",
                 "full_text": fsm_reply,
@@ -213,9 +219,9 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
                 "pending_service_action": fsm_state.get("pending_service_action"),
                 "pending_service_items": fsm_state.get("pending_service_items"),
                 "lang_code": final_lang_code,
-                "room_number": effective_room,
+                "room_number": valid_response_room,
                 "missing_room_number": missing_room,
-                "action": action,
+                "action": fsm_action,
                 "trigger_menu": fsm_state.get("trigger_menu"),
                 "trigger_video_call": is_call,
             }

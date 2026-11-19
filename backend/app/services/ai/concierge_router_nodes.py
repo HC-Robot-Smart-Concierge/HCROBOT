@@ -14,7 +14,12 @@ from app.services.ai.constants import (
 )
 from app.services.ai.ollama_service import ollama_service
 from app.services.ai.prompt_guard import check_prompt_injection, get_rejection_reply
-from app.services.ai.session_manager import extract_room_number, session_manager
+from app.services.ai.session_manager import (
+    extract_room_number,
+    format_invalid_room_reply,
+    is_valid_hotel_room,
+    session_manager,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +107,38 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
             "trigger_menu": None,
         }
 
-    # Nếu session đang chờ số phòng cho yêu cầu dịch vụ trước đó -> Bỏ qua fast-path để intent_router bóc tách số phòng
+    # Chặn ngay lập tức nếu khách yêu cầu / hỏi tới số phòng không tồn tại trong hệ thống (kể cả đặt đồ ăn, dịch vụ hay trả lời pending intent)
     pending = session_manager.get_pending_intent(session_id)
+    extracted_room_fp = extract_room_number(prompt, is_answering_room=bool(pending))
+    if extracted_room_fp and not is_valid_hotel_room(extracted_room_fp):
+        if not language or language.lower() in ["auto", ""]:
+            lang_name, lang_code = ollama_service.detect_language(prompt)
+        else:
+            lang_name = language
+            lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
+        is_en_fp = lang_code == "en-US"
+        logger.info(f"[Harness FastPath] Blocked non-existent room '{extracted_room_fp}' in session '{session_id}'")
+        return {
+            "fast_path_hit": True,
+            "response": format_invalid_room_reply(extracted_room_fp, is_en=is_en_fp),
+            "lang_name": lang_name,
+            "lang_code": lang_code,
+            "language": lang_name,
+            "intent_category": "fast_path",
+            "action": "conversation",
+            "destination_key": None,
+            "room_number": None,
+            "target_room_number": None,
+            "missing_room_number": False,
+            "require_room_pin": False,
+            "pending_service_action": None,
+            "pending_service_items": None,
+            "status_query_type": None,
+            "trigger_video_call": False,
+            "trigger_menu": None,
+        }
+
+    # Nếu session đang chờ số phòng cho yêu cầu dịch vụ trước đó -> Bỏ qua fast-path để intent_router bóc tách số phòng
     if pending:
         logger.info(f"[Harness FastPath Bypass] Session '{session_id}' has pending intent '{pending.get('action')}', bypassing fast-path for: '{prompt}'")
         if not language or language.lower() in ["auto", ""]:
@@ -184,7 +219,13 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
                 "intent_category": "fast_path",
                 "action": action_type or "conversation",
                 "destination_key": None,
-                "current_room": None,
+                "room_number": None,
+                "target_room_number": None,
+                "missing_room_number": False,
+                "require_room_pin": False,
+                "pending_service_action": None,
+                "pending_service_items": None,
+                "status_query_type": None,
                 "trigger_video_call": False,
                 "trigger_menu": None,
             }
@@ -252,6 +293,15 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
     # 1. Bóc tách nhanh số phòng linh hoạt
     extracted_room = extract_room_number(clean_prompt, is_answering_room=is_answering)
+    if extracted_room and not is_valid_hotel_room(extracted_room):
+        logger.info(f"[Harness FastRouter] Blocked non-existent room '{extracted_room}' in session '{session_id}'")
+        return {
+            "intent_category": "service",
+            "action": "invalid_room",
+            "items": clean_prompt,
+            "room_number": extracted_room,
+            "session_id": session_id,
+        }
 
     current_room = state.get("room_number") or session_manager.get_room_number(session_id)
     if extracted_room:

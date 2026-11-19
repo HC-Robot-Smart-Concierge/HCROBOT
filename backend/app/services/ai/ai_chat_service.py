@@ -193,7 +193,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         )
         try:
             audio_b64, mime_type, _ = await asyncio.wait_for(
-                tts_service.synthesize(reason_text, provider="piper", language=cur_lang_code),
+                tts_service.synthesize(reason_text, provider="edge", language=cur_lang_code, timeout=2.2),
                 timeout=2.5
             )
         except Exception:
@@ -242,7 +242,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     if act == "switch_language":
         session_manager.set_language(sid, detected_lang)
 
-    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang Piper Offline / WebSpeech)
+    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang Google TTS / WebSpeech)
     # Tự động cân đối ngân sách thời gian còn lại để tổng phản hồi không chạm ngưỡng 5s SLA ở frontend.
     elapsed_graph = max(0.0, t_graph - t_start)
     remaining_for_tts = max(1.6, 4.2 - elapsed_graph)

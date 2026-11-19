@@ -268,7 +268,7 @@ class TTSService:
             return info
 
         target_voice, _ = self._resolve_voice_and_lang(clean_text, language, voice)
-        await self.synthesize(text, provider="edge", language=language, voice=target_voice, rate=rate, timeout=10.0)
+        await self.synthesize(text, provider="edge", language=language, voice=target_voice, rate=rate)
         return self.get_audio_cache_info(text, language=language, voice=voice, rate=rate)
 
     @staticmethod
@@ -319,21 +319,6 @@ class TTSService:
 
         last_error_code: Optional[str] = None
         last_error_detail: Optional[str] = None
-
-        if selected_provider == "piper":
-            try:
-                from app.services.ai.piper_service import piper_service
-
-                piper_b64 = await piper_service.synthesize(clean_text, is_vi=(lang_short == "vi"))
-                if piper_b64:
-                    self._save_to_cache(cache_key, piper_b64)
-                    return self._ok_result(piper_b64, "piper", audio_url=audio_static_url)
-                last_error_code = "TTS_AUDIO_EMPTY"
-                last_error_detail = "Piper TTS returned empty audio"
-            except Exception as e:
-                last_error_code = "TTS_PROVIDER_ERROR"
-                last_error_detail = f"Piper error: {e}"
-                logger.warning(f"[TTSService] Piper synthesis failed: {e}. Fallback to EdgeTTS.")
 
         cloud_providers = {
             "elevenlabs": (settings.ELEVENLABS_API_KEY, self._synthesize_elevenlabs, "ElevenLabs"),
@@ -399,7 +384,6 @@ class TTSService:
                     waiters[cache_key] = remaining_waiters
 
         if allow_fallback:
-            # 1. Dự phòng qua Google Translate TTS HTTP (nếu có mạng)
             try:
                 g_b64 = await self._synthesize_google_tts(clean_text, lang_short)
                 if g_b64:
@@ -411,21 +395,6 @@ class TTSService:
                     return self._ok_result(g_b64, "google_fallback", audio_url=audio_static_url)
             except Exception as fallback_err:
                 logger.warning(f"[TTSService] Google TTS fallback failed: {fallback_err}")
-
-            # 2. Dự phòng ngoại tuyến cục bộ với Piper TTS (100% Offline, hoạt động khi mất mạng hoàn toàn)
-            try:
-                from app.services.ai.piper_service import piper_service
-
-                if piper_service.is_available():
-                    piper_b64 = await piper_service.synthesize(clean_text, is_vi=(lang_short == "vi"))
-                    if piper_b64:
-                        logger.info(
-                            f"[TTSService] Piper offline fallback succeeded after {last_error_code} "
-                            f"(lang={lang_short}, len={len(clean_text)})"
-                        )
-                        return self._ok_result(piper_b64, "piper_offline_fallback", audio_url=audio_static_url)
-            except Exception as fallback_piper_err:
-                logger.warning(f"[TTSService] Piper offline fallback failed: {fallback_piper_err}")
 
         final_error_code = last_error_code or "TTS_AUDIO_EMPTY"
         final_error_detail = last_error_detail or "TTS synthesis produced empty audio"

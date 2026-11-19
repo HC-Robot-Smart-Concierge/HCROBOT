@@ -227,7 +227,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const activeChatRequestIdRef = useRef(0);
   const chatAbortControllerRef = useRef(null);
   const fillerTimerRef = useRef(null);
-  const speechDeadlineTimerRef = useRef(null);
 
   // Auto QR Modal & Multi-stage Wayfinding (Mỗi chặng 10s -> Hiện QR)
   const [navigationStep, setNavigationStep] = useState(1);
@@ -872,7 +871,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       chatAbortControllerRef.current = null;
     }
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
-    if (speechDeadlineTimerRef.current) clearTimeout(speechDeadlineTimerRef.current);
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
     setIsProcessing(false);
@@ -908,7 +906,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       chatAbortControllerRef.current = null;
     }
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
-    if (speechDeadlineTimerRef.current) clearTimeout(speechDeadlineTimerRef.current);
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     clearRouteGuidanceTimers();
     stopSpeaking();
@@ -1794,49 +1791,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     let pendingMainTask = null;
 
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
-    if (speechDeadlineTimerRef.current) clearTimeout(speechDeadlineTimerRef.current);
-
-    // 5s SLA Timer: Nếu trong 5 giây robot chưa bắt đầu nói chuyện, chủ động giải thích lý do
-    speechDeadlineTimerRef.current = setTimeout(() => {
-      if (isProcessingRef.current && !isSpeakingRef.current && currentChatId === activeChatRequestIdRef.current) {
-        console.warn('[5s SLA Timeout] Robot không thể cất tiếng trong 5s, chủ động nói lý do cho khách');
-        activeChatRequestIdRef.current += 1;
-        if (chatAbortControllerRef.current) {
-          try { chatAbortControllerRef.current.abort(); } catch (e) {}
-          chatAbortControllerRef.current = null;
-        }
-        if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
-        if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
-
-        const isEn = language === 'English' || isEnQuery;
-        const reasonText = isEn
-          ? 'I apologize, our AI system took longer than 5 seconds to respond due to network latency. Please ask again or select a service on the screen.'
-          : 'Dạ xin lỗi quý khách, hệ thống AI bị phản hồi chậm quá 5 giây do nghẽn mạng máy chủ. Em chưa kịp trả lời câu vừa rồi, quý khách vui lòng hỏi lại hoặc chọn trực tiếp trên màn hình giúp em nhé ạ.';
-
-        isProcessingRef.current = false;
-        setIsProcessing(false);
-        setAiResponseText(reasonText);
-        setCurrentState('RT-02');
-
-        speak(
-          reasonText,
-          isEn ? 'en-US' : 'vi-VN',
-          () => {
-            isProcessingRef.current = false;
-            setIsProcessing(false);
-            setAiResponseText('');
-            if (isAutoListen) {
-              setTimeout(() => handleStartTalk(), 300);
-            }
-          },
-          () => {
-            stopListening();
-            resetTranscript();
-            setAiResponseText(reasonText);
-          }
-        );
-      }
-    }, 5000);
 
     // Timer 1800ms: Cử động mắt tự nhiên khi truy vấn cần thêm thời gian, không phát giọng nói đệm để tránh lồng tiếng và cướp lời
     if (!fastDestKey) {
@@ -1858,11 +1812,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         chatSignal,
         { ageGroup: guestAgeGroup, gender: guestGender }
       );
-
-      if (speechDeadlineTimerRef.current) {
-        clearTimeout(speechDeadlineTimerRef.current);
-        speechDeadlineTimerRef.current = null;
-      }
 
       // Nếu người dùng đã kích hoạt câu nói mới, ngắt lời hoặc timeout xảy ra -> Hủy bỏ câu cũ
       if (currentChatId !== activeChatRequestIdRef.current || chatRes?.aborted) {
@@ -2604,10 +2553,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         clearTimeout(fillerTimerRef.current);
         fillerTimerRef.current = null;
       }
-      if (speechDeadlineTimerRef.current) {
-        clearTimeout(speechDeadlineTimerRef.current);
-        speechDeadlineTimerRef.current = null;
-      }
       pendingMainTask = null;
       if (currentChatId !== activeChatRequestIdRef.current) {
         return;
@@ -2618,14 +2563,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       }
       isProcessingRef.current = false;
       setIsProcessing(false);
-      const isEn = language === 'English';
-      const fallbackText = isEn
-        ? 'I apologize, I cannot connect to the AI server right now due to a network error. Please try again or touch the screen to select a service.'
-        : 'Dạ xin lỗi quý khách, em chưa thể kết nối tới máy chủ AI do sự cố đường truyền. Quý khách vui lòng thử lại hoặc chạm màn hình để chọn dịch vụ nhé ạ.';
+      const fallbackText = 'Xin lỗi quý khách, không thể kết nối tới AI Server.';
       setCurrentState('RT-02');
       speak(
         fallbackText,
-        isEn ? 'en-US' : 'vi-VN',
+        language,
         () => {
           if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
           isProcessingRef.current = false;
@@ -2872,7 +2814,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       chatAbortControllerRef.current = null;
     }
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
-    if (speechDeadlineTimerRef.current) clearTimeout(speechDeadlineTimerRef.current);
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     clearFollowUpTimer();
     isProcessingRef.current = false;

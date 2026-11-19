@@ -26,17 +26,22 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { calculateFloorRoute } from '../../services/indoorNavigation/index.js';
+import { usePublishedWayfinding } from '../../services/wayfindingApi';
+import { findWayfindingPlace, getFloorLabelMinimum, getFloorSize, getWayfindingLeg } from '../../services/wayfindingGeometry';
+import { useWayfindingViewport } from '../../hooks/useWayfindingViewport';
+import { PlaceCard, PlacePin } from './WayfindingPlace';
+import { WayfindingFloorLayout } from './WayfindingFloorLayout';
 
 // Danh sách cấu hình 8 Tầng trong khách sạn
 export const HOTEL_FLOORS = [
-  { id: '1', level: 'B2', name: 'Hầm B2 · Bãi Đỗ Xe Ô Tô', image: '/maps/floor_b2.png', width: 1840, height: 1174 },
-  { id: '2', level: 'B1', name: 'Hầm B1 · Bãi Xe Máy', image: '/maps/floor_b1.png', width: 1840, height: 1174 },
-  { id: '3', level: 'Ground', name: 'Tầng Trệt · Sảnh & Tiếp Tân', image: '/maps/floor_1.png', width: 1840, height: 1174 },
-  { id: '4', level: 'Tầng 2', name: 'Tầng 2 · Bếp Trung Tâm & Room Service 24/7', image: '/maps/floor_2.png', width: 1840, height: 1174 },
-  { id: '5', level: 'Tầng 3', name: 'Tầng 3 · Phòng Nghỉ (301-310)', image: '/maps/floor_3.png', width: 1840, height: 1174 },
-  { id: '6', level: 'Tầng 4', name: 'Tầng 4 · Phòng Nghỉ (401-410)', image: '/maps/floor_4.png', width: 1840, height: 1174 },
-  { id: '7', level: 'Tầng 5', name: 'Tầng 5 · Hồ Bơi, Spa & Gym', image: '/maps/floor_5.png', width: 1840, height: 1174 },
-  { id: '8', level: 'Tầng 6', name: 'Tầng 6 · Rooftop Coffee & Bar', image: '/maps/floor_6.png', width: 1840, height: 1174 },
+  { id: '1', level: 'B2', name: 'Hầm B2 · Bãi Đỗ Xe Ô Tô', width: 1840, height: 1174 },
+  { id: '2', level: 'B1', name: 'Hầm B1 · Bãi Xe Máy', width: 1840, height: 1174 },
+  { id: '3', level: 'Ground', name: 'Tầng Trệt · Sảnh & Tiếp Tân', width: 1840, height: 1174 },
+  { id: '4', level: 'Tầng 2', name: 'Tầng 2 · Bếp Trung Tâm & Room Service 24/7', width: 1840, height: 1174 },
+  { id: '5', level: 'Tầng 3', name: 'Tầng 3 · Phòng Nghỉ (301-310)', width: 1840, height: 1174 },
+  { id: '6', level: 'Tầng 4', name: 'Tầng 4 · Phòng Nghỉ (401-410)', width: 1840, height: 1174 },
+  { id: '7', level: 'Tầng 5', name: 'Tầng 5 · Hồ Bơi, Spa & Gym', width: 1840, height: 1174 },
+  { id: '8', level: 'Tầng 6', name: 'Tầng 6 · Rooftop Coffee & Bar', width: 1840, height: 1174 },
 ];
 
 // Danh bạ các điểm đến (POI) nổi bật
@@ -913,17 +918,39 @@ export const FloorMap = ({
   onCloseQrModal = null,
   currentStepExternal = null,
   onStepChange = null,
+  publishedWayfinding,
 }) => {
   // Điểm đến được chọn (hỗ trợ chuyển đổi nhanh trực tiếp giữa các cơ sở vật chất)
   const [selectedDestKey, setSelectedDestKey] = useState(destinationKey);
   const [isDestSelectorOpen, setIsDestSelectorOpen] = useState(false);
+  const [browseFloorId, setBrowseFloorId] = useState(null);
+  const [cardId, setCardId] = useState(null);
+  const loadedWayfinding = usePublishedWayfinding(publishedWayfinding === undefined);
+  const published = publishedWayfinding === undefined ? loadedWayfinding : publishedWayfinding;
 
   useEffect(() => {
     setSelectedDestKey(destinationKey);
+    setBrowseFloorId(null);
+    setCardId(null);
   }, [destinationKey]);
 
   // Lấy dữ liệu điểm đến hiện tại
-  const currentDest = HOTEL_DESTINATIONS[selectedDestKey] || HOTEL_DESTINATIONS.infinity_pool;
+  const publishedPlace = findWayfindingPlace(published, selectedDestKey);
+  const currentDest = publishedPlace || (published ? {
+    id: selectedDestKey, name: HOTEL_DESTINATIONS[selectedDestKey]?.name || 'Địa điểm',
+    floorId: published.lobbyFloorId, floorLevel: '', enabled: false,
+  } : HOTEL_DESTINATIONS[selectedDestKey] || HOTEL_DESTINATIONS.infinity_pool);
+  const routeEnabled = currentDest.enabled !== false;
+  const selectDestination = (id) => {
+    setSelectedDestKey(id);
+    const place = published ? findWayfindingPlace(published, id) : HOTEL_DESTINATIONS[id];
+    setActiveStep(place?.isDifferentFloor ? 1 : 2);
+    setIsDestSelectorOpen(false);
+    setBrowseFloorId(null);
+    setCardId(null);
+    setActiveMode('map');
+    onSelectDestination?.(id);
+  };
 
   // Hỗ trợ chuyển đổi nhanh giữa Wi-Fi LAN và Tailscale VPN trên màn hình Robot
   const networkHosts = useMemo(() => getDetectedNetworkHosts(), []);
@@ -977,6 +1004,8 @@ export const FloorMap = ({
   const [activeStep, setActiveStep] = useState(currentDest.isDifferentFloor ? (currentStepExternal || 1) : 2);
   const [autoPlay, setAutoPlay] = useState(true);
   const [isHovering, setIsHovering] = useState(false);
+  const routeStep = currentDest.isDifferentFloor ? activeStep : 2;
+  const publishedLeg = publishedPlace && getWayfindingLeg(published, publishedPlace, routeStep);
 
   // Thông báo thay đổi chặng lên component cha (Mobile / Kiosk)
   useEffect(() => {
@@ -987,7 +1016,8 @@ export const FloorMap = ({
 
   // Tính toán lộ trình động thông minh với wall-clearance & graph-search
   const activeRoute = useMemo(() => {
-    if (activeStep === 1) {
+    if (published) return { pathString: publishedLeg?.path || '' };
+    if (routeStep === 1) {
       return { pathString: ROUTE_GROUND_TO_ELEVATOR, isValid: true };
     }
     if (currentDest.routeTarget) {
@@ -999,10 +1029,11 @@ export const FloorMap = ({
       currentDest.floorId
     );
     return { pathString: r.pathString || currentDest.routeTarget, isValid: r.isValid };
-  }, [activeStep, currentDest]);
+  }, [routeStep, currentDest, published, publishedLeg]);
 
   // Zoom & Pan state để phóng to loại bỏ viền trắng thừa của Canva
   const [zoomLevel, setZoomLevel] = useState(defaultZoom);
+  const [setMapElement, mapViewport] = useWayfindingViewport();
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -1022,7 +1053,17 @@ export const FloorMap = ({
     return activeStep === 1 ? '3' : currentDest.floorId;
   }, [activeStep, currentDest]);
 
-  const activeFloor = HOTEL_FLOORS.find((f) => f.id === activeFloorId) || HOTEL_FLOORS[2];
+  const floors = published?.floors || HOTEL_FLOORS;
+  const activeFloor = floors.find((f) => f.id === browseFloorId) || publishedLeg?.floor ||
+    floors.find((f) => f.id === activeFloorId) || floors.find((f) => f.id === published?.lobbyFloorId) || HOTEL_FLOORS[2];
+  const { width: floorWidth, height: floorHeight } = getFloorSize(activeFloor);
+  const showRoute = routeEnabled && !browseFloorId;
+  const showQr = activeMode === 'qr' && showRoute;
+  const card = published?.destinations.find((place) => place.id === cardId && place.floorId === activeFloor.id);
+  const pins = published?.destinations.filter((place) => place.floorId === activeFloor.id && (browseFloorId || place.id === selectedDestKey)) || [];
+  const facilities = published ? published.destinations.map((place) => ({
+    key: place.id, name: place.name, floor: floors.find((floor) => floor.id === place.floorId).level,
+  })) : HOTEL_KEY_FACILITIES;
 
   // Tự động chuyển chặng từ 1 sang 2 sau 10 giây (nếu không có điều phối ngoài) để khách thấy toàn bộ hành trình
   useEffect(() => {
@@ -1050,7 +1091,7 @@ export const FloorMap = ({
   useEffect(() => {
     setPan({ x: 0, y: 0 });
     setZoomLevel(defaultZoom);
-  }, [selectedDestKey, defaultZoom]);
+  }, [selectedDestKey, browseFloorId, defaultZoom]);
 
   const handlePointerDown = (e) => {
     setIsDragging(true);
@@ -1075,14 +1116,14 @@ export const FloorMap = ({
       {/* 1. Thanh tiêu đề nổi (Floating Header Bar): Theme xám nhạt đồng bộ hệ thống, phân tách rõ 1 là Bản Đồ, 2 là Mã QR */}
       <div className="absolute top-2.5 left-2.5 right-2.5 z-30 flex items-center justify-between pointer-events-none gap-2">
         {/* Bộ chọn cơ sở vật chất / điểm đến nhanh (Facility Selector Dropdown) */}
-        <div className="relative pointer-events-auto">
+        <div className="relative min-w-0 pointer-events-auto">
           <button
             type="button"
             onClick={() => setIsDestSelectorOpen((prev) => !prev)}
             className="flex items-center gap-1.5 sm:gap-2 bg-white/95 hover:bg-stone-50 text-stone-900 px-3 py-1.5 rounded-full border border-[#E3DFD5] hover:border-stone-400 shadow-xs cursor-pointer active:scale-95 transition-all min-w-0"
             title="Nhấn để đổi cơ sở vật chất / điểm đến"
           >
-            <span className="font-extrabold text-xs text-stone-900 truncate max-w-[130px] sm:max-w-[190px]">
+            <span className="font-extrabold text-xs text-stone-900 text-left line-clamp-2 leading-tight [overflow-wrap:anywhere] max-w-[130px] sm:max-w-[190px]">
               {currentDest.name}
             </span>
             <span className="text-[10px] font-mono font-semibold text-stone-700 bg-[#EFECE4] px-1.5 py-0.5 rounded border border-[#E3DFD5] shrink-0 uppercase">
@@ -1106,21 +1147,14 @@ export const FloorMap = ({
               <div className="absolute top-full left-0 mt-1.5 z-50 w-64 max-h-[280px] overflow-y-auto no-scrollbar rounded-2xl bg-white/95 backdrop-blur-xl border border-[#E3DFD5] shadow-2xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
                 <div className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500 px-2.5 py-1 border-b border-[#E3DFD5] flex items-center justify-between">
                   <span>Chọn cơ sở vật chất</span>
-                  <span className="text-[9px] font-mono text-stone-400">7 ĐIỂM ĐẾN</span>
                 </div>
-                {HOTEL_KEY_FACILITIES.map((fac) => {
+                {facilities.map((fac) => {
                   const isSelected = fac.key === selectedDestKey;
                   return (
                     <button
                       key={fac.key}
                       type="button"
-                      onClick={() => {
-                        setSelectedDestKey(fac.key);
-                        setIsDestSelectorOpen(false);
-                        if (onSelectDestination) {
-                          onSelectDestination(fac.key);
-                        }
-                      }}
+                      onClick={() => selectDestination(fac.key)}
                       className={`w-full px-2.5 py-2 rounded-xl text-left flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
                         isSelected
                           ? 'bg-[#1A1917] text-white shadow-xs'
@@ -1168,7 +1202,7 @@ export const FloorMap = ({
               <span>Bản Đồ</span>
             </button>
 
-            <button
+            {routeEnabled && !browseFloorId && <button
               type="button"
               onClick={() => setActiveMode('qr')}
               className={`px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
@@ -1180,11 +1214,11 @@ export const FloorMap = ({
             >
               <QrCode className="w-3.5 h-3.5 text-stone-700" />
               <span>Mã QR</span>
-            </button>
+            </button>}
           </div>
 
           {/* Thay nút chặng 1, 2 bằng cụm icon số tròn nhỏ gọn (1) -> (2) */}
-          {activeMode === 'map' && currentDest.isDifferentFloor && (
+          {!showQr && showRoute && currentDest.isDifferentFloor && (
             <div className="flex items-center bg-[#EFECE4]/90 backdrop-blur-md p-0.5 px-1 rounded-full border border-[#E3DFD5] shadow-xs gap-1">
               <button
                 type="button"
@@ -1245,8 +1279,9 @@ export const FloorMap = ({
       </div>
 
       {/* 2. CHẾ ĐỘ 1: BẢN ĐỒ (activeMode === 'map') */}
-      {activeMode === 'map' && (
-        <div 
+      {!showQr && (
+        <div
+          ref={setMapElement}
           className="w-full h-full flex-1 relative bg-[#F8F6F1] overflow-hidden flex items-center justify-center select-none touch-none"
           onMouseEnter={() => setIsHovering(true)}
           onMouseLeave={() => setIsHovering(false)}
@@ -1263,21 +1298,13 @@ export const FloorMap = ({
               transformOrigin: 'center center',
             }}
           >
-            {/* Ảnh mặt bằng gốc của tầng - key bắt buộc để mobile Safari render lại texture khi đổi tầng */}
-            <img
-              key={activeFloor.image}
-              src={activeFloor.image}
-              alt={activeFloor.name}
-              className="w-full h-full object-contain pointer-events-none select-none"
-              style={{ imageRendering: '-webkit-optimize-contrast' }}
-            />
-
             {/* Lớp SVG Chỉ Đường: Đồng bộ viewBox với kích thước thực tế */}
             <svg
-              viewBox={`0 0 ${activeFloor.width || 1840} ${activeFloor.height || 1174}`}
+              viewBox={`0 0 ${floorWidth} ${floorHeight}`}
               className="absolute inset-0 w-full h-full pointer-events-none z-10"
               preserveAspectRatio="xMidYMid meet"
             >
+              <WayfindingFloorLayout floor={activeFloor} minLabelSize={getFloorLabelMinimum(mapViewport, floorWidth, floorHeight, zoomLevel)} />
               <defs>
                 <filter id="sky-glow" x="-30%" y="-30%" width="160%" height="160%">
                   <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#38BDF8" floodOpacity="0.5" />
@@ -1286,7 +1313,7 @@ export const FloorMap = ({
               </defs>
 
               {/* VẼ LỘ TRÌNH CHẶNG 1: TẦNG TRỆT (LOBBY -> THANG MÁY A) - Màu xanh nhạt dễ nhìn */}
-              {activeStep === 1 && (
+              {showRoute && routeStep === 1 && (
                 <g className="animate-fadeIn">
                   <path
                     d={activeRoute.pathString || ROUTE_GROUND_TO_ELEVATOR}
@@ -1309,12 +1336,12 @@ export const FloorMap = ({
                     className="animate-routeDash"
                   />
                   {/* Điểm xuất phát tĩnh (Chấm xanh nhạt tinh gọn) */}
-                  <g transform="translate(350, 580)">
+                  <g transform={`translate(${publishedLeg?.start.x ?? 350}, ${publishedLeg?.start.y ?? 580})`}>
                     <circle r="14" fill="#38BDF8" opacity="0.25" />
                     <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
                   </g>
                   {/* Điểm thang máy đích chặng 1 */}
-                  <g transform="translate(1715, 560)">
+                  <g transform={`translate(${publishedLeg?.end.x ?? 1715}, ${publishedLeg?.end.y ?? 560})`}>
                     <circle r="14" fill="#38BDF8" opacity="0.25" />
                     <circle r="8" fill="#38BDF8" stroke="#ffffff" strokeWidth="2.5" />
                   </g>
@@ -1322,7 +1349,7 @@ export const FloorMap = ({
               )}
 
               {/* VẼ LỘ TRÌNH CHẶNG 2: TẦNG ĐÍCH (TỪ THANG MÁY -> PHÒNG/KHU VỰC ĐÍCH) - Màu xanh nhạt dễ nhìn */}
-              {activeStep === 2 && (
+              {showRoute && routeStep === 2 && (
                 <g className="animate-fadeIn">
                   <path
                     d={activeRoute.pathString || currentDest.routeTarget}
@@ -1345,7 +1372,9 @@ export const FloorMap = ({
                     className="animate-routeDash"
                   />
                   {/* Điểm xuất phát chặng 2: chấm xanh nhạt tinh gọn */}
-                  {currentDest.isDifferentFloor ? (
+                  {publishedLeg ? (
+                    <circle cx={publishedLeg.start.x} cy={publishedLeg.start.y} r="10" fill="#0EA5E9" stroke="#fff" strokeWidth="3" />
+                  ) : currentDest.isDifferentFloor ? (
                     <g transform="translate(1715, 560)">
                       <circle r="14" fill="#38BDF8" opacity="0.25" />
                       <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
@@ -1357,19 +1386,34 @@ export const FloorMap = ({
                     </g>
                   )}
                   {/* Điểm đích: chấm tròn xanh nhạt tinh tế kết thúc đường đi, không dùng icon mốc ghim to che chữ */}
-                  <g transform={`translate(${currentDest.coords.x}, ${currentDest.coords.y})`}>
+                  {!published && <g transform={`translate(${currentDest.coords.x}, ${currentDest.coords.y})`}>
                     <circle r="14" fill="#38BDF8" opacity="0.3" />
                     <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
-                  </g>
+                  </g>}
                 </g>
               )}
+              {pins.map((place) => <PlacePin key={place.id} place={place} onSelect={() => setCardId(place.id)} />)}
             </svg>
           </div>
+          {published && <label className="absolute top-14 right-3 z-20 bg-white/95 rounded-lg p-2 text-xs shadow-md" onPointerDown={(event) => event.stopPropagation()}>
+            <span className="sr-only">Xem tầng</span>
+            <select value={browseFloorId || ''} onChange={(event) => {
+              setBrowseFloorId(event.target.value || null);
+              setCardId(null);
+            }}>
+              <option value="">{showRoute ? 'Theo tuyến chỉ đường' : 'Xem tầng'}</option>
+              {floors.map((floor) => <option key={floor.id} value={floor.id}>{floor.level}</option>)}
+            </select>
+          </label>}
+          {card && <div onPointerDown={(event) => event.stopPropagation()}>
+            <PlaceCard place={card} floor={activeFloor} onClose={() => setCardId(null)} onDirections={() => selectDestination(card.id)} />
+          </div>}
+          {!routeEnabled && !card && !browseFloorId && <p className="absolute bottom-3 left-3 z-20 rounded-lg bg-white px-3 py-2 text-xs shadow">Địa điểm chưa mở chỉ đường.</p>}
         </div>
       )}
 
       {/* 3. CHẾ ĐỘ 2: MÃ QR (activeMode === 'qr') - Tối ưu bố cục ngang cho màn hình Landscape/Kiosk */}
-      {activeMode === 'qr' && (
+      {showQr && (
         <div className="w-full h-full flex-1 flex items-center justify-center p-3 sm:p-4 bg-[#F5F2EB] text-stone-900 relative select-none animate-fadeIn pt-14 pb-2">
           <div className="bg-white border border-[#E3DFD5] rounded-3xl p-4 sm:p-5 shadow-xl flex flex-row items-center gap-5 sm:gap-6 max-w-[560px] w-auto">
             {/* Cột trái: Mã QR sắc nét, kích thước chuẩn vừa vặn không bị tràn */}

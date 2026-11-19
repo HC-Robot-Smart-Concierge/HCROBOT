@@ -12,6 +12,7 @@ import { AdminLogsTab } from './tabs/AdminLogsTab';
 import { AdminAdvertisementsTab } from './tabs/AdminAdvertisementsTab';
 import { AdminVideoCallsTab } from './tabs/AdminVideoCallsTab';
 import { AdminGuestServiceRecordsTab } from './tabs/AdminGuestServiceRecordsTab';
+import { AdminWayfindingTab } from './tabs/AdminWayfindingTab';
 import { useLanguage } from '../../context/LanguageContext';
 import {
   fetchNotifications,
@@ -30,6 +31,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Dashboard',
         'Operations',
         'Guest Service Records',
+        'Wayfinding',
         'Robot Control',
         'Manage Robot',
         'Knowledge',
@@ -176,6 +178,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Dashboard',     label: t('adminDashboard') },
     { id: 'Operations',    label: t('adminOperations') },
     { id: 'Guest Service Records', label: t('adminGuestServiceRecords') },
+    { id: 'Wayfinding', label: language === 'EN' ? 'Guest Map' : 'Bản đồ chỉ đường' },
     { id: 'Robot Control', label: t('adminRobotControl') },
     { id: 'Manage Robot',  label: t('adminManageRobot') },
     { id: 'Knowledge',     label: t('adminKnowledge') },
@@ -556,6 +559,8 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
         {/* Dynamic Tab Body */}
         <main className={`flex-1 min-h-0 ${activeMenu === 'Robot Control' || activeMenu === 'Manage Robot' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
+
+          {activeMenu === 'Wayfinding' && <AdminWayfindingTab />}
 
           {activeMenu === 'Dashboard' && (
             <AdminDashboardTab

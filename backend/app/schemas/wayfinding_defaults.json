@@ -1,0 +1,2149 @@
+{
+  "floors": [
+    {
+      "id": "1",
+      "level": "B2",
+      "name": "Hầm B2 · Bãi Đỗ Xe Ô Tô",
+      "entry": {
+        "x": 1715,
+        "y": 560
+      },
+      "width": 1840,
+      "height": 1174,
+      "background": "#F4F6FA",
+      "elements": [
+        {
+          "id": "room_1",
+          "kind": "room",
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 1174,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "wall_1",
+          "kind": "wall",
+          "x": 386,
+          "y": 0,
+          "width": 8,
+          "height": 354,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_2",
+          "kind": "wall",
+          "x": 386,
+          "y": 746,
+          "width": 8,
+          "height": 428,
+          "color": "#56657B"
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "level": "B1",
+      "name": "Hầm B1 · Bãi Xe Máy",
+      "entry": {
+        "x": 1715,
+        "y": 560
+      },
+      "width": 1840,
+      "height": 1174,
+      "background": "#F4F6FA",
+      "elements": [
+        {
+          "id": "room_1",
+          "kind": "room",
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 1174,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "wall_1",
+          "kind": "wall",
+          "x": 386,
+          "y": 0,
+          "width": 8,
+          "height": 354,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_2",
+          "kind": "wall",
+          "x": 386,
+          "y": 746,
+          "width": 8,
+          "height": 428,
+          "color": "#56657B"
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "level": "Ground",
+      "name": "Tầng Trệt · Sảnh & Tiếp Tân",
+      "entry": {
+        "x": 1715,
+        "y": 560
+      },
+      "width": 1840,
+      "height": 1174,
+      "background": "#F4F6FA",
+      "elements": [
+        {
+          "id": "room_1",
+          "kind": "room",
+          "x": 0,
+          "y": 0,
+          "width": 240,
+          "height": 360,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "room_2",
+          "kind": "room",
+          "x": 0,
+          "y": 980,
+          "width": 380,
+          "height": 194,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "room_3",
+          "kind": "room",
+          "x": 1420,
+          "y": 200,
+          "width": 420,
+          "height": 160,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "room_4",
+          "kind": "room",
+          "x": 920,
+          "y": 370,
+          "width": 300,
+          "height": 400,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "room_5",
+          "kind": "room",
+          "x": 520,
+          "y": 490,
+          "width": 180,
+          "height": 180,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "room_6",
+          "kind": "room",
+          "x": 1680,
+          "y": 620,
+          "width": 160,
+          "height": 260,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "wall_1",
+          "kind": "wall",
+          "x": 0,
+          "y": 6,
+          "width": 1840,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_2",
+          "kind": "wall",
+          "x": 0,
+          "y": 1160,
+          "width": 1840,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_3",
+          "kind": "wall",
+          "x": 6,
+          "y": 6,
+          "width": 8,
+          "height": 518,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_4",
+          "kind": "wall",
+          "x": 6,
+          "y": 636,
+          "width": 8,
+          "height": 532,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_5",
+          "kind": "wall",
+          "x": 1826,
+          "y": 6,
+          "width": 8,
+          "height": 478,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_6",
+          "kind": "wall",
+          "x": 1826,
+          "y": 676,
+          "width": 8,
+          "height": 492,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_7",
+          "kind": "wall",
+          "x": 1196,
+          "y": 6,
+          "width": 8,
+          "height": 118,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_8",
+          "kind": "wall",
+          "x": 1196,
+          "y": 1036,
+          "width": 8,
+          "height": 132,
+          "color": "#56657B"
+        }
+      ]
+    },
+    {
+      "id": "4",
+      "level": "Tầng 2",
+      "name": "Tầng 2 · Bếp Trung Tâm & Room Service 24/7",
+      "entry": {
+        "x": 1715,
+        "y": 560
+      },
+      "width": 1840,
+      "height": 1174,
+      "background": "#F4F6FA",
+      "elements": [
+        {
+          "id": "room_1",
+          "kind": "room",
+          "x": 410,
+          "y": 30,
+          "width": 430,
+          "height": 65,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "room_2",
+          "kind": "room",
+          "x": 900,
+          "y": 30,
+          "width": 430,
+          "height": 65,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "room_3",
+          "kind": "room",
+          "x": 410,
+          "y": 400,
+          "width": 430,
+          "height": 65,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "room_4",
+          "kind": "room",
+          "x": 900,
+          "y": 400,
+          "width": 430,
+          "height": 65,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "room_5",
+          "kind": "room",
+          "x": 1720,
+          "y": 715,
+          "width": 120,
+          "height": 459,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "wall_1",
+          "kind": "wall",
+          "x": 0,
+          "y": 556,
+          "width": 1379,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_2",
+          "kind": "wall",
+          "x": 1371,
+          "y": 0,
+          "width": 8,
+          "height": 1174,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_3",
+          "kind": "wall",
+          "x": 1371,
+          "y": 286,
+          "width": 469,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_4",
+          "kind": "wall",
+          "x": 1516,
+          "y": 866,
+          "width": 324,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_5",
+          "kind": "wall",
+          "x": 351,
+          "y": 0,
+          "width": 8,
+          "height": 564,
+          "color": "#56657B"
+        }
+      ]
+    },
+    {
+      "id": "5",
+      "level": "Tầng 3",
+      "name": "Tầng 3 · Phòng Nghỉ (301-310)",
+      "entry": {
+        "x": 1715,
+        "y": 560
+      },
+      "width": 1840,
+      "height": 1174,
+      "background": "#F4F6FA",
+      "elements": [
+        {
+          "id": "room_1",
+          "kind": "room",
+          "x": 1710,
+          "y": 765,
+          "width": 130,
+          "height": 409,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "wall_1",
+          "kind": "wall",
+          "x": 0,
+          "y": 381,
+          "width": 1714,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_2",
+          "kind": "wall",
+          "x": 0,
+          "y": 761,
+          "width": 1714,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_3",
+          "kind": "wall",
+          "x": 1706,
+          "y": 381,
+          "width": 8,
+          "height": 123,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_4",
+          "kind": "wall",
+          "x": 1706,
+          "y": 616,
+          "width": 8,
+          "height": 153,
+          "color": "#56657B"
+        }
+      ]
+    },
+    {
+      "id": "6",
+      "level": "Tầng 4",
+      "name": "Tầng 4 · Phòng Nghỉ (401-410)",
+      "entry": {
+        "x": 1715,
+        "y": 560
+      },
+      "width": 1840,
+      "height": 1174,
+      "background": "#F4F6FA",
+      "elements": [
+        {
+          "id": "room_1",
+          "kind": "room",
+          "x": 1710,
+          "y": 765,
+          "width": 130,
+          "height": 409,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "wall_1",
+          "kind": "wall",
+          "x": 0,
+          "y": 381,
+          "width": 1714,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_2",
+          "kind": "wall",
+          "x": 0,
+          "y": 761,
+          "width": 1714,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_3",
+          "kind": "wall",
+          "x": 1706,
+          "y": 381,
+          "width": 8,
+          "height": 123,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_4",
+          "kind": "wall",
+          "x": 1706,
+          "y": 616,
+          "width": 8,
+          "height": 153,
+          "color": "#56657B"
+        }
+      ]
+    },
+    {
+      "id": "7",
+      "level": "Tầng 5",
+      "name": "Tầng 5 · Hồ Bơi, Spa & Gym",
+      "entry": {
+        "x": 1715,
+        "y": 560
+      },
+      "width": 1840,
+      "height": 1174,
+      "background": "#F4F6FA",
+      "elements": [
+        {
+          "id": "room_1",
+          "kind": "room",
+          "x": 1720,
+          "y": 715,
+          "width": 120,
+          "height": 459,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "wall_1",
+          "kind": "wall",
+          "x": 754,
+          "y": 0,
+          "width": 8,
+          "height": 669,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_2",
+          "kind": "wall",
+          "x": 754,
+          "y": 821,
+          "width": 8,
+          "height": 353,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_3",
+          "kind": "wall",
+          "x": 1396,
+          "y": 0,
+          "width": 8,
+          "height": 462,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_4",
+          "kind": "wall",
+          "x": 0,
+          "y": 454,
+          "width": 529,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_5",
+          "kind": "wall",
+          "x": 636,
+          "y": 454,
+          "width": 126,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_6",
+          "kind": "wall",
+          "x": 521,
+          "y": 336,
+          "width": 8,
+          "height": 126,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_7",
+          "kind": "wall",
+          "x": 754,
+          "y": 454,
+          "width": 280,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_8",
+          "kind": "wall",
+          "x": 1126,
+          "y": 454,
+          "width": 278,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_9",
+          "kind": "wall",
+          "x": 1126,
+          "y": 346,
+          "width": 8,
+          "height": 116,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_10",
+          "kind": "wall",
+          "x": 371,
+          "y": 454,
+          "width": 8,
+          "height": 190,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_11",
+          "kind": "wall",
+          "x": 371,
+          "y": 711,
+          "width": 8,
+          "height": 463,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_12",
+          "kind": "wall",
+          "x": 1076,
+          "y": 711,
+          "width": 308,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_13",
+          "kind": "wall",
+          "x": 1496,
+          "y": 711,
+          "width": 344,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_14",
+          "kind": "wall",
+          "x": 1076,
+          "y": 711,
+          "width": 8,
+          "height": 463,
+          "color": "#56657B"
+        }
+      ]
+    },
+    {
+      "id": "8",
+      "level": "Tầng 6",
+      "name": "Tầng 6 · Rooftop Coffee & Bar",
+      "entry": {
+        "x": 1715,
+        "y": 560
+      },
+      "width": 1840,
+      "height": 1174,
+      "background": "#F4F6FA",
+      "elements": [
+        {
+          "id": "room_1",
+          "kind": "room",
+          "x": 1720,
+          "y": 715,
+          "width": 120,
+          "height": 459,
+          "color": "#DFE6F1"
+        },
+        {
+          "id": "wall_1",
+          "kind": "wall",
+          "x": 754,
+          "y": 0,
+          "width": 8,
+          "height": 669,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_2",
+          "kind": "wall",
+          "x": 754,
+          "y": 821,
+          "width": 8,
+          "height": 353,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_3",
+          "kind": "wall",
+          "x": 1396,
+          "y": 0,
+          "width": 8,
+          "height": 462,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_4",
+          "kind": "wall",
+          "x": 0,
+          "y": 454,
+          "width": 529,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_5",
+          "kind": "wall",
+          "x": 636,
+          "y": 454,
+          "width": 126,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_6",
+          "kind": "wall",
+          "x": 521,
+          "y": 336,
+          "width": 8,
+          "height": 126,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_7",
+          "kind": "wall",
+          "x": 754,
+          "y": 454,
+          "width": 280,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_8",
+          "kind": "wall",
+          "x": 1126,
+          "y": 454,
+          "width": 278,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_9",
+          "kind": "wall",
+          "x": 1126,
+          "y": 346,
+          "width": 8,
+          "height": 116,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_10",
+          "kind": "wall",
+          "x": 371,
+          "y": 454,
+          "width": 8,
+          "height": 190,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_11",
+          "kind": "wall",
+          "x": 371,
+          "y": 711,
+          "width": 8,
+          "height": 463,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_12",
+          "kind": "wall",
+          "x": 1076,
+          "y": 711,
+          "width": 308,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_13",
+          "kind": "wall",
+          "x": 1496,
+          "y": 711,
+          "width": 344,
+          "height": 8,
+          "color": "#56657B"
+        },
+        {
+          "id": "wall_14",
+          "kind": "wall",
+          "x": 1076,
+          "y": 711,
+          "width": 8,
+          "height": 463,
+          "color": "#56657B"
+        }
+      ]
+    }
+  ],
+  "lobbyFloorId": "3",
+  "lobbyStart": {
+    "x": 350,
+    "y": 580
+  },
+  "lobbyRoute": [
+    {
+      "x": 350,
+      "y": 860
+    },
+    {
+      "x": 355,
+      "y": 875
+    },
+    {
+      "x": 370,
+      "y": 880
+    },
+    {
+      "x": 1330,
+      "y": 880
+    },
+    {
+      "x": 1348,
+      "y": 876
+    },
+    {
+      "x": 1362,
+      "y": 864
+    },
+    {
+      "x": 1568,
+      "y": 576
+    },
+    {
+      "x": 1582,
+      "y": 564
+    },
+    {
+      "x": 1600,
+      "y": 560
+    }
+  ],
+  "destinations": [
+    {
+      "id": "infinity_pool",
+      "name": "Hồ Bơi Vô Cực (Infinity Pool)",
+      "floorId": "7",
+      "coords": {
+        "x": 380,
+        "y": 230
+      },
+      "icon": "pool",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1005,
+          "y": 560
+        },
+        {
+          "x": 946,
+          "y": 575
+        },
+        {
+          "x": 900,
+          "y": 620
+        },
+        {
+          "x": 870,
+          "y": 700
+        },
+        {
+          "x": 850,
+          "y": 734
+        },
+        {
+          "x": 820,
+          "y": 745
+        },
+        {
+          "x": 680,
+          "y": 745
+        },
+        {
+          "x": 620,
+          "y": 729
+        },
+        {
+          "x": 600,
+          "y": 680
+        },
+        {
+          "x": 600,
+          "y": 360
+        },
+        {
+          "x": 580,
+          "y": 288
+        },
+        {
+          "x": 520,
+          "y": 250
+        }
+      ],
+      "time": "3 Phút",
+      "distance": "115m",
+      "step1Text": "Chặng 1: Đi từ sảnh Lobby đến Thang máy A và bấm lên Tầng 5.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, rẽ trái đi hết hành lang qua cửa kính là đến Hồ bơi vô cực."
+    },
+    {
+      "id": "gym",
+      "name": "Fitness & Gym Center",
+      "floorId": "7",
+      "coords": {
+        "x": 1450,
+        "y": 880
+      },
+      "icon": "gym",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1490,
+          "y": 560
+        },
+        {
+          "x": 1460,
+          "y": 570
+        },
+        {
+          "x": 1450,
+          "y": 600
+        },
+        {
+          "x": 1450,
+          "y": 715
+        }
+      ],
+      "time": "3 Phút",
+      "distance": "110m",
+      "step1Text": "Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng xuống phía dưới để vào Phòng Gym."
+    },
+    {
+      "id": "spa",
+      "name": "Thảo Mộc Spa & Massage",
+      "floorId": "7",
+      "coords": {
+        "x": 1080,
+        "y": 230
+      },
+      "icon": "spa",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1120,
+          "y": 560
+        },
+        {
+          "x": 1090,
+          "y": 550
+        },
+        {
+          "x": 1080,
+          "y": 520
+        },
+        {
+          "x": 1080,
+          "y": 458
+        }
+      ],
+      "time": "3 Phút",
+      "distance": "105m",
+      "step1Text": "Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, rẽ trái 15m vào cửa phòng Spa."
+    },
+    {
+      "id": "restaurant",
+      "name": "Bếp Trung Tâm & Room Service 24/7 (Quầy Nhận Món)",
+      "floorId": "4",
+      "coords": {
+        "x": 800,
+        "y": 260
+      },
+      "icon": "food",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1391,
+          "y": 322
+        },
+        {
+          "x": 1374,
+          "y": 312
+        },
+        {
+          "x": 1356,
+          "y": 304
+        },
+        {
+          "x": 1239,
+          "y": 266
+        },
+        {
+          "x": 1220,
+          "y": 262
+        },
+        {
+          "x": 1200,
+          "y": 260
+        }
+      ],
+      "time": "2 Phút",
+      "distance": "80m",
+      "step1Text": "Chặng 1: Đi từ sảnh tiếp tân ra Thang máy A và bấm lên Tầng 2.",
+      "step2Text": "Chặng 2: Khách sạn không có nhà hàng tại chỗ; khu Tầng 2 là Bếp Trung Tâm & Quầy Nhận Món phục vụ gọi món tận phòng 24/7."
+    },
+    {
+      "id": "kitchen",
+      "name": "Khu Bếp Chính (Kitchen)",
+      "floorId": "4",
+      "coords": {
+        "x": 680,
+        "y": 850
+      },
+      "icon": "food",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1393,
+          "y": 711
+        },
+        {
+          "x": 1375,
+          "y": 718
+        },
+        {
+          "x": 1355,
+          "y": 722
+        },
+        {
+          "x": 1120,
+          "y": 748
+        },
+        {
+          "x": 1100,
+          "y": 751
+        },
+        {
+          "x": 1081,
+          "y": 755
+        }
+      ],
+      "time": "2 Phút",
+      "distance": "90m",
+      "step1Text": "Chặng 1: Đi từ sảnh tiếp tân ra Thang máy A và bấm lên Tầng 2.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi dọc hành lang bên phải rẽ vào cửa Khu Bếp Chính."
+    },
+    {
+      "id": "preparation_area",
+      "name": "Khu Sơ Chế (Preparation Area)",
+      "floorId": "4",
+      "coords": {
+        "x": 180,
+        "y": 260
+      },
+      "icon": "pin",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1391,
+          "y": 322
+        },
+        {
+          "x": 1374,
+          "y": 312
+        },
+        {
+          "x": 1356,
+          "y": 304
+        },
+        {
+          "x": 1239,
+          "y": 266
+        },
+        {
+          "x": 1220,
+          "y": 262
+        },
+        {
+          "x": 1200,
+          "y": 260
+        },
+        {
+          "x": 375,
+          "y": 260
+        },
+        {
+          "x": 355,
+          "y": 260
+        },
+        {
+          "x": 335,
+          "y": 260
+        }
+      ],
+      "time": "2.5 Phút",
+      "distance": "95m",
+      "step1Text": "Chặng 1: Đi tới Thang máy A và bấm lên Tầng 2.",
+      "step2Text": "Chặng 2: Đi qua sảnh nhận món sang phòng sơ chế thực phẩm góc bên trái."
+    },
+    {
+      "id": "warehouse",
+      "name": "Kho Nguyên Liệu & Thực Phẩm (Warehouse)",
+      "floorId": "4",
+      "coords": {
+        "x": 1600,
+        "y": 160
+      },
+      "icon": "pin",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1561,
+          "y": 327
+        },
+        {
+          "x": 1554,
+          "y": 310
+        },
+        {
+          "x": 1556,
+          "y": 291
+        }
+      ],
+      "time": "2 Phút",
+      "distance": "85m",
+      "step1Text": "Chặng 1: Đi tới Thang máy A và bấm lên Tầng 2.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang vào Kho thực phẩm bên tay phải."
+    },
+    {
+      "id": "restroom_f2",
+      "name": "Nhà Vệ Sinh Tầng 2 (Restroom)",
+      "floorId": "4",
+      "coords": {
+        "x": 1650,
+        "y": 960
+      },
+      "icon": "restroom",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1654,
+          "y": 850
+        },
+        {
+          "x": 1651,
+          "y": 870
+        },
+        {
+          "x": 1650,
+          "y": 890
+        }
+      ],
+      "time": "2 Phút",
+      "distance": "90m",
+      "step1Text": "Chặng 1: Đi tới Thang máy A và bấm lên Tầng 2.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng xuống cuối hành lang để vào Nhà Vệ Sinh Nam/Nữ."
+    },
+    {
+      "id": "room_301",
+      "name": "Phòng Nghỉ 301",
+      "floorId": "5",
+      "coords": {
+        "x": 1656,
+        "y": 220
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 555
+        },
+        {
+          "x": 1656,
+          "y": 540
+        }
+      ],
+      "time": "2 Phút",
+      "distance": "85m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, rẽ vào hành lang và bước vào Phòng 301 ngay cạnh thang máy."
+    },
+    {
+      "id": "room_302",
+      "name": "Phòng Nghỉ 302",
+      "floorId": "5",
+      "coords": {
+        "x": 1288,
+        "y": 220
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 555
+        },
+        {
+          "x": 1656,
+          "y": 540
+        },
+        {
+          "x": 1656,
+          "y": 240
+        },
+        {
+          "x": 1651,
+          "y": 225
+        },
+        {
+          "x": 1636,
+          "y": 220
+        }
+      ],
+      "time": "2 Phút",
+      "distance": "90m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 302 dãy bên phải."
+    },
+    {
+      "id": "room_303",
+      "name": "Phòng Nghỉ 303",
+      "floorId": "5",
+      "coords": {
+        "x": 920,
+        "y": 220
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 555
+        },
+        {
+          "x": 1656,
+          "y": 540
+        },
+        {
+          "x": 1656,
+          "y": 240
+        },
+        {
+          "x": 1651,
+          "y": 225
+        },
+        {
+          "x": 1636,
+          "y": 220
+        }
+      ],
+      "time": "2.5 Phút",
+      "distance": "95m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới Phòng 303 bên tay phải."
+    },
+    {
+      "id": "room_304",
+      "name": "Phòng Nghỉ 304",
+      "floorId": "5",
+      "coords": {
+        "x": 552,
+        "y": 220
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 555
+        },
+        {
+          "x": 1656,
+          "y": 540
+        },
+        {
+          "x": 1656,
+          "y": 240
+        },
+        {
+          "x": 1651,
+          "y": 225
+        },
+        {
+          "x": 1636,
+          "y": 220
+        }
+      ],
+      "time": "2.5 Phút",
+      "distance": "100m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi hết hành lang tới Phòng 304 góc bên phải cuối dãy."
+    },
+    {
+      "id": "room_305",
+      "name": "Phòng Nghỉ 305",
+      "floorId": "5",
+      "coords": {
+        "x": 184,
+        "y": 220
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 555
+        },
+        {
+          "x": 1656,
+          "y": 540
+        },
+        {
+          "x": 1656,
+          "y": 240
+        },
+        {
+          "x": 1651,
+          "y": 225
+        },
+        {
+          "x": 1636,
+          "y": 220
+        }
+      ],
+      "time": "2.5 Phút",
+      "distance": "105m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi hết hành lang sang góc trái dãy dưới là Phòng 305."
+    },
+    {
+      "id": "room_306",
+      "name": "Phòng Nghỉ 306",
+      "floorId": "5",
+      "coords": {
+        "x": 184,
+        "y": 920
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 565
+        },
+        {
+          "x": 1656,
+          "y": 580
+        },
+        {
+          "x": 1656,
+          "y": 900
+        },
+        {
+          "x": 1651,
+          "y": 915
+        },
+        {
+          "x": 1636,
+          "y": 920
+        }
+      ],
+      "time": "2.5 Phút",
+      "distance": "100m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 306."
+    },
+    {
+      "id": "room_307",
+      "name": "Phòng Nghỉ 307",
+      "floorId": "5",
+      "coords": {
+        "x": 552,
+        "y": 920
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 565
+        },
+        {
+          "x": 1656,
+          "y": 580
+        },
+        {
+          "x": 1656,
+          "y": 900
+        },
+        {
+          "x": 1651,
+          "y": 915
+        },
+        {
+          "x": 1636,
+          "y": 920
+        }
+      ],
+      "time": "2 Phút",
+      "distance": "95m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 307 dãy đối diện."
+    },
+    {
+      "id": "room_308",
+      "name": "Phòng Nghỉ 308",
+      "floorId": "5",
+      "coords": {
+        "x": 920,
+        "y": 920
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 565
+        },
+        {
+          "x": 1656,
+          "y": 580
+        },
+        {
+          "x": 1656,
+          "y": 900
+        },
+        {
+          "x": 1651,
+          "y": 915
+        },
+        {
+          "x": 1636,
+          "y": 920
+        }
+      ],
+      "time": "2 Phút",
+      "distance": "90m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng xuống dãy phòng đối diện để vào Phòng 308."
+    },
+    {
+      "id": "room_309",
+      "name": "Phòng Nghỉ 309",
+      "floorId": "5",
+      "coords": {
+        "x": 1288,
+        "y": 920
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 565
+        },
+        {
+          "x": 1656,
+          "y": 580
+        },
+        {
+          "x": 1656,
+          "y": 900
+        },
+        {
+          "x": 1651,
+          "y": 915
+        },
+        {
+          "x": 1636,
+          "y": 920
+        }
+      ],
+      "time": "2 Phút",
+      "distance": "85m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng xuống góc phải dãy phòng đối diện là Phòng 309."
+    },
+    {
+      "id": "room_310",
+      "name": "Phòng Nghỉ 310",
+      "floorId": "5",
+      "coords": {
+        "x": 1656,
+        "y": 920
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 565
+        },
+        {
+          "x": 1656,
+          "y": 580
+        }
+      ],
+      "time": "2 Phút",
+      "distance": "85m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, rẽ vào Phòng 310 ngay cạnh thang máy dãy đối diện."
+    },
+    {
+      "id": "room_401",
+      "name": "Phòng Nghỉ 401",
+      "floorId": "6",
+      "coords": {
+        "x": 1656,
+        "y": 220
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 555
+        },
+        {
+          "x": 1656,
+          "y": 540
+        }
+      ],
+      "time": "2.5 Phút",
+      "distance": "85m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, rẽ vào hành lang và bước vào Phòng 401 ngay cạnh thang máy."
+    },
+    {
+      "id": "room_402",
+      "name": "Phòng Nghỉ 402",
+      "floorId": "6",
+      "coords": {
+        "x": 1288,
+        "y": 220
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 555
+        },
+        {
+          "x": 1656,
+          "y": 540
+        },
+        {
+          "x": 1656,
+          "y": 240
+        },
+        {
+          "x": 1651,
+          "y": 225
+        },
+        {
+          "x": 1636,
+          "y": 220
+        }
+      ],
+      "time": "2.5 Phút",
+      "distance": "90m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 402 dãy bên phải."
+    },
+    {
+      "id": "room_403",
+      "name": "Phòng Nghỉ 403",
+      "floorId": "6",
+      "coords": {
+        "x": 920,
+        "y": 220
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 555
+        },
+        {
+          "x": 1656,
+          "y": 540
+        },
+        {
+          "x": 1656,
+          "y": 240
+        },
+        {
+          "x": 1651,
+          "y": 225
+        },
+        {
+          "x": 1636,
+          "y": 220
+        }
+      ],
+      "time": "3 Phút",
+      "distance": "95m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới Phòng 403 bên tay phải."
+    },
+    {
+      "id": "room_404",
+      "name": "Phòng Nghỉ 404",
+      "floorId": "6",
+      "coords": {
+        "x": 552,
+        "y": 220
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 555
+        },
+        {
+          "x": 1656,
+          "y": 540
+        },
+        {
+          "x": 1656,
+          "y": 240
+        },
+        {
+          "x": 1651,
+          "y": 225
+        },
+        {
+          "x": 1636,
+          "y": 220
+        }
+      ],
+      "time": "3 Phút",
+      "distance": "100m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi hết hành lang tới Phòng 404 góc bên phải cuối dãy."
+    },
+    {
+      "id": "room_405",
+      "name": "Phòng Nghỉ 405",
+      "floorId": "6",
+      "coords": {
+        "x": 184,
+        "y": 220
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 555
+        },
+        {
+          "x": 1656,
+          "y": 540
+        },
+        {
+          "x": 1656,
+          "y": 240
+        },
+        {
+          "x": 1651,
+          "y": 225
+        },
+        {
+          "x": 1636,
+          "y": 220
+        }
+      ],
+      "time": "3 Phút",
+      "distance": "105m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi hết hành lang sang góc trái dãy dưới là Phòng 405."
+    },
+    {
+      "id": "room_406",
+      "name": "Phòng Nghỉ 406",
+      "floorId": "6",
+      "coords": {
+        "x": 184,
+        "y": 920
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 565
+        },
+        {
+          "x": 1656,
+          "y": 580
+        },
+        {
+          "x": 1656,
+          "y": 900
+        },
+        {
+          "x": 1651,
+          "y": 915
+        },
+        {
+          "x": 1636,
+          "y": 920
+        }
+      ],
+      "time": "3 Phút",
+      "distance": "100m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 406."
+    },
+    {
+      "id": "room_407",
+      "name": "Phòng Nghỉ 407",
+      "floorId": "6",
+      "coords": {
+        "x": 552,
+        "y": 920
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 565
+        },
+        {
+          "x": 1656,
+          "y": 580
+        },
+        {
+          "x": 1656,
+          "y": 900
+        },
+        {
+          "x": 1651,
+          "y": 915
+        },
+        {
+          "x": 1636,
+          "y": 920
+        }
+      ],
+      "time": "2.5 Phút",
+      "distance": "95m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 407 dãy đối diện."
+    },
+    {
+      "id": "room_408",
+      "name": "Phòng Nghỉ 408",
+      "floorId": "6",
+      "coords": {
+        "x": 920,
+        "y": 920
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 565
+        },
+        {
+          "x": 1656,
+          "y": 580
+        },
+        {
+          "x": 1656,
+          "y": 900
+        },
+        {
+          "x": 1651,
+          "y": 915
+        },
+        {
+          "x": 1636,
+          "y": 920
+        }
+      ],
+      "time": "2.5 Phút",
+      "distance": "90m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng xuống dãy phòng đối diện để vào Phòng 408."
+    },
+    {
+      "id": "room_409",
+      "name": "Phòng Nghỉ 409",
+      "floorId": "6",
+      "coords": {
+        "x": 1288,
+        "y": 920
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 565
+        },
+        {
+          "x": 1656,
+          "y": 580
+        },
+        {
+          "x": 1656,
+          "y": 900
+        },
+        {
+          "x": 1651,
+          "y": 915
+        },
+        {
+          "x": 1636,
+          "y": 920
+        }
+      ],
+      "time": "2.5 Phút",
+      "distance": "85m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng xuống góc phải dãy phòng đối diện là Phòng 409."
+    },
+    {
+      "id": "room_410",
+      "name": "Phòng Nghỉ 410",
+      "floorId": "6",
+      "coords": {
+        "x": 1656,
+        "y": 920
+      },
+      "icon": "room",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1676,
+          "y": 560
+        },
+        {
+          "x": 1661,
+          "y": 565
+        },
+        {
+          "x": 1656,
+          "y": 580
+        }
+      ],
+      "time": "2.5 Phút",
+      "distance": "85m",
+      "step1Text": "Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, rẽ vào Phòng 410 ngay cạnh thang máy dãy đối diện."
+    },
+    {
+      "id": "rooftop_coffee",
+      "name": "Rooftop Coffee & View",
+      "floorId": "8",
+      "coords": {
+        "x": 380,
+        "y": 230
+      },
+      "icon": "pin",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1005,
+          "y": 560
+        },
+        {
+          "x": 946,
+          "y": 575
+        },
+        {
+          "x": 900,
+          "y": 620
+        },
+        {
+          "x": 870,
+          "y": 700
+        },
+        {
+          "x": 850,
+          "y": 734
+        },
+        {
+          "x": 820,
+          "y": 745
+        },
+        {
+          "x": 680,
+          "y": 745
+        },
+        {
+          "x": 620,
+          "y": 729
+        },
+        {
+          "x": 600,
+          "y": 680
+        },
+        {
+          "x": 600,
+          "y": 360
+        },
+        {
+          "x": 580,
+          "y": 288
+        },
+        {
+          "x": 520,
+          "y": 250
+        }
+      ],
+      "time": "4 Phút",
+      "distance": "130m",
+      "step1Text": "Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6 (Cao nhất).",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang qua cửa trung tâm vào khu vực Rooftop Coffee."
+    },
+    {
+      "id": "bar",
+      "name": "Sky Lounge Bar",
+      "floorId": "8",
+      "coords": {
+        "x": 1080,
+        "y": 230
+      },
+      "icon": "pin",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1120,
+          "y": 560
+        },
+        {
+          "x": 1090,
+          "y": 550
+        },
+        {
+          "x": 1080,
+          "y": 520
+        },
+        {
+          "x": 1080,
+          "y": 458
+        }
+      ],
+      "time": "4 Phút",
+      "distance": "120m",
+      "step1Text": "Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Quầy Bar ở giữa."
+    },
+    {
+      "id": "karaoke",
+      "name": "Phòng VIP Karaoke",
+      "floorId": "8",
+      "coords": {
+        "x": 1450,
+        "y": 880
+      },
+      "icon": "pin",
+      "enabled": true,
+      "points": [
+        {
+          "x": 1490,
+          "y": 560
+        },
+        {
+          "x": 1460,
+          "y": 570
+        },
+        {
+          "x": 1450,
+          "y": 600
+        },
+        {
+          "x": 1450,
+          "y": 715
+        }
+      ],
+      "time": "4 Phút",
+      "distance": "125m",
+      "step1Text": "Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, rẽ trái theo hành lang vào Phòng VIP Karaoke."
+    },
+    {
+      "id": "front_desk",
+      "name": "Quầy Lễ Tân (Front Desk)",
+      "floorId": "3",
+      "coords": {
+        "x": 880,
+        "y": 570
+      },
+      "icon": "desk",
+      "enabled": true,
+      "points": [
+        {
+          "x": 350,
+          "y": 860
+        },
+        {
+          "x": 355,
+          "y": 875
+        },
+        {
+          "x": 370,
+          "y": 880
+        },
+        {
+          "x": 780,
+          "y": 880
+        },
+        {
+          "x": 796,
+          "y": 875
+        },
+        {
+          "x": 805,
+          "y": 861
+        }
+      ],
+      "time": "1 Phút",
+      "distance": "15m",
+      "step1Text": "Đi thẳng qua cửa kính sảnh chính, quầy lễ tân nằm ngay bên tay phải bạn.",
+      "step2Text": ""
+    },
+    {
+      "id": "restroom_ground",
+      "name": "Nhà Vệ Sinh Sảnh (Lobby Restroom)",
+      "floorId": "3",
+      "coords": {
+        "x": 1600,
+        "y": 1000
+      },
+      "icon": "restroom",
+      "enabled": true,
+      "points": [
+        {
+          "x": 350,
+          "y": 860
+        },
+        {
+          "x": 355,
+          "y": 876
+        },
+        {
+          "x": 370,
+          "y": 882
+        }
+      ],
+      "time": "1 Phút",
+      "distance": "25m",
+      "step1Text": "Từ sảnh chính, đi về phía tay phải sau quầy lễ tân để vào Nhà Vệ Sinh.",
+      "step2Text": ""
+    },
+    {
+      "id": "parking_car",
+      "name": "Bãi Đỗ Xe Ô Tô (Hầm B2)",
+      "floorId": "1",
+      "coords": {
+        "x": 880,
+        "y": 850
+      },
+      "icon": "parking",
+      "enabled": true,
+      "points": [],
+      "time": "2 Phút",
+      "distance": "90m",
+      "step1Text": "Chặng 1: Di chuyển tới Thang máy A và bấm xuống Hầm B2.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới khu vực đỗ xe ô tô Hầm B2."
+    },
+    {
+      "id": "parking_bike",
+      "name": "Bãi Giữ Xe Máy (Hầm B1)",
+      "floorId": "2",
+      "coords": {
+        "x": 920,
+        "y": 500
+      },
+      "icon": "parking",
+      "enabled": true,
+      "points": [],
+      "time": "2 Phút",
+      "distance": "85m",
+      "step1Text": "Chặng 1: Di chuyển tới Thang máy A và bấm xuống Hầm B1.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi thẳng theo làn di chuyển vào Bãi đỗ xe máy Hầm B1."
+    },
+    {
+      "id": "gift_shop",
+      "name": "Cửa Hàng Lưu Niệm (Gift Shop)",
+      "floorId": "8",
+      "coords": {
+        "x": 200,
+        "y": 750
+      },
+      "icon": "pin",
+      "enabled": true,
+      "points": [
+        {
+          "x": 390,
+          "y": 634
+        },
+        {
+          "x": 371,
+          "y": 638
+        },
+        {
+          "x": 353,
+          "y": 646
+        }
+      ],
+      "time": "4 Phút",
+      "distance": "120m",
+      "step1Text": "Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6.",
+      "step2Text": "Chặng 2: Ra khỏi thang máy, đi qua cửa trung tâm và rẽ vào Cửa Hàng Lưu Niệm bên trái."
+    }
+  ]
+}

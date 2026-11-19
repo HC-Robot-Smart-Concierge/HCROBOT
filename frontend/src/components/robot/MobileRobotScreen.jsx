@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { AudioWave } from './AudioWave';
 import { RobotFace } from './RobotFace';
 import { FloorMap, HOTEL_DESTINATIONS } from './FloorMap';
+import { findWayfindingPlace } from '../../services/wayfindingGeometry';
 import {
   Clock,
   Menu,
@@ -175,6 +176,7 @@ export const MobileRobotScreen = ({
   onCancelTaxiFlow = null,
   onSubmitTaxiRoomNumber = null,
   navigationDestinationKey = 'infinity_pool',
+  publishedWayfinding,
   onSelectDestination,
   availableWorkflows = [],
   onStartWorkflow,
@@ -210,7 +212,7 @@ export const MobileRobotScreen = ({
   const displayText = aiResponseText || spokenSubtitle;
   const isNavigating = currentState === 'RT-05' || isMapManualOpen;
 
-  const currentDestination = HOTEL_DESTINATIONS[navigationDestinationKey] || HOTEL_DESTINATIONS.restroom_ground || {
+  const currentDestination = findWayfindingPlace(publishedWayfinding, navigationDestinationKey) || (publishedWayfinding ? { enabled: false } : HOTEL_DESTINATIONS[navigationDestinationKey] || HOTEL_DESTINATIONS.restroom_ground) || {
     name: 'Điểm Đến Khách Sạn',
     floorLevel: 'TẦNG TRỆT',
     time: '2 Phút',
@@ -854,6 +856,7 @@ export const MobileRobotScreen = ({
             <div className="w-full h-full relative rounded-2xl overflow-hidden border border-[#E3DFD5] shadow-sm bg-white">
               <FloorMap
                 destinationKey={navigationDestinationKey}
+                publishedWayfinding={publishedWayfinding}
                 onSelectDestination={onSelectDestination}
                 onClose={handleDismissMap}
                 showQrModalExternal={showQrModalExternal}
@@ -869,7 +872,7 @@ export const MobileRobotScreen = ({
                 <div className="pointer-events-auto flex-1 min-w-0 max-w-xl bg-stone-900/90 text-stone-100 backdrop-blur-md px-3.5 py-1.5 rounded-2xl border border-stone-700/80 shadow-xl flex items-center gap-2.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
                   <span className="text-xs font-semibold text-stone-100 truncate">
-                    {currentDestination.isDifferentFloor
+                    {currentDestination.enabled === false ? 'Địa điểm chưa mở chỉ đường.' : currentDestination.isDifferentFloor
                       ? (navActiveStep === 1
                         ? `${currentDestination.step1Text || 'Chặng 1: Đi tới Thang máy A và bấm lên tầng mục tiêu.'}`
                         : `${currentDestination.step2Text || `Chặng 2: Ra khỏi thang máy tới ${currentDestination.name}.`}`)

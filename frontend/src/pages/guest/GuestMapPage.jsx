@@ -25,6 +25,11 @@ import {
   ROUTE_GROUND_TO_ELEVATOR,
 } from '../../components/robot/FloorMap';
 import { calculateFloorRoute } from '../../services/indoorNavigation/indoorPathfinder';
+import { usePublishedWayfinding } from '../../services/wayfindingApi';
+import { findWayfindingPlace, getFloorLabelMinimum, getFloorSize, getWayfindingLeg, MAP_WIDTH, shouldRotateWayfindingFloor } from '../../services/wayfindingGeometry';
+import { useWayfindingViewport } from '../../hooks/useWayfindingViewport';
+import { PlaceCard, PlacePin } from '../../components/robot/WayfindingPlace';
+import { WayfindingFloorLayout } from '../../components/robot/WayfindingFloorLayout';
 
 const DESTINATION_ALIASES = {
   luxury_spa: 'spa',
@@ -39,30 +44,31 @@ const DESTINATION_ALIASES = {
 const resolveKnownDestKey = (rawKey) => {
   if (!rawKey || typeof rawKey !== 'string') return null;
   const trimmed = rawKey.trim();
-  const mapped = DESTINATION_ALIASES[trimmed] || trimmed;
-  return HOTEL_DESTINATIONS[mapped] ? mapped : null;
+  const mapped = Object.hasOwn(DESTINATION_ALIASES, trimmed) ? DESTINATION_ALIASES[trimmed] : trimmed;
+  return /^[a-z0-9][a-z0-9_-]{0,63}$/.test(mapped) ? mapped : null;
 };
 
 const normalizeDestKey = (rawKey) => {
   return resolveKnownDestKey(rawKey) || 'infinity_pool';
 };
 
-export const computeOrthogonalHeadingAngle = (startPt) => {
-  return startPt && startPt.x >= 920 ? 90 : -90;
+export const computeOrthogonalHeadingAngle = (startPt, width = MAP_WIDTH) => {
+  return startPt && startPt.x >= width / 2 ? 90 : -90;
 };
 
-const projectPointToSvgScreen = (x, y, rotZ) => {
+const projectPointToSvgScreen = (x, y, rotZ, width, height) => {
   if (rotZ === -90) {
-    return { sx: y, sy: 1840 - x };
+    return { sx: y, sy: width - x };
   }
   if (rotZ === 90) {
-    return { sx: 1174 - y, sy: x };
+    return { sx: height - y, sy: x };
   }
   return { sx: x, sy: y };
 };
 
-export const computeSmartRouteFrame = (pathStr, startPt, endPt, mode = 'heading') => {
-  const nums = (String(pathStr || '').match(/-?\d+(\.\d+)?/g) || []).map(Number);
+export const computeSmartRouteFrame = (pathStr, startPt, endPt, mode = 'heading', floor, viewport) => {
+  const { width, height } = getFloorSize(floor);
+  const nums = (String(pathStr || '').match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi) || []).map(Number);
   let minX = Math.min(startPt.x, endPt.x);
   let maxX = Math.max(startPt.x, endPt.x);
   let minY = Math.min(startPt.y, endPt.y);
@@ -81,19 +87,19 @@ export const computeSmartRouteFrame = (pathStr, startPt, endPt, mode = 'heading'
   const midY = Math.round((minY + maxY) / 2);
 
   const isHeading = mode === 'heading';
-  const rotZ = isHeading ? computeOrthogonalHeadingAngle(startPt) : 0;
-  const svgW = rotZ === 0 ? 1840 : 1174;
-  const svgH = rotZ === 0 ? 1174 : 1840;
+  const rotZ = isHeading ? computeOrthogonalHeadingAngle(startPt, width) : 0;
+  const svgW = rotZ === 0 ? width : height;
+  const svgH = rotZ === 0 ? height : width;
 
-  const sStart = projectPointToSvgScreen(startPt.x, startPt.y, rotZ);
-  const sEnd = projectPointToSvgScreen(endPt.x, endPt.y, rotZ);
+  const sStart = projectPointToSvgScreen(startPt.x, startPt.y, rotZ, width, height);
+  const sEnd = projectPointToSvgScreen(endPt.x, endPt.y, rotZ, width, height);
   let minSX = Math.min(sStart.sx, sEnd.sx);
   let maxSX = Math.max(sStart.sx, sEnd.sx);
   let minSY = Math.min(sStart.sy, sEnd.sy);
   let maxSY = Math.max(sStart.sy, sEnd.sy);
 
   for (let i = 0; i < nums.length - 1; i += 2) {
-    const pt = projectPointToSvgScreen(nums[i], nums[i + 1], rotZ);
+    const pt = projectPointToSvgScreen(nums[i], nums[i + 1], rotZ, width, height);
     if (pt.sx < minSX) minSX = pt.sx;
     if (pt.sx > maxSX) maxSX = pt.sx;
     if (pt.sy < minSY) minSY = pt.sy;
@@ -105,8 +111,8 @@ export const computeSmartRouteFrame = (pathStr, startPt, endPt, mode = 'heading'
   const spanSW = Math.max(340, maxSX - minSX);
   const spanSH = Math.max(380, maxSY - minSY);
 
-  const cw = typeof window !== 'undefined' && window.innerWidth ? Math.min(window.innerWidth, 430) : 390;
-  const ch = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 760;
+  const cw = viewport?.width || (typeof window !== 'undefined' && window.innerWidth ? Math.min(window.innerWidth, 430) : 390);
+  const ch = viewport?.height || (typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 760);
   const svgScale = Math.min(cw / svgW, ch / svgH);
 
   const fitW = (cw * 0.82) / ((spanSW + 340) * svgScale);
@@ -120,8 +126,8 @@ export const computeSmartRouteFrame = (pathStr, startPt, endPt, mode = 'heading'
     return {
       midX,
       midY,
-      baseW: 1840,
-      baseH: 1174,
+      baseW: width,
+      baseH: height,
       zoom: 1.05,
       panX,
       panY,
@@ -206,7 +212,9 @@ export const GuestMapPage = () => {
     return parseGuestMapParams(rawSearch);
   }, []);
 
-  const [currentDestKey, setCurrentDestKey] = useState(initialTicket.destKey);
+  const currentDestKey = initialTicket.destKey;
+  const published = usePublishedWayfinding();
+  const [showPlace, setShowPlace] = useState(false);
   const [expiresAt] = useState(initialTicket.expiresAt);
   const [ticketId] = useState(initialTicket.ticketId);
   const [remainingSeconds, setRemainingSeconds] = useState(() =>
@@ -223,9 +231,17 @@ export const GuestMapPage = () => {
     }
   });
 
+  const publishedPlace = useMemo(() => findWayfindingPlace(published, currentDestKey), [published, currentDestKey]);
   const currentDest = useMemo(() => {
-    return HOTEL_DESTINATIONS[currentDestKey] || HOTEL_DESTINATIONS.infinity_pool;
-  }, [currentDestKey]);
+    if (publishedPlace) return publishedPlace;
+    if (!published && Object.hasOwn(HOTEL_DESTINATIONS, currentDestKey)) return HOTEL_DESTINATIONS[currentDestKey];
+    return {
+      name: 'Địa điểm chưa có trên bản đồ',
+      coords: published?.lobbyStart || { x: 350, y: 580 },
+      floorId: published?.lobbyFloorId || '3',
+      enabled: false,
+    };
+  }, [currentDestKey, published, publishedPlace]);
 
   // 1: Chặng 1 (Từ Sảnh Trệt đến Thang Máy A)
   // 2: Chặng 2 (Từ Thang Máy đến Điểm đến trên tầng mục tiêu)
@@ -238,9 +254,10 @@ export const GuestMapPage = () => {
   // - isHeadingUp = true (Mặc định):
   //   + Chặng 1: Xoay -90° từ Sảnh nhìn thẳng lên Thang máy A
   //   + Chặng 2: Xoay +90° từ Thang máy A nhìn thẳng lên hành lang & phòng đích
-  const [isHeadingUp, setIsHeadingUp] = useState(true);
+  const [headingPreference, setHeadingPreference] = useState(null);
   const [is3D, setIs3D] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1.25);
+  const [setMapElement, mapViewport] = useWayfindingViewport();
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragState, setDragState] = useState(null);
 
@@ -256,19 +273,29 @@ export const GuestMapPage = () => {
   // Khi đổi điểm đến -> tự động đặt chặng phù hợp
   useEffect(() => {
     setActiveLeg(currentDest.isDifferentFloor ? 1 : 2);
-  }, [currentDest]);
+  }, [currentDestKey, currentDest.isDifferentFloor]);
+
+  const publishedLeg = useMemo(() => publishedPlace && getWayfindingLeg(published, publishedPlace, activeLeg), [published, publishedPlace, activeLeg]);
 
   // Tầng hiển thị tương ứng với chặng đang chọn
   const activeFloor = useMemo(() => {
+    if (published) return publishedLeg?.floor || published.floors.find((floor) => floor.id === published.lobbyFloorId);
     if (!currentDest.isDifferentFloor) {
       return HOTEL_FLOORS.find((f) => f.id === currentDest.floorId) || HOTEL_FLOORS[2];
     }
     const targetFloorId = activeLeg === 1 ? '3' : currentDest.floorId;
     return HOTEL_FLOORS.find((f) => f.id === targetFloorId) || HOTEL_FLOORS[2];
-  }, [activeLeg, currentDest]);
+  }, [activeLeg, currentDest, published, publishedLeg]);
 
   // Tọa độ đầu & cuối của chặng đang hiển thị
   const activeEndpoints = useMemo(() => {
+    if (publishedLeg) {
+      const firstLeg = activeLeg === 1 && currentDest.isDifferentFloor;
+      return {
+        start: { ...publishedLeg.start, label: firstLeg || !currentDest.isDifferentFloor ? 'ĐIỂM XUẤT PHÁT' : 'RA THANG MÁY' },
+        end: { ...publishedLeg.end, label: firstLeg ? 'THANG MÁY' : currentDest.name.toUpperCase().slice(0, 16) },
+      };
+    }
     if (activeLeg === 1) {
       return {
         start: { x: 350, y: 580, label: 'BẠN Ở ĐÂY' },
@@ -285,10 +312,12 @@ export const GuestMapPage = () => {
         label: (currentDest.name || 'ĐÍCH ĐẾN').toUpperCase().slice(0, 16),
       },
     };
-  }, [activeLeg, currentDest]);
+  }, [activeLeg, currentDest, publishedLeg]);
 
   // Tính toán đường đi chuẩn qua cửa
   const activeRoutePath = useMemo(() => {
+    if (published) return publishedLeg?.path || '';
+    if (currentDest.enabled === false) return '';
     if (activeLeg === 1) {
       const leg1 = calculateFloorRoute({
         floorId: '3',
@@ -310,16 +339,19 @@ export const GuestMapPage = () => {
       targetRoomId: currentDest.id,
     });
     return leg2.valid && leg2.pathString ? leg2.pathString : currentDest.routeTarget;
-  }, [activeLeg, currentDest]);
+  }, [activeLeg, currentDest, published, publishedLeg]);
 
+  const isHeadingUp = headingPreference ?? shouldRotateWayfindingFloor(mapViewport, activeFloor);
   const currentFrame = useMemo(() => {
     return computeSmartRouteFrame(
       activeRoutePath,
       activeEndpoints.start,
       activeEndpoints.end,
-      isHeadingUp ? 'heading' : 'focus25d'
+      isHeadingUp ? 'heading' : 'focus25d',
+      activeFloor,
+      mapViewport
     );
-  }, [activeRoutePath, activeEndpoints, isHeadingUp]);
+  }, [activeRoutePath, activeEndpoints, isHeadingUp, activeFloor, mapViewport]);
 
   // Khi chuyển chặng hoặc đổi điểm đến -> tự động căn giữa lộ trình bằng GPU
   useEffect(() => {
@@ -396,11 +428,12 @@ export const GuestMapPage = () => {
 
   const isExpired = remainingSeconds <= 0;
 
+  const { width: floorWidth, height: floorHeight } = getFloorSize(activeFloor);
   const worldTransform =
     currentFrame.rotZ === -90
-      ? 'translate(0, 1840) rotate(-90)'
+      ? `translate(0, ${floorWidth}) rotate(-90)`
       : currentFrame.rotZ === 90
-        ? 'translate(1174, 0) rotate(90)'
+        ? `translate(${floorHeight}, 0) rotate(90)`
         : 'translate(0, 0) rotate(0)';
 
   // Giao diện Bản đồ Toàn màn hình chuẩn Google Maps (Bản đồ chiếm 100% diện tích, GPU 60-120fps)
@@ -435,18 +468,18 @@ export const GuestMapPage = () => {
         <>
           {/* 1. Thanh Điều Hướng Nổi Nhỏ Gọn Phía Trên (Google Maps Top Pill) */}
           <div className="absolute top-2.5 left-2.5 right-2.5 max-w-lg mx-auto z-30 bg-white/95 backdrop-blur-md border border-[#E3DFD5] rounded-2xl px-3 py-2 shadow-md flex flex-col gap-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0 flex-1 basis-44">
                 <div className="w-7 h-7 rounded-lg bg-[#1C1917] text-[#FAF8F5] font-extrabold text-xs flex items-center justify-center shrink-0">
                   {activeLeg}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1 text-[9.5px] font-extrabold uppercase tracking-wider text-[#78716C]">
-                    <span>{activeLeg === 1 ? 'SẢNH TRỆT' : currentDest.floorLevel}</span>
+                    <span>{activeFloor.level}</span>
                     <span>·</span>
                     <span>ĐÍCH: {currentDest.floorLevel}</span>
                   </div>
-                  <h1 className="text-[13px] font-extrabold text-[#1C1917] truncate leading-tight">
+                  <h1 className="text-[13px] font-extrabold text-[#1C1917] line-clamp-2 leading-tight [overflow-wrap:anywhere]">
                     {currentDest.name}
                   </h1>
                 </div>
@@ -484,12 +517,14 @@ export const GuestMapPage = () => {
             <div className="pt-1 border-t border-[#F0EDE6] text-[11.5px] font-semibold text-[#292524] leading-snug">
               {activeLeg === 1
                 ? currentDest.step1Text || 'Đi từ sảnh Lobby đến Thang máy A và bấm lên tầng mục tiêu.'
-                : currentDest.step2Text || `Ra khỏi thang máy, đi theo chỉ dẫn tới ${currentDest.name}.`}
+                : currentDest.enabled === false ? 'Địa điểm chưa mở chỉ đường.' :
+                  (currentDest.isDifferentFloor ? currentDest.step2Text : currentDest.step1Text) || `Đi theo chỉ dẫn tới ${currentDest.name}.`}
             </div>
           </div>
 
           {/* 2. Bản Đồ Toàn Màn Hình (100% Diện Tích, GPU translate3d 60-120fps) */}
           <div
+            ref={setMapElement}
             className="absolute inset-0 w-full h-full touch-none cursor-grab active:cursor-grabbing overflow-hidden"
             style={{
               backgroundImage:
@@ -627,29 +662,13 @@ export const GuestMapPage = () => {
                 }}
               >
                 <svg
-                  viewBox={currentFrame.rotZ === 0 ? '0 0 1840 1174' : '0 0 1174 1840'}
+                  viewBox={`0 0 ${currentFrame.baseW} ${currentFrame.baseH}`}
                   className="w-full h-full block"
                   preserveAspectRatio="xMidYMid meet"
                 >
                   <g transform={worldTransform}>
-                    <rect
-                      x="0"
-                      y="0"
-                      width="1840"
-                      height="1174"
-                      rx="22"
-                      fill="#FFFFFF"
-                      stroke="#E3DFD5"
-                      strokeWidth="5"
-                    />
-                    <image
-                      href={activeFloor.image}
-                      x="0"
-                      y="0"
-                      width="1840"
-                      height="1174"
-                      preserveAspectRatio="none"
-                    />
+                    <WayfindingFloorLayout floor={activeFloor} rotation={currentFrame.rotZ}
+                      minLabelSize={getFloorLabelMinimum(mapViewport, currentFrame.baseW, currentFrame.baseH, zoomLevel)} />
 
                     {/* 1. Lớp hào quang lộ trình nhẹ */}
                     <path
@@ -684,7 +703,7 @@ export const GuestMapPage = () => {
                     />
 
                     {/* 4. Điểm xuất phát + Nhãn nổi nhỏ gọn tự giữ chữ nằm ngang */}
-                    <g transform={`translate(${activeEndpoints.start.x}, ${activeEndpoints.start.y})`}>
+                    {currentDest.enabled !== false && <g transform={`translate(${activeEndpoints.start.x}, ${activeEndpoints.start.y})`}>
                       <circle r="18" fill="#1C1917" opacity="0.16" />
                       <circle r="11" fill="#1C1917" stroke="#FFFFFF" strokeWidth="3.5" />
                       <g transform={`rotate(${-currentFrame.rotZ})`}>
@@ -709,10 +728,10 @@ export const GuestMapPage = () => {
                           {activeEndpoints.start.label}
                         </text>
                       </g>
-                    </g>
+                    </g>}
 
                     {/* 5. Điểm kết thúc + Nhãn nổi nhỏ gọn tự giữ chữ nằm ngang */}
-                    <g transform={`translate(${activeEndpoints.end.x}, ${activeEndpoints.end.y})`}>
+                    {currentDest.enabled !== false && (!publishedPlace || activeFloor.id !== publishedPlace.floorId) && <g transform={`translate(${activeEndpoints.end.x}, ${activeEndpoints.end.y})`}>
                       <circle r="20" fill="#0284C7" opacity="0.2" />
                       <circle r="12" fill="#0284C7" stroke="#FFFFFF" strokeWidth="3.5" />
                       <circle r="4.5" fill="#FFFFFF" />
@@ -738,18 +757,27 @@ export const GuestMapPage = () => {
                           {activeEndpoints.end.label}
                         </text>
                       </g>
-                    </g>
+                    </g>}
+                    {publishedPlace && activeFloor.id === publishedPlace.floorId && (
+                      <PlacePin place={publishedPlace} rotation={-currentFrame.rotZ} onSelect={() => setShowPlace(true)} />
+                    )}
                   </g>
                 </svg>
               </div>
             </div>
           </div>
 
+          {showPlace && publishedPlace && activeFloor.id === publishedPlace.floorId && (
+            <div className="absolute left-0 bottom-12 z-40 w-full pointer-events-none [&_aside]:pointer-events-auto">
+              <PlaceCard place={publishedPlace} floor={activeFloor} onClose={() => setShowPlace(false)} />
+            </div>
+          )}
+
           {/* 3. Cụm Nút Điều Khiển Nổi Nhỏ Gọn Bên Phải (Chuẩn Google Maps 38x38px) */}
           <div className="absolute right-2.5 bottom-[72px] z-30 flex flex-col items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsHeadingUp((v) => !v)}
+              onClick={() => setHeadingPreference(!isHeadingUp)}
               className={`w-[38px] h-[38px] rounded-full border shadow-md flex flex-col items-center justify-center text-[11px] font-extrabold leading-none transition cursor-pointer ${
                 isHeadingUp
                   ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'

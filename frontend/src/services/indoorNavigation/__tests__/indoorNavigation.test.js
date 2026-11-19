@@ -1,3 +1,5 @@
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, it, expect } from 'vitest';
 import {
   calculateFloorRoute,
@@ -16,7 +18,7 @@ import {
   DEFAULT_NAVIGATION_CLEARANCE,
   ROUTE_GROUND_TO_ELEVATOR,
 } from '../index.js';
-import { HOTEL_DESTINATIONS, HOTEL_FLOORS } from '../../../components/robot/FloorMap.jsx';
+import { FloorMap, HOTEL_DESTINATIONS, HOTEL_FLOORS } from '../../../components/robot/FloorMap.jsx';
 
 describe('Indoor Navigation Pathfinding Engine & Validation Tests', () => {
 
@@ -177,13 +179,32 @@ describe('Indoor Navigation Pathfinding Engine & Validation Tests', () => {
     expect(dist).toBe(5);
   });
 
-  // 12. Mobile Safari Re-render & Responsive ViewBox Contract
-  it('Scenario 12: ensures FloorMap has responsive dimensions and image key for Mobile Safari', () => {
+  it('Scenario 12: keeps the fallback dimensions and renders the published vector floor at its configured size', () => {
     HOTEL_FLOORS.forEach((floor) => {
       expect(floor.width).toBe(1840);
       expect(floor.height).toBe(1174);
-      expect(floor.image).toBeDefined();
     });
+
+    const floor = {
+      id: '3', name: 'Lobby', level: 'Ground', width: 900, height: 1300, entry: { x: 100, y: 200 },
+      elements: [
+        { id: 'room_1', kind: 'room', x: 80, y: 100, width: 160, height: 120, color: '#DFE6F1', text: 'Reception' },
+        {
+          id: 'room_2', kind: 'room', x: 400, y: 600, width: 100, height: 100, color: '#DFE6F1',
+          vertices: [[0, 0], [1, 0], [1, 0.5], [0.5, 0.5], [0.5, 1], [0, 1]].map(([x, y]) => ({ x, y })),
+        },
+      ],
+    };
+    const publishedWayfinding = {
+      floors: [floor], lobbyFloorId: floor.id, lobbyStart: { x: 20, y: 30 }, lobbyRoute: [],
+      destinations: [{ id: 'front_desk', name: 'Front desk', floorId: floor.id, coords: { x: 180, y: 180 }, iconScale: 1.5, enabled: false }],
+    };
+    const html = renderToStaticMarkup(React.createElement(FloorMap, { destinationKey: 'front_desk', publishedWayfinding }));
+    expect(html).toContain('viewBox="0 0 900 1300"');
+    expect(html).toContain('>Reception</tspan>');
+    expect(html.match(/<polygon points="0,0 100,0 100,50 50,50 50,100 0,100"/g)).toHaveLength(1);
+    expect(html).toContain('translate(180, 180) rotate(0) scale(1.5)');
+    expect(html).not.toContain('/maps/floor_');
   });
 
   // 13. Floor 5 & 6 Doorway Clearance & Room Entry Precision

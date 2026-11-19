@@ -99,6 +99,7 @@
     }
     .top-row-main {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
@@ -108,7 +109,7 @@
       align-items: center;
       gap: 8px;
       min-width: 0;
-      flex: 1;
+      flex: 1 1 176px;
     }
     .nav-turn-badge {
       width: 28px;
@@ -137,13 +138,33 @@
       letter-spacing: 0.6px;
       color: #78716C;
     }
+    .place-details {
+      position: absolute;
+      z-index: 40;
+      left: 12px;
+      bottom: 65px;
+      width: min(230px, 80vw);
+      border: 1px solid #E3DFD5;
+      border-radius: 14px;
+      background: white;
+      box-shadow: 0 4px 14px #1c191722;
+      padding: 10px;
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+    .place-details img { width: 100%; max-height: 120px; object-fit: cover; border-radius: 8px; }
+    .place-details button { float: right; margin-left: 8px; }
+    #placeMapPin { cursor: pointer; touch-action: manipulation; }
+
     .dest-name-main {
       font-size: 13.5px;
       font-weight: 800;
       color: #1C1917;
-      white-space: nowrap;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
       overflow: hidden;
-      text-overflow: ellipsis;
+      overflow-wrap: anywhere;
       line-height: 1.2;
     }
 
@@ -446,8 +467,7 @@
           <svg id="mainMapSvg" viewBox="0 0 1174 1840" preserveAspectRatio="xMidYMid meet">
             <!-- Nhóm Thế Giới Bản Đồ (Chặng 1 xoay -90° từ Sảnh nhìn lên Thang máy; Chặng 2 xoay +90° từ Thang máy nhìn thẳng lên Phòng đích) -->
             <g id="svgWorldGroup" transform="translate(0, 1840) rotate(-90)">
-              <rect x="0" y="0" width="1840" height="1174" rx="22" fill="#FFFFFF" stroke="#E3DFD5" stroke-width="5" />
-              <image id="floorImage" href="/maps/floor_1.png" x="0" y="0" width="1840" height="1174" preserveAspectRatio="none" />
+              <g id="floorLayout"></g>
 
               <!-- Lớp 1: Đường hào quang vector nhẹ (Không dùng feDropShadow để mượt 120fps trên iPhone) -->
               <path id="svgHalo" d="" fill="none" stroke="#38BDF8" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" opacity="0.28" />
@@ -476,10 +496,21 @@
                   <text id="destLabelText" x="0" y="-26" text-anchor="middle" fill="#1C1917" font-size="11" font-weight="800" font-family="-apple-system, sans-serif">THANG MÁY A</text>
                 </g>
               </g>
+              <g id="placeMapPin" role="button" tabindex="0" style="display:none">
+                <circle r="28" fill="white" stroke="#0369A1" stroke-width="4" />
+                <text id="placeMapIcon" y="1" font-size="29" text-anchor="middle" dominant-baseline="central"></text>
+                <image id="placeMapIconImage" x="-18" y="-18" width="36" height="36" style="display:none" />
+              </g>
             </g>
           </svg>
         </div>
       </div>
+      <aside id="placeDetails" class="place-details" hidden>
+        <img id="placePhoto" alt="" hidden />
+        <button id="closePlaceDetails" type="button" aria-label="Đóng thông tin địa điểm">×</button>
+        <strong id="placeDetailsName"></strong>
+        <p id="placeDetailsFloor"></p>
+      </aside>
     </div>
 
     <!-- 3. Cụm Nút Điều Khiển Nhỏ Gọn Bên Phải (Chuẩn Google Maps) -->
@@ -552,17 +583,109 @@
       }
     } catch (e) {}
 
-    // === DỮ LIỆU BẢN ĐỒ & ĐIỂM ĐẾN (Chuẩn hệ tọa độ thống nhất 1840x1174) ===
-    const FLOOR_IMAGES = {
-      '1': '/maps/floor_b2.png',
-      '2': '/maps/floor_b1.png',
-      '3': '/maps/floor_1.png',
-      '4': '/maps/floor_2.png',
-      '5': '/maps/floor_3.png',
-      '6': '/maps/floor_4.png',
-      '7': '/maps/floor_5.png',
-      '8': '/maps/floor_6.png',
-    };
+    const DEFAULT_FLOOR = { width: 1840, height: 1174, background: '#F4F6FA', elements: [] };
+    let labelFloor = DEFAULT_FLOOR;
+    let floorLabels = [];
+    let labelLayoutKey = '';
+
+    function makeSvgElement(tag, attributes) {
+      const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+      for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
+      return node;
+    }
+
+    function drawFloorLayout(floor) {
+      const layout = document.getElementById('floorLayout');
+      labelFloor = floor;
+      floorLabels = [];
+      labelLayoutKey = '';
+      const nodes = [makeSvgElement('rect', { width: floor.width, height: floor.height, fill: floor.background })];
+      for (const item of floor.elements) {
+        const label = item.kind === 'label';
+        const transform = `rotate(${item.rotation || 0}, ${item.x + item.width / 2}, ${item.y + item.height / 2})`;
+        if (item.vertices) nodes.push(makeSvgElement('polygon', {
+          points: item.vertices.map(({ x, y }) => `${item.x + x * item.width},${item.y + y * item.height}`).join(' '),
+          fill: item.color, stroke: item.kind === 'room' ? '#A5B4C9' : 'none', 'stroke-width': 2, 'stroke-linejoin': 'round', transform,
+        }));
+        else if (!label) nodes.push(makeSvgElement('rect', {
+          x: item.x, y: item.y, width: item.width, height: item.height, rx: item.kind === 'room' ? 8 : 0,
+          fill: item.color, stroke: item.kind === 'room' ? '#A5B4C9' : 'none', 'stroke-width': 2, transform,
+        }));
+        if (item.text) {
+          const text = makeSvgElement('text', {
+            'text-anchor': 'middle',
+            'dominant-baseline': 'central', 'font-weight': 600, fill: label ? item.color : '#16243A',
+          });
+          floorLabels.push({ item, text });
+          nodes.push(text);
+        }
+      }
+      layout.replaceChildren(...nodes);
+    }
+
+    function getFloorLabelLayout(item, rotation, minFontSize) {
+      const words = item.text.trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return null;
+      const angle = item.kind === 'label' ? 0 : rotation + (item.rotation || 0);
+      const quarterTurn = Math.round(angle / 90);
+      const turns = Math.abs(quarterTurn) % 2 === 1;
+      const baseWidth = turns ? item.height : item.width;
+      const baseHeight = turns ? item.width : item.height;
+      const remainder = Math.abs(angle - quarterTurn * 90) * Math.PI / 180;
+      const cosine = Math.cos(remainder);
+      const sine = Math.sin(remainder);
+      const fit = Math.min(1, baseWidth / (cosine * baseWidth + sine * baseHeight), baseHeight / (sine * baseWidth + cosine * baseHeight));
+      const width = baseWidth * 0.88 * fit;
+      const height = baseHeight * 0.84 * fit;
+      const minimum = Math.max(1, minFontSize);
+      const maximum = Math.floor(Math.min(46, height / 1.16));
+
+      for (let fontSize = maximum; fontSize >= minimum; fontSize -= 1) {
+        const capacity = Math.floor(width / (fontSize * 0.67));
+        if (words.some(word => Array.from(word).length > capacity)) continue;
+        const lines = [''];
+        for (const word of words) {
+          const current = lines[lines.length - 1];
+          const next = current ? `${current} ${word}` : word;
+          if (Array.from(next).length <= capacity) lines[lines.length - 1] = next;
+          else lines.push(word);
+        }
+        if (lines.length <= 2 && lines.length * fontSize * 1.16 <= height) return { fontSize, lines };
+      }
+
+      const capacity = Math.floor(width / (minimum * 0.67));
+      if (minimum > maximum || capacity < 4) return null;
+      return { fontSize: minimum, lines: [`${Array.from(words.join(' ')).slice(0, capacity - 1).join('').trimEnd()}…`] };
+    }
+
+    function refreshFloorLabels() {
+      if (!floorLabels.length) return;
+      const sideways = currentRotZ !== 0;
+      const viewWidth = sideways ? labelFloor.height : labelFloor.width;
+      const viewHeight = sideways ? labelFloor.width : labelFloor.height;
+      const scale = Math.min(mapContainer.clientWidth / viewWidth, mapContainer.clientHeight / viewHeight) * currentZoom;
+      if (scale <= 0) return;
+      const minimum = Math.ceil(9 / scale);
+      const key = `${currentRotZ}/${minimum}`;
+      if (key === labelLayoutKey) return;
+      labelLayoutKey = key;
+
+      for (const { item, text } of floorLabels) {
+        const layout = getFloorLabelLayout(item, currentRotZ, minimum);
+        if (!layout) {
+          text.replaceChildren();
+          continue;
+        }
+        text.setAttribute('font-size', layout.fontSize);
+        const labelRotation = -currentRotZ + (item.kind === 'label' ? item.rotation || 0 : 0);
+        text.setAttribute('transform', `translate(${item.x + item.width / 2}, ${item.y + item.height / 2}) rotate(${labelRotation})`);
+        text.replaceChildren(...layout.lines.map((line, index) => {
+          const tspan = makeSvgElement('tspan', { x: 0, y: (index - (layout.lines.length - 1) / 2) * layout.fontSize * 1.16 });
+          tspan.textContent = line;
+          return tspan;
+        }));
+      }
+    }
 
     // Chặng 1 chuẩn từ vị trí Robot (x=350, y=580) đến Thang máy A (x=1715, y=560)
     const ROUTE_GROUND_TO_ELEVATOR = 'M 350 580 L 350 860 Q 350 880, 370 880 L 1330 880 Q 1350 880, 1362 864 L 1568 576 Q 1580 560, 1600 560 L 1715 560';
@@ -790,8 +913,8 @@
     function resolveDestKey(raw) {
       if (!raw || typeof raw !== 'string') return 'infinity_pool';
       const k = raw.trim();
-      const mapped = DEST_ALIASES[k] || k;
-      return DESTINATIONS[mapped] ? mapped : 'infinity_pool';
+      const mapped = Object.prototype.hasOwnProperty.call(DEST_ALIASES, k) ? DEST_ALIASES[k] : k;
+      return /^[a-z0-9][a-z0-9_-]{0,63}$/.test(mapped) ? mapped : 'infinity_pool';
     }
 
     // Parse Token hoặc Query
@@ -818,24 +941,21 @@
       currentDestKey = resolveDestKey(fallbackDestParam);
     }
 
-    const dest = DESTINATIONS[currentDestKey] || DESTINATIONS.infinity_pool;
+    let dest = Object.prototype.hasOwnProperty.call(DESTINATIONS, currentDestKey) ? DESTINATIONS[currentDestKey] : {
+      name: 'Địa điểm chưa có trên bản đồ', floorId: '3', floorLevel: 'Sảnh',
+      coords: { x: 350, y: 580 }, route: '', isDiff: false, enabled: false,
+    };
+    let published = null;
+    let publishedPlace = null;
     let activeStep = dest.isDiff ? 1 : 2;
-
-    // Preload sẵn ảnh tầng để khi chuyển Chặng 1 <-> Chặng 2 không bị khựng load ảnh
-    try {
-      const preload1 = new Image();
-      preload1.src = FLOOR_IMAGES['3'];
-      if (dest.floorId && FLOOR_IMAGES[dest.floorId]) {
-        const preload2 = new Image();
-        preload2.src = FLOOR_IMAGES[dest.floorId];
-      }
-    } catch (e) {}
+    const placeIcons = {pin:'📍', desk:'ℹ️', pool:'🏊', gym:'🏋️', spa:'🌿', food:'🍴', elevator:'🛗', room:'🛏️', parking:'🅿️', restroom:'🚻'};
 
     // Trạng thái Camera chuẩn Google Maps:
     // - isHeadingUp = true (Mặc định):
     //   + Chặng 1: Xoay -90° để từ Sảnh (ở dưới đáy) nhìn thẳng LÊN Thang máy A (ở trên)
     //   + Chặng 2: Xoay +90° để từ Thang máy A (ở dưới đáy) nhìn thẳng LÊN các phòng đích (ở trên)
     let isHeadingUp = true;
+    let headingPreference = null;
     let is3D = false;
     let currentZoom = 1.25;
     let panX = 0;
@@ -851,30 +971,30 @@
 
     // Chặng 1 (xuất phát từ Sảnh x=350) -> xoay -90° (Sảnh ở đáy nhìn lên Thang máy)
     // Chặng 2 (xuất phát từ Thang máy x=1715) -> xoay +90° (Thang máy ở đáy nhìn thẳng lên hành lang & phòng đích)
-    function computeOrthogonalHeadingAngle(startPt) {
-      return startPt.x >= 920 ? 90 : -90;
+    function computeOrthogonalHeadingAngle(startPt, width) {
+      return startPt.x >= width / 2 ? 90 : -90;
     }
 
     // Chuyển đổi tọa độ (x, y) trên bản đồ gốc (1840x1174) sang tọa độ sau khi xoay trong SVG
-    function projectPointToSvgScreen(x, y, rotZ) {
+    function projectPointToSvgScreen(x, y, rotZ, width, height) {
       if (rotZ === -90) {
-        return { sx: y, sy: 1840 - x };
+        return { sx: y, sy: width - x };
       }
       if (rotZ === 90) {
-        return { sx: 1174 - y, sy: x };
+        return { sx: height - y, sy: x };
       }
       return { sx: x, sy: y };
     }
 
     // Tính toán độ phóng đại & dịch tâm trên GPU để lộ trình luôn nằm ngay chính giữa màn hình
-    function computeSmartRouteFrame(pathStr, startPt, endPt, headingUp) {
-      const rotZ = headingUp ? computeOrthogonalHeadingAngle(startPt) : 0;
-      const svgW = rotZ === 0 ? 1840 : 1174;
-      const svgH = rotZ === 0 ? 1174 : 1840;
+    function computeSmartRouteFrame(pathStr, startPt, endPt, headingUp, { width, height }) {
+      const rotZ = headingUp ? computeOrthogonalHeadingAngle(startPt, width) : 0;
+      const svgW = rotZ === 0 ? width : height;
+      const svgH = rotZ === 0 ? height : width;
 
-      const nums = (pathStr.match(/-?\d+(\.\d+)?/g) || []).map(Number);
-      const sStart = projectPointToSvgScreen(startPt.x, startPt.y, rotZ);
-      const sEnd = projectPointToSvgScreen(endPt.x, endPt.y, rotZ);
+      const nums = (pathStr.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi) || []).map(Number);
+      const sStart = projectPointToSvgScreen(startPt.x, startPt.y, rotZ, width, height);
+      const sEnd = projectPointToSvgScreen(endPt.x, endPt.y, rotZ, width, height);
 
       let minSX = Math.min(sStart.sx, sEnd.sx);
       let maxSX = Math.max(sStart.sx, sEnd.sx);
@@ -882,7 +1002,7 @@
       let maxSY = Math.max(sStart.sy, sEnd.sy);
 
       for (let i = 0; i < nums.length - 1; i += 2) {
-        const pt = projectPointToSvgScreen(nums[i], nums[i + 1], rotZ);
+        const pt = projectPointToSvgScreen(nums[i], nums[i + 1], rotZ, width, height);
         if (pt.sx < minSX) minSX = pt.sx;
         if (pt.sx > maxSX) maxSX = pt.sx;
         if (pt.sy < minSY) minSY = pt.sy;
@@ -948,7 +1068,7 @@
       const reopenBtn = document.getElementById('reopenBtn');
       if (canReopen) {
         if (titleEl) titleEl.innerText = 'Đã Đóng Chỉ Dẫn Đường Đi';
-        if (descEl) descEl.innerHTML = 'Bạn đã xác nhận nhớ lộ trình tới <strong>' + dest.name + '</strong>. Nếu lỡ tay bấm đóng, bạn có thể mở lại ngay bên dưới.';
+        if (descEl) descEl.textContent = `Bạn đã xác nhận nhớ lộ trình tới ${dest.name}. Bạn có thể mở lại ngay bên dưới.`;
         if (reopenBtn) reopenBtn.style.display = 'block';
       } else {
         if (titleEl) titleEl.innerText = 'Chỉ Dẫn Đã Hết Hạn';
@@ -987,6 +1107,20 @@
     }
 
     function getActiveLegPoints() {
+      if (published) {
+        const lobby = published.floors.find(floor => floor.id === published.lobbyFloorId);
+        const firstLeg = activeStep === 1 && dest.isDiff;
+        const floor = firstLeg ? lobby : published.floors.find(floor => floor.id === dest.floorId);
+        const start = firstLeg || dest.floorId === lobby.id ? published.lobbyStart : floor.entry;
+        const end = firstLeg ? lobby.entry : dest.coords;
+        const points = firstLeg ? published.lobbyRoute : dest.points;
+        return {
+          floor, start, end,
+          path: dest.enabled && points ? `M ${[start, ...points, end].map(({x, y}) => `${x} ${y}`).join(' L ')}` : '',
+          startLabel: firstLeg || floor.id === lobby.id ? 'ĐIỂM XUẤT PHÁT' : 'RA THANG MÁY',
+          endLabel: firstLeg ? 'THANG MÁY' : dest.name.toUpperCase().slice(0, 16),
+        };
+      }
       if (activeStep === 1) {
         return {
           path: ROUTE_GROUND_TO_ELEVATOR,
@@ -1009,7 +1143,6 @@
     function updateStepView() {
       const btn1 = document.getElementById('btnStep1');
       const btn2 = document.getElementById('btnStep2');
-      const floorImg = document.getElementById('floorImage');
       const floorBadge = document.getElementById('floorBadge');
       const halo = document.getElementById('svgHalo');
       const track = document.getElementById('svgTrack');
@@ -1023,22 +1156,23 @@
       const nextLegBtnText = document.getElementById('nextLegBtnText');
 
       const leg = getActiveLegPoints();
+      const showPlacePin = publishedPlace && leg.floor.id === publishedPlace.floorId;
+      drawFloorLayout({ ...DEFAULT_FLOOR, ...leg.floor });
 
       if (activeStep === 1) {
         btn1.classList.add('active');
         btn2.classList.remove('active');
-        floorImg.setAttribute('href', FLOOR_IMAGES['3']);
-        floorBadge.innerText = 'SẢNH TRỆT';
+        floorBadge.innerText = leg.floor?.level || 'SẢNH TRỆT';
         instNum.innerText = '1';
         instText.innerText = dest.step1 || 'Đi từ sảnh Lobby đến Thang máy A và bấm lên tầng mục tiêu.';
         if (nextLegBtnText) nextLegBtnText.innerText = 'Chặng 2 →';
       } else {
         btn2.classList.add('active');
         btn1.classList.remove('active');
-        floorImg.setAttribute('href', FLOOR_IMAGES[dest.floorId] || `/maps/floor_${dest.floorId}.png`);
         floorBadge.innerText = dest.floorLevel;
         instNum.innerText = dest.isDiff ? '2' : '1';
-        instText.innerText = (dest.isDiff ? dest.step2 : dest.step1) || `Ra khỏi thang máy, đi theo chỉ dẫn tới ${dest.name}.`;
+        instText.innerText = dest.enabled === false ? 'Địa điểm chưa mở chỉ đường.' :
+          (dest.isDiff ? dest.step2 : dest.step1) || `Đi theo chỉ dẫn tới ${dest.name}.`;
         if (nextLegBtnText) nextLegBtnText.innerText = '← Chặng 1';
       }
 
@@ -1050,6 +1184,21 @@
       destPinGroup.setAttribute('transform', `translate(${leg.end.x}, ${leg.end.y})`);
       startLabelText.textContent = leg.startLabel;
       destLabelText.textContent = leg.endLabel;
+      startPinGroup.style.display = dest.enabled === false ? 'none' : '';
+      destPinGroup.style.display = showPlacePin || dest.enabled === false ? 'none' : '';
+      const placePin = document.getElementById('placeMapPin');
+      placePin.style.display = showPlacePin ? '' : 'none';
+      if (showPlacePin) {
+        placePin.setAttribute('aria-label', publishedPlace.name);
+        placePin.setAttribute('transform', `translate(${publishedPlace.coords.x}, ${publishedPlace.coords.y}) scale(${publishedPlace.iconScale ?? 1})`);
+        const iconImage = document.getElementById('placeMapIconImage');
+        const iconText = document.getElementById('placeMapIcon');
+        iconImage.style.display = publishedPlace.iconImage ? '' : 'none';
+        if (publishedPlace.iconImage) iconImage.setAttribute('href', publishedPlace.iconImage);
+        iconText.textContent = publishedPlace.iconImage ? '' : placeIcons[publishedPlace.icon] || placeIcons.pin;
+      } else {
+        document.getElementById('placeDetails').hidden = true;
+      }
 
       recenterRoute();
     }
@@ -1067,8 +1216,7 @@
     }
 
     function toggleHeadingMode() {
-      isHeadingUp = !isHeadingUp;
-      updateControlButtonsUI();
+      headingPreference = !isHeadingUp;
       recenterRoute();
     }
 
@@ -1077,25 +1225,27 @@
       updateControlButtonsUI();
     }
 
-    function syncSvgOrientation(rotZ) {
+    function syncSvgOrientation(rotZ, { width, height }) {
       const svgEl = document.getElementById('mainMapSvg');
       const worldGroup = document.getElementById('svgWorldGroup');
       const startInner = document.getElementById('startLabelInner');
       const destInner = document.getElementById('destLabelInner');
 
       if (rotZ === -90) {
-        svgEl.setAttribute('viewBox', '0 0 1174 1840');
-        worldGroup.setAttribute('transform', 'translate(0, 1840) rotate(-90)');
+        svgEl.setAttribute('viewBox', `0 0 ${height} ${width}`);
+        worldGroup.setAttribute('transform', `translate(0, ${width}) rotate(-90)`);
       } else if (rotZ === 90) {
-        svgEl.setAttribute('viewBox', '0 0 1174 1840');
-        worldGroup.setAttribute('transform', 'translate(1174, 0) rotate(90)');
+        svgEl.setAttribute('viewBox', `0 0 ${height} ${width}`);
+        worldGroup.setAttribute('transform', `translate(${height}, 0) rotate(90)`);
       } else {
-        svgEl.setAttribute('viewBox', '0 0 1840 1174');
+        svgEl.setAttribute('viewBox', `0 0 ${width} ${height}`);
         worldGroup.setAttribute('transform', 'translate(0, 0) rotate(0)');
       }
 
       if (startInner) startInner.setAttribute('transform', `rotate(${-rotZ})`);
       if (destInner) destInner.setAttribute('transform', `rotate(${-rotZ})`);
+      document.getElementById('placeMapIcon').setAttribute('transform', `rotate(${-rotZ})`);
+      document.getElementById('placeMapIconImage').setAttribute('transform', `rotate(${-rotZ})`);
     }
 
     function applyGpuTransform(smooth) {
@@ -1103,17 +1253,20 @@
       if (!gpuLayer) return;
       gpuLayer.classList.toggle('smooth-cam', Boolean(smooth));
       gpuLayer.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${currentZoom})`;
+      refreshFloorLabels();
     }
 
     function recenterRoute() {
       const leg = getActiveLegPoints();
-      const frame = computeSmartRouteFrame(leg.path, leg.start, leg.end, isHeadingUp);
-      if (currentRotZ !== frame.rotZ) {
-        currentRotZ = frame.rotZ;
-        syncSvgOrientation(currentRotZ);
-      } else {
-        syncSvgOrientation(currentRotZ);
-      }
+      const floor = { ...DEFAULT_FLOOR, ...leg.floor };
+      const { clientWidth: width, clientHeight: height } = mapContainer;
+      const flatScale = Math.min(width / floor.width, height / floor.height);
+      const rotatedScale = Math.min(width / floor.height, height / floor.width);
+      isHeadingUp = headingPreference ?? (rotatedScale >= flatScale);
+      updateControlButtonsUI();
+      const frame = computeSmartRouteFrame(leg.path, leg.start, leg.end, isHeadingUp, floor);
+      currentRotZ = frame.rotZ;
+      syncSvgOrientation(currentRotZ, floor);
       currentZoom = frame.zoom;
       panX = frame.panX;
       panY = frame.panY;
@@ -1165,6 +1318,7 @@
           const gpuLayer = document.getElementById('gpuCameraLayer');
           if (gpuLayer) {
             gpuLayer.style.transform = `translate3d(${panX}px, ${panY}px, 0) scale(${currentZoom})`;
+            refreshFloorLabels();
           }
         });
       }
@@ -1190,7 +1344,7 @@
 
     // 1. Touch Events chuyên biệt cho điện thoại (1 ngón pan + 2 ngón pinch-zoom mượt theo tay)
     mapContainer.addEventListener('touchstart', (e) => {
-      if (e.target.closest('button')) return;
+      if (e.target.closest('button, #placeMapPin, #placeDetails')) return;
       disableSmoothTransition();
 
       if (e.touches.length === 1) {
@@ -1258,7 +1412,7 @@
 
     // 2. Hỗ trợ chuột & con lăn trên máy tính (chỉ kích hoạt với chuột để không xung đột cảm ứng)
     mapContainer.addEventListener('pointerdown', (e) => {
-      if (e.pointerType === 'touch' || e.target.closest('button')) return;
+      if (e.pointerType === 'touch' || e.target.closest('button, #placeMapPin, #placeDetails')) return;
       isDragging = true;
       dragStartX = e.clientX;
       dragStartY = e.clientY;
@@ -1303,11 +1457,59 @@
       scheduleFrameUpdate();
     }, { passive: false });
 
-    // Khởi tạo
-    updateControlButtonsUI();
-    render();
-    checkExpiry();
-    setInterval(checkExpiry, 1000);
+    const placePin = document.getElementById('placeMapPin');
+    function openPlaceDetails() {
+      const photo = document.getElementById('placePhoto');
+      photo.hidden = !publishedPlace.photo;
+      if (publishedPlace.photo) {
+        photo.src = publishedPlace.photo;
+        photo.alt = publishedPlace.name;
+      }
+      document.getElementById('placeDetailsName').textContent = publishedPlace.name;
+      document.getElementById('placeDetailsFloor').textContent = published.floors.find(floor => floor.id === dest.floorId).name;
+      document.getElementById('placeDetails').hidden = false;
+    }
+    placePin.addEventListener('click', openPlaceDetails);
+    placePin.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openPlaceDetails();
+      }
+    });
+    document.getElementById('closePlaceDetails').addEventListener('click', () => {
+      document.getElementById('placeDetails').hidden = true;
+    });
+
+    async function initializeMap() {
+      try {
+        const response = await fetch('/api/v1/wayfinding');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const place = data.destinations.find(item => item.id === currentDestKey);
+        const floor = data.floors.find(item => item.id === (place?.floorId || data.lobbyFloorId));
+        published = data;
+        publishedPlace = place;
+        dest = {
+          ...(place || { name: 'Địa điểm không còn trên bản đồ', coords: data.lobbyStart, enabled: false }),
+          floorId: floor.id,
+          floorLevel: floor.level,
+          isDiff: Boolean(place?.enabled && floor.id !== data.lobbyFloorId),
+          step1: place?.step1Text,
+          step2: place?.step2Text,
+        };
+        activeStep = dest.isDiff ? 1 : 2;
+      } catch (error) {
+        console.warn('Không thể tải bản đồ chỉ đường:', error);
+      }
+      updateControlButtonsUI();
+      render();
+      checkExpiry();
+      window.addEventListener('resize', () => {
+        if (mapContainer.clientWidth && mapContainer.clientHeight) recenterRoute();
+      });
+      setInterval(checkExpiry, 1000);
+    }
+    initializeMap();
   </script>
 </body>
 </html>

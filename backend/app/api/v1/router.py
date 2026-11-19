@@ -1,6 +1,6 @@
 import logging
 from fastapi import APIRouter
-from app.api.v1.endpoints import ai, scenarios, rag, operations, auth, logs, workflows, advertisements
+from app.api.v1.endpoints import ai, scenarios, rag, operations, auth, logs, workflows, advertisements, wayfinding
 from app.interceptors import RouteInterceptor
 from app.schemas.response import (
     AUTH_RESPONSES,
@@ -12,6 +12,8 @@ from app.schemas.response import (
 logger = logging.getLogger(__name__)
 
 api_router = APIRouter(route_class=RouteInterceptor)
+
+api_router.include_router(wayfinding.router, prefix="/wayfinding", tags=["Chỉ đường cho khách"])
 
 # Swagger UI API Docs organized by Department with contextual Response Codes
 api_router.include_router(

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl, detectDestinationPoi } from '../../components/robot/FloorMap';
+import { usePublishedWayfinding } from '../../services/wayfindingApi';
+import { findWayfindingPlace } from '../../services/wayfindingGeometry';
 import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck, Wrench, Luggage } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
@@ -151,6 +153,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   });
   const [navigationDestinationKey, setNavigationDestinationKey] = useState('infinity_pool');
+  const publishedWayfinding = usePublishedWayfinding(true, navigationDestinationKey);
+  const getNavigationPlace = (id) => publishedWayfinding
+    ? findWayfindingPlace(publishedWayfinding, id)
+    : Object.hasOwn(HOTEL_DESTINATIONS, id) ? HOTEL_DESTINATIONS[id] : undefined;
+  const navigationPlace = getNavigationPlace(navigationDestinationKey);
   const [preferredQrHostIp, setPreferredQrHostIp] = useState(() => {
     try {
       return typeof localStorage !== 'undefined' ? localStorage.getItem('aurora_qr_network_ip') : null;
@@ -1601,7 +1608,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     const isAnsweringRoomForStatus = isWaitingRoomForStatusQueryRef.current || isRoomPickerOpenRef.current;
     const shouldBlockRouteGuidance = isStatusQueryPrompt || isAnsweringRoomForStatus;
 
-    const fastDestKey = shouldBlockRouteGuidance ? null : detectDestinationPoi(query, activeRoomNumber);
+    const detectedKey = shouldBlockRouteGuidance ? null : detectDestinationPoi(query, activeRoomNumber);
+    const fastPlace = getNavigationPlace(detectedKey);
+    const fastDestKey = fastPlace && fastPlace.enabled !== false ? detectedKey : null;
     if (fastDestKey) {
       setNavigationDestinationKey(fastDestKey);
       setCurrentState('RT-05');
@@ -1960,7 +1969,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         ) {
           navTargetKey = null;
         }
-        const isRouteGuidance = Boolean(navTargetKey);
+        const destObj = getNavigationPlace(navTargetKey);
+        const isRouteGuidance = Boolean(destObj && destObj.enabled !== false);
 
         if (isRouteGuidance) {
           setNavigationDestinationKey(navTargetKey);
@@ -2009,7 +2019,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
         // NẾU LÀ YÊU CẦU CHỈ ĐƯỜNG ĐỊA ĐIỂM HỢP LỆ (RT-05):
         // Điều phối tuần tự đa chặng (Mỗi chặng 10 giây, xong rồi hiện QR) theo đúng yêu cầu nghiệp vụ
-        if (isRouteGuidance && navTargetKey && HOTEL_DESTINATIONS[navTargetKey]) {
+        if (isRouteGuidance) {
           clearRouteGuidanceTimers();
           isProcessingRef.current = false;
           setIsProcessing(false);
@@ -2018,7 +2028,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             processingSafetyTimerRef.current = null;
           }
 
-          const destObj = HOTEL_DESTINATIONS[navTargetKey];
           const isEn = (langCode === 'en-US' || detectedLang === 'English');
           const cleanStep1 = (destObj.step1Text || '').replace(/^Chặng 1:\s*/i, '').trim();
           const cleanStep2 = (destObj.step2Text || '').replace(/^Chặng 2:\s*/i, '').trim();
@@ -2829,6 +2838,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
 
       <MobileRobotScreen
+        publishedWayfinding={publishedWayfinding}
         isKioskCameraActive={isKioskCameraActive}
         onStartKioskCamera={startKioskCamera}
         kioskCameraStream={kioskCameraStream}
@@ -3465,6 +3475,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               {/* Left: 2D Floor Map with Google Maps style indoor wayfinding */}
               <FloorMap
                 destinationKey={navigationDestinationKey}
+                publishedWayfinding={publishedWayfinding}
                 onSelectDestination={(k) => {
                   setNavigationDestinationKey(k);
                   setNavigationStep(1);
@@ -3486,18 +3497,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                       Lộ trình di chuyển
                     </span>
                     <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-zinc-200 text-zinc-700 border border-zinc-300 uppercase">
-                      {HOTEL_DESTINATIONS[navigationDestinationKey]?.floorLevel || 'TẦNG 5'}
+                      {navigationPlace?.floorLevel || 'SẢNH'}
                     </span>
                   </div>
 
                   {/* AI Text Response */}
                   <div className="p-4 bg-white/95 rounded-2xl border border-zinc-200 shadow-sm text-sm font-medium text-zinc-800 leading-relaxed max-h-[140px] overflow-y-auto custom-scrollbar">
-                    {aiResponseText || `Lộ trình dẫn tới ${HOTEL_DESTINATIONS[navigationDestinationKey]?.name || 'điểm đến'}. Quý khách vui lòng theo dõi sơ đồ bên trái.`}
+                    {publishedWayfinding && !navigationPlace?.enabled ? 'Địa điểm chưa mở chỉ đường.' : aiResponseText || `Lộ trình dẫn tới ${navigationPlace?.name || 'điểm đến'}. Quý khách vui lòng theo dõi sơ đồ bên trái.`}
                   </div>
                 </div>
 
                 {/* Step checklist */}
-                <div className="w-full flex flex-col gap-2.5">
+                {navigationPlace && navigationPlace.enabled !== false && <div className="w-full flex flex-col gap-2.5">
                   <div
                     onClick={() => setNavigationStep(1)}
                     className={`p-3.5 rounded-xl border flex items-center gap-3 transition-all duration-300 shadow-sm cursor-pointer ${
@@ -3510,11 +3521,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                       navigationStep === 1 ? 'bg-amber-600 text-white' : 'bg-zinc-800 text-white'
                     }`}>1</div>
                     <span className="text-xs font-semibold">
-                      {HOTEL_DESTINATIONS[navigationDestinationKey]?.step1Text || 'Đi thẳng tới Thang máy A ở sảnh'}
+                      {navigationPlace?.step1Text || 'Đi theo tuyến đã đánh dấu trên sơ đồ.'}
                     </span>
                   </div>
 
-                  {HOTEL_DESTINATIONS[navigationDestinationKey]?.isDifferentFloor ? (
+                  {navigationPlace?.isDifferentFloor ? (
                     <>
                       <div
                         onClick={() => setNavigationStep(2)}
@@ -3528,13 +3539,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                           navigationStep === 2 ? 'bg-amber-600 text-white' : 'bg-zinc-800 text-white'
                         }`}>2</div>
                         <span className="text-xs font-semibold">
-                          {HOTEL_DESTINATIONS[navigationDestinationKey]?.step2Text || `Ra khỏi thang máy, rẽ theo biển báo tới ${HOTEL_DESTINATIONS[navigationDestinationKey]?.name}`}
+                          {navigationPlace.step2Text || `Ra khỏi thang máy, đi theo chỉ dẫn tới ${navigationPlace.name}`}
                         </span>
                       </div>
                       <div className="p-3.5 bg-zinc-100 rounded-xl border border-zinc-300 flex items-center gap-3 shadow-sm">
                         <div className="w-7 h-7 rounded-full bg-zinc-800 text-white flex items-center justify-center font-bold text-xs shrink-0">3</div>
                         <span className="text-xs font-bold text-zinc-900">
-                          Đến nơi: {HOTEL_DESTINATIONS[navigationDestinationKey]?.name} ({HOTEL_DESTINATIONS[navigationDestinationKey]?.floorLevel})
+                          Đến nơi: {navigationPlace.name} ({navigationPlace.floorLevel})
                         </span>
                       </div>
                     </>
@@ -3542,14 +3553,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     <div className="p-3.5 bg-zinc-100 rounded-xl border border-zinc-300 flex items-center gap-3 shadow-sm">
                       <div className="w-7 h-7 rounded-full bg-zinc-800 text-white flex items-center justify-center font-bold text-xs shrink-0">2</div>
                       <span className="text-xs font-bold text-zinc-900">
-                        Đến nơi: {HOTEL_DESTINATIONS[navigationDestinationKey]?.name} (Tầng Trệt)
+                        Đến nơi: {navigationPlace?.name} ({navigationPlace?.floorLevel})
                       </span>
                     </div>
                   )}
-                </div>
+                </div>}
 
                 {/* Mobile QR Handoff Card (Quét QR mang theo bản đồ trên điện thoại) */}
-                <div
+                {navigationPlace && navigationPlace.enabled !== false && <div
                   onClick={() => setIsAutoQrModalOpen(true)}
                   className={`w-full p-3 bg-zinc-850 hover:bg-zinc-800 rounded-2xl border transition-all duration-300 flex items-center gap-3.5 shadow-md cursor-pointer ${isAutoQrModalOpen
                     ? 'border-zinc-400 ring-2 ring-zinc-400/40 shadow-zinc-500/20'
@@ -3579,7 +3590,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                       Quý khách có thể quét mã QR trên màn hình để ghi nhớ 2 chặng chỉ dẫn trên điện thoại nhé ạ.
                     </p>
                   </div>
-                </div>
+                </div>}
 
                 {/* Reset Action */}
                 <div className="w-full flex flex-col gap-2">
@@ -3925,7 +3936,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setCurrentState('RT-05');
           setIsAutoQrModalOpen(false);
           setQrCountdown(null);
-          const destName = HOTEL_DESTINATIONS[destKey]?.name || 'tiện ích';
+          const destName = getNavigationPlace(destKey)?.name || 'tiện ích';
           speak(`Dạ đây là lộ trình tới ${destName}. Quý khách có thể xem bản đồ hoặc quét mã QR trên màn hình nhé ạ.`);
         }}
         onOpenFoodMenu={() => {

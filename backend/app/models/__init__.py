@@ -22,6 +22,8 @@ from app.models.workflow import RobotWaypoint, RobotWorkflow, RobotZone, RobotWo
 from app.models.scenario import DialogueScenario
 from app.models.advertisement import Advertisement
 
+from app.models.wayfinding import WayfindingImage, WayfindingPublication
+
 __all__ = [
     "Base",
     "Department",
@@ -74,4 +76,6 @@ __all__ = [
     "RobotZone",
     "DialogueScenario",
     "Advertisement",
+    "WayfindingImage",
+    "WayfindingPublication",
 ]

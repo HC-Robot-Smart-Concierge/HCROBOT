@@ -21,7 +21,9 @@ from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import OccupancyGrid
 from std_msgs.msg import Empty, String
 from tf2_ros import Buffer, TransformListener
-from workflow_navigation_logic import readiness_reason, goal_cell_allowed, route_segment_end, route_pose_targets, route_window_end
+from workflow_navigation_logic import (
+    ReadinessDebouncer, readiness_reason, goal_cell_allowed, route_segment_end, route_pose_targets, route_window_end,
+)
 
 
 class RunCancelled(Exception):
@@ -35,6 +37,8 @@ class Executor(Node):
         self.events = open(events, 'a', encoding='utf-8')
         self.localization, self.health = {}, {}
         self.loc_at = self.health_at = self.costmap_at = 0
+        # Lỗi encoder/định vị thoáng qua không hủy cả tuyến dài (workflow_navigation_logic).
+        self.readiness = ReadinessDebouncer()
         self.costmap = None
         self.goal = None
         self.goal_future = None
@@ -117,7 +121,11 @@ class Executor(Node):
     def spin_checked(self):
         rclpy.spin_once(self, timeout_sec=0.1)
         self.check_control()
-        reason = self.reason()
+        raw = self.reason()
+        if raw and self.readiness.since is None:
+            self.get_logger().warn(
+                f'Xe tạm chưa sẵn sàng: {raw} (chờ tối đa {self.readiness.grace_sec:.0f} s rồi mới hủy lượt)')
+        reason = self.readiness.update(raw, time.monotonic())
         if reason:
             raise RuntimeError(reason)
 

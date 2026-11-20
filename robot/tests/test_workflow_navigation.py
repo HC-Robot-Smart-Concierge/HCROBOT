@@ -55,3 +55,31 @@ def test_goal_cannot_be_outside_unknown_or_lethal_costmap_cell():
     assert goal_cell_allowed(grid, 1.5, 1.5)
     for x, y in [(1.5, .5), (.5, 1.5), (-.01, .5), (2, .5)]:
         assert not goal_cell_allowed(grid, x, y)
+
+
+def test_transient_readiness_issue_does_not_abort_the_run():
+    from workflow_navigation_logic import ReadinessDebouncer
+    gate = ReadinessDebouncer(grace_sec=2.0)
+    assert gate.update(None, 10.0) is None
+    # one stale encoder sample / brief localization flicker: tolerated, then recovers
+    assert gate.update('Dữ liệu encoder đã cũ.', 10.0) is None
+    assert gate.update('Dữ liệu encoder đã cũ.', 11.5) is None
+    assert gate.update(None, 11.6) is None
+    # the timer restarts after recovery
+    assert gate.update('Robot chưa định vị hoặc đã mất định vị.', 12.0) is None
+    assert gate.update('Robot chưa định vị hoặc đã mất định vị.', 13.9) is None
+
+
+def test_persistent_readiness_issue_aborts_after_grace():
+    from workflow_navigation_logic import ReadinessDebouncer
+    gate = ReadinessDebouncer(grace_sec=2.0)
+    gate.update('Dữ liệu encoder đã cũ.', 10.0)
+    # a different issue in the same unhealthy stretch keeps the clock running
+    assert gate.update('ENCODER_M1_M2_DISAGREEMENT', 11.0) is None
+    assert gate.update('ENCODER_M1_M2_DISAGREEMENT', 12.0) == 'ENCODER_M1_M2_DISAGREEMENT'
+
+
+def test_wrong_map_aborts_immediately():
+    from workflow_navigation_logic import ReadinessDebouncer
+    reason = 'Map đang định vị không khớp map của workflow.'
+    assert ReadinessDebouncer().update(reason, 10.0) == reason

@@ -4,12 +4,18 @@ export function executionConfig(value = {}) {
   return { execution_mode: 'SCREEN', robot_id: 'RC-001', repeat_mode: 'COUNT', repeat_count: 1, interval_seconds: 0, schedules: [], ...value };
 }
 
-export function executionError(workflow, { allowDraft = false } = {}) {
+export function isChargerMove(step) {
+  return step.type === 'MOVE' && step.params?.target_type === 'CHARGER' && step.params?.target_x == null;
+}
+
+export function executionError(workflow, { allowDraft = false, forSave = false } = {}) {
   const config = executionConfig(workflow.execution_config);
   if (!['SCREEN', 'ROBOT'].includes(config.execution_mode)) return 'Chọn chế độ thực thi hợp lệ.';
   if (config.execution_mode === 'ROBOT') {
+    if (!forSave && (config.event_branches || []).some((b) => b.event === 'LOW_BATTERY')) return 'Nhánh pin yếu chưa chạy được trên xe thật (đợt 2). Gỡ nhánh để chạy.';
+    if (!forSave && (workflow.steps || []).some(isChargerMove)) return 'Bước Về trạm sạc gần nhất chưa chạy được trên xe thật (đợt 2). Gỡ bước để chạy.';
     if ((workflow.steps || []).some((s) => !['MOVE', 'FOLLOW_ROUTE', 'WAIT'].includes(s.type))) return 'Xe thật hiện hỗ trợ Di chuyển, Đi theo tuyến và Chờ. Các bước giao tiếp dùng chế độ màn hình.';
-    if ((workflow.steps || []).some((s) => s.type === 'MOVE' && !s.params?.map_id)) return 'Bước MOVE cần gắn map. Hãy dùng bước Đi theo tuyến với tuyến lưu từ Physical Map.';
+    if ((workflow.steps || []).some((s) => s.type === 'MOVE' && !isChargerMove(s) && !s.params?.map_id)) return 'Bước MOVE cần gắn map. Hãy dùng bước Đi theo tuyến với tuyến lưu từ Physical Map.';
   }
   if (!['COUNT', 'CONTINUOUS'].includes(config.repeat_mode)) return 'Chọn chế độ lặp hợp lệ.';
   if (!Number.isInteger(config.repeat_count) || config.repeat_count < 1 || config.repeat_count > 1000) return 'Số vòng phải từ 1 đến 1000.';

@@ -53,7 +53,7 @@ def readiness_reason(localization, loc_at, health, health_at, map_id, now):
     if not loc_at or now - loc_at > 3:
         return 'Không có trạng thái định vị mới.'
     if localization.get('map') != map_id:
-        return 'Map đang định vị không khớp map của workflow.'
+        return WRONG_MAP_REASON
     if localization.get('state') != 'LOCALIZED':
         return localization.get('reason') or 'Robot chưa định vị hoặc đã mất định vị.'
     if not health_at or now - health_at > 3:
@@ -66,6 +66,33 @@ def readiness_reason(localization, loc_at, health, health_at, map_id, now):
     if not isinstance(age, (int, float)) or not math.isfinite(age) or not 0 <= age <= 0.5:
         return 'Dữ liệu encoder đã cũ.'
     return None
+
+
+WRONG_MAP_REASON = 'Map đang định vị không khớp map của workflow.'
+READINESS_GRACE_SEC = 2.0
+
+
+class ReadinessDebouncer:
+    """Không hủy cả lượt chạy vì lỗi thoáng qua (encoder trễ một gói, định vị chập chờn khi quay).
+
+    Chỉ trả lý do khi xe "không sẵn sàng" LIÊN TỤC quá grace_sec (đổi loại lỗi vẫn tính tiếp).
+    Trong lúc chờ: bridge vẫn chặn motor khi encoder lỗi, Pi vẫn chặn theo sonar, local
+    costmap (khung odom) vẫn tránh vật cản. Sai map thì báo ngay, không chờ.
+    """
+
+    def __init__(self, grace_sec=READINESS_GRACE_SEC):
+        self.grace_sec = grace_sec
+        self.since = None
+
+    def update(self, reason, now):
+        if not reason:
+            self.since = None
+            return None
+        if reason == WRONG_MAP_REASON:
+            return reason
+        if self.since is None:
+            self.since = now
+        return reason if now - self.since >= self.grace_sec else None
 
 
 def goal_cell_allowed(grid, x, y):

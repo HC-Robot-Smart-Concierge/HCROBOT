@@ -764,11 +764,9 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
       setMapMode('NAVIGATION');
       rosClientRef.current?.connect();
 
-      // 3. Tải gói map sau khi file thật đã được tạo xong.
-      await triggerMapDownload(trimmedName);
       const listData = await listSavedMaps().catch(() => null);
       if (listData?.maps) setSavedMapsList(listData.maps);
-      setNavNotification(rc("Saved and locked \"{0}\". Navigation is running and the ZIP has been downloaded.", [trimmedName]));
+      setNavNotification(rc("Saved and locked \"{0}\". Navigation is running.", [trimmedName]));
       setIsSaveMapModalOpen(false);
     } catch (err) {
       setNavNotification(rc("Could not save map: {0}", [err.message]));
@@ -1945,12 +1943,12 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
                 <span className="font-bold block text-stone-800 mb-1"> {rc("EXPORT FORMATS:")} </span>
                 • <strong>JSON</strong> {rc(": Instant display in Web Admin.")} <br />
                 • <strong>ROS 2 Nav2 (.yaml & .pgm)</strong> {rc(": Autonomous Navigation, Map Server & AMCL.")} <br />
-                • <strong>PostgreSQL Database</strong> {rc(": Business metadata and waypoint structure.")} <br />
-                • <strong> {rc("Computer Downloads")} </strong> {rc(": Automatically package the")} <code>.zip</code> {rc("file and download it to your computer.")} </div>
+                • <strong>PostgreSQL Database</strong> {rc(": Business metadata and waypoint structure.")}
+              </div>
 
-              <div className="p-2.5 rounded-lg border border-blue-200 bg-blue-50 text-[11px] text-blue-800 flex items-center gap-2">
-                <Download className="w-4 h-4 text-blue-600 shrink-0"/>
-                <span> {rc("Save the live ROS 2 map, lock it, switch to")} <strong> {rc("static-map Navigation")} </strong> {rc("and download the ZIP.")} </span>
+              <div className="p-2.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[11px] text-emerald-800 flex items-center gap-2">
+                <Save className="w-4 h-4 text-emerald-600 shrink-0"/>
+                <span> {rc("Save the live ROS 2 map, lock it, and switch to")} <strong> {rc("static-map Navigation")} </strong>.</span>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t"style={{ borderColor: '#BFBFBD'}}>

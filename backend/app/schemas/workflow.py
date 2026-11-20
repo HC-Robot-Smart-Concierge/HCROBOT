@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any, Literal
-from pydantic import BaseModel, Field, ConfigDict, model_validator, FiniteFloat
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator, FiniteFloat
 from datetime import datetime
 
 
@@ -70,6 +70,13 @@ class WorkflowRoute(BaseModel):
     points: List[WorkflowRoutePoint] = Field(min_length=2, max_length=200)
 
 
+class WorkflowEventBranch(BaseModel):
+    event: Literal["LOW_BATTERY"]
+    threshold_percent: int = Field(default=20, ge=5, le=90, strict=True)
+    next_step_id: str = Field(min_length=1)
+    ui_position: Optional[Dict[str, float]] = None
+
+
 class WorkflowExecutionConfig(BaseModel):
     execution_mode: Literal["SCREEN", "ROBOT"] = "SCREEN"
     robot_id: Literal["RC-001"] = "RC-001"
@@ -78,6 +85,15 @@ class WorkflowExecutionConfig(BaseModel):
     interval_seconds: int = Field(default=0, ge=0, le=86400, strict=True)
     schedules: List[WorkflowScheduleItem] = Field(default_factory=list, max_length=20)
     route: Optional[WorkflowRoute] = None
+    event_branches: List[WorkflowEventBranch] = Field(default_factory=list, max_length=1)
+
+    @field_validator("event_branches", mode="before")
+    @classmethod
+    def drop_legacy_event_branches(cls, value):
+        # Bỏ nhánh sự kiện cũ (VD GUEST_DETECTED); giá trị không phải list để Pydantic báo lỗi.
+        if isinstance(value, list):
+            return [b for b in value if isinstance(b, dict) and b.get("event") == "LOW_BATTERY"]
+        return value
 
     @model_validator(mode="after")
     def unique_schedule_slots(self):

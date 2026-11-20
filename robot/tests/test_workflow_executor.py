@@ -290,3 +290,19 @@ def test_navigation_error_never_advances_or_emits_completed(worker):
     worker.wait.assert_not_called()
     assert 'STEP_COMPLETED' not in [c.args[0] for c in worker.emit.call_args_list]
     assert 'COMPLETED' not in [c.args[0] for c in worker.emit.call_args_list]
+
+
+def test_spin_checked_tolerates_brief_readiness_loss_but_aborts_persistent(worker):
+    from workflow_navigation_logic import ReadinessDebouncer
+    worker.readiness = ReadinessDebouncer(grace_sec=2.0)
+    worker.get_logger = lambda: Mock()
+    spin_checked = type(worker).spin_checked
+    worker.reason = Mock(return_value='Dữ liệu encoder đã cũ.')
+    for _ in range(15):  # 1.5 s of stale encoder: the long route keeps going
+        spin_checked(worker)
+    worker.reason.return_value = None
+    spin_checked(worker)
+    worker.reason.return_value = 'Dữ liệu encoder đã cũ.'
+    with pytest.raises(RuntimeError, match='encoder'):
+        for _ in range(25):
+            spin_checked(worker)

@@ -114,10 +114,20 @@ if [ "$EXPLORE" = "1" ] && [ "$SLAM_READY" = "1" ]; then
     # nen "lidar_live" nam o phan bi cat => truoc day script khong bao gio thay LiDAR san sang
     # va xe khong bao gio tu chay (09/11). Phan tich JSON thay vi grep chuoi.
     HEALTH="$(timeout 4 ros2 topic echo --once --full-length /robot/sensor_health std_msgs/msg/String 2>/dev/null || true)"
+    # Fast DDS in loi ("RTPS_TRANSPORT_SHM Error ... open_and_lock_file failed", co ma mau ANSI)
+    # ra STDOUT, truoc dong "data:" => YAML ca khoi hong, ca 30 lan deu WAIT va xe KHONG BAO GIO
+    # tu chay du Pi/LiDAR/encoder deu OK (19/11). Chi phan tich tu dong "data:" tro di.
     VERDICT="$(printf '%s' "$HEALTH" | python3 -c '
 import json, sys, yaml
+lines = sys.stdin.read().splitlines()
 try:
-    d = json.loads(next(yaml.safe_load_all(sys.stdin.read()))["data"])
+    start = next(i for i, line in enumerate(lines) if line.startswith("data:"))
+    block = []
+    for line in lines[start:]:
+        if line.strip() == "---":
+            break
+        block.append(line)
+    d = json.loads(yaml.safe_load("\n".join(block))["data"])
 except Exception:
     print("WAIT chua nhan /robot/sensor_health tu bridge"); sys.exit()
 reasons = d.get("reasons") or []

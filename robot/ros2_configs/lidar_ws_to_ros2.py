@@ -31,7 +31,8 @@ from diff_drive import (  # noqa: E402
     DiffDriveConfig, StraightDriveConfig, twist_to_straight_command, twist_to_wheel_pwm,
 )
 from nav_result_tracker import NavResultTracker  # noqa: E402
-from encoder_guard import EncoderSampleGuard  # noqa: E402
+from encoder_guard import PARTNER, EncoderSampleGuard, side_tick_deltas  # noqa: E402
+from sonar_escape import pi_sonar_snapshot  # noqa: E402
 from localization_support import LocalizationWarmup, sensor_frame_is_fresh  # noqa: E402
 from speed_zone_logic import limit_wheel_pwm  # noqa: E402
 from robot_geometry import BODY_LENGTH_M, BODY_WIDTH_M, HALF_LENGTH_M, LIDAR_X_M  # noqa: E402
@@ -418,6 +419,10 @@ class LidarWsToRos2Bridge(Node):
             # Xe dung yen >= 2 s du Nav2/lai tay dang ra lenh: vi sao (Pi chan huong nao, cam bien
             # nao bao bao nhieu cm) + goi y. Web (tab Physical Map) hien thanh khung do.
             "drive_block": self._drive_block(now),
+            # Sonar Pi dang dung de chan (null = khong do duoc) + nguong: explorer chon huong thoat ket.
+            "pi_sonar": pi_sonar_snapshot(
+                self.pi_status, (now - self.pi_status_time) if self.pi_status is not None else None
+            ),
         })
         self.sensor_health_pub.publish(msg)
 
@@ -831,8 +836,16 @@ class LidarWsToRos2Bridge(Node):
                 motor_ticks, self.prev_motor_ticks, self.encoder_signs, dt,
                 self.wheel_radius, self.encoder_cpr
             )
-            delta_left_ticks = left_ticks - self.prev_left_ticks
-            delta_right_ticks = right_ticks - self.prev_right_ticks
+            if self.encoder_guard.newly_excluded:
+                bad = self.encoder_guard.newly_excluded
+                self.get_logger().error(
+                    f"🔧 Encoder {bad.upper()} đếm xung khi xe đứng yên (dây lỏng/nhiễu): bỏ kênh này, "
+                    f"dùng {PARTNER[bad].upper()} cùng bên cho odometry. Kiểm tra dây encoder {bad.upper()}."
+                )
+            # Delta theo từng bánh, bánh hỏng thay bằng bánh cùng bên (không nhảy khi vừa loại kênh).
+            delta_left_ticks, delta_right_ticks = side_tick_deltas(
+                motor_ticks, self.prev_motor_ticks, self.encoder_signs, self.encoder_guard.excluded
+            )
             self.prev_left_ticks = left_ticks
             self.prev_right_ticks = right_ticks
             self.prev_motor_ticks = motor_ticks

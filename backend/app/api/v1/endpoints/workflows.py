@@ -39,7 +39,7 @@ async def validate_physical_settings(steps, config, repo):
     from types import SimpleNamespace
     from app.services.workflow_plan import physical_plan
     try:
-        await physical_plan(SimpleNamespace(is_active=True, steps=steps, execution_config=config.model_dump()), repo)
+        await physical_plan(SimpleNamespace(is_active=True, steps=steps, execution_config=config.model_dump()), repo, for_save=True)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

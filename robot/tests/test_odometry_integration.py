@@ -12,7 +12,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'ros2_configs'))
-from encoder_guard import EncoderSampleGuard
+from encoder_guard import PARTNER, EncoderSampleGuard, side_tick_deltas
 
 WHEEL_CIRCUMFERENCE = math.pi * .065
 
@@ -21,7 +21,8 @@ def method(path, class_name, name):
     tree = ast.parse(path.read_text(encoding='utf-8'))
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == class_name)
     fn = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == name)
-    env = {'math': math, 'time': time, 'Dict': dict, 'Any': object}
+    env = {'math': math, 'time': time, 'Dict': dict, 'Any': object,
+           'PARTNER': PARTNER, 'side_tick_deltas': side_tick_deltas}
     exec(compile(ast.Module(body=[fn], type_ignores=[]), str(path), 'exec'), env)
     return env[name]
 

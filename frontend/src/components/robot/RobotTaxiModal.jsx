@@ -67,6 +67,60 @@ export const TAXI_PARTNERS = [
 export const AUTO_CLOSE_SECONDS = 45;
 export const CONFIRMED_AUTO_CLOSE_SECONDS = 5;
 
+export function startAutoCloseTimer({ durationSeconds, onTick, onExpire }) {
+  const safeSeconds = Math.max(1, Number(durationSeconds) || 1);
+  const closeAt = Date.now() + safeSeconds * 1000;
+  let stopped = false;
+  let intervalId = null;
+  let timeoutId = null;
+
+  const cleanup = () => {
+    stopped = true;
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    if (intervalId !== null) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  };
+
+  const expireOnce = () => {
+    if (stopped) return;
+    cleanup();
+    if (typeof onTick === 'function') onTick(0);
+    if (typeof onExpire === 'function') onExpire();
+  };
+
+  if (typeof onTick === 'function') onTick(safeSeconds);
+  timeoutId = setTimeout(expireOnce, safeSeconds * 1000);
+  intervalId = setInterval(() => {
+    const remainingMs = closeAt - Date.now();
+    if (remainingMs <= 0) {
+      expireOnce();
+      return;
+    }
+    if (typeof onTick === 'function') {
+      onTick(Math.ceil(remainingMs / 1000));
+    }
+  }, 500);
+
+  return cleanup;
+}
+
+export function getTaxiSelfBookingAnnouncement(isEn = false) {
+  return isEn
+    ? 'Here is the directory of trusted taxi hotlines in Da Nang. This screen will turn off automatically after 45 seconds or when you say thank you.'
+    : 'Dạ, đây là danh bạ hotline các hãng taxi uy tín tại Đà Nẵng. Màn hình sẽ tự tắt sau 45 giây hoặc khi quý khách nói cảm ơn ạ.';
+}
+
+export function getTaxiSelfBookingNotice(isEn = false) {
+  return isEn
+    ? 'This screen will turn off automatically after 45 seconds or when you say "Thank you".'
+    : 'Màn hình sẽ tự tắt sau 45 giây hoặc khi quý khách nói "Cảm ơn".';
+}
+
 export function isDismissVoiceIntent(transcript) {
   return /cảm ơn|cám ơn|cam on|thank you|thanks|không cần(?: gì| nữa)?|khong can(?: gi| nua)?|không còn(?: gì)?(?: cần)? hỗ trợ|nothing else|no thanks|tắt|tat|đóng|dong|xong rồi|xong roi|được rồi|duoc roi|ok rồi|thôi|thoát|quay lại|close|dismiss/i.test(String(transcript || '').normalize('NFC'));
 }
@@ -210,6 +264,7 @@ export const RobotTaxiModal = ({
   onClose,
   activeRoomNumber = null,
   initialMode = 'self_booking',
+  language = 'Tiếng Việt',
   lastVoiceTranscript = '',
   onSuccess,
   speak,
@@ -229,8 +284,20 @@ export const RobotTaxiModal = ({
   const [confirmedTicket, setConfirmedTicket] = useState(null);
   const [voiceGuidance, setVoiceGuidance] = useState('');
 
-  const countdownTimerRef = useRef(null);
+  const autoCloseCleanupRef = useRef(null);
   const lastProcessedTranscriptRef = useRef('');
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  const stopAutoCloseTimer = () => {
+    if (autoCloseCleanupRef.current) {
+      autoCloseCleanupRef.current();
+      autoCloseCleanupRef.current = null;
+    }
+  };
 
   // Đồng bộ mode khi modal mở lên
   useEffect(() => {
@@ -261,45 +328,34 @@ export const RobotTaxiModal = ({
         setVoiceGuidance('Danh bạ hotline các hãng taxi đối tác uy tín');
       }
     } else {
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
-      }
+      stopAutoCloseTimer();
     }
   }, [isOpen, initialMode]);
 
-  // Bộ đếm lùi 45s cho màn hình khách tự đặt xe và 5s cho màn hình hoàn tất đặt xe
+  // Bộ đếm lùi 45s cho màn hình khách tự đặt xe và 5s cho màn hình hoàn tất đặt xe.
+  // Không đưa onClose vào dependencies để tránh re-render (do volumeLevel/TTS) reset lại bộ đếm về 45s.
   useEffect(() => {
     if (isOpen && (mode === 'self_booking' || mode === 'concierge_confirmed')) {
+      stopAutoCloseTimer();
       const initialSeconds = mode === 'concierge_confirmed' ? CONFIRMED_AUTO_CLOSE_SECONDS : AUTO_CLOSE_SECONDS;
-      setCountdown(initialSeconds);
-      countdownTimerRef.current = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(countdownTimerRef.current);
-            countdownTimerRef.current = null;
-            if (typeof onClose === 'function') {
-              onClose('auto');
-            }
-            return 0;
+      autoCloseCleanupRef.current = startAutoCloseTimer({
+        durationSeconds: initialSeconds,
+        onTick: setCountdown,
+        onExpire: () => {
+          autoCloseCleanupRef.current = null;
+          if (typeof onCloseRef.current === 'function') {
+            onCloseRef.current('auto');
           }
-          return prev - 1;
-        });
-      }, 1000);
+        },
+      });
     } else {
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
-      }
+      stopAutoCloseTimer();
     }
 
     return () => {
-      if (countdownTimerRef.current) {
-        clearInterval(countdownTimerRef.current);
-        countdownTimerRef.current = null;
-      }
+      stopAutoCloseTimer();
     };
-  }, [isOpen, mode, onClose]);
+  }, [isOpen, mode]);
 
   // Xử lý tương tác giọng nói trong các chế độ
   useEffect(() => {
@@ -425,12 +481,14 @@ export const RobotTaxiModal = ({
     ? `Sảnh chính (Khách Phòng ${activeRoomNumber})`
     : 'Sảnh chính & Cổng trước (Main Lobby)';
 
+  const isEn = language === 'English' || language === 'EN';
+
   const handleSelectSelfBooking = () => {
     setMode('self_booking');
-    const msg = 'Dạ, đây là danh bạ hotline các hãng taxi uy tín tại Đà Nẵng ạ.';
+    const msg = getTaxiSelfBookingAnnouncement(isEn);
     setVoiceGuidance(msg);
     if (typeof speak === 'function') {
-      speak(msg, 'vi-VN', () => {
+      speak(msg, isEn ? 'en-US' : 'vi-VN', () => {
         if (typeof onStartTalk === 'function') onStartTalk({ silent: true });
       });
     }
@@ -541,10 +599,7 @@ export const RobotTaxiModal = ({
   };
 
   const handleResetAndClose = () => {
-    if (countdownTimerRef.current) {
-      clearInterval(countdownTimerRef.current);
-      countdownTimerRef.current = null;
-    }
+    stopAutoCloseTimer();
     setConfirmedTicket(null);
     setErrorMsg('');
     setMode('options');
@@ -555,7 +610,7 @@ export const RobotTaxiModal = ({
 
   return (
     <div
-      onClick={handleResetAndClose}
+      onClick={mode === 'self_booking' ? undefined : handleResetAndClose}
       className="fixed inset-0 z-50 flex items-center justify-center p-2 bg-black/85 backdrop-blur-md animate-in fade-in"
     >
       <div
@@ -565,7 +620,7 @@ export const RobotTaxiModal = ({
         {/* Header (gọn 1 dòng) */}
         <div className="flex items-center justify-between gap-2 pb-2 border-b border-stone-800 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
-            {mode !== 'options' && !confirmedTicket && (
+            {mode !== 'options' && mode !== 'self_booking' && !confirmedTicket && (
               <button
                 type="button"
                 onClick={() => {
@@ -594,22 +649,25 @@ export const RobotTaxiModal = ({
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-stone-400 truncate">
-                {mode === 'options' && 'Vui lòng chọn hình thức đặt xe thuận tiện cho quý khách'}
-                {mode === 'self_booking' && 'Danh bạ hotline các hãng taxi đối tác uy tín'}
-                {mode === 'concierge_booking' && (conciergeStage === 'review' ? 'Kiểm tra lại thông tin trước khi gửi Concierge' : 'Giao tiếp giọng nói hoặc chạm để điền thông tin')}
-                {mode === 'concierge_confirmed' && 'Yêu cầu đặt xe đã được chuyển tiếp thành công'}
-              </p>
+              {mode !== 'self_booking' && (
+                <p className="text-[11px] text-stone-400 truncate">
+                  {mode === 'options' && 'Vui lòng chọn hình thức đặt xe thuận tiện cho quý khách'}
+                  {mode === 'concierge_booking' && (conciergeStage === 'review' ? 'Kiểm tra lại thông tin trước khi gửi Concierge' : 'Giao tiếp giọng nói hoặc chạm để điền thông tin')}
+                  {mode === 'concierge_confirmed' && 'Yêu cầu đặt xe đã được chuyển tiếp thành công'}
+                </p>
+              )}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleResetAndClose}
-            className="w-7 h-7 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
-            aria-label="Đóng"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          {mode !== 'self_booking' && (
+            <button
+              type="button"
+              onClick={handleResetAndClose}
+              className="w-7 h-7 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
+              aria-label="Đóng"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
         {/* Content Body */}
@@ -670,17 +728,9 @@ export const RobotTaxiModal = ({
             </div>
           )}
 
-          {/* VIEW 2: HIỂN THỊ SỐ ĐIỆN THOẠI KHÁCH TỰ ĐẶT (ĐẾM LÙI 45S) */}
+          {/* VIEW 2: HIỂN THỊ SỐ ĐIỆN THOẠI KHÁCH TỰ ĐẶT (ĐẾM LÙI NGẦM 45S) */}
           {mode === 'self_booking' && (
             <div className="space-y-2">
-              {/* Countdown banner */}
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-[11px] text-amber-200">
-                <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" />
-                <span>
-                  Màn hình sẽ tự động đóng sau: <strong className="font-mono text-white text-xs">{countdown}s</strong>
-                </span>
-              </div>
-
               {/* Grid danh bạ taxi */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {TAXI_PARTNERS.map((partner) => (
@@ -696,32 +746,13 @@ export const RobotTaxiModal = ({
                     <span className="text-sm font-mono font-bold text-amber-400 tracking-wide whitespace-nowrap">
                       {partner.hotline}
                     </span>
-                    {partner.shortCode ? (
-                      <span className="self-start px-1.5 py-0.5 rounded-full bg-stone-700 text-amber-300 font-mono text-[10px] font-bold">
-                        Tổng đài {partner.shortCode}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-stone-400 truncate">{partner.desc}</span>
-                    )}
                   </a>
                 ))}
               </div>
 
-              <div className="flex items-center justify-between pt-2 border-t border-stone-800">
-                <button
-                  type="button"
-                  onClick={() => setMode('options')}
-                  className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 text-[11px] font-semibold cursor-pointer transition-colors"
-                >
-                  Chọn hình thức khác
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetAndClose}
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 text-[11px] font-bold cursor-pointer transition-colors"
-                >
-                  Đóng màn hình
-                </button>
+              <div className="flex items-center justify-center gap-1.5 pt-1 text-[11px] text-stone-300 text-center">
+                <Info className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>{getTaxiSelfBookingNotice(isEn)}</span>
               </div>
             </div>
           )}

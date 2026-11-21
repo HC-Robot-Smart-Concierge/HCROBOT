@@ -13,6 +13,7 @@ import { RobotMaintenanceMenuScreen } from '../../components/robot/RobotMaintena
 import { RobotBellmanMenuScreen, bellRequestMessage } from '../../components/robot/RobotBellmanMenuScreen';
 import {
   RobotTaxiModal,
+  getTaxiSelfBookingAnnouncement,
   isSelfBookingVoiceIntent,
   isConciergeVoiceIntent,
   isDismissVoiceIntent,
@@ -949,6 +950,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         isProcessingRef.current ||
         isUserTalking ||
         isVideoCallOpen ||
+        isTaxiModalOpen ||
+        isTaxiModalOpenRef.current ||
         isWorkflowRunning ||
         isViewingMap
       );
@@ -1028,6 +1031,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isProcessing,
     transcript,
     isVideoCallOpen,
+    isTaxiModalOpen,
     isWorkflowRunning,
     activeRoomNumber,
     isStandby,
@@ -1107,6 +1111,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       !isProcessingRef.current &&
       !isVideoCallOpen &&
       !isPinModalOpen &&
+      !isTaxiModalOpen &&
       (!transcript || transcript.trim().length === 0)
     ) {
       const noSpeechTimer = setTimeout(() => {
@@ -1117,7 +1122,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       }, 8000);
       return () => clearTimeout(noSpeechTimer);
     }
-  }, [currentState, isListening, isSpeaking, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen, transcript, stopListening]);
+  }, [currentState, isListening, isSpeaking, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen, isTaxiModalOpen, transcript, stopListening]);
 
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = (detection) => {
@@ -1328,8 +1333,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     resetTranscript();
     setAiResponseText('');
     setCurrentState('RT-02');
+    lastInteractionTimeRef.current = Date.now();
 
-    const isEn = language === 'English';
+    const isEn = languageRef.current === 'English' || language === 'English';
     if (justBooked && closeReason === 'voice_dismiss') {
       handleOpenFeedback({ speakPrompt: true });
       return;
@@ -1346,12 +1352,21 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       return;
     }
 
+    if (closeReason === 'auto') {
+      stopListening();
+      const followMsg = isEn
+        ? 'Do you need any further assistance?'
+        : 'Quý khách có cần hỗ trợ gì không ạ?';
+      triggerFollowUpPrompt(followMsg, isEn);
+      return;
+    }
+
     setTimeout(() => {
       if (!isPinModalOpenRef.current && !isVideoCallOpenRef.current && !isTaxiModalOpenRef.current) {
         handleStartTalkRef.current?.({ silent: true });
       }
     }, 150);
-  }, [setTaxiFlowStage, stopSpeaking, resetTranscript, language, handleOpenFeedback, triggerFollowUpPrompt]);
+  }, [setTaxiFlowStage, stopSpeaking, stopListening, resetTranscript, language, handleOpenFeedback, triggerFollowUpPrompt]);
 
   // Tự động bật mic khi mở màn hình robot (khi vừa vào)
   useEffect(() => {
@@ -1366,6 +1381,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Xử lý các lựa chọn đặt xe (Lựa chọn 1: Hotline tự gọi, Lựa chọn 2: Nhờ Concierge đặt giùm)
   const handleSelectTaxiSelfBooking = useCallback(() => {
+    taxiCompletedRef.current = false;
     setTaxiFlowStage(null);
     setTaxiVoiceInput('');
     stopListening();
@@ -1375,14 +1391,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isTaxiModalOpenRef.current = true;
     setIsFoodMenuOpen(false);
     setIsRoomServiceMenuOpen(false);
-    const msg = 'Dạ, đây là danh bạ hotline các hãng taxi uy tín tại Đà Nẵng ạ.';
+    const isEn = languageRef.current === 'English' || language === 'English';
+    const msg = getTaxiSelfBookingAnnouncement(isEn);
     setAiResponseText('');
-    speak(msg, 'vi-VN', () => {
+    speak(msg, isEn ? 'en-US' : 'vi-VN', () => {
       setTimeout(() => handleStartTalkRef.current?.({ silent: true }), 120);
     });
-  }, [speak, setTaxiFlowStage, stopListening, resetTranscript]);
+  }, [speak, setTaxiFlowStage, stopListening, resetTranscript, language]);
 
   const handleSelectTaxiConciergeBooking = useCallback(() => {
+    taxiCompletedRef.current = false;
     setTaxiFlowStage(null);
     setTaxiVoiceInput('');
     stopListening();
@@ -1547,7 +1565,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     if (isTaxiModalOpen || isTaxiModalOpenRef.current) {
       resetTranscript();
       if (isDismissVoiceIntent(query)) {
-        handleCloseTaxiModal();
+        handleCloseTaxiModal('voice_dismiss');
         isProcessingRef.current = false;
         setIsProcessing(false);
         return;
@@ -4241,6 +4259,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         isOpen={isTaxiModalOpen}
         onClose={handleCloseTaxiModal}
         initialMode={taxiModalInitialMode}
+        language={language}
         activeRoomNumber={authenticatedRoom || activeRoomNumber}
         lastVoiceTranscript={taxiVoiceInput || transcript}
         speak={speak}

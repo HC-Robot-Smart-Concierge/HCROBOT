@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, Dict, Optional, Tuple
 
 try:
@@ -46,6 +47,9 @@ class TTSService:
         self._memory_cache: Dict[str, str] = {}
         self._inflight_tasks: Dict[str, asyncio.Task] = {}
         self._inflight_waiters: Dict[str, int] = {}
+        self._edge_consecutive_failures: int = 0
+        self._edge_cooldown_until: float = 0.0
+        self._edge_cooldown_seconds: float = 45.0
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
         self._cache_dir = os.path.join(current_dir, "..", "..", "..", "static", "audio_cache")
@@ -339,49 +343,66 @@ class TTSService:
                     last_error_detail = f"{label} error: {e}"
                     logger.warning(f"[TTSService] {label} synthesis failed: {e}. Fallback to EdgeTTS.")
 
-        waiters = getattr(self, "_inflight_waiters", None)
-        if waiters is None:
-            waiters = {}
-            self._inflight_waiters = waiters
-        attempt_timeout = min(2.8, max(0.02, float(timeout) * 0.65))
-        inflight = None
-        counted = False
-        try:
-            inflight = self._inflight_tasks.get(cache_key)
-            if inflight is None or inflight.done():
-                inflight = asyncio.create_task(
-                    self._synthesize_and_cache_edge_tts_detailed(
-                        clean_text, target_voice, target_rate, cache_key, attempt_timeout=attempt_timeout
+        edge_cooldown_until = getattr(self, "_edge_cooldown_until", 0.0)
+        if allow_fallback and time.monotonic() < edge_cooldown_until:
+            last_error_code = "TTS_EDGE_COOLDOWN"
+            last_error_detail = "EdgeTTS temporarily skipped during cooldown after consecutive failures"
+        else:
+            waiters = getattr(self, "_inflight_waiters", None)
+            if waiters is None:
+                waiters = {}
+                self._inflight_waiters = waiters
+            attempt_timeout = min(2.2, max(0.02, float(timeout) * 0.45))
+            inflight = None
+            counted = False
+            try:
+                inflight = self._inflight_tasks.get(cache_key)
+                if inflight is None or inflight.done():
+                    inflight = asyncio.create_task(
+                        self._synthesize_and_cache_edge_tts_detailed(
+                            clean_text, target_voice, target_rate, cache_key, attempt_timeout=attempt_timeout
+                        )
                     )
-                )
-                self._inflight_tasks[cache_key] = inflight
+                    self._inflight_tasks[cache_key] = inflight
 
-            waiters[cache_key] = waiters.get(cache_key, 0) + 1
-            counted = True
-            edge_b64, edge_err_code, edge_err_detail = await asyncio.wait_for(asyncio.shield(inflight), timeout=timeout)
-            if edge_b64:
-                return self._ok_result(edge_b64, "edge", audio_url=audio_static_url)
-            last_error_code = edge_err_code or "TTS_AUDIO_EMPTY"
-            last_error_detail = edge_err_detail or f"EdgeTTS returned no audio for voice={target_voice}"
-        except asyncio.TimeoutError:
-            last_error_code = "TTS_TIMEOUT"
-            last_error_detail = f"EdgeTTS timed out after {timeout:.2f}s (voice={target_voice})"
-            logger.warning(f"[TTSService] {last_error_code}: {last_error_detail} len={len(clean_text)}")
-        except Exception as e:
-            last_error_code = "TTS_PROVIDER_ERROR"
-            last_error_detail = f"EdgeTTS exception: {type(e).__name__}: {e}"
-            logger.warning(f"[TTSService] {last_error_code}: {last_error_detail}")
-        finally:
-            if counted:
-                remaining_waiters = max(0, waiters.get(cache_key, 1) - 1)
-                if remaining_waiters == 0:
-                    waiters.pop(cache_key, None)
-                    if inflight is not None and not inflight.done():
-                        inflight.cancel()
-                        if self._inflight_tasks.get(cache_key) is inflight:
-                            self._inflight_tasks.pop(cache_key, None)
-                else:
-                    waiters[cache_key] = remaining_waiters
+                waiters[cache_key] = waiters.get(cache_key, 0) + 1
+                counted = True
+                edge_b64, edge_err_code, edge_err_detail = await asyncio.wait_for(asyncio.shield(inflight), timeout=timeout)
+                if edge_b64:
+                    self._edge_consecutive_failures = 0
+                    self._edge_cooldown_until = 0.0
+                    return self._ok_result(edge_b64, "edge", audio_url=audio_static_url)
+                last_error_code = edge_err_code or "TTS_AUDIO_EMPTY"
+                last_error_detail = edge_err_detail or f"EdgeTTS returned no audio for voice={target_voice}"
+            except asyncio.TimeoutError:
+                last_error_code = "TTS_TIMEOUT"
+                last_error_detail = f"EdgeTTS timed out after {timeout:.2f}s (voice={target_voice})"
+                logger.warning(f"[TTSService] {last_error_code}: {last_error_detail} len={len(clean_text)}")
+            except Exception as e:
+                last_error_code = "TTS_PROVIDER_ERROR"
+                last_error_detail = f"EdgeTTS exception: {type(e).__name__}: {e}"
+                logger.warning(f"[TTSService] {last_error_code}: {last_error_detail}")
+            finally:
+                if counted:
+                    remaining_waiters = max(0, waiters.get(cache_key, 1) - 1)
+                    if remaining_waiters == 0:
+                        waiters.pop(cache_key, None)
+                        if inflight is not None and not inflight.done():
+                            inflight.cancel()
+                            if self._inflight_tasks.get(cache_key) is inflight:
+                                self._inflight_tasks.pop(cache_key, None)
+                    else:
+                        waiters[cache_key] = remaining_waiters
+
+            if allow_fallback:
+                failures = getattr(self, "_edge_consecutive_failures", 0) + 1
+                self._edge_consecutive_failures = failures
+                if failures >= 2:
+                    cooldown_s = getattr(self, "_edge_cooldown_seconds", 45.0)
+                    self._edge_cooldown_until = time.monotonic() + cooldown_s
+                    logger.warning(
+                        f"[TTSService] EdgeTTS failed {failures}x in a row; failing over to Google TTS for {cooldown_s:.0f}s."
+                    )
 
         if allow_fallback:
             try:

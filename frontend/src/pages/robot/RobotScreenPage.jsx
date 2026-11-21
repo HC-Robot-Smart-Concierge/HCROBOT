@@ -573,8 +573,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         unhappyTimerRef.current = setTimeout(() => {
           unhappyTimerRef.current = null;
 
-          // Kiểm tra lại trạng thái sau 2 giây: không gọi video, không đang nói
-          if (!isVideoCallOpenRef.current && !isSpeakingRef.current) {
+          // Kiểm tra lại trạng thái sau 2 giây: không gọi video, không đang nói hoặc chờ phát âm thanh
+          if (!isVideoCallOpenRef.current && !isSpeakingRef.current && !isSpeechActiveRef.current) {
             lastUnhappyAlertTimeRef.current = Date.now();
             setIsUnhappyAssistanceOpen(true);
             const prompt =
@@ -1147,6 +1147,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     const isBusy =
       isSpeaking ||
       isSpeakingRef.current ||
+      isSpeechPending ||
+      isSpeechActive ||
+      isSpeechActiveRef.current ||
       isProcessing ||
       isProcessingRef.current ||
       isListening ||
@@ -1161,6 +1164,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         setTimeout(() => {
           if (
             !isSpeakingRef.current &&
+            !isSpeechActiveRef.current &&
             !isProcessingRef.current &&
             !isListeningRef.current &&
             !isVideoCallOpenRef.current &&

@@ -131,7 +131,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
 
             try:
                 audio_b64, mime_type, _ = await asyncio.wait_for(
-                    tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=3.2),
+                    tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=2.0),
                     timeout=3.8
                 )
             except Exception:

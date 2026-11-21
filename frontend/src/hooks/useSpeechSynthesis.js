@@ -4,6 +4,17 @@ import { synthesizeSpeech } from '../services/aiApi';
 // Bộ đệm client-side LRU cho các câu nói tức thì (Fast-Path) - 0ms delay, bảo đảm 100% đúng giọng EdgeTTS
 const clientAudioCache = new Map();
 
+export async function resumeAudioContextBounded(ctx, timeoutMs = 250) {
+  if (!ctx) return false;
+  if (ctx.state === 'suspended') {
+    await Promise.race([
+      Promise.resolve(ctx.resume()).catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, timeoutMs)),
+    ]);
+  }
+  return ctx.state === 'running';
+}
+
 export const useSpeechSynthesis = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isSpeechPending, setIsSpeechPending] = useState(false);
@@ -16,6 +27,7 @@ export const useSpeechSynthesis = () => {
   const activeUtteranceRef = useRef(null);
   const safetyTimerRef = useRef(null);
   const browserNoStartTimerRef = useRef(null);
+  const audioStartTimerRef = useRef(null);
   const browserKeepAliveRef = useRef(null);
   const isSpeechActiveRef = useRef(false);
 
@@ -89,10 +101,8 @@ export const useSpeechSynthesis = () => {
     try {
       if (!base64Data || base64Data.length < 50) return false;
       const ctx = getAudioContext();
-      if (!ctx) return false;
-      if (ctx.state === 'suspended') {
-        await ctx.resume();
-      }
+      const ready = await resumeAudioContextBounded(ctx, 250);
+      if (!ready) return false;
       const byteCharacters = atob(base64Data);
       const byteNumbers = new Uint8Array(byteCharacters.length);
       for (let i = 0; i < byteCharacters.length; i++) {
@@ -104,7 +114,8 @@ export const useSpeechSynthesis = () => {
       stopCurrentAudio();
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
-      source.playbackRate.value = Math.max(0.5, Math.min(2.0, rate || 1.0));
+      const safeRate = Math.max(0.5, Math.min(2.0, rate || 1.0));
+      source.playbackRate.value = safeRate;
 
       // Khuếch đại âm lượng GainNode (+35%) đồng bộ độ vang và cường độ âm thanh với giọng API
       const gainNode = ctx.createGain();
@@ -117,7 +128,15 @@ export const useSpeechSynthesis = () => {
         try { window.speechSynthesis.cancel(); } catch (e) {}
       }
 
-      source.onended = () => {
+      let finished = false;
+      let bufferEndGuard = null;
+      const completeBufferPlayback = () => {
+        if (finished) return;
+        finished = true;
+        if (bufferEndGuard) {
+          clearTimeout(bufferEndGuard);
+          bufferEndGuard = null;
+        }
         activeSourceNodeRef.current = null;
         if (!speechId || speechId === activeSpeechIdRef.current) {
           isSpeechActiveRef.current = false;
@@ -126,6 +145,11 @@ export const useSpeechSynthesis = () => {
           if (onEndCallback) onEndCallback();
         }
       };
+
+      const expectedMs = Math.max(2000, ((audioBuffer.duration || 2) / safeRate) * 1000 + 2500);
+      bufferEndGuard = setTimeout(completeBufferPlayback, expectedMs);
+
+      source.onended = completeBufferPlayback;
 
       setIsSpeechPending(false);
       setIsSpeaking(true);
@@ -316,6 +340,135 @@ export const useSpeechSynthesis = () => {
   const onQueueStartCallbackRef = useRef(null);
   const streamLangRef = useRef('vi-VN');
 
+  const playMp3Base64WithFallback = async ({
+    audioB64,
+    speechId,
+    effectiveRate,
+    onStartCallback,
+    onEndCallback,
+    onRecoverWebSpeech,
+  }) => {
+    if (speechId !== activeSpeechIdRef.current) return;
+    stopCurrentAudio();
+
+    if (audioStartTimerRef.current) {
+      clearTimeout(audioStartTimerRef.current);
+      audioStartTimerRef.current = null;
+    }
+
+    let audioSrc = '';
+    let objectUrlToRevoke = null;
+    try {
+      const byteCharacters = atob(audioB64);
+      const byteNumbers = new Uint8Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const blob = new Blob([byteNumbers], { type: 'audio/mpeg' });
+      audioSrc = URL.createObjectURL(blob);
+      objectUrlToRevoke = audioSrc;
+    } catch {
+      audioSrc = `data:audio/mpeg;base64,${audioB64}`;
+    }
+
+    const audio = getAudioPlayer();
+    audio._blobUrl = objectUrlToRevoke;
+    audio.src = audioSrc;
+    audio.playbackRate = effectiveRate;
+    audio.volume = 1.0;
+    audioRef.current = audio;
+    if (typeof window !== 'undefined') {
+      window._activeAudioPlayer = audio;
+    }
+
+    let hasPlayed = false;
+    let recovered = false;
+    const clearStartTimer = () => {
+      if (audioStartTimerRef.current) {
+        clearTimeout(audioStartTimerRef.current);
+        audioStartTimerRef.current = null;
+      }
+    };
+
+    const runFallback = async () => {
+      if (hasPlayed || recovered || speechId !== activeSpeechIdRef.current) return;
+      recovered = true;
+      clearStartTimer();
+      stopCurrentAudio();
+      const played = await playAudioBufferViaWebAudio(audioB64, effectiveRate, onStartCallback, onEndCallback, speechId);
+      if (played) {
+        hasPlayed = true;
+        return;
+      }
+      if (speechId === activeSpeechIdRef.current && onRecoverWebSpeech) {
+        onRecoverWebSpeech();
+      }
+    };
+
+    audio.onplay = () => {
+      if (speechId !== activeSpeechIdRef.current) {
+        clearStartTimer();
+        stopCurrentAudio();
+        return;
+      }
+      clearStartTimer();
+      hasPlayed = true;
+      recovered = true;
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+      }
+      setIsSpeechPending(false);
+      setIsSpeaking(true);
+      if (onStartCallback) onStartCallback();
+    };
+
+    audio.onended = () => {
+      clearStartTimer();
+      if (typeof window !== 'undefined') {
+        window._activeAudioPlayer = null;
+      }
+      if (speechId === activeSpeechIdRef.current) {
+        isSpeechActiveRef.current = false;
+        setIsSpeechPending(false);
+        setIsSpeaking(false);
+        audioRef.current = null;
+        if (onEndCallback) onEndCallback();
+      }
+    };
+
+    audio.onerror = async () => {
+      clearStartTimer();
+      if (typeof window !== 'undefined') {
+        window._activeAudioPlayer = null;
+      }
+      if (speechId === activeSpeechIdRef.current) {
+        audioRef.current = null;
+        if (!hasPlayed && !recovered) {
+          await runFallback();
+        } else {
+          isSpeechActiveRef.current = false;
+          setIsSpeechPending(false);
+          setIsSpeaking(false);
+          if (onEndCallback) onEndCallback();
+        }
+      }
+    };
+
+    // Guard against browsers resolving play() silently without emitting onplay or starting audio.
+    audioStartTimerRef.current = setTimeout(() => {
+      if (!hasPlayed && !recovered && speechId === activeSpeechIdRef.current) {
+        runFallback();
+      }
+    }, 1200);
+
+    try {
+      await audio.play();
+    } catch (playErr) {
+      console.warn('[TTS Audio Play Error]:', playErr);
+      await runFallback();
+    }
+  };
+
   const speakWebSpeech = (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, shouldCancel = true, rate = null, targetSpeechId = null, targetSignal = null, options = {}) => {
     const speechId = targetSpeechId ?? ++activeSpeechIdRef.current;
     const signal = targetSignal ?? abortControllerRef.current?.signal;
@@ -327,6 +480,10 @@ export const useSpeechSynthesis = () => {
     if (browserNoStartTimerRef.current) {
       clearTimeout(browserNoStartTimerRef.current);
       browserNoStartTimerRef.current = null;
+    }
+    if (audioStartTimerRef.current) {
+      clearTimeout(audioStartTimerRef.current);
+      audioStartTimerRef.current = null;
     }
     if (browserKeepAliveRef.current) {
       clearInterval(browserKeepAliveRef.current);
@@ -426,113 +583,21 @@ export const useSpeechSynthesis = () => {
       const edgeLang = langTag.startsWith('vi') ? 'vi-VN' : 'en-US';
       const cacheKey = `${edgeLang}:${edgeVoice}:${cleanText}`;
 
-      const playAudioBase64 = async (audioB64) => {
-        if (speechId !== activeSpeechIdRef.current) return;
-        stopCurrentAudio();
-
-        let audioSrc = '';
-        let objectUrlToRevoke = null;
-        try {
-          const byteCharacters = atob(audioB64);
-          const byteNumbers = new Uint8Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const blob = new Blob([byteNumbers], { type: 'audio/mpeg' });
-          audioSrc = URL.createObjectURL(blob);
-          objectUrlToRevoke = audioSrc;
-        } catch {
-          audioSrc = `data:audio/mpeg;base64,${audioB64}`;
-        }
-
-        const audio = getAudioPlayer();
-        audio._blobUrl = objectUrlToRevoke;
-        audio.src = audioSrc;
-        audio.playbackRate = effectiveRate;
-        audio.volume = 1.0;
-        audioRef.current = audio;
-        if (typeof window !== 'undefined') {
-          window._activeAudioPlayer = audio;
-        }
-
-        let hasPlayed = false;
-        let recovered = false;
-        const recoverWebSpeech = () => {
-          if (recovered || hasPlayed) return;
-          recovered = true;
-          if (speechId === activeSpeechIdRef.current) {
-            _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate, speechId);
-          }
-        };
-
-        audio.onplay = () => {
-          if (speechId !== activeSpeechIdRef.current) {
-            stopCurrentAudio();
-            return;
-          }
-          hasPlayed = true;
-          recovered = true;
-          setIsSpeechPending(false);
-          setIsSpeaking(true);
-          if (onStartCallback) onStartCallback();
-        };
-
-        audio.onended = () => {
-          if (typeof window !== 'undefined') {
-            window._activeAudioPlayer = null;
-          }
-          if (speechId === activeSpeechIdRef.current) {
-            isSpeechActiveRef.current = false;
-            setIsSpeechPending(false);
-            setIsSpeaking(false);
-            audioRef.current = null;
-            if (onEndCallback) onEndCallback();
-          }
-        };
-
-        audio.onerror = async () => {
-          if (typeof window !== 'undefined') {
-            window._activeAudioPlayer = null;
-          }
-          if (speechId === activeSpeechIdRef.current) {
-            audioRef.current = null;
-            if (!hasPlayed && !recovered) {
-              const played = await playAudioBufferViaWebAudio(audioB64, effectiveRate, onStartCallback, onEndCallback, speechId);
-              if (played) {
-                hasPlayed = true;
-                recovered = true;
-                return;
-              }
-              stopCurrentAudio();
-              recoverWebSpeech();
-            } else {
-              isSpeechActiveRef.current = false;
-              setIsSpeechPending(false);
-              setIsSpeaking(false);
-              if (onEndCallback) onEndCallback();
-            }
-          }
-        };
-
-        try {
-          await audio.play();
-        } catch (playErr) {
-          console.warn('[TTS Audio Play Error]:', playErr);
-          if (!hasPlayed && !recovered) {
-            const played = await playAudioBufferViaWebAudio(audioB64, effectiveRate, onStartCallback, onEndCallback, speechId);
-            if (played) {
-              hasPlayed = true;
-              recovered = true;
-              return;
-            }
-            stopCurrentAudio();
-            recoverWebSpeech();
-          }
+      const recoverWithBrowserUtterance = () => {
+        if (speechId === activeSpeechIdRef.current) {
+          _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate, speechId);
         }
       };
 
       if (clientAudioCache.has(cacheKey)) {
-        playAudioBase64(clientAudioCache.get(cacheKey));
+        playMp3Base64WithFallback({
+          audioB64: clientAudioCache.get(cacheKey),
+          speechId,
+          effectiveRate,
+          onStartCallback,
+          onEndCallback,
+          onRecoverWebSpeech: recoverWithBrowserUtterance,
+        });
         return;
       }
 
@@ -545,19 +610,22 @@ export const useSpeechSynthesis = () => {
 
           if (data?.audio_base64 && data.audio_base64.length > 50) {
             clientAudioCache.set(cacheKey, data.audio_base64);
-            playAudioBase64(data.audio_base64);
+            playMp3Base64WithFallback({
+              audioB64: data.audio_base64,
+              speechId,
+              effectiveRate,
+              onStartCallback,
+              onEndCallback,
+              onRecoverWebSpeech: recoverWithBrowserUtterance,
+            });
             return;
           }
 
           // Fallback if backend returned empty
-          if (speechId === activeSpeechIdRef.current) {
-            _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate, speechId);
-          }
+          recoverWithBrowserUtterance();
         })
         .catch(() => {
-          if (speechId === activeSpeechIdRef.current) {
-            _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate, speechId);
-          }
+          recoverWithBrowserUtterance();
         });
       return;
     }
@@ -586,7 +654,10 @@ export const useSpeechSynthesis = () => {
         window.speechSynthesis.resume();
       }
 
-      if (shouldCancel) {
+      const wasSynthesizing = Boolean(
+        shouldCancel && (window.speechSynthesis.speaking || window.speechSynthesis.pending)
+      );
+      if (wasSynthesizing) {
         window.speechSynthesis.cancel();
       }
 
@@ -712,21 +783,34 @@ export const useSpeechSynthesis = () => {
         }
       }, maxMs);
 
-      // Chỉ auto-release nếu browser thực sự thiếu voice và utterance KHÔNG hề cất tiếng sau 1.4s.
-      // Tuyệt đối không cắt ngang ở 5.5s khi utterance đã bắt đầu phát tiếng (hasStarted === true).
-      if (!selectedVoice && langTag.startsWith('vi')) {
-        if (browserNoStartTimerRef.current) {
-          clearTimeout(browserNoStartTimerRef.current);
-        }
-        browserNoStartTimerRef.current = setTimeout(() => {
-          if (!hasStarted && !hasFinished && (!speechId || speechId === activeSpeechIdRef.current)) {
-            if (onStartCallback) onStartCallback();
-            finishOnce();
-          }
-        }, 1400);
+      // Arm the no-start watchdog regardless of whether a system voice matched, so a stalled
+      // browser SpeechSynthesis engine never leaves subtitles frozen with no speech.
+      if (browserNoStartTimerRef.current) {
+        clearTimeout(browserNoStartTimerRef.current);
       }
+      browserNoStartTimerRef.current = setTimeout(() => {
+        if (!hasStarted && !hasFinished && (!speechId || speechId === activeSpeechIdRef.current)) {
+          if (onStartCallback) onStartCallback();
+          finishOnce();
+        }
+      }, 1800);
 
-      window.speechSynthesis.speak(utterance);
+      const dispatchSpeak = () => {
+        if (hasFinished || (speechId && speechId !== activeSpeechIdRef.current)) return;
+        try {
+          window.speechSynthesis.speak(utterance);
+        } catch (speakErr) {
+          console.warn("SpeechSynthesis speak error:", speakErr);
+          finishOnce();
+        }
+      };
+
+      // Defer slightly after cancel() to avoid Chromium silently dropping the new utterance.
+      if (wasSynthesizing) {
+        setTimeout(dispatchSpeak, 40);
+      } else {
+        dispatchSpeak();
+      }
     } catch (err) {
       console.warn("TTS Error:", err);
       isSpeechActiveRef.current = false;
@@ -931,127 +1015,22 @@ export const useSpeechSynthesis = () => {
     const effectiveRate = Math.max(0.5, Math.min(2.0, actualRate ?? speechRate ?? 1.0));
     const skipRemoteTts = Boolean(actualOptions?.skipRemoteTts);
 
-    let recoveryHandled = false;
-    let hasStartedPlaying = false;
-
-    const triggerSingleRecovery = () => {
-      if (recoveryHandled || hasStartedPlaying) return;
-      recoveryHandled = true;
-      if (currentSpeechId !== activeSpeechIdRef.current) return;
-      stopCurrentAudio();
-      _speakWithBrowserUtterance(text, actualLang, null, actualOnEnd, actualOnStart, true, effectiveRate, currentSpeechId);
-    };
-
     // 0. ƯU TIÊN PHÁT NGAY LẬP TỨC AUDIO PRELOADED TỪ /chat (0ms Network delay)
     if (preloadedAudioBase64 && preloadedAudioBase64.length > 100) {
-      try {
-        const cleanKeyText = (text || '').replace(/[*#_`\[\]()]/g, '').trim();
-        const activeEdgeVoice = actualLang.startsWith('vi') ? (viVoiceRef.current || 'vi-VN-HoaiMyNeural') : (enVoiceRef.current || 'en-US-JennyNeural');
-        clientAudioCache.set(`${actualLang}:${activeEdgeVoice}:${cleanKeyText}`, preloadedAudioBase64);
-        if (currentSpeechId !== activeSpeechIdRef.current) return;
-        stopCurrentAudio();
-
-        let audioSrc = '';
-        let objectUrlToRevoke = null;
-        try {
-          const byteCharacters = atob(preloadedAudioBase64);
-          const byteNumbers = new Uint8Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const blob = new Blob([byteNumbers], { type: 'audio/mpeg' });
-          audioSrc = URL.createObjectURL(blob);
-          objectUrlToRevoke = audioSrc;
-        } catch {
-          audioSrc = `data:audio/mpeg;base64,${preloadedAudioBase64}`;
-        }
-
-        const audio = getAudioPlayer();
-        audio._blobUrl = objectUrlToRevoke;
-        audio.src = audioSrc;
-        audio.playbackRate = effectiveRate;
-        audio.volume = 1.0;
-        audioRef.current = audio;
-        if (typeof window !== 'undefined') {
-          window._activeAudioPlayer = audio;
-        }
-
-        audio.onplay = () => {
-          if (currentSpeechId !== activeSpeechIdRef.current) {
-            stopCurrentAudio();
-            return;
-          }
-          hasStartedPlaying = true;
-          recoveryHandled = true;
-          // Tuyệt đối hủy Web Speech để tránh 2 giọng nói bị lồng vào nhau
-          if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-            try { window.speechSynthesis.cancel(); } catch (e) {}
-          }
-          setIsSpeechPending(false);
-          setIsSpeaking(true);
-          if (actualOnStart) actualOnStart();
-        };
-
-        audio.onended = () => {
-          if (typeof window !== 'undefined') {
-            window._activeAudioPlayer = null;
-          }
-          if (currentSpeechId === activeSpeechIdRef.current) {
-            isSpeechActiveRef.current = false;
-            setIsSpeechPending(false);
-            setIsSpeaking(false);
-            audioRef.current = null;
-            if (actualOnEnd) actualOnEnd();
-          }
-        };
-
-        audio.onerror = async () => {
-          if (typeof window !== 'undefined') {
-            window._activeAudioPlayer = null;
-          }
-          if (currentSpeechId === activeSpeechIdRef.current) {
-            audioRef.current = null;
-            if (!hasStartedPlaying && !recoveryHandled) {
-              const played = await playAudioBufferViaWebAudio(preloadedAudioBase64, effectiveRate, actualOnStart, actualOnEnd, currentSpeechId);
-              if (played) {
-                hasStartedPlaying = true;
-                recoveryHandled = true;
-                return;
-              }
-              triggerSingleRecovery();
-            } else {
-              isSpeechActiveRef.current = false;
-              setIsSpeechPending(false);
-              setIsSpeaking(false);
-              if (actualOnEnd) actualOnEnd();
-            }
-          }
-        };
-
-        await audio.play();
-        return;
-      } catch (playErr) {
-        console.warn("[TTS Hook] Cannot play via HTML5 Audio, fallback to Web Audio API / WebSpeech:", playErr);
-        if (currentSpeechId !== activeSpeechIdRef.current || hasStartedPlaying || recoveryHandled) return;
-        stopCurrentAudio();
-
-        // Thử giải mã và phát trực tiếp qua Web Audio API (vượt qua rào cản Safari User Gesture)
-        try {
-          const played = await playAudioBufferViaWebAudio(preloadedAudioBase64, effectiveRate, actualOnStart, actualOnEnd, currentSpeechId);
-          if (played) {
-            hasStartedPlaying = true;
-            recoveryHandled = true;
-            return;
-          }
-        } catch (ctxErr) {
-          console.warn("[TTS Hook] Web Audio API fallback failed:", ctxErr);
-        }
-
-        if (!hasStartedPlaying && !recoveryHandled) {
-          triggerSingleRecovery();
-          return;
-        }
-      }
+      const cleanKeyText = (text || '').replace(/[*#_`\[\]()]/g, '').trim();
+      const activeEdgeVoice = actualLang.startsWith('vi') ? (viVoiceRef.current || 'vi-VN-HoaiMyNeural') : (enVoiceRef.current || 'en-US-JennyNeural');
+      clientAudioCache.set(`${actualLang}:${activeEdgeVoice}:${cleanKeyText}`, preloadedAudioBase64);
+      await playMp3Base64WithFallback({
+        audioB64: preloadedAudioBase64,
+        speechId: currentSpeechId,
+        effectiveRate,
+        onStartCallback: actualOnStart,
+        onEndCallback: actualOnEnd,
+        onRecoverWebSpeech: () => {
+          _speakWithBrowserUtterance(text, actualLang, null, actualOnEnd, actualOnStart, true, effectiveRate, currentSpeechId);
+        },
+      });
+      return;
     }
 
     // 1. INSTANT WebSpeech / EdgeTTS fallback (khi không có preloadedAudio)
@@ -1080,6 +1059,10 @@ export const useSpeechSynthesis = () => {
     if (browserNoStartTimerRef.current) {
       clearTimeout(browserNoStartTimerRef.current);
       browserNoStartTimerRef.current = null;
+    }
+    if (audioStartTimerRef.current) {
+      clearTimeout(audioStartTimerRef.current);
+      audioStartTimerRef.current = null;
     }
     if (browserKeepAliveRef.current) {
       clearInterval(browserKeepAliveRef.current);

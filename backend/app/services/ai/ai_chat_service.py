@@ -119,7 +119,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
 
         try:
             audio_b64, mime_type, _ = await asyncio.wait_for(
-                tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=3.2),
+                tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=2.0),
                 timeout=3.8
             )
         except Exception:
@@ -242,11 +242,10 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     if act == "switch_language":
         session_manager.set_language(sid, detected_lang)
 
-    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang Google TTS / WebSpeech)
-    # Tự động cân đối ngân sách thời gian còn lại để tổng phản hồi không chạm ngưỡng 5s SLA ở frontend.
+    # Reserve >= 1.3s inside the TTS budget so Google TTS fallback still finishes when EdgeTTS stalls.
     elapsed_graph = max(0.0, t_graph - t_start)
-    remaining_for_tts = max(1.6, 4.2 - elapsed_graph)
-    edge_timeout = min(3.2, max(1.6, remaining_for_tts - 0.5))
+    remaining_for_tts = max(2.2, 4.4 - elapsed_graph)
+    edge_timeout = min(2.0, max(0.8, remaining_for_tts - 1.3))
     try:
         audio_b64, mime_type, _ = await asyncio.wait_for(
             tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=edge_timeout),

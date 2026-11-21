@@ -31,9 +31,18 @@ class NotificationRepository(BaseRepository[Notification]):
         elif "kitchen" in dep_clean or "bếp" in dep_clean or "chef" in dep_clean:
             aliases.extend(["kitchen", "bếp", "nhà bếp", "bếp & ẩm thực"])
         elif "taxi" in dep_clean or "vận chuyển" in dep_clean:
-            aliases.extend(["taxi", "đặt xe & vận chuyển", "transportation"])
+            aliases.extend(["taxi", "đặt xe & vận chuyển", "transportation", "taxi & transportation"])
         elif "concierge" in dep_clean or "trợ lý" in dep_clean:
-            aliases.extend(["concierge", "trợ lý concierge", "live support"])
+            aliases.extend([
+                "concierge",
+                "trợ lý concierge",
+                "live support",
+                "concierge & live support",
+                "taxi",
+                "đặt xe & vận chuyển",
+                "transportation",
+                "taxi & transportation",
+            ])
         return aliases
 
     async def list_notifications(

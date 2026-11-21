@@ -391,3 +391,103 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         )
         res = await self.db.execute(stmt)
         return res.all()
+
+    async def ensure_taxi_catalog(self, backfill_orphans: bool = False) -> Tuple[str, str]:
+        """Ensure DEP-TAXI and ST-TAXI exist in the database and optionally backfill TX-% rows."""
+        return await ensure_taxi_catalog_entities(self.db, backfill_orphans=backfill_orphans)
+
+    async def list_taxi_requests(
+        self,
+        limit: int = 100,
+        skip: int = 0,
+    ) -> Sequence[SupportRequest]:
+        """List taxi requests including DEP-TAXI/ST-TAXI and unlinked TX-% tickets."""
+        stmt = (
+            select(SupportRequest)
+            .where(
+                or_(
+                    SupportRequest.department_id == "DEP-TAXI",
+                    SupportRequest.service_type_id == "ST-TAXI",
+                    func.upper(func.coalesce(SupportRequest.department_id, "")).like("%TAXI%"),
+                    func.upper(func.coalesce(SupportRequest.service_type_id, "")).like("%TAXI%"),
+                    func.upper(func.coalesce(SupportRequest.ticket_code, "")).like("TX-%"),
+                ),
+                self._not_emotion_alert_cond(),
+            )
+            .order_by(desc(SupportRequest.created_at))
+            .offset(skip)
+            .limit(limit)
+        )
+        res = await self.db.execute(stmt)
+        return res.scalars().all()
+
+
+async def ensure_taxi_catalog_entities(
+    db: AsyncSession,
+    backfill_orphans: bool = False,
+) -> Tuple[str, str]:
+    """Ensure DEP-TAXI department and ST-TAXI service type exist before inserting taxi tickets."""
+    from sqlalchemy import update
+
+    dep_stmt = select(Department).where(
+        or_(
+            Department.id == "DEP-TAXI",
+            func.upper(Department.code) == "TAXI",
+        )
+    )
+    dep = (await db.execute(dep_stmt)).scalars().first()
+    if not dep:
+        dep = Department(
+            id="DEP-TAXI",
+            code="TAXI",
+            name="Taxi & Transportation",
+            description="Điều phối xe đưa đón sân bay, taxi hợp đồng và di chuyển khách",
+            is_active=True,
+        )
+        db.add(dep)
+        await db.flush()
+    elif not dep.is_active:
+        dep.is_active = True
+        await db.flush()
+
+    svc_stmt = select(ServiceType).where(
+        or_(
+            ServiceType.id == "ST-TAXI",
+            func.upper(ServiceType.code) == "TAXI",
+        )
+    )
+    svc = (await db.execute(svc_stmt)).scalars().first()
+    if not svc:
+        svc = ServiceType(
+            id="ST-TAXI",
+            code="TAXI",
+            name="Đặt xe taxi đưa đón",
+            department_id=dep.id,
+            description="Gọi xe taxi hoặc đưa đón sân bay",
+            is_active=True,
+        )
+        db.add(svc)
+        await db.flush()
+    elif not svc.is_active or svc.department_id != dep.id:
+        svc.is_active = True
+        svc.department_id = dep.id
+        await db.flush()
+
+    if backfill_orphans:
+        await db.execute(
+            update(SupportRequest)
+            .where(
+                func.upper(func.coalesce(SupportRequest.ticket_code, "")).like("TX-%"),
+                or_(
+                    SupportRequest.department_id.is_(None),
+                    SupportRequest.service_type_id.is_(None),
+                ),
+            )
+            .values(
+                department_id=func.coalesce(SupportRequest.department_id, dep.id),
+                service_type_id=func.coalesce(SupportRequest.service_type_id, svc.id),
+            )
+        )
+        await db.flush()
+
+    return dep.id, svc.id

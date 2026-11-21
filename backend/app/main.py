@@ -31,10 +31,13 @@ async def lifespan(app: FastAPI):
         await init_db()
         logger.info("[OK] Database connection & schema verified.")
         from app.core.database import AsyncSessionLocal
+        from app.repositories.support_request_repository import ensure_taxi_catalog_entities
         from app.services.ai.scenario_service import scenario_service
         from app.services.ai.tts_service import tts_service
         from app.services.rag.room_sync_service import sync_rooms_with_rag
         async with AsyncSessionLocal() as db_session:
+            await ensure_taxi_catalog_entities(db_session, backfill_orphans=True)
+            await db_session.commit()
             await scenario_service.initialize_cache(db_session)
             await sync_rooms_with_rag(db_session)
         asyncio.create_task(tts_service.warm_up_common_phrases())

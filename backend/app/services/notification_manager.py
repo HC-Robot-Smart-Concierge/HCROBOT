@@ -131,12 +131,19 @@ class NotificationConnectionManager:
                 if rec_dept in self.department_connections:
                     target_sockets.update(self.department_connections[rec_dept])
 
-            # 3. Bộ phận đích cụ thể (Hỗ trợ so khớp linh hoạt ví dụ: 'Concierge' khớp với 'Concierge & Live Support')
+            # 3. Bộ phận đích cụ thể (Hỗ trợ so khớp linh hoạt và ánh xạ Taxi <-> Concierge Portal)
             if target_department:
                 target_clean = target_department.lower().strip()
+                is_taxi_target = any(tok in target_clean for tok in ("taxi", "vận chuyển", "transportation"))
                 for dept_key, ws_set in self.department_connections.items():
                     k = dept_key.lower().strip()
-                    if k == target_clean or target_clean in k or k in target_clean:
+                    is_concierge_client = any(tok in k for tok in ("concierge", "trợ lý", "live support"))
+                    if (
+                        k == target_clean
+                        or target_clean in k
+                        or k in target_clean
+                        or (is_taxi_target and is_concierge_client)
+                    ):
                         target_sockets.update(ws_set)
 
         if not target_sockets:

@@ -6,23 +6,36 @@
 const BASE_URL = '/api/v1/operations/taxi';
 const DASHBOARD_URL = '/api/v1/operations/dashboard/taxi';
 
+async function fetchJsonStrict(url, options = {}) {
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    let detail = `HTTP error! status: ${response.status}`;
+    try {
+      const errBody = await response.json();
+      if (errBody?.detail) {
+        detail = typeof errBody.detail === 'string' ? errBody.detail : JSON.stringify(errBody.detail);
+      }
+    } catch {
+      // Ignore non-JSON error body
+    }
+    throw new Error(detail);
+  }
+
+  return await response.json();
+}
+
 async function fetchWithFallback(url, options = {}, fallbackData = null) {
   try {
-    const token = localStorage.getItem('aurora_jwt_token');
-    const response = await fetch(url, {
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(options.headers || {}),
-      },
-      ...options,
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return await response.json();
+    return await fetchJsonStrict(url, options);
   } catch (error) {
     console.warn(`[TaxiAPI] Fallback for ${url}:`, error.message);
     return fallbackData;
@@ -60,20 +73,10 @@ export async function fetchTaxiRequests(params = {}) {
  * 3. Tao moi yeu cau dat xe taxi / dua don san bay
  */
 export async function createTaxiRequest(requestData) {
-  return await fetchWithFallback(
-    `${BASE_URL}/requests`,
-    {
-      method: 'POST',
-      body: JSON.stringify(requestData),
-    },
-    {
-      id: `TXI-${Date.now()}`,
-      ticket_code: `TXI-${Math.floor(1000 + Math.random() * 9000)}`,
-      ...requestData,
-      status: 'Pending',
-      created_at: new Date().toISOString(),
-    }
-  );
+  return await fetchJsonStrict(`${BASE_URL}/requests`, {
+    method: 'POST',
+    body: JSON.stringify(requestData),
+  });
 }
 
 /**

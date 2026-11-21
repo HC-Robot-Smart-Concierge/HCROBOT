@@ -26,14 +26,16 @@ router = APIRouter()
 def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
     """Helper to parse a SupportRequest into a TaxiRequestResponse."""
     desc_str = req.description or ""
-    # Extract destination if present
-    destination = "Da Nang International Airport (DAD)"
-    pickup_time = "Immediate"
-    party_size = 2
-    vehicle_type = "4-Seater Sedan"
+    extra = req.extra_data if isinstance(req.extra_data, dict) else {}
+
+    destination = extra.get("destination") or "Da Nang International Airport (DAD)"
+    pickup_time = extra.get("pickup_time") or "Immediate"
+    party_size = int(extra.get("party_size") or 2)
+    vehicle_type = extra.get("vehicle_type") or "4-Seater Sedan"
+    pickup_location = extra.get("pickup_location") or req.room_number or "Main Lobby & Front Entrance"
 
     desc_lower = desc_str.lower()
-    if "điểm đến:" in desc_lower or "diem den:" in desc_lower:
+    if not extra.get("destination") and ("điểm đến:" in desc_lower or "diem den:" in desc_lower):
         try:
             parts = desc_str.split("|")
             for part in parts:
@@ -54,7 +56,7 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
         id=req.id,
         ticket_code=req.ticket_code,
         guest_name=req.guest_name or "Hotel Guest",
-        pickup_location=req.room_number or "Main Lobby & Front Entrance",
+        pickup_location=pickup_location,
         room_number=req.room_number,
         destination=destination,
         pickup_time=pickup_time,
@@ -64,7 +66,7 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
         assigned_driver=req.assigned_staff_name,
         license_plate="43A-888.99" if req.assigned_staff_name else None,
         notes=desc_str,
-        created_at=req.created_at or datetime.utcnow(),
+        created_at=req.created_at or datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
 
@@ -91,11 +93,7 @@ async def get_taxi_dashboard(
     Quản lý các yêu cầu gọi xe sân bay, taxi tham quan, xe đưa đón theo lịch trình từ Concierge Robot hoặc Lễ tân.
     Dữ liệu được lưu trữ chuẩn hóa trong bảng `support_requests` với `service_type_id = 'ST-TAXI'` và `department_id = 'DEP-TAXI'`.
     """
-    raw_requests = await sr_repo.get_recent_by_department(
-        department_ids=["DEP-TAXI"],
-        service_type_ids=["ST-TAXI"],
-        limit=100,
-    )
+    raw_requests = await sr_repo.list_taxi_requests(limit=100)
     requests = [_format_taxi_request(r) for r in raw_requests]
 
     pending_count = sum(1 for r in requests if (r.status or "").lower() in ["pending", "unassigned", "chờ tiếp nhận", "missed"])
@@ -192,27 +190,27 @@ async def create_taxi_request(
         f"{req_in.description or ''}"
     ).strip()
 
+    dep_id, svc_id = await sr_repo.ensure_taxi_catalog()
     new_req = SupportRequest(
         ticket_code=ticket_code,
         title=title,
-        room_number=resolved_room or req_in.pickup_location,
+        room_number=(resolved_room or req_in.pickup_location or "Main Lobby")[:50],
         guest_name=req_in.guest_name,
         source="From HCRobot",
         description=description,
-        department_id="DEP-TAXI",
-        service_type_id="ST-TAXI",
+        department_id=dep_id,
+        service_type_id=svc_id,
         status="Pending",
+        extra_data={
+            "request_type": "taxi",
+            "pickup_location": req_in.pickup_location,
+            "destination": req_in.destination,
+            "pickup_time": req_in.pickup_time,
+            "party_size": req_in.party_size,
+            "vehicle_type": req_in.vehicle_type,
+        },
     )
     await sr_repo.create(new_req)
-    await create_department_notification(
-        db=db,
-        department="Concierge",
-        title=f"Yêu cầu Đặt xe mới #{ticket_code}",
-        description=f"Phòng {resolved_room or req_in.pickup_location}: {req_in.destination} ({req_in.vehicle_type})",
-        request_id=new_req.id,
-        request_type="taxi",
-        type="Request",
-    )
     await create_department_notification(
         db=db,
         department="Taxi",
@@ -248,12 +246,7 @@ async def list_taxi_requests(
     Tra cứu danh sách các cuốc xe taxi / đưa đón do Robot hoặc Lễ tân tạo ra.
     Hỗ trợ phân trang chuẩn SQL (offset/limit), lọc theo từ khóa tìm kiếm (số phòng, mã vé, điểm đến) và trạng thái.
     """
-    raw_requests = await sr_repo.get_recent_by_department(
-        department_ids=["DEP-TAXI"],
-        service_type_ids=["ST-TAXI"],
-        limit=limit,
-        skip=skip,
-    )
+    raw_requests = await sr_repo.list_taxi_requests(limit=limit, skip=skip)
     formatted = [_format_taxi_request(r) for r in raw_requests]
     if search:
         s = search.lower().strip()

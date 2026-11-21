@@ -201,6 +201,9 @@ async def dispatch_admin_task(
     }
     norm_dept = payload.department.strip().lower()
     dep_id, st_id, prefix = dept_map.get(norm_dept, ("DEP-EXECUTIVE", None, "OP"))
+    if dep_id == "DEP-TAXI" or st_id == "ST-TAXI":
+        from app.repositories.support_request_repository import ensure_taxi_catalog_entities
+        dep_id, st_id = await ensure_taxi_catalog_entities(db)
 
     ticket_code = f"{prefix}-{random.randint(1000, 9999)}"
     initial_status = "In Progress" if payload.assigned_staff_name else "Pending"

@@ -183,7 +183,8 @@ export const RoomPinModal = ({
               pendingAction,
               pendingItems,
               null,
-              (skipTicketCreation || ["taxi", "book_taxi", "taxi_booking", "query_order_status", "query_service_status", "query_taxi_status"].includes(pendingAction))
+              (skipTicketCreation || ["taxi", "book_taxi", "taxi_booking", "query_order_status", "query_service_status", "query_taxi_status"].includes(pendingAction)),
+              sessionId
             );
             setIsSuccess(true);
             setSuccessInfo(res);
@@ -225,7 +226,7 @@ export const RoomPinModal = ({
         setNfcStatusMsg(`Lỗi kích hoạt NFC: ${err.message || 'Không thể mở đầu đọc'}`);
       }
     }
-  }, [selectedRoom, pendingAction, pendingItems, onVerifiedSuccess, onClose]);
+  }, [selectedRoom, pendingAction, pendingItems, skipTicketCreation, sessionId, onVerifiedSuccess, onClose]);
 
   const handleVerifyNfc = useCallback(
     async (scannedCode) => {
@@ -267,7 +268,7 @@ export const RoomPinModal = ({
         setTimeout(() => setIsShaking(false), 500);
       }
     },
-    [isLoading, isSuccess, selectedRoom, pendingAction, pendingItems, onVerifiedSuccess, onClose]
+    [isLoading, isSuccess, selectedRoom, pendingAction, pendingItems, skipTicketCreation, sessionId, onVerifiedSuccess, onClose]
   );
 
   handleVerifyNfcRef.current = handleVerifyNfc;

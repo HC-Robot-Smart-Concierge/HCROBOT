@@ -117,6 +117,7 @@ export const RobotBellmanMenuScreen = ({
   language = 'English',
   activeRoomNumber = '',
   authenticatedRoom = null,
+  sessionId = null,
   onPinVerifiedSuccess = () => { },
   onRoomChange = () => { },
   onClose = () => { },
@@ -665,6 +666,7 @@ export const RobotBellmanMenuScreen = ({
           onClose={() => setIsPinModalOpen(false)}
           roomNumber={targetRoom}
           isSelectingRoomInitial={!targetRoom}
+          sessionId={sessionId}
           onRoomSelect={(room) => handleTargetRoomChange(room)}
           skipTicketCreation={true}
           pendingAction={pinActionTarget === 'status' ? 'query_service_status' : 'bellman'}

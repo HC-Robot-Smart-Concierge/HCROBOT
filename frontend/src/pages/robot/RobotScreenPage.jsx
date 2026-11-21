@@ -1015,7 +1015,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     window.addEventListener('click', handleUserActivity, { capture: true, passive: true });
     window.addEventListener('touchstart', handleUserActivity, { capture: true, passive: true });
+    window.addEventListener('touchmove', handleUserActivity, { capture: true, passive: true });
     window.addEventListener('pointerdown', handleUserActivity, { capture: true, passive: true });
+    window.addEventListener('scroll', handleUserActivity, { capture: true, passive: true });
     window.addEventListener('keydown', handleUserActivity, { capture: true, passive: true });
 
     return () => {
@@ -1023,7 +1025,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       clearInterval(checkIdleInterval);
       window.removeEventListener('click', handleUserActivity, { capture: true });
       window.removeEventListener('touchstart', handleUserActivity, { capture: true });
+      window.removeEventListener('touchmove', handleUserActivity, { capture: true });
       window.removeEventListener('pointerdown', handleUserActivity, { capture: true });
+      window.removeEventListener('scroll', handleUserActivity, { capture: true });
       window.removeEventListener('keydown', handleUserActivity, { capture: true });
     };
   }, [
@@ -1196,7 +1200,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setCurrentState('RT-01');
       return;
     }
-    // Tuyệt đối KHÔNG ngắt khi robot đang nói, đang xử lý câu trả lời, hoặc đang hiển thị nội dung
+    // Tuyệt đối KHÔNG ngắt khi robot đang nói, đang xử lý câu trả lời, đang hiển thị nội dung hoặc đang mở modal/menu dịch vụ
     if (
       isSpeaking ||
       isSpeakingRef.current ||
@@ -1207,6 +1211,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       Boolean(aiResponseText) ||
       isTaxiModalOpen ||
       isTaxiModalOpenRef.current ||
+      isPinModalOpen ||
+      isPinModalOpenRef.current ||
+      isFoodMenuOpen ||
+      isRoomServiceMenuOpen ||
+      isMaintenanceMenuOpen ||
+      isBellmanMenuOpen ||
+      isFacilitiesModalOpen ||
+      isRoomPickerOpen ||
       currentState === 'RT-05' ||
       isWorkflowRunning
     ) {
@@ -1446,9 +1458,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Kích hoạt luồng đặt xe taxi: kiểm tra session phòng, nếu chưa có thì hỏi số phòng qua giọng nói (KHÔNG hiện popup chọn phòng), nếu có rồi thì nói 2 option
   const handleTriggerTaxiBooking = useCallback((specifiedRoom = null) => {
     const requested = typeof specifiedRoom === 'string' ? specifiedRoom.trim() : '';
-    const currentRoom = requested || authenticatedRoom;
-    if (authenticatedRoom) {
-      if (!requested || requested === String(authenticatedRoom)) {
+    const cleanAuthRoom = authenticatedRoom ? String(authenticatedRoom).trim() : '';
+    const currentRoom = requested || cleanAuthRoom;
+    if (cleanAuthRoom) {
+      if (!requested || requested === cleanAuthRoom) {
         // Đã trong session: không hỏi lại mã PIN, Robot thông báo 2 option bằng giọng nói
         setIsFoodMenuOpen(false);
         setIsRoomServiceMenuOpen(false);
@@ -1991,6 +2004,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setIsVideoCallOpen(true);
         }
 
+        const dispatchTaxiVoiceFlow = (roomArg) => {
+          isProcessingRef.current = false;
+          setIsProcessing(false);
+          if (processingSafetyTimerRef.current) {
+            clearTimeout(processingSafetyTimerRef.current);
+            processingSafetyTimerRef.current = null;
+          }
+          stopListening();
+          resetTranscript();
+          handleTriggerTaxiBooking(roomArg);
+        };
+
         // Tự động mở modal xác thực mã PIN phòng nếu yêu cầu từ AI Backend
         if (chatRes.require_room_pin) {
           const targetRoom = chatRes.target_room_number || updatedRoom || authenticatedRoom || activeRoomNumber || '';
@@ -1999,15 +2024,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
           if (isSameRoom) {
             // Phiên đã có phòng xác thực PIN -> Bỏ qua PIN modal
+            const roomLabel = String(authenticatedRoom).trim();
             const actionToExecute = chatRes.pending_service_action || chatRes.action || 'room_service';
             const itemsToExecute = chatRes.pending_service_items || query;
             if (['taxi', 'book_taxi', 'taxi_booking'].includes(actionToExecute)) {
-              handleTriggerTaxiBooking(authenticatedRoom);
+              dispatchTaxiVoiceFlow(roomLabel);
+              return;
             } else if (actionToExecute === 'maintenance') {
               createMaintenanceRequest({
                 title: itemsToExecute || 'Yêu cầu bảo trì phòng qua giọng nói',
                 category: 'general',
-                location: String(authenticatedRoom).trim(),
+                location: roomLabel,
                 description: `Khách yêu cầu qua giọng nói: ${itemsToExecute}`,
                 source: 'HCRobot Voice AI (Session Authenticated)',
                 priority: 'NORMAL',
@@ -2021,10 +2048,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 );
               createBellRequest({
                 title: isLostFound
-                  ? `Báo cáo đồ thất lạc Phòng ${String(authenticatedRoom).trim()}: ${itemsToExecute}`
-                  : `Yêu cầu hỗ trợ hành lý Phòng ${String(authenticatedRoom).trim()}: ${itemsToExecute}`,
-                location: `Room ${String(authenticatedRoom).trim()}`,
-                guest_name: `Guest (Room ${String(authenticatedRoom).trim()})`,
+                  ? `Báo cáo đồ thất lạc Phòng ${roomLabel}: ${itemsToExecute}`
+                  : `Yêu cầu hỗ trợ hành lý Phòng ${roomLabel}: ${itemsToExecute}`,
+                location: `Room ${roomLabel}`,
+                guest_name: `Guest (Room ${roomLabel})`,
                 reporter: 'HCRobot Voice AI (Session Authenticated)',
                 description: `Khách yêu cầu qua giọng nói: ${itemsToExecute}`,
                 request_type: isLostFound ? 'lost_found' : 'luggage',
@@ -2032,16 +2059,24 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             } else if (actionToExecute !== 'query_order_status' && actionToExecute !== 'query_service_status' && actionToExecute !== 'query_taxi_status' && actionToExecute !== 'query_maintenance_status') {
               createConciergeRequest({
                 title: `Yêu cầu ${actionToExecute} từ giọng nói Robot`,
-                room_number: String(authenticatedRoom).trim(),
+                room_number: roomLabel,
                 guest_name: 'Khách lưu trú',
                 description: `Khách yêu cầu qua giọng nói: ${itemsToExecute}`,
                 department: actionToExecute,
               }).catch(() => {});
+              replyText = appendFollowUpQuestion(
+                isEnResp
+                  ? `Rora has received your request for Room ${roomLabel} and notified our staff immediately.`
+                  : `Dạ Rora đã tiếp nhận yêu cầu cho Phòng ${roomLabel} rồi ạ! Em đã gửi thông báo tới bộ phận liên quan ngay lập tức.`,
+                isEnResp
+              );
+              chatRes.audio_base64 = null;
             }
           } else {
             const actionToExecute = chatRes.pending_service_action || chatRes.action || 'room_service';
             if (['taxi', 'book_taxi', 'taxi_booking'].includes(actionToExecute)) {
-              handleTriggerTaxiBooking(targetRoom);
+              dispatchTaxiVoiceFlow(targetRoom);
+              return;
             } else {
               setPinModalRoomNumber(targetRoom);
               setPinModalAction(actionToExecute);
@@ -2104,7 +2139,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             setIsTaxiModalOpen(false);
             setIsFacilitiesModalOpen(false);
           } else if (['book_taxi', 'taxi', 'taxi_booking'].includes(chatRes.action) || ['book_taxi', 'taxi', 'taxi_booking'].includes(chatRes.pending_service_action)) {
-            handleTriggerTaxiBooking(updatedRoom);
+            dispatchTaxiVoiceFlow(updatedRoom);
+            return;
           } else if (chatRes.action === 'room_service') {
             // Backend action 'room_service' là Ẩm thực F&B -> Chỉ mở menu đồ ăn nếu khách có ý định chọn món, TUYỆT ĐỐI KHÔNG mở dịch vụ phòng
             const isFoodIntent = /đặt món|gọi món|thực đơn|menu|đồ ăn|món ăn|cơm|phở|uống|ăn|pizza/i.test(lowerQuery);
@@ -2870,7 +2906,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       <RobotFoodMenuScreen
         activeRoomNumber={activeRoomNumber || ''}
         authenticatedRoom={authenticatedRoom}
-        onPinVerifiedSuccess={(room) => setAuthenticatedRoom(room)}
+        onPinVerifiedSuccess={(room) => {
+          setAuthenticatedRoom(room);
+          if (room) setActiveRoomNumber(room);
+        }}
         sessionId={sessionId}
         onClose={() => {
           setIsFoodMenuOpen(false);
@@ -2910,6 +2949,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         language={language}
         activeRoomNumber={activeRoomNumber || ''}
         authenticatedRoom={authenticatedRoom}
+        sessionId={sessionId}
         onPinVerifiedSuccess={(room) => {
           setAuthenticatedRoom(room);
           setActiveRoomNumber(room);
@@ -2949,6 +2989,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         language={language}
         activeRoomNumber={activeRoomNumber || ''}
         authenticatedRoom={authenticatedRoom}
+        sessionId={sessionId}
         onPinVerifiedSuccess={(room) => {
           setAuthenticatedRoom(room);
           setActiveRoomNumber(room);
@@ -2984,7 +3025,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       <RobotRoomServiceScreen
         activeRoomNumber={activeRoomNumber || ''}
         authenticatedRoom={authenticatedRoom}
-        onPinVerifiedSuccess={(room) => setAuthenticatedRoom(room)}
+        onPinVerifiedSuccess={(room) => {
+          setAuthenticatedRoom(room);
+          if (room) setActiveRoomNumber(room);
+        }}
         sessionId={sessionId}
         onClose={() => {
           setIsRoomServiceMenuOpen(false);

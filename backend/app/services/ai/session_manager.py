@@ -127,17 +127,17 @@ def extract_room_number(text: str, is_answering_room: bool = False) -> Optional[
 class SessionMemoryManager:
     """
     Quản lý bộ nhớ hội thoại & trạng thái slot (Số phòng, Ý định chờ) theo Session.
-    Hỗ trợ cơ chế 3-Tier Session Reset (Thời gian chờ 90s, Ghi đè số phòng, Reset thủ công).
+    Hỗ trợ cơ chế 3-Tier Session Reset (Thời gian chờ 30 phút, Ghi đè số phòng, Reset thủ công).
     """
 
-    IDLE_TIMEOUT_SECONDS = 90  # 90 giây không tương tác sẽ tự động xóa bộ nhớ phiên
+    IDLE_TIMEOUT_SECONDS = 1800  # 30 phút không tương tác mới tự động xóa bộ nhớ phiên (tránh mất xác thực khi dùng menu lâu)
 
     def __init__(self):
         # Cache dạng Dict: { session_id: { "chat_history": [...], "room_number": "502", "pending_intent": {...}, "last_active": 1789231 } }
         self._sessions: Dict[str, Dict[str, Any]] = {}
 
     def _cleanup_expired_sessions(self):
-        """Tự động dọn dẹp các session đã quá hạn 90 giây."""
+        """Tự động dọn dẹp các session đã quá hạn nhàn rỗi."""
         now = time.time()
         expired_keys = [
             sid

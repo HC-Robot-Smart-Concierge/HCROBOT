@@ -344,7 +344,13 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         session_manager.set_active_topic(sid, topic=destination_key, destination_key=destination_key)
 
     # Lưu kết quả vào Redis Cache (bỏ qua nếu là câu hỏi tra cứu trạng thái đơn món, yêu cầu dịch vụ hoặc có số phòng)
-    if act not in ["query_order_status", "open_food_menu", "open_room_service_menu", "open_maintenance_menu", "open_bellman_menu", "room_service", "housekeeping", "laundry", "maintenance", "bellman"] and not has_room_in_prompt and not is_menu_action:
+    if act not in [
+        "query_order_status", "open_food_menu", "open_room_service_menu",
+        "open_maintenance_menu", "open_bellman_menu", "room_service",
+        "housekeeping", "laundry", "maintenance", "bellman",
+        "taxi", "book_taxi", "taxi_booking", "concierge",
+        "restaurant", "wake_up", "reception", "cancel_service",
+    ] and not has_room_in_prompt and not is_menu_action:
         try:
             await redis_service.set_ai_cache(
                 request.prompt,

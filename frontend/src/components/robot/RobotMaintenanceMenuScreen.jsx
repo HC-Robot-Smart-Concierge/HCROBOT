@@ -179,6 +179,7 @@ export const RobotMaintenanceMenuScreen = ({
   language = 'English',
   activeRoomNumber = '',
   authenticatedRoom = null,
+  sessionId = null,
   onPinVerifiedSuccess = () => { },
   onRoomChange = () => { },
   onClose = () => { },
@@ -741,6 +742,7 @@ export const RobotMaintenanceMenuScreen = ({
           onClose={() => setIsPinModalOpen(false)}
           roomNumber={targetRoom}
           isSelectingRoomInitial={!targetRoom}
+          sessionId={sessionId}
           onRoomSelect={(room) => handleTargetRoomChange(room)}
           skipTicketCreation={true}
           pendingAction="maintenance"

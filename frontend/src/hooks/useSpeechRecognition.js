@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { transcribeAudio } from '../services/aiApi';
+import { transcribeCallAudio } from '../services/aiApi';
 
 // ============================================================
 // Helper: WAV PCM 16-Bit Mono Encoder & Downsampler
@@ -152,6 +152,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const lastCommittedTextRef = useRef('');
   const analyserInitPromiseRef = useRef(null);
   const isTranscribingRef = useRef(false);
+  const transcribeControllerRef = useRef(null);
   const webSpeechBlockedRef = useRef(false);
   const noiseFloorRef = useRef(0.012);
   const resultOffsetRef = useRef(0);
@@ -245,6 +246,9 @@ export const useSpeechRecognition = (callbacks = {}) => {
     }
 
     const epochAtStart = listenEpochRef.current;
+    const controller = new AbortController();
+    transcribeControllerRef.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     try {
       isTranscribingRef.current = true;
@@ -272,9 +276,9 @@ export const useSpeechRecognition = (callbacks = {}) => {
       const downsampled = downsampleBuffer(merged, inputSampleRate, 16000);
       const wavBlob = encodeWAV(downsampled, 16000);
 
-      const langParam = currentLanguageRef.current.toLowerCase().startsWith('en') ? 'en' : 'auto';
-      console.log(`[STT Engine] Fallback Backend STT (Whisper): gửi file ${wavBlob.size} bytes (${(totalLength / inputSampleRate).toFixed(1)}s)...`);
-      const recognizedText = await transcribeAudio(wavBlob, langParam);
+      const preferredLang = /^(en|english)/i.test(currentLanguageRef.current) ? 'en' : 'vi';
+      const result = await transcribeCallAudio(wavBlob, { language: 'auto', preferredLang, signal: controller.signal });
+      const recognizedText = result.text;
 
       if (
         epochAtStart !== listenEpochRef.current ||
@@ -294,12 +298,18 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
         if (cbTranscript) cbTranscript(clean, true);
         commitFinalTranscript(clean);
+      } else {
+        setError(preferredLang === 'en' ? 'I could not hear that clearly. Please try again.' : 'Chưa nghe rõ câu nói. Quý khách vui lòng thử lại.');
       }
     } catch (err) {
       console.warn('[STT Engine] Lỗi khi xử lý Backend STT:', err);
     } finally {
-      isTranscribingRef.current = false;
-      setIsTranscribing(false);
+      clearTimeout(timeout);
+      if (transcribeControllerRef.current === controller) {
+        transcribeControllerRef.current = null;
+        isTranscribingRef.current = false;
+        setIsTranscribing(false);
+      }
     }
   }, [commitFinalTranscript]);
 
@@ -379,16 +389,23 @@ export const useSpeechRecognition = (callbacks = {}) => {
           let consecutiveVoiceFrames = 0;
 
           processor.onaudioprocess = (e) => {
-            if (!shouldListenRef.current) return;
+            if (!shouldListenRef.current || isTranscribingRef.current || utteranceCommittedRef.current || callbacksRef.current?.isSpeaking) {
+              audioChunksRef.current = [];
+              return;
+            }
             const inputData = e.inputBuffer.getChannelData(0);
             const copy = new Float32Array(inputData.length);
             copy.set(inputData);
             audioChunksRef.current.push(copy);
 
-            // Giới hạn buffer tối đa ~10 giây (tránh tràn RAM)
-            const maxChunks = Math.ceil((audioCtx.sampleRate * 10) / bufferSize);
-            if (audioChunksRef.current.length > maxChunks) {
-              audioChunksRef.current.shift();
+            // Keep the entire utterance; never drop its opening words at ten seconds.
+            const maxChunks = Math.ceil((audioCtx.sampleRate * 30) / bufferSize);
+            if (audioChunksRef.current.length >= maxChunks) {
+              void processBackendSTT();
+              return;
+            }
+            if (!hasDetectedVoiceRef.current && audioChunksRef.current.length > Math.ceil(audioCtx.sampleRate / bufferSize)) {
+              audioChunksRef.current.shift(); // One second of pre-roll during silence only.
             }
 
             // Tinh RMS (Root Mean Square) chinh xac theo bien do song am thanh thuc te
@@ -441,7 +458,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
                     silenceTimerRef.current = null;
                     // Neu sau khi noi ma trinh duyet khong tra ve chu (do loi mang Google Speech API hoac khong ho tro)
                     // Tu dong chot file gui sang Backend Whisper
-                    if (!lastFinalTranscriptRef.current || lastFinalTranscriptRef.current.trim().length === 0) {
+                    if (callbacksRef.current?.preferBackend || !lastFinalTranscriptRef.current || lastFinalTranscriptRef.current.trim().length === 0) {
                       processBackendSTT();
                     }
                   }, HARDWARE_VAD_SILENCE_MS);
@@ -508,7 +525,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
   useEffect(() => {
     destroyedRef.current = false;
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition = callbacksRef.current?.preferBackend ? null : (window.SpeechRecognition || window.webkitSpeechRecognition);
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;
@@ -669,6 +686,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     return () => {
       destroyedRef.current = true;
       shouldListenRef.current = false;
+      transcribeControllerRef.current?.abort();
       clearRestartTimer();
       stopAudioAnalyser(true); // Giai phong hoan toan khi unmount
       if (recognitionRef.current) {
@@ -708,6 +726,10 @@ export const useSpeechRecognition = (callbacks = {}) => {
   }, [startAudioAnalyser]);
 
   const startListening = async (language = 'vi-VN', inlineCallbacks = null) => {
+    transcribeControllerRef.current?.abort();
+    transcribeControllerRef.current = null;
+    isTranscribingRef.current = false;
+    setIsTranscribing(false);
     destroyedRef.current = false;
     webSpeechBlockedRef.current = false;
     listenEpochRef.current += 1;
@@ -732,7 +754,12 @@ export const useSpeechRecognition = (callbacks = {}) => {
       mediaStreamRef.current.active &&
       mediaStreamRef.current.getAudioTracks().some((t) => t.readyState === 'live');
     if (!isStreamActive) {
-      await startAudioAnalyser();
+      const ready = await startAudioAnalyser();
+      if (!ready || !shouldListenRef.current) {
+        shouldListenRef.current = false;
+        setIsListening(false);
+        return;
+      }
     } else {
       if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
         try {
@@ -772,6 +799,10 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
   const stopListening = useCallback(() => {
     shouldListenRef.current = false;
+    transcribeControllerRef.current?.abort();
+    transcribeControllerRef.current = null;
+    isTranscribingRef.current = false;
+    setIsTranscribing(false);
     listenEpochRef.current += 1;
     clearRestartTimer();
     if (silenceTimerRef.current) {

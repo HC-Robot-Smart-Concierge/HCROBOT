@@ -457,6 +457,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isSpeechPending = false,
     isSpeechActive = false,
     speechRate,
+    speechError: ttsError,
     updateSpeechRate,
     viVoice,
     enVoice,
@@ -472,6 +473,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const {
     isListening = false,
     transcript = '',
+    isTranscribing = false,
+    finishVoiceCapture,
     error: speechError = null,
     startListening,
     stopListening,
@@ -479,6 +482,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     hasSupport,
     volumeLevel = 0,
   } = useSpeechRecognition({
+    preferBackend: true,
     isSpeaking: Boolean(isSpeaking || isSpeechPending || isSpeechActive),
   }) || {};
 
@@ -1126,6 +1130,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     if (
       currentState === 'RT-03' &&
       isListening &&
+      !isTranscribing &&
+      volumeLevel < 6 &&
       !isSpeaking &&
       !isSpeakingRef.current &&
       !isSpeechActive &&
@@ -1144,7 +1150,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       }, 8000);
       return () => clearTimeout(noSpeechTimer);
     }
-  }, [currentState, isListening, isSpeaking, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen, transcript, stopListening]);
+  }, [currentState, isListening, isSpeaking, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen, transcript, stopListening, isTranscribing, volumeLevel]);
 
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = (detection) => {
@@ -1839,7 +1845,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         sessionId,
         effectiveRoomNumber,
         chatSignal,
-        { ageGroup: guestAgeGroup, gender: guestGender }
+        { ageGroup: guestAgeGroup, gender: guestGender, preferredLanguage: languageRef.current }
       );
 
       // Nếu người dùng đã kích hoạt câu nói mới, ngắt lời hoặc timeout xảy ra -> Hủy bỏ câu cũ
@@ -2569,9 +2575,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             clearTimeout(textSafetyTimer);
             revealSubtitle();
           },
-          chatRes.audio_base64,
+          chatRes.audio_base64 ? chatRes.speech_audio : null,
           null,
-          { skipRemoteTts: false }
+          { onError: () => {
+            clearTimeout(textSafetyTimer);
+            clearTimeout(processingSafetyTimerRef.current);
+            processingSafetyTimerRef.current = null;
+            isProcessingRef.current = false;
+            setIsProcessing(false);
+            setAiResponseText(replyText);
+            setCurrentState('RT-02');
+          } }
         );
       };
 
@@ -3114,11 +3128,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onResetToIdle={resetToIdle}
         onPrime={prime}
         onStartTalk={handleStartTalk}
-        onSubmitTalk={() => handleStopTalkAndProcess(transcript || '')}
+        onSubmitTalk={() => transcript?.trim() ? handleStopTalkAndProcess(transcript) : finishVoiceCapture()}
         onStopSpeaking={handleStopSpeaking}
         onToggleAutoListen={() => setIsAutoListen((value) => !value)}
         onToggleLanguage={toggleLanguage}
-        speechError={speechError}
+        speechError={ttsError || speechError}
         transcript={transcript}
         volumeLevel={volumeLevel}
         workflowTrigger={null}
@@ -3994,6 +4008,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         </main>
 
         {/* 3. Bottom Dev State Switcher (Chỉ là các hình tròn nhỏ màu xám/trung tính đại diện cho State, không chữ) */}
+        {ttsError && (
+          <div role="alert" className="absolute bottom-16 left-1/2 -translate-x-1/2 z-[70] max-w-[90%] rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 shadow">
+            {ttsError}
+          </div>
+        )}
+
         <footer className={`absolute bottom-4 left-1/2 -translate-x-1/2 bg-stone-900/80 px-3.5 py-2 rounded-full flex items-center gap-3 shadow-2xl backdrop-blur-md border border-stone-800/80 z-10 transition-all duration-300 ${aiResponseText || isSpeaking ? 'opacity-0 pointer-events-none' : 'opacity-20 hover:opacity-100'
           }`}>
           {[

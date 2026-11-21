@@ -16,6 +16,7 @@ from app.services.ai.llm_prompt_helpers import (
     call_groq_chat,
     detect_bilingual_language,
     resolve_request_language,
+    resolve_reply_language,
     stream_groq_chat,
 )
 from app.services.ai.prompt_guard import (
@@ -296,7 +297,7 @@ class GeminiService:
                             if lang_code != "zh-CN":
                                 reply = re.sub(r"[\u4e00-\u9fff\u3400-\u4dbf]+", "", reply).strip()
                             reply = re.sub(r"[*#_`\[\]]", "", reply).strip()
-                            final_lang_name, final_lang_code = self.detect_language(reply)
+                            final_lang_name, final_lang_code = resolve_reply_language(reply, lang_code, self.detect_language)
                             return reply, final_lang_name, final_lang_code
                     else:
                         if resp.status_code == 429:
@@ -316,7 +317,7 @@ class GeminiService:
             )
             if groq_reply and groq_reply.strip():
                 clean_reply = re.sub(r"[*#_`\[\]]", "", groq_reply.strip()).strip()
-                final_lang_name, final_lang_code = self.detect_language(clean_reply)
+                final_lang_name, final_lang_code = resolve_reply_language(clean_reply, lang_code, self.detect_language)
                 return clean_reply, final_lang_name, final_lang_code
 
         raise RuntimeError("Tất cả candidate models của Gemini và Groq đều không phản hồi generateContent")

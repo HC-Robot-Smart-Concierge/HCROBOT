@@ -21,4 +21,6 @@ alembic>=1.13.0
 cloudinary>=1.38.0
 redis>=5.0.0
 SpeechRecognition>=3.14.0
-faster-whisper>=1.0.0
+faster-whisper>=1.1.0
+# PyAV 19 removed metadata_errors used by faster-whisper audio decoding.
+av>=11,<19

@@ -631,23 +631,7 @@ export const MessengerVideoCallModal = ({
       }
     }
 
-    // 4. Fallback 3: window.speechSynthesis (nếu cả Web Audio và HTML5 Audio bị trình duyệt chặn autoplay)
-    if (typeof window !== 'undefined' && window.speechSynthesis && currentItem.spokenText && callEpochRef.current === currentEpoch) {
-      try {
-        const utter = new SpeechSynthesisUtterance(currentItem.spokenText);
-        utter.lang = currentItem.targetLang === 'en' ? 'en-US' : 'vi-VN';
-        utter.onend = () => handleAudioFinished('PLAY_ENDED');
-        utter.onerror = () => {
-          setIsAudioBlocked(true);
-          handleAudioFinished(TTS_ERROR_CODES.PLAYBACK_BLOCKED);
-        };
-        markPlaybackStarted(Math.max(2.5, currentItem.spokenText.length * 0.08), 'speech_synthesis');
-        window.speechSynthesis.speak(utter);
-        return;
-      } catch (synthErr) {
-        console.warn(`[VideoCall Flow] [${role}] SpeechSynthesis fallback failed:`, synthErr);
-      }
-    }
+    // Preserve the translated speaker identity: blocked playback must not pick an OS voice.
 
     setIsAudioBlocked(true);
     handleAudioFinished(TTS_ERROR_CODES.PLAYBACK_BLOCKED);

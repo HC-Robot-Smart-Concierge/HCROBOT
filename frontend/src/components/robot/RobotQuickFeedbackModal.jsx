@@ -4,6 +4,55 @@ import { submitFeedback } from '../../services/aiApi';
 
 const COUNTDOWN_SECONDS = 8;
 
+export function startFeedbackCountdown({ durationSeconds = COUNTDOWN_SECONDS, onTick, onExpire }) {
+  const safeSeconds = Math.max(1, Number(durationSeconds) || COUNTDOWN_SECONDS);
+  const closeAt = Date.now() + safeSeconds * 1000;
+  let stopped = false;
+  let lastReported = safeSeconds;
+  let intervalId = null;
+  let timeoutId = null;
+
+  const cleanup = () => {
+    stopped = true;
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
+    if (intervalId !== null) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  };
+
+  const expireOnce = () => {
+    if (stopped) return;
+    cleanup();
+    if (typeof onTick === 'function' && lastReported !== 0) {
+      lastReported = 0;
+      onTick(0);
+    }
+    if (typeof onExpire === 'function') onExpire();
+  };
+
+  if (typeof onTick === 'function') onTick(safeSeconds);
+  timeoutId = setTimeout(expireOnce, safeSeconds * 1000);
+  intervalId = setInterval(() => {
+    if (stopped) return;
+    const remainingMs = closeAt - Date.now();
+    if (remainingMs <= 0) {
+      expireOnce();
+      return;
+    }
+    const nextSeconds = Math.min(safeSeconds, Math.max(1, Math.ceil(remainingMs / 1000)));
+    if (nextSeconds !== lastReported) {
+      lastReported = nextSeconds;
+      if (typeof onTick === 'function') onTick(nextSeconds);
+    }
+  }, 200);
+
+  return cleanup;
+}
+
 export const RobotQuickFeedbackModal = ({
   isOpen,
   onClose,
@@ -19,74 +68,109 @@ export const RobotQuickFeedbackModal = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const countdownTimerRef = useRef(null);
+  const countdownCleanupRef = useRef(null);
+  const postSubmitTimerRef = useRef(null);
   const submittedRef = useRef(false);
 
-  const executeSubmit = useCallback(
-    async (targetRating) => {
-      if (submittedRef.current) return;
-      submittedRef.current = true;
-      setIsSubmitting(true);
+  // Keep latest props/state in refs so parent re-renders (e.g. TTS state changes) never restart the 8s timer.
+  const ratingRef = useRef(rating);
+  const onCompletedRef = useRef(onCompleted);
+  const onCloseRef = useRef(onClose);
+  const sessionIdRef = useRef(sessionId);
+  const roomNumberRef = useRef(roomNumber);
+  const guestNameRef = useRef(guestName);
 
-      try {
-        await submitFeedback({
-          chat_session_id: sessionId || undefined,
-          rating: targetRating,
-          category: 'Robot Concierge',
-          room_number: roomNumber || undefined,
-          guest_name: guestName || undefined,
-        });
-      } catch (err) {
-        console.warn('[FeedbackModal] Error submitting feedback:', err);
-      } finally {
-        setIsSubmitting(false);
-        setIsSuccess(true);
-        setTimeout(() => {
-          if (onCompleted) {
-            onCompleted(targetRating);
-          } else if (onClose) {
-            onClose();
-          }
-        }, 1000);
+  ratingRef.current = rating;
+  onCompletedRef.current = onCompleted;
+  onCloseRef.current = onClose;
+  sessionIdRef.current = sessionId;
+  roomNumberRef.current = roomNumber;
+  guestNameRef.current = guestName;
+
+  const stopTimers = useCallback(() => {
+    if (countdownCleanupRef.current) {
+      countdownCleanupRef.current();
+      countdownCleanupRef.current = null;
+    }
+    if (postSubmitTimerRef.current) {
+      clearTimeout(postSubmitTimerRef.current);
+      postSubmitTimerRef.current = null;
+    }
+  }, []);
+
+  const executeSubmit = useCallback(async (targetRating) => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+    if (countdownCleanupRef.current) {
+      countdownCleanupRef.current();
+      countdownCleanupRef.current = null;
+    }
+    setIsSubmitting(true);
+
+    try {
+      await submitFeedback({
+        chat_session_id: sessionIdRef.current || undefined,
+        rating: targetRating,
+        category: 'Robot Concierge',
+        room_number: roomNumberRef.current || undefined,
+        guest_name: guestNameRef.current || undefined,
+      });
+    } catch (err) {
+      console.warn('[FeedbackModal] Error submitting feedback:', err);
+    } finally {
+      setIsSubmitting(false);
+      setIsSuccess(true);
+      if (postSubmitTimerRef.current) {
+        clearTimeout(postSubmitTimerRef.current);
       }
-    },
-    [sessionId, roomNumber, guestName, onCompleted, onClose]
-  );
+      postSubmitTimerRef.current = setTimeout(() => {
+        postSubmitTimerRef.current = null;
+        if (onCompletedRef.current) {
+          onCompletedRef.current(targetRating);
+        } else if (onCloseRef.current) {
+          onCloseRef.current();
+        }
+      }, 1000);
+    }
+  }, []);
 
-  // Đếm ngược 8 giây tự động đóng nếu khách không chạm
+  // Đếm ngược 8 giây cố định mỗi lần mở modal, không bị reset khi parent re-render
   useEffect(() => {
+    stopTimers();
+
     if (!isOpen) {
       setRating(5);
       setCountdown(COUNTDOWN_SECONDS);
       setIsSubmitting(false);
       setIsSuccess(false);
       submittedRef.current = false;
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-      return;
+      return undefined;
     }
 
-    setCountdown(COUNTDOWN_SECONDS);
-    countdownTimerRef.current = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(countdownTimerRef.current);
-          if (!submittedRef.current) {
-            executeSubmit(rating);
-          }
-          return 0;
+    submittedRef.current = false;
+    setIsSuccess(false);
+    setIsSubmitting(false);
+    setRating(5);
+    ratingRef.current = 5;
+
+    countdownCleanupRef.current = startFeedbackCountdown({
+      durationSeconds: COUNTDOWN_SECONDS,
+      onTick: setCountdown,
+      onExpire: () => {
+        if (!submittedRef.current) {
+          executeSubmit(ratingRef.current);
         }
-        return prev - 1;
-      });
-    }, 1000);
+      },
+    });
 
     return () => {
-      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      stopTimers();
     };
-  }, [isOpen, rating, executeSubmit]);
+  }, [isOpen, executeSubmit, stopTimers]);
 
   const handleSelectStar = (starValue) => {
     setRating(starValue);
-    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    ratingRef.current = starValue;
     executeSubmit(starValue);
   };
 
@@ -99,8 +183,8 @@ export const RobotQuickFeedbackModal = ({
         <button
           type="button"
           onClick={() => {
-            if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
-            if (onClose) onClose();
+            stopTimers();
+            if (onCloseRef.current) onCloseRef.current();
           }}
           className="absolute top-4 right-4 p-1.5 rounded-full text-stone-400 hover:text-white hover:bg-stone-800 transition-colors cursor-pointer"
           title={isEn ? 'Skip feedback' : 'Bỏ qua đánh giá'}

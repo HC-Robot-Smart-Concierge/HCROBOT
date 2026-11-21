@@ -430,17 +430,22 @@ export const fetchSessionMessages = async (sessionId) => {
  * Gui danh gia va nhan xet cua khach hang (1 - 5 sao)
  */
 export const submitFeedback = async (feedbackData) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000);
   try {
     const response = await fetch(`${API_BASE_URL}/feedback`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
+      signal: controller.signal,
       body: JSON.stringify(feedbackData),
     });
+    clearTimeout(timeoutId);
     if (!response.ok) throw new Error(`HTTP error ${response.status}`);
     return await response.json();
   } catch (error) {
+    clearTimeout(timeoutId);
     console.warn('[AIApi] submitFeedback fallback:', error.message);
     return {
       id: `fb_${Date.now()}`,

@@ -64,7 +64,9 @@ async def retrieval_node(state: ConciergeState) -> Dict[str, Any]:
     rag_context = ""
     try:
         from app.services.rag.chroma import query_rag_context
-        rag_context = await query_rag_context(prompt, n_results=2)
+        rag_context = await query_rag_context(
+            prompt, n_results=2, language=state.get("lang_code") or state.get("language") or "en-US"
+        )
         if rag_context:
             logger.info(f"[Harness Retrieval] Retrieved {len(rag_context)} chars of RAG context via Hybrid Search.")
     except Exception as ex:

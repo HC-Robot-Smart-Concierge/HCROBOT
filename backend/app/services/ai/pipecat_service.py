@@ -183,7 +183,11 @@ class PipecatPipelineService:
 
             # 2.5. REDIS CLOUD FAST CACHE CHECK (< 5ms)
             from app.services.cache.redis_service import redis_service
-            cached_data = await redis_service.get_ai_cache(user_speech, language=lang_code)
+            from app.services.cache.knowledge_revision import get_knowledge_revision
+            knowledge_revision = get_knowledge_revision()
+            cached_data = await redis_service.get_ai_cache(
+                user_speech, language=lang_code, knowledge_revision=knowledge_revision
+            )
             if cached_data and cached_data.get("full_text"):
                 cached_text = cached_data["full_text"]
                 cached_lang = lang_code
@@ -310,7 +314,8 @@ class PipecatPipelineService:
                         "action": "conversation",
                         "destination_key": dest_key,
                         "trigger_video_call": is_video_call,
-                    }
+                    },
+                    knowledge_revision=knowledge_revision,
                 )
             except Exception:
                 pass

@@ -28,6 +28,7 @@ from app.services.ai.session_manager import (
 from app.services.ai.tts_service import tts_service
 from app.services.ai.speech_language import select_turn_language
 from app.services.maintenance_request_service import is_fault_report
+from app.services.cache.knowledge_revision import get_knowledge_revision
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     6. Nhận diện điểm đến POI cho bản đồ tương tác.
     """
     sid = request.session_id or "default_session"
+    knowledge_revision = get_knowledge_revision()
 
     # Cập nhật số phòng nếu truyền trực tiếp hoặc bóc tách từ câu nói
     extracted_from_prompt = extract_room_number(request.prompt)
@@ -89,7 +91,9 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     from app.services.cache.redis_service import redis_service
     cached_ai = None
     if not request.rag_context and not pending_intent_exist and not is_status_query_req and not has_room_in_prompt and not is_actionable_service and not is_menu_action:
-        cached_ai = await redis_service.get_ai_cache(request.prompt, cur_lang_code)
+        cached_ai = await redis_service.get_ai_cache(
+            request.prompt, cur_lang_code, knowledge_revision=knowledge_revision
+        )
     if cached_ai and cached_ai.get("full_text"):
         reply = cached_ai["full_text"]
         detected_lang, lang_code = cur_lang_name, cur_lang_code
@@ -316,7 +320,8 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
                     "action": act,
                     "destination_key": destination_key,
                     "trigger_video_call": is_video_call,
-                }
+                },
+                knowledge_revision=knowledge_revision,
             )
         except Exception:
             pass

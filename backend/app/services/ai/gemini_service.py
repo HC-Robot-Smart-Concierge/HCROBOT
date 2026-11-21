@@ -172,7 +172,7 @@ class GeminiService:
             try:
                 from app.services.rag.chroma import query_rag_context
 
-                rag_context = await query_rag_context(prompt)
+                rag_context = await query_rag_context(prompt, language=lang_code)
             except Exception:
                 rag_context = ""
 

@@ -14,6 +14,7 @@ import { RobotBellmanMenuScreen, bellRequestMessage } from '../../components/rob
 import {
   RobotTaxiModal,
   getTaxiSelfBookingAnnouncement,
+  getTaxiCloseFollowUpMessage,
   isSelfBookingVoiceIntent,
   isConciergeVoiceIntent,
   isDismissVoiceIntent,
@@ -1204,6 +1205,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       isProcessing ||
       isProcessingRef.current ||
       Boolean(aiResponseText) ||
+      isTaxiModalOpen ||
+      isTaxiModalOpenRef.current ||
       currentState === 'RT-05' ||
       isWorkflowRunning
     ) {
@@ -1340,23 +1343,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       handleOpenFeedback({ speakPrompt: true });
       return;
     }
-    if (justBooked || closeReason === 'voice_dismiss') {
-      const followMsg = justBooked
-        ? (isEn
-            ? 'Your taxi request has been sent to Concierge! How may I assist you further?'
-            : 'Dạ yêu cầu đặt xe taxi của quý khách đã được chuyển tới bộ phận Concierge rồi ạ! Em có thể hỗ trợ thêm gì cho quý khách nữa không ạ?')
-        : (isEn
-            ? 'You are welcome! How may I assist you further?'
-            : 'Dạ vâng, em có thể hỗ trợ gì thêm cho quý khách ạ?');
-      triggerFollowUpPrompt(followMsg, isEn);
-      return;
-    }
 
-    if (closeReason === 'auto') {
-      stopListening();
-      const followMsg = isEn
-        ? 'Do you need any further assistance?'
-        : 'Quý khách có cần hỗ trợ gì không ạ?';
+    const followMsg = getTaxiCloseFollowUpMessage({ justBooked, closeReason, isEn });
+    if (followMsg) {
       triggerFollowUpPrompt(followMsg, isEn);
       return;
     }
@@ -1366,7 +1355,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         handleStartTalkRef.current?.({ silent: true });
       }
     }, 150);
-  }, [setTaxiFlowStage, stopSpeaking, stopListening, resetTranscript, language, handleOpenFeedback, triggerFollowUpPrompt]);
+  }, [setTaxiFlowStage, stopSpeaking, resetTranscript, language, handleOpenFeedback, triggerFollowUpPrompt]);
 
   // Tự động bật mic khi mở màn hình robot (khi vừa vào)
   useEffect(() => {

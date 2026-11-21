@@ -121,6 +121,28 @@ export function getTaxiSelfBookingNotice(isEn = false) {
     : 'Màn hình sẽ tự tắt sau 45 giây hoặc khi quý khách nói "Cảm ơn".';
 }
 
+export function getTaxiCloseFollowUpMessage({ justBooked = false, closeReason = 'manual', isEn = false } = {}) {
+  if (justBooked && closeReason === 'voice_dismiss') {
+    return null;
+  }
+  if (justBooked) {
+    return isEn
+      ? 'Your taxi request has been sent to Concierge! How may I assist you further?'
+      : 'Dạ yêu cầu đặt xe taxi của quý khách đã được chuyển tới bộ phận Concierge rồi ạ! Em có thể hỗ trợ thêm gì cho quý khách nữa không ạ?';
+  }
+  if (closeReason === 'voice_dismiss') {
+    return isEn
+      ? 'You are welcome! How may I assist you further?'
+      : 'Dạ vâng, em có thể hỗ trợ gì thêm cho quý khách ạ?';
+  }
+  if (closeReason === 'auto') {
+    return isEn
+      ? 'How may I assist you further?'
+      : 'Dạ vâng, em có thể hỗ trợ gì thêm cho quý khách ạ?';
+  }
+  return null;
+}
+
 export function isDismissVoiceIntent(transcript) {
   return /cảm ơn|cám ơn|cam on|thank you|thanks|không cần(?: gì| nữa)?|khong can(?: gi| nua)?|không còn(?: gì)?(?: cần)? hỗ trợ|nothing else|no thanks|tắt|tat|đóng|dong|xong rồi|xong roi|được rồi|duoc roi|ok rồi|thôi|thoát|quay lại|close|dismiss/i.test(String(transcript || '').normalize('NFC'));
 }

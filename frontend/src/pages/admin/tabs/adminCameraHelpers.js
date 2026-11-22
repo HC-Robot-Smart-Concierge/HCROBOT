@@ -144,17 +144,20 @@ export function estimateFacialDemographics({
   // --- TINH TOAN RAW AGE GROUP ---
   let rawAge = 'young_adult';
 
-  if (jawRatio < 1.15 && relLowerFace < 0.34 && relBrowEye > 0.15) {
+  if (jawRatio < 1.15 && relLowerFace < 0.35 && relBrowEye > 0.15) {
     // Tre em: Mat rat tron, phan cam ngan, mat to, tran rong
     rawAge = 'child';
-  } else if (cornerDroop > 4.5 && relEyeOpen < 0.022 && relLowerFace > 0.44 && smileScore < 0.2) {
+  } else if (cornerDroop > 4.0 && relEyeOpen < 0.022 && relLowerFace > 0.44 && smileScore < 0.2) {
     // Nguoi lon tuoi (Senior > 60): Khoe mieng sup sau, sup mi nang, va khong phai cuoi
     rawAge = 'senior';
-  } else if (relJawW >= 0.74 && relLowerFace >= 0.42 && smileScore < 0.3) {
-    // Nguoi truong thanh (Adult: 36 - 55): Xuong ham rong day, ti le chin chan
+  } else if (
+    (cornerDroop >= 2.0 && relEyeOpen <= 0.024 && relLowerFace >= 0.44) ||
+    (relJawW >= 0.80 && relLowerFace >= 0.46 && cornerDroop >= 1.5)
+  ) {
+    // Nguoi truong thanh trung nien (Adult: 36 - 55): Co dau hieu lao hoa nhe o khoe mieng hoac do mo mi mat
     rawAge = 'adult';
   } else {
-    // Mac dinh nguoi tre thanh nien (Young Adult: 18 - 35 tuoi)
+    // Mac dinh nguoi tre thanh nien (Young Adult: 18 - 35 tuoi: co mat san chac, khoe mieng khong trup)
     rawAge = 'young_adult';
   }
 

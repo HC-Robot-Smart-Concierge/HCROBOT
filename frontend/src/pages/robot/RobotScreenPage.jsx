@@ -501,7 +501,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [language]);
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
-  const [guestAgeGroup, setGuestAgeGroup] = useState('adult');
+  const guestEmotionRef = useRef('neutral');
+  const [guestAgeGroup, setGuestAgeGroup] = useState('young_adult');
   const [guestGender, setGuestGender] = useState('unknown');
   const [suggestedPrompts, setSuggestedPrompts] = useState([]);
   const lastUnhappyAlertTimeRef = useRef(0);
@@ -560,29 +561,33 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     } catch {}
   }, [language, speak]);
 
-  const neutralDebounceCountRef = useRef(0);
   const handleGuestEmotionDetected = useCallback(
     (emotion) => {
       setGuestEmotion(emotion);
+      guestEmotionRef.current = emotion;
 
       if (emotion === 'unhappy') {
-        neutralDebounceCountRef.current = 0;
-        // Đang có timer đếm ngược hoặc video call đang mở hoặc popup đã mở -> Bỏ qua
+        // Dang co timer dem nguoc hoac video call dang mo hoac popup da mo -> Bo qua
         if (unhappyTimerRef.current || isVideoCallOpenRef.current || isUnhappyAssistanceOpen) {
           return;
         }
 
         const now = Date.now();
-        // Cooldown 15s giữa các lần hỏi để test nhanh chóng mượt mà
+        // Cooldown 15s giua cac lan hoi de tranh lam phien khach
         if (now - lastUnhappyAlertTimeRef.current <= 15000) {
           return;
         }
 
-        // Bắt đầu đếm nhăn mặt duy trì khoảng 1.5 giây (1500ms)
+        // Bat dau dem nhan mat duy tri 2 giay (2000ms)
         unhappyTimerRef.current = setTimeout(() => {
           unhappyTimerRef.current = null;
 
-          // Kiểm tra lại trạng thái sau 1.5 giây: không gọi video, không đang nói
+          // Bat buoc kiem tra lai: CHI KHI KHIEU NAI/NHAN MAT VAN DANG LA UNHAPPY
+          if (guestEmotionRef.current !== 'unhappy') {
+            return;
+          }
+
+          // Kiem tra lai trang thai sau thoi gian cho: khong goi video, khong dang noi
           if (!isVideoCallOpenRef.current && !isSpeakingRef.current) {
             lastUnhappyAlertTimeRef.current = Date.now();
             setIsUnhappyAssistanceOpen(true);
@@ -594,11 +599,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               speak(prompt);
             } catch {}
           }
-        }, 1500);
+        }, 2000);
       } else {
-        // Chỉ hủy timer khi neutral duy trì liên tục ít nhất 3 lần cập nhật (~1.5s), tránh bị hủy do 1 frame chớp mắt
-        neutralDebounceCountRef.current += 1;
-        if (neutralDebounceCountRef.current >= 3 && unhappyTimerRef.current) {
+        // Khi bieu cam chuyen ve neutral hoac happy -> HUY NGAY timer hoi tro giup
+        if (unhappyTimerRef.current) {
           clearTimeout(unhappyTimerRef.current);
           unhappyTimerRef.current = null;
         }

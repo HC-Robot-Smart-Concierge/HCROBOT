@@ -505,17 +505,17 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             if (smile >= 0.35) {
               candidate = 'happy';
             } else if (
-              (browDown >= 0.20 || mouthFrown >= 0.16 || compoundDistress >= 0.20 || (browDown >= 0.18 && mouthFrown >= 0.10)) &&
+              (browDown >= 0.28 || mouthFrown >= 0.25 || compoundDistress >= 0.26 || (browDown >= 0.22 && mouthFrown >= 0.18)) &&
               smile < 0.20
             ) {
               candidate = 'unhappy';
             }
 
             // 2. Bo loc xac nhan theo thoi gian (Temporal Confirmation Filter):
-            // O toc do 200ms/frame, duy tri >= 2 frames (~400ms) giup phan hoi nhanh va nhay hon khi khach/admin gia lap
+            // O toc do 200ms/frame, can duy tri >= 3 frames (~600ms) nhan mat thuc su de tranh nhan nham khi noi/chop mat
             if (candidate === 'unhappy') {
               consecutiveUnhappyFramesRef.current += 1;
-              if (consecutiveUnhappyFramesRef.current >= 2) {
+              if (consecutiveUnhappyFramesRef.current >= 3) {
                 currentDetected = 'unhappy';
               } else {
                 currentDetected = 'neutral';
@@ -548,7 +548,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             syncPerceptionToRobot({
               emotion: effectiveEmotion,
               gender: demoResult?.gender || 'unknown',
-              ageGroup: demoResult?.ageGroup || 'adult',
+              ageGroup: demoResult?.ageGroup || 'young_adult',
               confidence: demoResult?.confidence ?? 0,
               isFaceDetected: true,
             });
@@ -662,7 +662,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             syncPerceptionToRobot({
               emotion: 'neutral',
               gender: 'unknown',
-              ageGroup: 'adult',
+              ageGroup: 'young_adult',
               confidence: 0,
               isFaceDetected: false,
             });

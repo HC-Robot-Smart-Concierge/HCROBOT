@@ -4,8 +4,6 @@ import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl, detectDestinationPoi } from '../../components/robot/FloorMap';
 import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck, Wrench, Luggage } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { CameraPreview } from '../../components/robot/CameraPreview';
-import { useKioskStreamBroadcaster } from '../../hooks/useKioskStreamBroadcaster';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
 import { RobotRoomServiceScreen } from '../../components/robot/RobotRoomServiceScreen';
@@ -377,20 +375,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const isVideoCallOpenRef = useRef(false);
   const [videoCallSessionId, setVideoCallSessionId] = useState(null);
   const [videoCallTicketCode, setVideoCallTicketCode] = useState(null);
-
-  // Kiosk Phone Camera Broadcaster to Admin WebRTC (kiosk-live-feed)
-  // Da chuyen Face Detection sang Camera USB Pi 5 ket noi qua Tailscale.
-  // Dat enabled: false de giai phong hoan toan camera cho Video Call Concierge.
-  const {
-    stream: kioskCameraStream,
-    isCameraActive: isKioskCameraActive,
-    isBroadcasting: isKioskBroadcasting,
-    needsUserGesture: needsKioskCameraGesture,
-    startCamera: startKioskCamera,
-  } = useKioskStreamBroadcaster({
-    enabled: false,
-    isPaused: isVideoCallOpen,
-  });
 
   useEffect(() => {
     isVideoCallOpenRef.current = isVideoCallOpen;
@@ -3074,25 +3058,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }}
       />
 
-      {/* Camera AI (Da chuyen sang Camera USB Pi 5; de autoStart={false} de tranh xung dot camera tren dien thoai) */}
-      <CameraPreview
-        autoStart={false}
-        externalStream={kioskCameraStream}
-        controlsClassName="robot-camera-control"
-        onGuestApproached={handleGuestApproached}
-        onGuestLeft={handleGuestLeft}
-        onEmotionChange={handleGuestEmotionDetected}
-        onDemographicsChange={handleGuestDemographicsDetected}
-        source="local"
-        defaultMinimized={true}
-        visible={false}
-      />
-
-
       <MobileRobotScreen
-        isKioskCameraActive={isKioskCameraActive}
-        onStartKioskCamera={startKioskCamera}
-        kioskCameraStream={kioskCameraStream}
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
         eyeExpression={activeEyeExpression}

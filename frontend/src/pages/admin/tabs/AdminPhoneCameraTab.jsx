@@ -83,6 +83,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const [smileScore, setSmileScore] = useState(0);
   const [frownScore, setFrownScore] = useState(0);
   const [overrideEmotion, setOverrideEmotion] = useState(null);
+  const overrideEmotionRef = useRef(null);
   const [showMeshDiagnostics, setShowMeshDiagnostics] = useState(false);
 
   // AI Demographics States (Age & Gender Detection)
@@ -504,17 +505,17 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             if (smile >= 0.35) {
               candidate = 'happy';
             } else if (
-              (browDown >= 0.30 || mouthFrown >= 0.22 || compoundDistress >= 0.26 || (browDown >= 0.25 && mouthFrown >= 0.12)) &&
-              smile < 0.18
+              (browDown >= 0.20 || mouthFrown >= 0.16 || compoundDistress >= 0.20 || (browDown >= 0.18 && mouthFrown >= 0.10)) &&
+              smile < 0.20
             ) {
               candidate = 'unhappy';
             }
 
             // 2. Bo loc xac nhan theo thoi gian (Temporal Confirmation Filter):
-            // O toc do 200ms/frame, duy tri lien tuc >= 3 frames (~600ms) giup phan hoi nhanh ma van loai bo chop mat
+            // O toc do 200ms/frame, duy tri >= 2 frames (~400ms) giup phan hoi nhanh va nhay hon khi khach/admin gia lap
             if (candidate === 'unhappy') {
               consecutiveUnhappyFramesRef.current += 1;
-              if (consecutiveUnhappyFramesRef.current >= 3) {
+              if (consecutiveUnhappyFramesRef.current >= 2) {
                 currentDetected = 'unhappy';
               } else {
                 currentDetected = 'neutral';
@@ -543,8 +544,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               setDemographicsConfidence(demo.confidence);
             }
 
+            const effectiveEmotion = overrideEmotionRef.current || currentDetected;
             syncPerceptionToRobot({
-              emotion: currentDetected,
+              emotion: effectiveEmotion,
               gender: demoResult?.gender || 'unknown',
               ageGroup: demoResult?.ageGroup || 'adult',
               confidence: demoResult?.confidence ?? 0,
@@ -678,6 +680,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const handleOverrideEmotion = useCallback(
     async (emo) => {
       setOverrideEmotion(emo);
+      overrideEmotionRef.current = emo;
       syncPerceptionToRobot({
         emotion: emo || 'neutral',
         gender: detectedGender,

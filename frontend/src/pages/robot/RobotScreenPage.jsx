@@ -560,27 +560,29 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     } catch {}
   }, [language, speak]);
 
+  const neutralDebounceCountRef = useRef(0);
   const handleGuestEmotionDetected = useCallback(
     (emotion) => {
       setGuestEmotion(emotion);
 
       if (emotion === 'unhappy') {
+        neutralDebounceCountRef.current = 0;
         // Đang có timer đếm ngược hoặc video call đang mở hoặc popup đã mở -> Bỏ qua
         if (unhappyTimerRef.current || isVideoCallOpenRef.current || isUnhappyAssistanceOpen) {
           return;
         }
 
         const now = Date.now();
-        // Cooldown 60s giữa các lần hỏi để tránh spam
-        if (now - lastUnhappyAlertTimeRef.current <= 60000) {
+        // Cooldown 15s giữa các lần hỏi để test nhanh chóng mượt mà
+        if (now - lastUnhappyAlertTimeRef.current <= 15000) {
           return;
         }
 
-        // Bắt đầu đếm nhăn mặt duy trì liên tục khoảng 2 giây (2000ms)
+        // Bắt đầu đếm nhăn mặt duy trì khoảng 1.5 giây (1500ms)
         unhappyTimerRef.current = setTimeout(() => {
           unhappyTimerRef.current = null;
 
-          // Kiểm tra lại trạng thái sau 2 giây: không gọi video, không đang nói
+          // Kiểm tra lại trạng thái sau 1.5 giây: không gọi video, không đang nói
           if (!isVideoCallOpenRef.current && !isSpeakingRef.current) {
             lastUnhappyAlertTimeRef.current = Date.now();
             setIsUnhappyAssistanceOpen(true);
@@ -592,10 +594,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               speak(prompt);
             } catch {}
           }
-        }, 2000);
+        }, 1500);
       } else {
-        // Nếu khách hết nhăn mặt (về neutral/happy hoặc cử động khác) trước 2s -> Hủy timer ngay
-        if (unhappyTimerRef.current) {
+        // Chỉ hủy timer khi neutral duy trì liên tục ít nhất 3 lần cập nhật (~1.5s), tránh bị hủy do 1 frame chớp mắt
+        neutralDebounceCountRef.current += 1;
+        if (neutralDebounceCountRef.current >= 3 && unhappyTimerRef.current) {
           clearTimeout(unhappyTimerRef.current);
           unhappyTimerRef.current = null;
         }

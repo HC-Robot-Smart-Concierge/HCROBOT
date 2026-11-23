@@ -34,19 +34,12 @@ const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListeni
 
 const MobileCinemaSubtitle = ({
   fullText,
-  userPrompt = '',
-  transcript = '',
-  isListening = false,
-  volumeLevel = 0,
-  onSubmitTalk = null,
-  isSpeaking = false,
-  isProcessing = false,
+  isSpeaking,
   onClose,
   onStartTalk,
   onStopSpeaking,
   onPrime,
-  isEn = false,
-  speechError = null,
+  isEn,
 }) => {
   const sentences = useMemo(() => {
     if (!fullText) return [];
@@ -74,164 +67,67 @@ const MobileCinemaSubtitle = ({
     return () => clearTimeout(timer);
   }, [currentIndex, isSpeaking, sentences]);
 
-  if (isListening) {
-    const hasLiveText = Boolean(transcript && transcript.trim());
-    return (
-      <div
-        className="relative mt-2.5 max-w-[92vw] sm:max-w-lg w-full px-4 py-3 bg-stone-900/90 backdrop-blur-md border border-stone-700/70 rounded-2xl shadow-xl flex flex-col items-center justify-center text-center animate-in fade-in zoom-in-95 duration-150 z-20 group"
-        role="region"
-        aria-label="Phụ đề giọng nói trực tiếp của khách"
-      >
-        <div className="flex items-center justify-between w-full mb-1.5 px-1">
-          <div className="flex items-center gap-2">
-            <AudioWave isActive={true} volumeLevel={volumeLevel} />
-            <span className="font-bold text-stone-300 uppercase text-[10px] sm:text-xs tracking-wider flex items-center gap-1.5">
-              <span>{isEn ? 'Guest speaking:' : 'Khách đang nói:'}</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-            </span>
-          </div>
-
-          {hasLiveText && onSubmitTalk && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onSubmitTalk();
-              }}
-              className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] shadow-md transition-all active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
-              title={isEn ? 'Send question' : 'Gửi câu hỏi'}
-            >
-              <span>{isEn ? 'Send' : 'Gửi'}</span>
-            </button>
-          )}
-        </div>
-
-        <div className="w-full px-2 py-0.5">
-          {hasLiveText ? (
-            <p className="text-stone-100 font-semibold text-xs sm:text-sm leading-relaxed break-words select-text animate-in fade-in duration-100">
-              "{transcript}"
-            </p>
-          ) : (
-            <p className="text-stone-400 italic text-xs sm:text-sm font-medium animate-pulse">
-              {isEn ? 'Listening to you... Speak now' : 'Rora đang lắng nghe quý khách...'}
-            </p>
-          )}
-        </div>
-
-        {speechError && (
-          <div className="mt-1 px-2.5 py-0.5 bg-stone-800 text-stone-300 text-[10px] rounded-lg border border-stone-700">
-            {speechError}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (isProcessing) {
-    const promptToShow = userPrompt || transcript;
-    return (
-      <div
-        className="relative mt-2.5 max-w-[92vw] sm:max-w-lg w-full px-4 py-3 bg-stone-900/90 backdrop-blur-md border border-stone-700/70 rounded-2xl shadow-xl flex flex-col items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200 z-20 group"
-        role="region"
-        aria-label="Đang xử lý câu hỏi của khách"
-      >
-        {promptToShow && (
-          <div className="flex items-center gap-1.5 text-xs text-stone-300 mb-1.5 max-w-full px-2">
-            <span className="font-bold text-stone-400 uppercase text-[10px] tracking-wider shrink-0">
-              {isEn ? 'Guest:' : 'Khách hỏi:'}
-            </span>
-            <span className="italic text-stone-100 font-semibold break-words">"{promptToShow}"</span>
-          </div>
-        )}
-
-        <div className="flex items-center justify-center gap-2 py-0.5 text-stone-400 text-xs sm:text-sm font-medium italic">
-          <span className="w-2 h-2 rounded-full bg-stone-300 animate-ping" />
-          <span>{isEn ? 'Finding the best answer...' : 'Rora đang suy nghĩ câu trả lời...'}</span>
-        </div>
-      </div>
-    );
-  }
-
-  const thinkingText = isEn ? 'Finding the best answer...' : 'Rora đang suy nghĩ câu trả lời...';
-  const activeSentence = fullText ? (sentences[currentIndex] || fullText) : thinkingText;
+  const activeSentence = sentences[currentIndex] || fullText;
 
   return (
     <div
-      className="relative mt-2.5 max-w-[92vw] sm:max-w-lg px-5 py-2.5 bg-stone-900/85 backdrop-blur-md border border-stone-700/60 rounded-2xl shadow-xl flex flex-col items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200 z-20 group"
+      className="relative mt-2.5 max-w-[92vw] sm:max-w-lg px-5 py-2.5 bg-stone-900/85 backdrop-blur-md border border-stone-700/60 rounded-2xl shadow-xl flex items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200 z-20 group"
       role="region"
       aria-label="Phụ đề lời thoại của robot"
     >
-      {/* Phụ đề câu hỏi của khách */}
-      {userPrompt && (
-        <div className="flex items-center gap-1.5 text-xs text-stone-300 mb-1.5 max-w-full px-5">
-          <span className="font-bold text-stone-400 uppercase text-[9px] tracking-wider shrink-0">
-            {isEn ? 'Guest:' : 'Khách hỏi:'}
-          </span>
-          <span className="italic text-stone-100 font-semibold truncate">"{userPrompt}"</span>
-        </div>
-      )}
-
-      <div className="w-full flex items-center justify-center relative">
-        <div className="absolute left-0 flex items-center gap-1.5 opacity-60">
-          <span
-            className={`w-2 h-2 rounded-full transition-colors ${
-              isProcessing
-                ? 'bg-stone-300 animate-ping'
-                : isSpeaking
-                  ? 'bg-stone-300 animate-pulse'
-                  : 'bg-stone-500'
-            }`}
-          />
-          {!isProcessing && sentences.length > 1 && (
-            <span className="text-[9px] font-mono text-stone-400">
-              {currentIndex + 1}/{sentences.length}
-            </span>
-          )}
-        </div>
-
-        <p
-          key={isProcessing ? 'thinking' : currentIndex}
-          className={`text-xs sm:text-[13px] font-medium leading-snug px-7 select-text animate-in fade-in duration-200 line-clamp-3 ${
-            isProcessing ? 'text-stone-400 italic' : 'text-stone-100'
+      <div className="absolute left-3 flex items-center gap-1.5 opacity-60">
+        <span
+          className={`w-2 h-2 rounded-full transition-colors ${
+            isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-500'
           }`}
-        >
-          {activeSentence}
-        </p>
+        />
+        {sentences.length > 1 && (
+          <span className="text-[9px] font-mono text-stone-400">
+            {currentIndex + 1}/{sentences.length}
+          </span>
+        )}
+      </div>
 
-        {/* Cụm công cụ bên phải subtitle: Nút Micro & Nút Đóng */}
-        <div className="absolute right-0 flex items-center gap-1.5">
-          {onStartTalk && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (onStopSpeaking && isSpeaking) onStopSpeaking();
-                if (onPrime) onPrime();
-                onStartTalk();
-              }}
-              className="w-6 h-6 rounded-full bg-stone-800/80 hover:bg-stone-700 text-stone-300 hover:text-white flex items-center justify-center transition-all cursor-pointer active:scale-95"
-              title={isSpeaking ? (isEn ? 'Stop and speak' : 'Dừng & Nói tiếp') : (isEn ? 'Touch or speak' : 'Chạm hoặc nói')}
-              aria-label={isEn ? 'Microphone' : 'Micro'}
-            >
-              <Mic className="w-3 h-3 text-stone-300" />
-            </button>
-          )}
+      <p
+        key={currentIndex}
+        className="text-xs sm:text-[13px] font-medium text-stone-100 leading-snug px-8 select-text animate-in fade-in duration-200 line-clamp-2"
+      >
+        {activeSentence}
+      </p>
 
-          {onClose && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose();
-              }}
-              className="w-6 h-6 rounded-full hover:bg-stone-800 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-all cursor-pointer active:scale-95"
-              title={isEn ? 'Hide subtitle' : 'Ẩn phụ đề'}
-              aria-label={isEn ? 'Close' : 'Đóng'}
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+      {/* Cụm công cụ bên phải subtitle: Nút Micro & Nút Đóng */}
+      <div className="absolute right-2.5 flex items-center gap-1.5">
+        {onStartTalk && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onStopSpeaking && isSpeaking) onStopSpeaking();
+              if (onPrime) onPrime();
+              onStartTalk();
+            }}
+            className="w-6 h-6 rounded-full bg-stone-800/80 hover:bg-stone-700 text-stone-300 hover:text-white flex items-center justify-center transition-all cursor-pointer active:scale-95"
+            title={isSpeaking ? (isEn ? 'Stop and speak' : 'Dừng & Nói tiếp') : (isEn ? 'Touch or speak' : 'Chạm hoặc nói')}
+            aria-label={isEn ? 'Microphone' : 'Micro'}
+          >
+            <Mic className="w-3 h-3 text-stone-300" />
+          </button>
+        )}
+
+        {onClose && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="w-6 h-6 rounded-full hover:bg-stone-800 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-all cursor-pointer active:scale-95"
+            title={isEn ? 'Hide subtitle' : 'Ẩn phụ đề'}
+            aria-label={isEn ? 'Close' : 'Đóng'}
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -242,7 +138,6 @@ export const MobileRobotScreen = ({
   guestEmotion = 'neutral',
   aiResponseText,
   spokenSubtitle = '',
-  userPrompt = '',
   currentState = 'RT-02',
   hasSpeechSupport = true,
   isAutoListen = false,
@@ -986,28 +881,10 @@ export const MobileRobotScreen = ({
                 />
               </div>
 
-              {/* 1. Khi đang lắng nghe khách nói (Hiển thị ngay phụ đề lời khách nói thời gian thực) */}
-              {isListening || currentState === 'RT-03' ? (
-                <MobileCinemaSubtitle
-                  isListening={true}
-                  transcript={transcript}
-                  volumeLevel={volumeLevel}
-                  onSubmitTalk={onSubmitTalk}
-                  speechError={speechError}
-                  isEn={isEn}
-                />
-              ) : isBusy && (userPrompt || transcript) ? (
-                /* 2. Khi đang xử lý câu hỏi của khách */
-                <MobileCinemaSubtitle
-                  isProcessing={true}
-                  userPrompt={userPrompt || transcript}
-                  isEn={isEn}
-                />
-              ) : displayText ? (
-                /* 3. Khi robot đang trả lời: Phụ đề lời thoại của robot và câu hỏi của khách */
+              {/* 1. Khi đang nói hoặc có phụ đề trả lời: Subtitle điện ảnh nổi tinh tế (Tích hợp nút mic bên phải) */}
+              {displayText ? (
                 <MobileCinemaSubtitle
                   fullText={displayText}
-                  userPrompt={userPrompt}
                   isSpeaking={isSpeaking}
                   onClose={onCloseAiResponse}
                   onStartTalk={onStartTalk}
@@ -1015,14 +892,57 @@ export const MobileRobotScreen = ({
                   onPrime={onPrime}
                   isEn={isEn}
                 />
+              ) : currentState === 'RT-03' || isListening ? (
+                /* 2. Khi đang nghe: Dock âm thanh sóng AudioWave tinh giản tối đa từ ngữ */
+                <div className="mt-2.5 flex flex-col items-center gap-1.5 animate-fadeIn">
+                  <div
+                    onClick={(e) => {
+                      if (transcript && onSubmitTalk) {
+                        e.stopPropagation();
+                        onSubmitTalk();
+                      } else if (onStartTalk) {
+                        e.stopPropagation();
+                        onStartTalk();
+                      }
+                    }}
+                    className="px-4 py-2 bg-stone-900/90 hover:bg-stone-850 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-auto min-w-[200px] max-w-sm cursor-pointer active:scale-[0.99] transition-all touch-manipulation"
+                    title={transcript ? (isEn ? 'Tap to send immediately' : 'Chạm để gửi ngay') : (isEn ? 'Tap to restart mic' : 'Chạm để kích hoạt lại Micro')}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <AudioWave isActive={isListening || currentState === "RT-03"} volumeLevel={volumeLevel} />
+                      <span className="text-xs font-semibold text-stone-200 truncate">
+                        {transcript ? `"${transcript}"` : (isEn ? 'Listening...' : 'Đang lắng nghe...')}
+                      </span>
+                    </div>
+
+                    {transcript && onSubmitTalk && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSubmitTalk();
+                        }}
+                        className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
+                        title={isEn ? 'Send question' : 'Gửi câu hỏi'}
+                      >
+                        <span>{isEn ? 'Send' : 'Gửi'}</span>
+                      </button>
+                    )}
+                  </div>
+                  {speechError && (
+                    <div className="px-3 py-1 bg-stone-900/90 border border-stone-700 text-stone-300 text-[10px] font-medium rounded-xl">
+                      {speechError}
+                    </div>
+                  )}
+                </div>
               ) : isBusy ? (
-                /* 4. Khi đang suy nghĩ mà chưa có prompt cụ thể */
+                /* 3. Khi đang suy nghĩ / xử lý: Dock xám tối giản từ ngữ */
                 <div className="mt-2.5 flex items-center gap-2 px-3.5 py-1.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-full shadow-lg text-stone-200 text-xs font-medium animate-fadeIn">
                   <span className="w-2 h-2 rounded-full bg-stone-300 animate-ping" />
                   <span>{isEn ? 'Processing...' : 'Đang xử lý...'}</span>
                 </div>
               ) : (
-                /* 5. Trạng thái chờ: Nút chạm nói */
+                /* 4. Trạng thái chờ: Nút chạm nói */
                 <div className="mt-2.5 flex items-center justify-center animate-fadeIn">
                   <button
                     type="button"

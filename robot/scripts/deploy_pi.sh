@@ -13,7 +13,9 @@ set -euo pipefail
 PI="${PI:-phuc@100.99.72.51}"
 REMOTE_DIR="${REMOTE_DIR:-HCROBOT/robot}"   # tính từ thư mục home trên Pi
 ROBOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-FILES=(main.py obstacle_safety.py udp_command_watchdog.py motor_controller.py ultrasonic_serial.py settings.yaml)
+FILES=(main.py obstacle_safety.py udp_command_watchdog.py motor_controller.py ultrasonic_serial.py settings.yaml
+       scripts/camera_stream.py scripts/person_vision.py scripts/setup_person_vision.sh
+       src/hc_robot_client/hc_robot_client/nodes/person_detection_node.py)
 STAMP="$(date +%Y%m%d-%H%M%S)"
 
 hash_local() { tr -d '\r' < "$ROBOT_DIR/$1" | md5sum | cut -d' ' -f1; }
@@ -50,7 +52,7 @@ done
 
 for f in "${CHANGED[@]+"${CHANGED[@]}"}"; do
   tr -d '\r' < "$ROBOT_DIR/$f" | ssh "$PI" \
-    "cd '$REMOTE_DIR' && { [ -f '$f' ] && cp -p '$f' '$f.bak-$STAMP' || true; } && cat > '$f.tmp-$STAMP' && mv '$f.tmp-$STAMP' '$f'"
+    "cd '$REMOTE_DIR' && mkdir -p \"\$(dirname '$f')\" && { [ -f '$f' ] && cp -p '$f' '$f.bak-$STAMP' || true; } && cat > '$f.tmp-$STAMP' && mv '$f.tmp-$STAMP' '$f'"
   echo "   -> đã chép $f (bản cũ: $f.bak-$STAMP)"
 done
 [ ${#CHANGED[@]} -eq 0 ] && echo "   Pi đã dùng bản mới nhất, không cần chép."
@@ -59,6 +61,7 @@ echo "== Kiểm tra trên Pi"
 ssh "$PI" bash -s -- "$REMOTE_DIR" <<'EOS'
 cd "$1"
 python3 -m py_compile main.py obstacle_safety.py udp_command_watchdog.py motor_controller.py \
+  scripts/camera_stream.py scripts/person_vision.py \
   && echo "   Cú pháp Python: OK"
 python3 - <<'PY'
 import yaml
@@ -74,5 +77,10 @@ if pgrep -f "python3 main.py" >/dev/null; then
   echo "       cd ~/HCROBOT/robot && sudo python3 main.py"
 else
   echo "   main.py chưa chạy. Bật bằng: cd ~/HCROBOT/robot && sudo python3 main.py"
+fi
+if systemctl is-enabled --quiet hc-robot-vision 2>/dev/null; then
+  echo "   YOLO đã cài. Nạp code mới bằng: sudo systemctl restart hc-robot-vision"
+else
+  echo "   YOLO chưa cài. Chạy một lần: bash ~/HCROBOT/robot/scripts/setup_person_vision.sh"
 fi
 EOS

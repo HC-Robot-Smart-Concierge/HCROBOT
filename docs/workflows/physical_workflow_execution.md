@@ -76,8 +76,19 @@ tối đa 10 phút. Sau khi đi tiếp, LiDAR bỏ qua chắn đường 30 giây
 Khi `/robot/person_detections` đang có dữ liệu, xe chỉ dừng nếu YOLO thấy người ở cùng hướng
 với vật LiDAR phát hiện. Nếu YOLO không chạy hoặc báo `FAILED`, xe tạm dùng chỉ LiDAR nên vali
 hoặc ghế mới đặt trên tuyến cũng làm xe dừng; log lượt chạy ghi `VISION_STATUS` khi đổi nguồn.
-Nếu màn hình robot tắt, xe vẫn dừng khi bị chắn rồi tự đi tiếp sau 20 giây. Sau khi cập
-nhật code cần khởi động lại backend; không cần deploy Pi hay nạp ESP32.
+Nếu màn hình robot tắt, xe vẫn dừng khi bị chắn rồi tự đi tiếp sau 20 giây.
+
+YOLO chạy trên Pi bằng `robot/scripts/person_vision.py`, đọc ảnh từ luồng camera cổng 8554
+nên không tranh USB camera với `main.py`. Cầu nối `lidar_ws_to_ros2.py` trên laptop nhận kết
+quả qua UDP 9997 rồi publish `/robot/person_detections`. Cài một lần khi Pi online:
+
+```bash
+bash robot/scripts/deploy_pi.sh                       # trên laptop
+bash ~/HCROBOT/robot/scripts/setup_person_vision.sh   # trên Pi
+```
+
+Sau đó khởi động lại `main.py` trên Pi, rồi Navigation và backend trên laptop. Không cần nạp
+ESP32. Cần thử một người đứng lệch trái và lệch phải để xác nhận ảnh camera không bị lật.
 
 ## Thực thi và phục hồi
 

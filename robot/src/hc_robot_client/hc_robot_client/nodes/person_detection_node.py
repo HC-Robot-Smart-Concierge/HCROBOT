@@ -92,9 +92,10 @@ def compute_bearing_and_fov(
 class PersonDetectorBackend:
     """Interface trừu tượng cho detector mô hình AI."""
 
-    def __init__(self, model_path: str = "yolov8n.pt", conf_threshold: float = 0.40):
+    def __init__(self, model_path: str = "yolov8n.pt", conf_threshold: float = 0.40, imgsz: int = 640):
         self.model_path = model_path
         self.conf_threshold = conf_threshold
+        self.imgsz = imgsz
         self.model = None
         self.is_ready = False
 
@@ -121,6 +122,7 @@ class PersonDetectorBackend:
             frame,
             classes=[0],  # 0 là person trong COCO
             conf=self.conf_threshold,
+            imgsz=self.imgsz,
             verbose=False
         )
 

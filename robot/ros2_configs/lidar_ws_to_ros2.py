@@ -35,6 +35,7 @@ from encoder_guard import PARTNER, EncoderSampleGuard, side_tick_deltas  # noqa:
 from sonar_escape import pi_sonar_snapshot  # noqa: E402
 from localization_support import LocalizationWarmup, sensor_frame_is_fresh  # noqa: E402
 from speed_zone_logic import limit_wheel_pwm  # noqa: E402
+from vision_udp_link import VisionUdpLink  # noqa: E402
 from robot_geometry import BODY_LENGTH_M, BODY_WIDTH_M, HALF_LENGTH_M, LIDAR_X_M  # noqa: E402
 from robot_status import (  # noqa: E402
     describe_drive_block, diagnose_stuck, format_status_line, lidar_clearances, threshold_warnings,
@@ -305,6 +306,11 @@ class LidarWsToRos2Bridge(Node):
         # Khởi động UDP listener nhận tín hiệu từ main.py trên Pi 5 (port 9998)
         self.start_pi5_telemetry_udp_server()
         self.start_pi_status_receiver()
+
+        # Kết quả YOLO từ Pi (UDP 9997) để workflow xác nhận người chắn tuyến
+        self.person_detections_pub = self.create_publisher(String, '/robot/person_detections', 10)
+        VisionUdpLink(self.pi5_ip, lambda text: self.person_detections_pub.publish(String(data=text)),
+                      rclpy.ok).start()
 
         self.get_logger().info(
             f"🚀 LidarWsToRos2Bridge san sang - mode={self.robot_mode}, "

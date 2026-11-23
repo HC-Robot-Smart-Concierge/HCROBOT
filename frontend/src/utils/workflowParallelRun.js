@@ -59,6 +59,8 @@ export function adPlaylist(step, activeAds) {
 export function nextLaneAction({ phase, isRunning, lane, guestStarted, doneReported, canStart }) {
   if (!phase) return lane ? 'STOP' : 'NONE';
   if (phase === 'MOVING') {
+    // Low battery blocks new lanes, but the talk must still close when the vehicle moves on.
+    if (lane === 'guest' && !canStart) return 'STOP';
     if (lane === 'screen' || (isRunning && lane !== 'guest') || !canStart) return 'NONE';
     return 'START_SCREEN';
   }

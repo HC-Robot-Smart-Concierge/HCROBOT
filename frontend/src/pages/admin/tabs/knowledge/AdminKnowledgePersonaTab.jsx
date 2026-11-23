@@ -503,9 +503,9 @@ When providing directions, end with: '${formData.qr_cta_en}'`;
                 className="w-full cursor-pointer accent-stone-900"
               />
               <div className="flex justify-between text-[10px] font-mono mt-1" style={{ color: '#8C8C8C' }}>
-                <span>0.5x (Chậm)</span>
-                <span>1.0x (Chuẩn)</span>
-                <span>2.0x (Nhanh)</span>
+                <span>{isEN ? '0.5x (Slow)' : '0.5x (Chậm)'}</span>
+                <span>{isEN ? '1.0x (Normal)' : '1.0x (Chuẩn)'}</span>
+                <span>{isEN ? '2.0x (Fast)' : '2.0x (Nhanh)'}</span>
               </div>
             </div>
 
@@ -513,35 +513,18 @@ When providing directions, end with: '${formData.qr_cta_en}'`;
               <label className="block text-xs font-semibold mb-1" style={{ color: '#262626' }}>
                 {isEN ? 'Vietnamese Voice (TTS)' : 'Giọng đọc Tiếng Việt'}
               </label>
-              <select
-                value={voiceSettings.vi_voice}
-                onChange={(e) =>
-                  setVoiceSettings((prev) => ({ ...prev, vi_voice: e.target.value }))
-                }
-                className="w-full px-3 py-2 border rounded-xl text-xs outline-none cursor-pointer"
-                style={{ background: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
-              >
-                <option value="vi-VN-HoaiMyNeural">Hoài My (Nữ - Truyền cảm, êm ấm)</option>
-                <option value="vi-VN-NamMinhNeural">Nam Minh (Nam - Trầm ấm, chững chạc)</option>
-              </select>
+              <div className="w-full px-3 py-2 border rounded-xl text-xs bg-white" style={{ borderColor: '#BFBFBD' }}>
+                {isEN ? 'Hoài My · Female · Fixed' : 'Hoài My · Nữ · Cố định'}
+              </div>
             </div>
 
             <div>
               <label className="block text-xs font-semibold mb-1" style={{ color: '#262626' }}>
                 {isEN ? 'English Voice (TTS)' : 'Giọng đọc Tiếng Anh'}
               </label>
-              <select
-                value={voiceSettings.en_voice}
-                onChange={(e) =>
-                  setVoiceSettings((prev) => ({ ...prev, en_voice: e.target.value }))
-                }
-                className="w-full px-3 py-2 border rounded-xl text-xs outline-none cursor-pointer"
-                style={{ background: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
-              >
-                <option value="en-US-JennyNeural">Jenny (Female - Warm & Professional)</option>
-                <option value="en-US-GuyNeural">Guy (Male - Clear & Confident)</option>
-                <option value="en-US-AriaNeural">Aria (Female - Expressive)</option>
-              </select>
+              <div className="w-full px-3 py-2 border rounded-xl text-xs bg-white" style={{ borderColor: '#BFBFBD' }}>
+                {isEN ? 'Jenny · Female · Fixed' : 'Jenny · Nữ · Cố định'}
+              </div>
             </div>
           </div>
         </div>

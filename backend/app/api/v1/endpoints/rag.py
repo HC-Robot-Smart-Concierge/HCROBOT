@@ -18,6 +18,8 @@ from app.schemas.rag import (
 )
 from app.services.rag.chroma import get_concierge_collection
 from app.services.rag.facilities_kb_service import get_facilities_from_kb
+from app.services.rag.knowledge_language import document_language
+from app.services.cache.knowledge_revision import invalidate_knowledge_answers
 from app.core.config import settings
 
 router = APIRouter()
@@ -72,7 +74,7 @@ def get_rag_stats():
                     categories[cat] = categories.get(cat, 0) + 1
 
         # Đếm số file nguồn (Chỉ quét các file .md trong Obsidian Vault)
-        vault_files = glob.glob(os.path.join(settings.OBSIDIAN_VAULT_DIR, "*.md"))
+        vault_files = glob.glob(os.path.join(settings.resolved_obsidian_vault_dir, "*.md"))
         total_sources = len(vault_files)
 
         return RAGStatsResponse(
@@ -97,8 +99,8 @@ def get_rag_sources():
     try:
         sources = []
         # Quét Obsidian Vault (Chỉ hỗ trợ duy nhất định dạng Markdown .md)
-        os.makedirs(settings.OBSIDIAN_VAULT_DIR, exist_ok=True)
-        vault_files = glob.glob(os.path.join(settings.OBSIDIAN_VAULT_DIR, "*.md"))
+        os.makedirs(settings.resolved_obsidian_vault_dir, exist_ok=True)
+        vault_files = glob.glob(os.path.join(settings.resolved_obsidian_vault_dir, "*.md"))
         for fpath in vault_files:
             fname = os.path.basename(fpath)
             fsize = os.path.getsize(fpath) / 1024.0
@@ -114,24 +116,9 @@ def get_rag_sources():
                     sections = [c for c in re.split(r"\n(?=#+ )", raw_text) if len(c.strip()) > 30]
                     chunks_count = max(len(sections), 1)
 
-                    # Tự động nhận diện ngôn ngữ: 
-                    # 1. Hậu tố tên file
-                    if "_vi" in fname.lower():
-                        detected_lang = "vi"
-                    elif "_en" in fname.lower() or "_rag" in fname.lower():
-                        detected_lang = "en"
-                    else:
-                        # 2. Khai báo YAML frontmatter (language: en / vi)
-                        lang_match = re.search(r"^language:\s*([a-zA-Z]+)", raw_text, re.MULTILINE | re.IGNORECASE)
-                        if lang_match:
-                            detected_lang = lang_match.group(1).lower()
-                        else:
-                            # 3. Phân tích ngữ âm tiếng Việt
-                            vi_chars = set("àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
-                            if any(c in vi_chars for c in raw_text.lower()[:1500]):
-                                detected_lang = "vi"
-                            else:
-                                detected_lang = "en"
+                    from app.services.rag.obsidian_service import obsidian_service
+                    metadata, content = obsidian_service.parse_frontmatter(raw_text)
+                    detected_lang = document_language(fname, metadata, content)
             except Exception:
                 pass
 
@@ -167,8 +154,8 @@ def save_source_file(payload: dict):
         if not filename:
             raise HTTPException(status_code=400, detail="Thiếu filename")
 
-        os.makedirs(settings.OBSIDIAN_VAULT_DIR, exist_ok=True)
-        file_path = os.path.join(settings.OBSIDIAN_VAULT_DIR, filename)
+        os.makedirs(settings.resolved_obsidian_vault_dir, exist_ok=True)
+        file_path = os.path.join(settings.resolved_obsidian_vault_dir, filename)
 
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)
@@ -217,7 +204,7 @@ def delete_source_file(filename: str):
     """
     safe_name = os.path.basename(filename)
     deleted = False
-    for folder in [settings.OBSIDIAN_VAULT_DIR, "static/uploads"]:
+    for folder in [settings.resolved_obsidian_vault_dir, "static/uploads"]:
         fpath = os.path.join(folder, safe_name)
         if os.path.exists(fpath):
             try:
@@ -258,8 +245,8 @@ def upload_rag_file(
                 detail="Hệ thống chỉ hỗ trợ upload định dạng Markdown (.md). Vui lòng chuyển đổi tài liệu sang file .md trước khi tải lên.",
             )
 
-        os.makedirs(settings.OBSIDIAN_VAULT_DIR, exist_ok=True)
-        dest_path = os.path.join(settings.OBSIDIAN_VAULT_DIR, filename)
+        os.makedirs(settings.resolved_obsidian_vault_dir, exist_ok=True)
+        dest_path = os.path.join(settings.resolved_obsidian_vault_dir, filename)
         with open(dest_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
@@ -317,11 +304,15 @@ def upsert_rag_document(doc: RAGDocumentItem):
     """
     try:
         collection = get_concierge_collection("concierge_kb")
+        metadata = dict(doc.metadata or {})
+        metadata["language"] = document_language(metadata.get("filename", ""), metadata, doc.document)
+        invalidate_knowledge_answers()
         collection.upsert(
             ids=[doc.id],
             documents=[doc.document],
-            metadatas=[doc.metadata or {}],
+            metadatas=[metadata],
         )
+        invalidate_knowledge_answers()
         return RAGActionResponse(
             message="Thêm/Cập nhật tài liệu tri thức vào ChromaDB thành công",
             id=doc.id,
@@ -340,7 +331,9 @@ def delete_rag_document(doc_id: str):
     """
     try:
         collection = get_concierge_collection("concierge_kb")
+        invalidate_knowledge_answers()
         collection.delete(ids=[doc_id])
+        invalidate_knowledge_answers()
         return RAGActionResponse(
             message="Đã xóa tài liệu khỏi ChromaDB thành công",
             id=doc_id,

@@ -4,10 +4,7 @@ import asyncio
 import base64
 import logging
 import re
-import urllib.parse
-from typing import Any, Dict, Optional, Tuple
-
-import httpx
+from typing import Any, Optional, Tuple
 
 from app.core.config import settings
 
@@ -91,14 +88,14 @@ async def synthesize_edge_tts_detailed(
     last_err_code = "TTS_AUDIO_EMPTY"
     last_err_detail = f"EdgeTTS returned 0 bytes for voice={voice}"
 
-    for attempt in range(2):
+    for attempt in range(3):
         current_voice = voice
-        if attempt == 1:
-            logger.info(f"[TTSService] EdgeTTS attempt 2: Retrying same voice {current_voice}")
+        if attempt > 0:
+            logger.info(f"[TTSService] EdgeTTS attempt {attempt + 1}: Retrying same voice {current_voice}")
 
         try:
             communicate = _edge_tts.Communicate(
-                clean_text, current_voice, rate=selected_rate, volume=selected_volume
+                clean_text, current_voice, rate=selected_rate, volume=selected_volume, pitch="+0Hz"
             )
             audio_bytes = await asyncio.wait_for(
                 _collect_edge_audio(communicate),
@@ -113,99 +110,17 @@ async def synthesize_edge_tts_detailed(
         except asyncio.TimeoutError:
             last_err_code = "TTS_TIMEOUT"
             last_err_detail = f"EdgeTTS attempt {attempt + 1} timed out after {per_attempt_timeout:.1f}s (voice={current_voice})"
-            log_fn = logger.warning if attempt == 1 else logger.info
+            log_fn = logger.warning if attempt == 2 else logger.info
             log_fn(f"[TTSService] {last_err_detail}")
         except Exception as e:
             last_err_code = "TTS_PROVIDER_ERROR"
             last_err_detail = f"{type(e).__name__}: {e} (voice={current_voice}, attempt={attempt + 1})"
-            log_fn = logger.warning if attempt == 1 else logger.info
+            log_fn = logger.warning if attempt == 2 else logger.info
             log_fn(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
-        if attempt == 0:
-            await asyncio.sleep(0.3)
+        if attempt < 2:
+            await asyncio.sleep(0.3 * (attempt + 1))
 
     return None, last_err_code, last_err_detail
-
-
-async def synthesize_google_tts(text: str, lang_short: str = "vi") -> Optional[str]:
-    """Synthesize MP3 fallback audio via Google Translate TTS HTTP endpoint."""
-    clean = clean_text_for_tts(text)
-    if not clean:
-        return None
-    tl = "en" if lang_short.startswith("en") else "vi"
-    words = clean.split(" ")
-    segments = []
-    current = ""
-    for w in words:
-        if len(current) + len(w) + 1 <= 180:
-            current = f"{current} {w}".strip()
-        else:
-            if current:
-                segments.append(current)
-            current = w[:180]
-    if current:
-        segments.append(current)
-
-    combined_bytes = b""
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    async with httpx.AsyncClient(timeout=2.0, headers=headers) as client:
-        for seg in segments[:2]:
-            q = urllib.parse.quote(seg)
-            url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl={tl}&q={q}"
-            resp = await client.get(url)
-            if resp.status_code == 200 and resp.content and len(resp.content) > 100:
-                combined_bytes += resp.content
-            else:
-                return None
-    if combined_bytes and len(combined_bytes) > 100:
-        return base64.b64encode(combined_bytes).decode("utf-8")
-    return None
-
-
-async def _post_tts_audio(
-    url: str,
-    headers: Dict[str, str],
-    payload: Dict[str, Any],
-    provider_label: str,
-) -> Optional[str]:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(url, json=payload, headers=headers)
-        if resp.status_code == 200:
-            return base64.b64encode(resp.content).decode("utf-8")
-        logger.error(f"[TTSService] {provider_label} API error {resp.status_code}: {resp.text}")
-    return None
-
-
-async def synthesize_elevenlabs(text: str, voice: Optional[str]) -> Optional[str]:
-    api_key = settings.ELEVENLABS_API_KEY
-    if not api_key:
-        return None
-    voice_id = voice or settings.ELEVENLABS_VOICE_ID or "21m00Tcm4TlvDq8ikWAM"
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-    headers = {
-        "Accept": "audio/mpeg",
-        "Content-Type": "application/json",
-        "xi-api-key": api_key,
-    }
-    payload = {
-        "text": text,
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-    }
-    return await _post_tts_audio(url, headers, payload, "ElevenLabs")
-
-
-async def synthesize_openai_tts(text: str, voice: Optional[str]) -> Optional[str]:
-    url = "https://api.openai.com/v1/audio/speech"
-    headers = {
-        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": "tts-1",
-        "input": text,
-        "voice": voice or settings.OPENAI_TTS_VOICE or "alloy",
-    }
-    return await _post_tts_audio(url, headers, payload, "OpenAI TTS")
 
 
 def common_warmup_phrases(target_vi: str, target_en: str):

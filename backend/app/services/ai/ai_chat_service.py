@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import re
-import time
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.runnables import RunnableConfig
 
@@ -27,7 +26,9 @@ from app.services.ai.session_manager import (
     session_manager,
 )
 from app.services.ai.tts_service import tts_service
+from app.services.ai.speech_language import select_turn_language
 from app.services.maintenance_request_service import is_fault_report
+from app.services.cache.knowledge_revision import get_knowledge_revision
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,12 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     1. Cập nhật Session Memory (Số phòng & Ngữ cảnh đa lượt).
     2. Chạy LangGraph Concierge Harness (Fast-Path hoặc Ollama Generator).
     3. Cập nhật lượt hội thoại vào Session Memory.
-    4. Tổng hợp giọng đọc TTS (Hoài My - EdgeTTS).
+    4. Tổng hợp giọng nữ cố định theo ngôn ngữ của lượt hội thoại.
     5. Xử lý tác vụ nghiệp vụ: Khởi tạo Live Video Call hoặc tạo Background Service Ticket.
     6. Nhận diện điểm đến POI cho bản đồ tương tác.
     """
     sid = request.session_id or "default_session"
+    knowledge_revision = get_knowledge_revision()
 
     # Cập nhật số phòng nếu truyền trực tiếp hoặc bóc tách từ câu nói
     extracted_from_prompt = extract_room_number(request.prompt)
@@ -62,6 +64,12 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
 
     current_room = session_manager.get_room_number(sid)
     history = session_manager.get_history(sid)
+    cur_lang_name, cur_lang_code = select_turn_language(
+        request.prompt, request.language,
+        request.preferred_language or session_manager.get_language(sid),
+    )
+    request = request.model_copy(update={"language": cur_lang_name})
+    session_manager.set_language(sid, cur_lang_name)
 
     # 0. REDIS CLOUD FAST AI CACHE CHECK (< 5ms)
     # Bỏ qua Redis Cache nếu:
@@ -83,21 +91,12 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     from app.services.cache.redis_service import redis_service
     cached_ai = None
     if not request.rag_context and not pending_intent_exist and not is_status_query_req and not has_room_in_prompt and not is_actionable_service and not is_menu_action:
-        cached_ai = await redis_service.get_ai_cache(request.prompt, request.language or "vi")
+        cached_ai = await redis_service.get_ai_cache(
+            request.prompt, cur_lang_code, knowledge_revision=knowledge_revision
+        )
     if cached_ai and cached_ai.get("full_text"):
         reply = cached_ai["full_text"]
-        if not request.language or request.language.lower() in ("auto", "bilingual"):
-            cached_lang_code = (cached_ai.get("lang_code") or "").strip()
-            if cached_lang_code:
-                lang_code = cached_lang_code
-                detected_lang = cached_ai.get("detected_language") or (
-                    "English" if "en" in lang_code.lower() else "Tiếng Việt"
-                )
-            else:
-                detected_lang, lang_code = ollama_service.detect_language(reply)
-        else:
-            detected_lang = cached_ai.get("detected_language") or ("English" if "en" in (request.language or "").lower() else "Tiếng Việt")
-            lang_code = cached_ai.get("lang_code") or ("en-US" if detected_lang == "English" else "vi-VN")
+        detected_lang, lang_code = cur_lang_name, cur_lang_code
         act = cached_ai.get("action", "conversation")
         dest_key = cached_ai.get("destination_key")
         reply = ensure_followup_question(reply, action=act, lang_code=lang_code)
@@ -117,13 +116,8 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
         session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
 
-        try:
-            audio_b64, mime_type, _ = await asyncio.wait_for(
-                tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=3.2),
-                timeout=3.8
-            )
-        except Exception:
-            audio_b64, mime_type = None, "audio/mp3"
+        speech_audio = await tts_service.synthesize_with_details(reply, language=lang_code)
+        audio_b64, mime_type = speech_audio["audio_base64"], speech_audio["mime_type"]
 
         suggested = get_dynamic_suggested_prompts(
             prompt=request.prompt,
@@ -148,18 +142,13 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
             destination_key=dest_key,
             trigger_video_call=False,
             ticket_created=False,
+            speech_audio=speech_audio,
             audio_base64=audio_b64,
             mime_type=mime_type or "audio/mp3",
             suggested_prompts=suggested,
         )
 
     # Điều phối hội thoại trực tiếp qua LangGraph Harness
-    if not request.language or request.language.lower() in ["auto", "bilingual", ""]:
-        cur_lang_name, cur_lang_code = ollama_service.detect_language(request.prompt)
-    else:
-        cur_lang_name = request.language
-        cur_lang_code = "en-US" if (request.language.lower().startswith("en") or "english" in request.language.lower()) else "vi-VN"
-
     initial_state = {
         "session_id": sid,
         "prompt": request.prompt,
@@ -176,7 +165,6 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         "destination_key": None,
         "trigger_video_call": False,
     }
-    t_start = time.perf_counter()
     graph_config: RunnableConfig = {"configurable": {"thread_id": sid}}
     try:
         graph_result = await asyncio.wait_for(
@@ -191,13 +179,8 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
             if is_en
             else "Dạ xin lỗi quý khách, hệ thống AI phản hồi quá 5 giây do nghẽn mạng máy chủ. Quý khách vui lòng hỏi lại hoặc chọn trực tiếp trên màn hình giúp em nhé ạ."
         )
-        try:
-            audio_b64, mime_type, _ = await asyncio.wait_for(
-                tts_service.synthesize(reason_text, provider="edge", language=cur_lang_code, timeout=2.2),
-                timeout=2.5
-            )
-        except Exception:
-            audio_b64, mime_type = None, "audio/mp3"
+        speech_audio = await tts_service.synthesize_with_details(reason_text, language=cur_lang_code)
+        audio_b64, mime_type = speech_audio["audio_base64"], speech_audio["mime_type"]
         session_manager.add_turn(sid, "user", request.prompt, language=cur_lang_code)
         session_manager.add_turn(sid, "assistant", reason_text, language=cur_lang_code, intent_action="conversation")
         return ChatResponse(
@@ -211,11 +194,11 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
             destination_key=None,
             trigger_video_call=False,
             ticket_created=False,
+            speech_audio=speech_audio,
             audio_base64=audio_b64,
             mime_type=mime_type or "audio/mp3",
             suggested_prompts=[],
         )
-    t_graph = time.perf_counter()
 
     reply = graph_result.get("response", "")
     detected_lang = graph_result.get("lang_name", "Tiếng Việt")
@@ -241,23 +224,6 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
     if act == "switch_language":
         session_manager.set_language(sid, detected_lang)
-
-    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang Google TTS / WebSpeech)
-    # Tự động cân đối ngân sách thời gian còn lại để tổng phản hồi không chạm ngưỡng 5s SLA ở frontend.
-    elapsed_graph = max(0.0, t_graph - t_start)
-    remaining_for_tts = max(1.6, 4.2 - elapsed_graph)
-    edge_timeout = min(3.2, max(1.6, remaining_for_tts - 0.5))
-    try:
-        audio_b64, mime_type, _ = await asyncio.wait_for(
-            tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=edge_timeout),
-            timeout=remaining_for_tts
-        )
-    except Exception as e_tts:
-        logger.warning(f"[AIChatService] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
-        audio_b64, mime_type = None, "audio/mp3"
-    t_tts = time.perf_counter()
-    clean_p = request.prompt.encode('ascii', errors='replace').decode('ascii')
-    print(f"\n[TIMING BENCHMARK] prompt='{clean_p}' | Graph: {t_graph - t_start:.3f}s | TTS: {t_tts - t_graph:.3f}s | Total: {t_tts - t_start:.3f}s\n", flush=True)
 
     # Cập nhật số phòng mới nhất từ kết quả Graph hoặc Session Manager
     updated_room = graph_result.get("room_number") or session_manager.get_room_number(sid)
@@ -304,11 +270,9 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
                 call_ticket_code, notice = await _submit_maintenance_for_chat(db, current_room, items, lang_code.startswith("en"))
                 if notice:
                     reply = ensure_followup_question(notice, action=act, lang_code=lang_code)
-                    audio_b64 = None  # Do not play the earlier "new ticket" response.
             elif act == "bellman":
                 call_ticket_code, bell_reply = await _submit_bell_for_chat(db, current_room, items, lang_code.startswith("en"))
                 reply = ensure_followup_question(bell_reply, action=act, lang_code=lang_code)
-                audio_b64 = None  # The reply now carries the real ticket code.
             else:
                 asyncio.create_task(
                     background_extract_and_create_ticket(items, current_room, act, items)
@@ -356,10 +320,14 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
                     "action": act,
                     "destination_key": destination_key,
                     "trigger_video_call": is_video_call,
-                }
+                },
+                knowledge_revision=knowledge_revision,
             )
         except Exception:
             pass
+
+    speech_audio = await tts_service.synthesize_with_details(reply, language=lang_code)
+    audio_b64, mime_type = speech_audio["audio_base64"], speech_audio["mime_type"]
 
     return ChatResponse(
         response=reply,
@@ -373,6 +341,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         trigger_video_call=is_video_call,
         support_session_id=support_session_id,
         ticket_code=call_ticket_code,
+        speech_audio=speech_audio,
         audio_base64=audio_b64,
         mime_type=mime_type or "audio/mp3",
         destination_key=destination_key,

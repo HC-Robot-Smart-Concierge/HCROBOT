@@ -1,14 +1,19 @@
 import os
 import re
 import logging
+from threading import Lock
 from typing import List, Dict, Any, Optional
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 from app.core.config import settings
+from app.services.rag.knowledge_language import document_language, normalize_knowledge_language
+from app.services.cache.knowledge_revision import get_knowledge_revision
 
 logger = logging.getLogger(__name__)
 
 _chroma_client = None
+_language_metadata_checked = {}
+_language_metadata_lock = Lock()
 
 # Common stop words in Vietnamese and English to ignore during keyword scoring
 STOPWORDS = {
@@ -56,6 +61,28 @@ def get_concierge_collection(collection_name: str = "concierge_kb"):
                 metadata={"description": "Hotel Concierge Knowledge Base Vector Store"}
             )
         raise e
+
+
+def _ensure_language_metadata(collection) -> None:
+    """Label older chunks once per Knowledge revision without re-embedding them."""
+    key = str(collection.id)
+    revision = get_knowledge_revision()
+    with _language_metadata_lock:
+        if revision and _language_metadata_checked.get(key) == revision:
+            return
+        data = collection.get(include=["documents", "metadatas"])
+        ids, metas = [], []
+        for doc_id, content, metadata in zip(
+            data.get("ids", []), data.get("documents", []), data.get("metadatas", [])
+        ):
+            metadata = dict(metadata or {})
+            lang = document_language(metadata.get("filename", ""), metadata, content)
+            if metadata.get("language") != lang:
+                ids.append(doc_id)
+                metas.append({**metadata, "language": lang})
+        if ids:
+            collection.update(ids=ids, metadatas=metas)
+        _language_metadata_checked[key] = revision
 
 
 def _hybrid_rerank(
@@ -114,12 +141,21 @@ def _hybrid_rerank(
     return [item[1] for item in scored_items[:n_results]]
 
 
-async def query_rag_context(prompt: str, n_results: int = 4, collection_name: str = "concierge_kb") -> str:
+async def query_rag_context(
+    prompt: str,
+    n_results: int = 4,
+    collection_name: str = "concierge_kb",
+    language: str = "en-US",
+) -> str:
     """
     Truy vấn bất đồng bộ lấy ngữ cảnh tri thức khách sạn từ ChromaDB Vector Store
     kết hợp Hybrid Keyword & Semantic Re-ranking.
     """
     if not prompt or not prompt.strip():
+        return ""
+    lang = normalize_knowledge_language(language)
+    if not lang:
+        logger.warning("[RAG] Retrieval skipped: conversation language is unresolved.")
         return ""
     try:
         import asyncio
@@ -138,9 +174,17 @@ async def query_rag_context(prompt: str, n_results: int = 4, collection_name: st
             if total_docs == 0:
                 return ""
 
+            _ensure_language_metadata(col)
+
             # Lấy tập ứng viên rộng hơn (n_candidates) để Re-ranking
             n_candidates = min(max(n_results * 3, 10), total_docs) if isinstance(total_docs, int) else n_results
-            res = col.query(query_texts=[prompt.strip()], n_results=n_candidates)
+            # Filter BEFORE candidate selection; opposite-language chunks must not
+            # displace matching-language documents or supply outdated facts.
+            res = col.query(
+                query_texts=[prompt.strip()],
+                n_results=n_candidates,
+                where={"language": lang},
+            )
 
             if res and res.get("documents") and len(res["documents"]) > 0:
                 raw_docs = res["documents"][0]

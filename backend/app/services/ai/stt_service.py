@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from typing import Dict, Any, Tuple
 
 from app.core.config import settings
+from .speech_language import detect_turn_language
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,10 @@ HOTEL_STT_INITIAL_PROMPT = (
     "Khách sạn Aurora Grand. Các phòng lưu trú: 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, "
     "401, 402, 403, 404, 405, 406, 407, 408, 409, 410. "
     "Dịch vụ: lễ tân, buồng phòng, dọn phòng, khăn tắm, bàn ủi, nước suối, hồ bơi vô cực, "
-    "nhà hàng, thực đơn, menu, gọi món, taxi, đón xe, spa, gym, toilet, WC, wifi."
+    "nhà hàng, thực đơn, menu, gọi món, taxi, đón xe, spa, gym, toilet, WC, wifi. "
+    "Aurora Grand Hotel. Guests speak Vietnamese, English, or both in one sentence. "
+    "Room service, check-in, check-out, maintenance, housekeeping, reception, towels, breakfast. "
+    "Cho tôi order room service. Could you help me with check-in?"
 )
 
 WORD_TO_DIGIT_D1 = {"ba": "3", "pha": "3", "bốn": "4", "bon": "4", "tư": "4"}
@@ -263,7 +267,9 @@ def transcribe_audio_wav_detailed(
                 segments, info = model.transcribe(
                     bio_whisper,
                     language=None,
-                    beam_size=2,
+                    task="transcribe",
+                    multilingual=True,
+                    beam_size=5,
                     vad_filter=True,
                     vad_parameters=dict(min_silence_duration_ms=400),
                     initial_prompt=HOTEL_STT_INITIAL_PROMPT,
@@ -278,14 +284,8 @@ def transcribe_audio_wav_detailed(
                             f"[STT Service - Whisper Auto] Rejected foreign script hallucination: '{normalized_text}'"
                         )
                     else:
-                        whisper_raw_lang = str(getattr(info, "language", "")).lower()
-                        if whisper_raw_lang.startswith("vi") or VI_DIACRITICS_RE.search(normalized_text):
-                            det_lang = "vi"
-                        elif whisper_raw_lang.startswith("en"):
-                            det_lang = "en"
-                        else:
-                            # Nếu whisper trả về mã ngôn ngữ khác (ja, zh, ko, es...), dùng bộ phân tích song ngữ theo từ vựng
-                            det_lang = "vi" if VI_ANCHOR_WORDS_RE.search(normalized_text) else "en"
+                        _, response_lang = detect_turn_language(normalized_text, pref)
+                        det_lang = response_lang[:2]
 
                         prob = round(float(getattr(info, "language_probability", 0.85)), 3)
                         logger.info(

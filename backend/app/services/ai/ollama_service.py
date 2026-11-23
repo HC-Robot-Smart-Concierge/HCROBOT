@@ -121,15 +121,15 @@ class OllamaService:
         age_group: Optional[str],
         gender: Optional[str],
     ) -> Tuple[str, str, str, List[Dict[str, str]]]:
+        lang_name, lang_code = resolve_request_language(prompt, language, self.detect_language)
         if rag_context is None:
             try:
                 from app.services.rag.chroma import query_rag_context
 
-                rag_context = await query_rag_context(prompt)
+                rag_context = await query_rag_context(prompt, language=lang_code)
             except Exception:
                 rag_context = ""
 
-        lang_name, lang_code = resolve_request_language(prompt, language, self.detect_language)
         system_prompt = self._build_system_prompt(
             lang_code=lang_code,
             emotion=emotion,

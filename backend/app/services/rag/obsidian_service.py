@@ -5,6 +5,8 @@ import logging
 from typing import List, Dict, Any, Tuple, Optional
 
 from app.services.rag.chroma import get_concierge_collection
+from app.services.rag.knowledge_language import document_language
+from app.services.cache.knowledge_revision import invalidate_knowledge_answers
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -109,6 +111,8 @@ class ObsidianRAGService:
                 else:
                     chunk_metadata[k] = str(v)
 
+            chunk_metadata["language"] = document_language(filename, file_metadata, content)
+
             chunks.append({
                 "id": chunk_id,
                 "document": clean_text,
@@ -127,6 +131,9 @@ class ObsidianRAGService:
         """
         target_dir = vault_dir or getattr(settings, 'resolved_obsidian_vault_dir', settings.OBSIDIAN_VAULT_DIR)
         abs_vault_path = os.path.abspath(target_dir)
+
+        # Invalidate before changing the index, including failed/partial syncs.
+        invalidate_knowledge_answers()
 
         if not os.path.exists(abs_vault_path):
             os.makedirs(abs_vault_path, exist_ok=True)
@@ -193,6 +200,8 @@ class ObsidianRAGService:
                 metadatas=all_metadatas
             )
             logger.info(f"Đã đồng bộ {len(all_ids)} chunks từ {total_files} file Obsidian vào ChromaDB!")
+
+        invalidate_knowledge_answers()
 
 
         return {

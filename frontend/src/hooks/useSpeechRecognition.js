@@ -458,7 +458,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
                     silenceTimerRef.current = null;
                     // Neu sau khi noi ma trinh duyet khong tra ve chu (do loi mang Google Speech API hoac khong ho tro)
                     // Tu dong chot file gui sang Backend Whisper
-                    if (callbacksRef.current?.preferBackend || !lastFinalTranscriptRef.current || lastFinalTranscriptRef.current.trim().length === 0) {
+                    if (!lastFinalTranscriptRef.current || lastFinalTranscriptRef.current.trim().length === 0) {
                       processBackendSTT();
                     }
                   }, HARDWARE_VAD_SILENCE_MS);
@@ -525,7 +525,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
   useEffect(() => {
     destroyedRef.current = false;
-    const SpeechRecognition = callbacksRef.current?.preferBackend ? null : (window.SpeechRecognition || window.webkitSpeechRecognition);
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;

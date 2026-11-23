@@ -466,7 +466,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     hasSupport,
     volumeLevel = 0,
   } = useSpeechRecognition({
-    preferBackend: true,
     isSpeaking: Boolean(isSpeaking || isSpeechPending || isSpeechActive),
   }) || {};
 

@@ -4,11 +4,25 @@ import asyncio
 import base64
 import logging
 import re
+import socket
 from typing import Any, Optional, Tuple
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Ép buộc sử dụng IPv4 cho các endpoint của Microsoft EdgeTTS để triệt tiêu độ trễ 10s - 20s
+# do Windows/Tailscale thử kết nối địa chỉ IPv6 không phản hồi trước khi fallback IPv4.
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _edge_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if host and ("speech.platform.bing.com" in str(host) or "msedge.net" in str(host)):
+        family = socket.AF_INET
+    return _orig_getaddrinfo(host, port, family, type, proto, flags)
+
+
+socket.getaddrinfo = _edge_ipv4_getaddrinfo
 
 
 def clean_text_for_tts(text: str) -> str:
@@ -97,24 +111,12 @@ async def synthesize_edge_tts_detailed(
             logger.info(f"[TTSService] EdgeTTS attempt {attempt + 1}: Retrying same voice {current_voice}")
 
         try:
-            # Ép dùng IPv4 trực tiếp qua TCPConnector để triệt tiêu độ trễ 10s fallback IPv6 trên Windows/Tailscale
-            try:
-                connector = _aiohttp.TCPConnector(family=_socket.AF_INET)
-                communicate = _edge_tts.Communicate(
-                    clean_text,
-                    current_voice,
-                    rate=selected_rate,
-                    volume=selected_volume,
-                    connector=connector,
-                    connect_timeout=5,
-                )
-            except TypeError:
-                communicate = _edge_tts.Communicate(
-                    clean_text,
-                    current_voice,
-                    rate=selected_rate,
-                    volume=selected_volume,
-                )
+            communicate = _edge_tts.Communicate(
+                clean_text,
+                current_voice,
+                rate=selected_rate,
+                volume=selected_volume,
+            )
             audio_bytes = await asyncio.wait_for(
                 _collect_edge_audio(communicate),
                 timeout=per_attempt_timeout,

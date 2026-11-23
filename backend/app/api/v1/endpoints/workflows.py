@@ -14,6 +14,7 @@ from app.schemas.workflow import (
     WorkflowExecuteResponse,
     WorkflowSchedulePreviewRequest,
     WorkflowExecutionConfig,
+    WorkflowGuestReport,
     WorkflowRouteBindingRequest,
 )
 
@@ -228,6 +229,12 @@ from app.services.notification_manager import notification_manager
 async def recent_workflow_runs(workflow_id: str = None):
     from app.services.workflow_runtime import workflow_runtime
     return await workflow_runtime.list_runs(workflow_id)
+
+
+@router.post("/runs/guest", summary="Màn hình robot báo khách: dừng xe, giữ xe, hoặc cho xe đi tiếp")
+async def report_run_guest(payload: WorkflowGuestReport):
+    from app.services.workflow_runtime import workflow_runtime
+    return workflow_runtime.report_guest(payload.robot_id, payload.state, payload.idle_ms)
 
 
 @router.post("/runs/{run_id}/cancel", summary="Dừng lượt chạy xe thật")

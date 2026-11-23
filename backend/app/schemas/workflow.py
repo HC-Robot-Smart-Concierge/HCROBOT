@@ -77,6 +77,24 @@ class WorkflowEventBranch(BaseModel):
     ui_position: Optional[Dict[str, float]] = None
 
 
+class WorkflowParallelConfig(BaseModel):
+    """Làn Xe bắt đầu từ bước đầu tiên; Làn Màn hình và nhánh gặp khách bắt đầu từ hai bước dưới đây."""
+    enabled: bool = False
+    screen_step_id: Optional[str] = None
+    guest_step_id: Optional[str] = None
+    no_interaction_sec: int = Field(default=20, ge=5, le=120, strict=True)
+    max_hold_sec: int = Field(default=600, ge=30, le=1800, strict=True)
+    cooldown_sec: int = Field(default=30, ge=0, le=300, strict=True)
+    screen_ui_position: Optional[Dict[str, float]] = None
+    guest_ui_position: Optional[Dict[str, float]] = None
+
+
+class WorkflowGuestReport(BaseModel):
+    robot_id: str = "RC-001"
+    state: Literal["REQUEST", "ENGAGED", "DONE"]
+    idle_ms: int = Field(default=0, ge=0, le=600000)
+
+
 class WorkflowExecutionConfig(BaseModel):
     execution_mode: Literal["SCREEN", "ROBOT"] = "SCREEN"
     robot_id: Literal["RC-001"] = "RC-001"
@@ -86,6 +104,7 @@ class WorkflowExecutionConfig(BaseModel):
     schedules: List[WorkflowScheduleItem] = Field(default_factory=list, max_length=20)
     route: Optional[WorkflowRoute] = None
     event_branches: List[WorkflowEventBranch] = Field(default_factory=list, max_length=1)
+    parallel: Optional[WorkflowParallelConfig] = None
 
     @field_validator("event_branches", mode="before")
     @classmethod

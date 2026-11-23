@@ -415,6 +415,7 @@ export const WorkflowStepBlock = ({
                 <option value="MAP_WAYFINDING">Chỉ đường & Quét mã QR di động</option>
                 <option value="DINING_MENU">Menu nhà hàng ẩm thực</option>
                 <option value="SERVICES_GRID">Cơ sở vật chất & Tiện ích khách sạn</option>
+                <option value="ACTIVE_ADS">Danh sách quảng cáo đang bật</option>
                 <option value="PROMO_VIDEO">Video quảng cáo</option>
                 <option value="PROMO_IMAGE">Hình ảnh / Poster quảng cáo</option>
                 <option value="PROMO_SUMMER">Chiếu Slide Ưu Đãi Mùa Hè</option>

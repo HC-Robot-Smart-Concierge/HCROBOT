@@ -21,6 +21,8 @@ export function useWorkflowRunner({
   transcript = '',
   resetTranscript = () => {},
   isListening = false,
+  // Bước COMMUNICATE do luồng hội thoại AI của màn hình xử lý; bộ chạy chỉ đợi nextStep()
+  isExternalTalkStep = () => false,
 }) {
   const [activeWorkflow, setActiveWorkflow] = useState(null);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
@@ -94,6 +96,7 @@ export function useWorkflowRunner({
   useEffect(() => {
     if (!isWorkflowRunning || !activeStep || !transcript || !transcript.trim()) return;
     if (guestRequestPhase(activeWorkflow.id, activeStep)) return;
+    if (isExternalTalkStep(activeWorkflow, activeStep)) return;
 
     const lowerTranscript = transcript.toLowerCase();
 
@@ -144,6 +147,7 @@ export function useWorkflowRunner({
     cleanupTimers();
 
     if (guestRequestPhase(activeWorkflow.id, activeStep)) return;
+    if (isExternalTalkStep(activeWorkflow, activeStep)) return;
 
     let durationMs = 5000;
     const isCommunicate = activeStep.type === 'COMMUNICATE';

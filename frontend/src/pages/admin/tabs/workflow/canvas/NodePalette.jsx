@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BatteryCharging, BatteryLow, Plus, X } from 'lucide-react';
+import { BatteryCharging, BatteryLow, Columns2, Plus, X } from 'lucide-react';
 import { OTTO_STEP_TYPES, STEP_SCRATCH_THEMES } from '../workflowConstants';
 
 const ROBOT_TYPES = new Set(['MOVE', 'FOLLOW_ROUTE', 'WAIT']);
@@ -23,7 +23,7 @@ export function createChargerStep() {
   });
 }
 
-export function NodePalette({ robotMode, hasBatteryBranch, onAdd, onAddBattery }) {
+export function NodePalette({ robotMode, hasBatteryBranch, hasParallel = false, onAdd, onAddBattery, onEnableParallel }) {
   const [open, setOpen] = useState(false);
   const pick = (action) => { action(); setOpen(false); };
   return <div className="absolute left-3 top-3 z-10">
@@ -34,6 +34,10 @@ export function NodePalette({ robotMode, hasBatteryBranch, onAdd, onAddBattery }
     {open && <div role="menu" className="mt-2 w-72 max-h-[60vh] overflow-y-auto rounded-xl border border-stone-300 bg-white p-2 shadow-xl space-y-1">
       {robotMode && <>
         <p className="px-2 pt-1 text-[10px] font-bold uppercase tracking-wide text-stone-500">Xe thật</p>
+        {!hasParallel && onEnableParallel && <button type="button" role="menuitem" onClick={() => pick(onEnableParallel)}
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-blue-50">
+          <Columns2 className="w-4 h-4 text-blue-600" /><span><b>Chạy song song</b><br /><span className="text-stone-500">Vừa đi tuyến vừa quảng cáo, gặp người thì nói chuyện</span></span>
+        </button>}
         <button type="button" role="menuitem" onClick={() => pick(() => onAdd(createChargerStep()))}
           className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-stone-100">
           <BatteryCharging className="w-4 h-4 text-emerald-700" /><span><b>Về trạm sạc gần nhất</b><br /><span className="text-stone-500">Chọn trạm sạc gần xe nhất lúc chạy</span></span>

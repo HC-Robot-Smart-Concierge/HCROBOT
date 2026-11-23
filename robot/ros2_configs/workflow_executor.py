@@ -14,13 +14,15 @@ import time
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
+from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, qos_profile_sensor_data
 from action_msgs.msg import GoalStatus, GoalStatusArray
 from nav2_msgs.action import NavigateToPose, NavigateThroughPoses
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import OccupancyGrid
+from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Empty, String
 from tf2_ros import Buffer, TransformListener
+from workflow_guest_hold import GuestHoldMixin
 from workflow_navigation_logic import (
     ReadinessDebouncer, readiness_reason, goal_cell_allowed, route_segment_end, route_pose_targets, route_window_end,
 )
@@ -30,10 +32,11 @@ class RunCancelled(Exception):
     pass
 
 
-class Executor(Node):
+class Executor(GuestHoldMixin, Node):
     def __init__(self, plan, control, events):
         super().__init__('workflow_executor')
         self.plan, self.control = plan, control
+        self.setup_guest_hold(plan)
         self.events = open(events, 'a', encoding='utf-8')
         self.localization, self.health = {}, {}
         self.loc_at = self.health_at = self.costmap_at = 0
@@ -58,6 +61,9 @@ class Executor(Node):
         self.create_subscription(GoalStatusArray, '/navigate_to_pose/_action/status', self.on_status, latched)
         self.create_subscription(GoalStatusArray, '/navigate_through_poses/_action/status',
                                  lambda msg: self.on_status(msg, 'route'), latched)
+        if self.parallel:
+            self.create_subscription(LaserScan, '/scan', self.on_scan, qos_profile_sensor_data)
+            self.create_subscription(OccupancyGrid, '/map', self.on_static_map, latched)
         self.stop_pub = self.create_publisher(Empty, '/robot/nav_cancel', 10)
         self.client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.route_client = ActionClient(self, NavigateThroughPoses, '/navigate_through_poses')
@@ -107,6 +113,7 @@ class Executor(Node):
             control = json.loads(self.control.read_text(encoding='utf-8'))
         except (OSError, ValueError) as exc:
             raise RuntimeError('Mất kênh điều khiển backend.') from exc
+        self.last_control = control
         if control.get('cancel'):
             if control.get('stop_reason'):
                 raise RuntimeError(control['stop_reason'])
@@ -118,9 +125,23 @@ class Executor(Node):
         return readiness_reason(self.localization, self.loc_at, self.health, self.health_at,
                                 self.plan['map_id'], time.monotonic())
 
+    def spin_idle(self):
+        rclpy.spin_once(self, timeout_sec=0.1)
+
+    def _scan_poses(self):
+        """(x, y, yaw) of the laser, and of base_link, in the map frame."""
+        poses = []
+        for frame in ('laser_frame', 'base_link'):
+            transform = self.tf_buffer.lookup_transform('map', frame, rclpy.time.Time()).transform
+            q = transform.rotation
+            yaw = math.atan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z))
+            poses.append((transform.translation.x, transform.translation.y, yaw))
+        return poses
+
     def spin_checked(self):
         rclpy.spin_once(self, timeout_sec=0.1)
         self.check_control()
+        self.check_guest_interrupt()
         raw = self.reason()
         if raw and self.readiness.since is None:
             self.get_logger().warn(
@@ -359,7 +380,7 @@ class Executor(Node):
             self.index = 0
             visits = 0
             while self.index < len(steps):
-                self.spin_checked()
+                self.run_guarded(self.spin_checked)
                 visits += 1
                 if visits > 10000:
                     raise RuntimeError('Vượt 10000 lần chuyển bước trong một vòng; kiểm tra nhánh lặp.')
@@ -368,13 +389,13 @@ class Executor(Node):
                 if step['type'] == 'MOVE':
                     end = route_segment_end(steps, self.index)
                     if end > self.index:
-                        self.follow_route(steps[self.index:end])
+                        self.run_route(steps, end)
                         self.index = end - 1
                         step = steps[self.index]
                     else:
-                        self.move(step['params'])
+                        self.run_guarded(lambda: self.move(step['params']))
                 elif step['type'] == 'WAIT':
-                    self.wait(step['params'].get('duration_sec', 5))
+                    self.run_guarded(lambda: self.wait(step['params'].get('duration_sec', 5)))
                 else:
                     raise RuntimeError(f"Loại bước chưa được hỗ trợ: {step['type']}")
                 self.emit('STEP_COMPLETED')
@@ -383,7 +404,7 @@ class Executor(Node):
             self.round += 1
             self.emit('ROUND_COMPLETED')
             if config['repeat_mode'] == 'CONTINUOUS' or self.round < config['repeat_count']:
-                self.wait(config['interval_seconds'])
+                self.run_guarded(lambda: self.wait(config['interval_seconds']))
         self.emit('COMPLETED')
 
 

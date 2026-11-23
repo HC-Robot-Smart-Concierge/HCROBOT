@@ -5,10 +5,12 @@ import { WorkflowStepBlock } from './WorkflowStepBlock';
 import { WorkflowExecutionSettings } from './WorkflowExecutionSettings';
 import { WorkflowMetaPanel } from './WorkflowMetaPanel';
 import { WorkflowCanvas } from './canvas/WorkflowCanvas';
+import { ParallelLanePanel } from './ParallelLanePanel';
 import { AdminPhysicalMapTab } from '../AdminPhysicalMapTab';
 import { selectedStepIndex, stepSetup } from '../../../../utils/workflowStepSetup';
 import { isChargerMove } from '../../../../utils/workflowExecution';
-import { BATTERY, eventBranch, removeBatteryBranch, setBatteryThreshold } from '../../../../utils/workflowGraph';
+import { BATTERY, GUEST_EVENT, SCREEN_LANE, eventBranch, removeBatteryBranch, setBatteryThreshold } from '../../../../utils/workflowGraph';
+import { parallelOf } from '../../../../utils/workflowLanes';
 
 const TABS = [
   ['steps', 'Sơ đồ', Workflow],
@@ -63,7 +65,8 @@ export const WorkflowBuilderModal = ({
 
   if (!isOpen || !workflow) return null;
   const batterySelected = selectedId === BATTERY && Boolean(eventBranch(workflow, 'LOW_BATTERY'));
-  const activeIndex = batterySelected ? -1 : selectedStepIndex(steps, selectedId);
+  const laneSelected = [SCREEN_LANE, GUEST_EVENT].includes(selectedId) && Boolean(parallelOf(workflow));
+  const activeIndex = batterySelected || laneSelected ? -1 : selectedStepIndex(steps, selectedId);
   const active = activeIndex >= 0 ? steps[activeIndex] : null;
   const status = active ? stepSetup(active, routes) : null;
   const pendingRoute = steps.some((step) => step.type === 'FOLLOW_ROUTE' && !step.params?.route_id);
@@ -113,6 +116,7 @@ export const WorkflowBuilderModal = ({
             </div>
             <aside aria-label="Cấu hình mục đang chọn" className="nokey lg:w-[400px] shrink-0 min-h-0 overflow-y-auto p-4 space-y-4">
               {batterySelected && <BatteryBranchPanel workflow={workflow} onWorkflowChange={onWorkflowChange} onSelect={setSelectedId} />}
+              {laneSelected && <ParallelLanePanel workflow={workflow} selectedId={selectedId} onWorkflowChange={onWorkflowChange} onSelect={setSelectedId} />}
               {active && <>
                 <div><h4 className="text-base font-bold text-stone-900">Cấu hình bước {activeIndex + 1}: {active.title}</h4>
                   <p className="text-xs text-stone-500 mt-1">{OTTO_STEP_TYPES.find((item) => item.type === active.type)?.desc}</p></div>
@@ -137,7 +141,7 @@ export const WorkflowBuilderModal = ({
                   onRemove={(index) => { setSelectedId(null); onRemoveStep(index); }}
                 />}
               </>}
-              {!batterySelected && !active && <div className="p-8 text-center text-stone-400 border-2 border-dashed border-stone-300 rounded-2xl text-xs font-semibold">
+              {!batterySelected && !laneSelected && !active && <div className="p-8 text-center text-stone-400 border-2 border-dashed border-stone-300 rounded-2xl text-xs font-semibold">
                 Chưa có bước nào. Bấm “Thêm node” trên sơ đồ để thêm bước.
               </div>}
             </aside>

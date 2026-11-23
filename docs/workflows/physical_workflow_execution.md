@@ -59,6 +59,24 @@ bash robot/ros2_configs/run_workflow.sh --check
   khi chọn xe thật: API từ chối cấu hình đó.
 - Workflow cũ mặc định **Màn hình Robot**, không tự chuyển sang xe thật.
 
+## Chạy song song: vừa đi tuyến vừa quảng cáo
+
+Trong sơ đồ workflow xe thật, chọn **Thêm node → Chạy song song**. Sơ đồ có thêm:
+
+- **Làn Xe**: các bước nối từ Bắt đầu, nhận Di chuyển, Đi theo tuyến và Chờ.
+- **Làn Màn hình**: chạy cùng lúc, lặp đến khi Làn Xe xong, nhận Hiển thị, Phát lời và Chờ.
+- **Khi có người chắn đường**: xe dừng, quảng cáo tạm dừng, màn hình chạy các bước nói chuyện.
+  Xong nhánh, xe đi tiếp từ điểm tuyến chưa qua và quảng cáo phát lại.
+
+Xe coi là bị chắn khi LiDAR thấy vật **không có trên map**, lệch khỏi tuyến đã vẽ tối đa
+20 cm, cách đầu xe tối đa 60 cm và tồn tại ít nhất 0,5 giây. Khách chạm quảng cáo cũng làm
+xe dừng. Cuộc trò chuyện kết thúc khi khách tạm biệt hoặc 20 giây không tương tác; xe giữ
+tối đa 10 phút. Sau khi đi tiếp, LiDAR bỏ qua chắn đường 30 giây để Nav2 lách qua.
+
+Chỉ dùng LiDAR nên vali hoặc ghế mới đặt trên tuyến cũng làm xe dừng và mời nói chuyện.
+Nếu màn hình robot tắt, xe vẫn dừng khi bị chắn rồi tự đi tiếp sau 20 giây. Sau khi cập
+nhật code cần khởi động lại backend; không cần deploy Pi hay nạp ESP32.
+
 ## Thực thi và phục hồi
 
 - Lịch tuần được kiểm tra mỗi giây khi backend chạy. Ngày theo thứ Hai=0.

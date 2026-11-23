@@ -117,6 +117,7 @@ export const RobotAdPlayer = ({
               autoPlay
               playsInline
               muted={isMuted}
+              loop={playlist.length <= 1}
               onEnded={() => handleNext()}
               className="h-full max-h-screen w-auto max-w-full object-contain shadow-2xl"
             />

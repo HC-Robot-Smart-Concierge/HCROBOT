@@ -15,6 +15,9 @@ from app.models.workflow import RobotWorkflow
 from app.models.workflow_run import WorkflowRun
 from app.repositories.workflow_repository import WorkflowRepository
 from app.schemas.workflow import WorkflowExecutionConfig
+from app.services.workflow_guest_hold import (
+    apply_guest_report, clear_guest_hold, guest_control_fields, new_guest_state, run_phase, status_payload,
+)
 from app.services.workflow_plan import physical_plan
 from app.services.workflow_schedule import ZONE_OFFSETS
 
@@ -24,6 +27,7 @@ LEASE_SECONDS = 10.0
 CONTROL_INTERVAL_SECONDS = 1.0
 # Stop before the database's 25 s stale-owner recovery can release the robot.
 DATABASE_AUTHORIZATION_SECONDS = 20.0
+STATUS_REFRESH_SECONDS = 10.0
 
 
 def due_slot(workflow, now):
@@ -173,12 +177,44 @@ class WorkflowRuntime:
             item['cancel_requested'] = True
             item['stop_reason'] = 'Backend không xác nhận được quyền quản lý lượt chạy trong 20 giây.'
         item['control_sequence'] = item.get('control_sequence', 0) + 1
-        atomic_json(item['control'], {
+        control = {
             'cancel': bool(item.get('cancel_requested')),
             'expires_at': now + max(0.0, min(LEASE_SECONDS, authorization_left)),
             'issued_at': now, 'sequence': item['control_sequence'],
             'stop_reason': item.get('stop_reason'),
-        })
+        }
+        if item.get('parallel'):
+            control.update(guest_control_fields(item['guest']))
+        atomic_json(item['control'], control)
+
+    def report_guest(self, robot_id, state, idle_ms):
+        """Robot screen: REQUEST stops the vehicle, ENGAGED renews the hold, DONE releases it."""
+        found = next(((run_id, item) for run_id, item in self.running.items()
+                      if item.get('parallel') and item.get('robot_id') == robot_id
+                      and item['process'].poll() is None), None)
+        if found is None:
+            return {'accepted': False, 'run_id': None}
+        run_id, item = found
+        accepted = apply_guest_report(item['guest'], item.get('phase'), state, idle_ms,
+                                      item['parallel'].get('no_interaction_sec', 20), time.time())
+        if accepted:
+            self.refresh_control(item)
+        return {'accepted': accepted, 'run_id': run_id}
+
+    async def publish_status(self, run, item, force=False):
+        """Tell the robot screen on a phase change, and every 10 s so a reopened screen catches up."""
+        if not item.get('parallel'):
+            return
+        now = time.monotonic()
+        if not force and item.get('phase_sent') == item.get('phase') \
+                and now - item.get('status_sent_at', -STATUS_REFRESH_SECONDS) < STATUS_REFRESH_SECONDS:
+            return
+        item['phase_sent'], item['status_sent_at'] = item.get('phase'), now
+        try:
+            from app.services.notification_manager import notification_manager
+            await notification_manager.broadcast_to_department(None, status_payload(run, item))
+        except Exception:
+            logger.exception('Cannot publish workflow run status %s', run.id)
 
     async def control_loop(self):
         while True:
@@ -250,8 +286,12 @@ class WorkflowRuntime:
                                            creationflags=int(getattr(subprocess, 'CREATE_NO_WINDOW', 0)))
             finally:
                 log.close()
+            parallel = (run.payload.get('config') or {}).get('parallel')
+            parallel = parallel if parallel and parallel.get('enabled') else None
             self.running[run.id] = dict(process=process, control=control, events=events, offset=0, terminal=None,
-                                       db_confirmed_at=time.monotonic(), cancel_requested=False)
+                                       db_confirmed_at=time.monotonic(), cancel_requested=False,
+                                       robot_id=run.robot_id, parallel=parallel, lanes=run.payload.get('lanes'),
+                                       phase='MOVING', guest=new_guest_state())
         except OSError as exc:
             await self.finish(run.id, 'FAILED', str(exc))
 
@@ -286,14 +326,26 @@ class WorkflowRuntime:
                             run.events = [*(run.events or [])[-99:], event]
                             run.current_step_index = event.get('step_index', run.current_step_index)
                             run.round_index = event.get('round_index', run.round_index)
+                            item['phase'] = run_phase(item.get('phase'), event['type'])
+                            if event['type'] == 'STEP_STARTED':
+                                item['step_title'] = event.get('message')
+                            if event['type'] == 'GUEST_RESUME' and item.get('guest'):
+                                clear_guest_hold(item['guest'])
+                                if item.get('parallel'):
+                                    self.refresh_control(item)
                             if event['type'] == 'STEP_COMPLETED':
                                 run.completed_steps += 1
                             if event['type'] in {'COMPLETED', 'FAILED', 'CANCELLED'}:
                                 item['terminal'] = event
                 await db.commit()
+                await self.publish_status(run, item)
         if item['process'].poll() is not None:
             event = item['terminal'] or {'type': 'FAILED', 'message': 'ROS worker dừng mà chưa xác nhận kết quả.'}
             await self.finish(run_id, event['type'], event.get('message') if event['type'] != 'COMPLETED' else None)
+            if run is not None:
+                item['phase'] = 'DONE'
+                run.status = event['type']
+                await self.publish_status(run, item, force=True)
             del self.running[run_id]
 
 

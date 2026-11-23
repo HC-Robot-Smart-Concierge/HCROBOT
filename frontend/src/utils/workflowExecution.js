@@ -1,3 +1,5 @@
+import { laneMembers, parallelError, parallelOf } from './workflowLanes';
+
 export const WEEK_DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
 export function executionConfig(value = {}) {
@@ -14,8 +16,14 @@ export function executionError(workflow, { allowDraft = false, forSave = false }
   if (config.execution_mode === 'ROBOT') {
     if (!forSave && (config.event_branches || []).some((b) => b.event === 'LOW_BATTERY')) return 'Nhánh pin yếu chưa chạy được trên xe thật (đợt 2). Gỡ nhánh để chạy.';
     if (!forSave && (workflow.steps || []).some(isChargerMove)) return 'Bước Về trạm sạc gần nhất chưa chạy được trên xe thật (đợt 2). Gỡ bước để chạy.';
-    if ((workflow.steps || []).some((s) => !['MOVE', 'FOLLOW_ROUTE', 'WAIT'].includes(s.type))) return 'Xe thật hiện hỗ trợ Di chuyển, Đi theo tuyến và Chờ. Các bước giao tiếp dùng chế độ màn hình.';
-    if ((workflow.steps || []).some((s) => s.type === 'MOVE' && !isChargerMove(s) && !s.params?.map_id)) return 'Bước MOVE cần gắn map. Hãy dùng bước Đi theo tuyến với tuyến lưu từ Physical Map.';
+    // Parallel workflow: only the vehicle lane has to be drivable; the other lanes run on the screen.
+    const parallel = parallelOf(workflow);
+    const laneError = parallelError(workflow, { forSave });
+    if (laneError) return laneError;
+    const robotIds = parallel ? new Set(laneMembers(workflow).robot) : null;
+    const driven = (workflow.steps || []).filter((s) => !robotIds || robotIds.has(s.step_id));
+    if (driven.some((s) => !['MOVE', 'FOLLOW_ROUTE', 'WAIT'].includes(s.type))) return 'Xe thật hiện hỗ trợ Di chuyển, Đi theo tuyến và Chờ. Các bước giao tiếp dùng chế độ màn hình.';
+    if (driven.some((s) => s.type === 'MOVE' && !isChargerMove(s) && !s.params?.map_id)) return 'Bước MOVE cần gắn map. Hãy dùng bước Đi theo tuyến với tuyến lưu từ Physical Map.';
   }
   if (!['COUNT', 'CONTINUOUS'].includes(config.repeat_mode)) return 'Chọn chế độ lặp hợp lệ.';
   if (!Number.isInteger(config.repeat_count) || config.repeat_count < 1 || config.repeat_count > 1000) return 'Số vòng phải từ 1 đến 1000.';

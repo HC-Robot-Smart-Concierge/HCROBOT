@@ -1,6 +1,7 @@
 """Validate a physical execution snapshot before reserving a robot."""
 import math
 from app.schemas.workflow import WorkflowExecutionConfig
+from app.services.workflow_lanes import split_lanes
 from app.services.workflow_routes import resolve_route_steps
 
 
@@ -21,7 +22,13 @@ async def physical_plan(workflow, repo, *, for_save: bool = False):
         raise ValueError("Workflow đang tắt.")
     if not for_save and config.event_branches:
         raise ValueError(BRANCH_BLOCKED)
-    steps = await resolve_route_steps(workflow.steps or [], repo)
+    lanes = None
+    source = workflow.steps or []
+    if config.parallel and config.parallel.enabled:
+        # Only the vehicle lane reaches the ROS worker; the other two run on the robot screen.
+        lanes = split_lanes(source, config.parallel, strict=not for_save)
+        source = lanes["robot"]
+    steps = await resolve_route_steps(source, repo)
     if not for_save and any(is_charger_move(s) for s in steps):
         raise ValueError(CHARGER_BLOCKED)
     if not steps:
@@ -52,4 +59,7 @@ async def physical_plan(workflow, repo, *, for_save: bool = False):
             raise ValueError(f"{key} phải lớn hơn 0 và không quá 3600 giây.")
     if len(maps) != 1:
         raise ValueError("Một lượt chạy xe thật cần các điểm đến trên cùng một map.")
-    return {"steps": steps, "map_id": maps.pop(), "config": config.model_dump()}
+    plan = {"steps": steps, "map_id": maps.pop(), "config": config.model_dump()}
+    if lanes:
+        plan["lanes"] = {"screen": lanes["screen"], "guest": lanes["guest"]}
+    return plan

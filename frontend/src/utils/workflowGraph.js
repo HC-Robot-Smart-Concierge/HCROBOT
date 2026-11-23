@@ -9,11 +9,16 @@
  * 'timeout', 'cancel' (CHOICE). Fixed nodes: START, END and BATTERY (low-battery event).
  */
 import { FLOW_END, OUTCOME, getChoiceOptions, resolveNextStepIndex } from './workflowFlow';
+import { laneMap, parallelOf } from './workflowLanes';
 
 export const START = '__start';
 export const END_NODE = '__end';
 export const BATTERY = '__battery';
+export const SCREEN_LANE = '__screen';
+export const GUEST_EVENT = '__guest';
 export const DEFAULT_BATTERY_THRESHOLD = 20;
+const LANE_ENTRY = { [SCREEN_LANE]: 'screen_step_id', [GUEST_EVENT]: 'guest_step_id' };
+const LANE_POSITION = { [SCREEN_LANE]: 'screen_ui_position', [GUEST_EVENT]: 'guest_ui_position' };
 const COLUMN = 260;
 const ROW = 140;
 
@@ -85,10 +90,17 @@ function edgesOf(wf) {
     id: `${source}:${sourceHandle}`, source, sourceHandle, target: toNode(link), ...extra,
   });
   const edges = [edge(START, 'ok', wf.steps[0]?.step_id)];
-  wf.steps.forEach((step) => stepOutputs(step).forEach((out) =>
-    edges.push(edge(step.step_id, out.handle, out.link, { label: out.label, data: { error: Boolean(out.error) } }))));
+  const parallel = parallelOf(wf);
+  const lanes = parallel ? laneMap(wf) : {};
+  wf.steps.forEach((step) => stepOutputs(step).forEach((out) => {
+    // The screen lane loops and the guest branch returns to the route: neither ends the run.
+    if (['screen', 'guest'].includes(lanes[step.step_id]) && toNode(out.link) === END_NODE) return;
+    edges.push(edge(step.step_id, out.handle, out.link, { label: out.label, data: { error: Boolean(out.error) } }));
+  }));
   const branch = branchOf(wf);
   if (branch) edges.push(edge(BATTERY, 'ok', branch.next_step_id, { data: { battery: true } }));
+  if (parallel?.screen_step_id) edges.push(edge(SCREEN_LANE, 'ok', parallel.screen_step_id, { data: { lane: 'screen' } }));
+  if (parallel?.guest_step_id) edges.push(edge(GUEST_EVENT, 'ok', parallel.guest_step_id, { data: { lane: 'guest' } }));
   return edges;
 }
 
@@ -118,7 +130,17 @@ export function autoLayout(workflow) {
   };
   const reached = wf.steps.map((s) => s.step_id).filter((id) => depth[id] !== undefined);
   const positions = { [START]: { x: 0, y: 0 }, ...place(reached, 0) };
-  const lowerTop = (Math.max(0, ...Object.values(mainRows)) + 2) * ROW;
+  const below = () => Math.max(...Object.values(positions).map((p) => p.y)) + ROW * 2;
+  if (parallelOf(wf)) {
+    const lanes = laneMap(wf);
+    [[SCREEN_LANE, 'screen'], [GUEST_EVENT, 'guest']].forEach(([node, lane]) => {
+      const top = below();
+      walk(node, 0);
+      Object.assign(positions, place(wf.steps.map((s) => s.step_id).filter((id) => lanes[id] === lane && !positions[id]), top));
+      positions[node] = { x: 0, y: top };
+    });
+  }
+  const lowerTop = parallelOf(wf) ? below() : (Math.max(0, ...Object.values(mainRows)) + 2) * ROW;
   walk(BATTERY, 0);
   const rest = wf.steps.map((s) => s.step_id).filter((id) => !positions[id]);
   Object.assign(positions, place(rest, lowerTop));
@@ -131,17 +153,25 @@ export function workflowToGraph(workflow) {
   const wf = explicitLinks(workflow);
   const layout = autoLayout(wf);
   const branch = branchOf(wf);
+  const parallel = parallelOf(wf);
+  const lanes = parallel ? laneMap(wf) : {};
   const nodes = [
-    { id: START, type: 'start', position: layout[START], data: {}, deletable: false },
+    { id: START, type: 'start', position: layout[START], data: { parallel: Boolean(parallel) }, deletable: false },
     { id: END_NODE, type: 'end', position: layout[END_NODE], data: {}, deletable: false },
     ...wf.steps.map((step, index) => ({
       id: step.step_id, type: 'step', position: step.params.ui_position || layout[step.step_id],
-      data: { step, index, outputs: stepOutputs(step) },
+      data: { step, index, outputs: stepOutputs(step), lane: lanes[step.step_id] || null },
     })),
   ];
   if (branch) {
     nodes.push({ id: BATTERY, type: 'battery', position: branch.ui_position || layout[BATTERY],
       data: { threshold: branch.threshold_percent ?? DEFAULT_BATTERY_THRESHOLD } });
+  }
+  if (parallel) {
+    nodes.push(
+      { id: SCREEN_LANE, type: 'screenLane', position: parallel.screen_ui_position || layout[SCREEN_LANE], data: {}, deletable: false },
+      { id: GUEST_EVENT, type: 'guestEvent', position: parallel.guest_ui_position || layout[GUEST_EVENT], data: {}, deletable: false },
+    );
   }
   return { nodes, edges: edgesOf(wf) };
 }
@@ -169,6 +199,11 @@ export function connect(workflow, { source, sourceHandle, target }) {
     if (branch) branch.next_step_id = toLink(target);
     return wf;
   }
+  if (LANE_ENTRY[source]) {
+    const parallel = parallelOf(wf);
+    if (parallel) parallel[LANE_ENTRY[source]] = target === END_NODE ? null : target;
+    return wf;
+  }
   const step = wf.steps.find((s) => s.step_id === source);
   if (step) writeLink(step, sourceHandle, toLink(target));
   return wf;
@@ -188,8 +223,18 @@ export function disconnect(workflow, { source, sourceHandle }) {
 
 export function removeStep(workflow, stepId) {
   if (stepId === BATTERY) return removeBatteryBranch(workflow);
+  if (LANE_ENTRY[stepId]) return explicitLinks(workflow);
   const wf = explicitLinks(workflow);
   const first = wf.steps[0];
+  const parallel = parallelOf(wf);
+  if (parallel) {
+    // A removed lane entry hands the lane to its next step, so the rest stays wired.
+    const removed = wf.steps.find((s) => s.step_id === stepId);
+    const follower = removed?.type === 'CHOICE' ? null : removed?.params.next_step_id;
+    Object.values(LANE_ENTRY).forEach((key) => {
+      if (parallel[key] === stepId) parallel[key] = follower && follower !== FLOW_END ? follower : null;
+    });
+  }
   // Removing the START step: its successor starts the flow, never a branch-only step.
   const successor = first?.step_id === stepId
     ? (first.type === 'CHOICE' ? choiceOptions(first)[0]?.option.next_step_id : first.params.next_step_id)
@@ -210,6 +255,15 @@ export function removeStep(workflow, stepId) {
   });
   // The branch stays (the backend rejects an empty next_step_id): a removed target means END.
   (wf.execution_config.event_branches || []).forEach((b) => { b.next_step_id = clear(b.next_step_id); });
+  if (parallel) {
+    // The vehicle lane starts at the first step: never let a screen or guest step become it.
+    const lanes = laneMap({ ...wf, steps: wf.steps.slice(1) });
+    const entries = [parallel.screen_step_id, parallel.guest_step_id];
+    if (entries.includes(wf.steps[0]?.step_id)) {
+      const driver = wf.steps.findIndex((s) => !entries.includes(s.step_id) && !['screen', 'guest'].includes(lanes[s.step_id]));
+      if (driver > 0) wf.steps.unshift(...wf.steps.splice(driver, 1));
+    }
+  }
   return wf;
 }
 
@@ -230,6 +284,11 @@ export function setPosition(workflow, nodeId, position) {
   if (nodeId === BATTERY) {
     const branch = branchOf(wf);
     if (branch) branch.ui_position = pos;
+    return wf;
+  }
+  if (LANE_POSITION[nodeId]) {
+    const parallel = parallelOf(wf);
+    if (parallel) parallel[LANE_POSITION[nodeId]] = pos;
     return wf;
   }
   const step = wf.steps.find((s) => s.step_id === nodeId);
@@ -261,6 +320,46 @@ export function setBatteryThreshold(workflow, threshold) {
   const wf = normalized(workflow);
   const branch = branchOf(wf);
   if (branch) branch.threshold_percent = clampThreshold(threshold);
+  return wf;
+}
+
+/** Turn on parallel mode with a ready lane: ads on the screen, greet then talk for a guest. */
+export function enableParallel(workflow, createStep) {
+  const wf = explicitLinks(workflow);
+  if (parallelOf(wf)) return wf;
+  const make = (type, title, params) => {
+    const step = createStep(type, { title });
+    step.params = { ...step.params, ...params };
+    return step;
+  };
+  const ad = make('SHOW', 'Phát quảng cáo', {
+    screen_mode: 'ACTIVE_ADS', content_id: 'ACTIVE_ADS', slide_duration_sec: 30, next_step_id: FLOW_END,
+  });
+  const talk = make('COMMUNICATE', 'Nói chuyện với khách', {
+    initial_prompt: 'Em có thể hỗ trợ gì cho quý khách ạ?', next_step_id: FLOW_END,
+  });
+  const greet = make('GREET', 'Chào khách', { greeting_text: 'Dạ em chào quý khách!', next_step_id: talk.step_id });
+  wf.steps.push(ad, greet, talk);
+  wf.execution_config.parallel = {
+    enabled: true, screen_step_id: ad.step_id, guest_step_id: greet.step_id,
+    no_interaction_sec: 20, max_hold_sec: 600, cooldown_sec: 30,
+  };
+  return wf;
+}
+
+/** Turn parallel mode off and remove the steps that only the screen lane or guest branch used. */
+export function disableParallel(workflow) {
+  const wf = explicitLinks(workflow);
+  const lanes = laneMap(wf);
+  const kept = wf.steps.filter((s) => !['screen', 'guest'].includes(lanes[s.step_id]));
+  return { ...wf, steps: kept, execution_config: { ...wf.execution_config, parallel: null } };
+}
+
+export function setParallelSetting(workflow, key, value, min, max) {
+  const wf = normalized(workflow);
+  const parallel = parallelOf(wf);
+  const number = Math.round(Number(value));
+  if (parallel && value !== '' && Number.isFinite(number)) parallel[key] = Math.min(max, Math.max(min, number));
   return wf;
 }
 

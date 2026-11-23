@@ -1,21 +1,39 @@
 import React from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { AlertTriangle, BatteryLow, Flag, Play, RotateCw } from 'lucide-react';
+import { AlertTriangle, BatteryLow, CornerDownLeft, Flag, Monitor, Play, Repeat, RotateCw, UserRound } from 'lucide-react';
 import { isChargerMove } from '../../../../../utils/workflowExecution';
 import { STEP_SCRATCH_THEMES, OTTO_STEP_TYPES } from '../workflowConstants';
 
 export const OK_COLOR = '#16a34a';
 export const ERROR_COLOR = '#dc2626';
 export const BATTERY_COLOR = '#d97706';
+export const SCREEN_COLOR = '#2563eb';
+export const GUEST_COLOR = '#9333ea';
 const OUTPUT_ROW = 22;
 const HEADER = 58;
 
 const handleStyle = (color) => ({ width: 11, height: 11, background: color, border: '2px solid #fff' });
 
-function StartNode() {
+function StartNode({ data }) {
   return <div className="flex items-center gap-1.5 rounded-full bg-stone-900 text-white px-4 py-2 text-xs font-bold shadow">
-    <Play className="w-3.5 h-3.5" />Bắt đầu
+    <Play className="w-3.5 h-3.5" />{data?.parallel ? 'Bắt đầu · Làn Xe' : 'Bắt đầu'}
     <Handle type="source" id="ok" position={Position.Right} style={handleStyle(OK_COLOR)} />
+  </div>;
+}
+
+function ScreenLaneNode({ selected }) {
+  return <div className={`rounded-xl border-2 bg-blue-50 px-3 py-2 text-xs shadow min-w-[190px] ${selected ? 'border-blue-600 ring-2 ring-blue-300' : 'border-blue-400'}`}>
+    <div className="flex items-center gap-1.5 font-bold text-blue-900"><Monitor className="w-4 h-4" />Làn Màn hình</div>
+    <p className="mt-0.5 text-[10px] text-blue-700">Chạy cùng lúc với Làn Xe, lặp đến khi xe xong</p>
+    <Handle type="source" id="ok" position={Position.Right} style={handleStyle(SCREEN_COLOR)} />
+  </div>;
+}
+
+function GuestEventNode({ selected }) {
+  return <div className={`rounded-xl border-2 bg-purple-50 px-3 py-2 text-xs shadow min-w-[190px] ${selected ? 'border-purple-600 ring-2 ring-purple-300' : 'border-purple-400'}`}>
+    <div className="flex items-center gap-1.5 font-bold text-purple-900"><UserRound className="w-4 h-4" />Khi có người chắn đường</div>
+    <p className="mt-0.5 text-[10px] text-purple-700">Dừng xe, tạm dừng quảng cáo, xong thì đi tiếp</p>
+    <Handle type="source" id="ok" position={Position.Right} style={handleStyle(GUEST_COLOR)} />
   </div>;
 }
 
@@ -44,7 +62,7 @@ function BatteryNode({ data, selected }) {
 }
 
 function StepNode({ data, selected }) {
-  const { step, index, outputs, issues = [] } = data;
+  const { step, index, outputs, issues = [], lane } = data;
   const theme = STEP_SCRATCH_THEMES[step.type] || STEP_SCRATCH_THEMES.WAIT;
   const Icon = theme.icon;
   const typeLabel = OTTO_STEP_TYPES.find((t) => t.type === step.type)?.label || step.type;
@@ -66,6 +84,8 @@ function StepNode({ data, selected }) {
       </div>
     </div>
     <div className="flex flex-wrap gap-1 px-3 pb-2 pt-1">
+      {lane === 'screen' && <span className="inline-flex items-center gap-0.5 rounded bg-blue-50 px-1 text-[10px] text-blue-800"><Repeat className="w-3 h-3" />Màn hình</span>}
+      {lane === 'guest' && <span className="inline-flex items-center gap-0.5 rounded bg-purple-50 px-1 text-[10px] text-purple-800"><CornerDownLeft className="w-3 h-3" />Gặp khách</span>}
       {retries > 0 && <span className="inline-flex items-center gap-0.5 rounded bg-sky-50 px-1 text-[10px] text-sky-800"><RotateCw className="w-3 h-3" />{retries}</span>}
       {issues.length > 0 && <span className="inline-flex items-center gap-0.5 rounded bg-amber-50 px-1 text-[10px] text-amber-800"><AlertTriangle className="w-3 h-3" />Cần sửa</span>}
     </div>
@@ -80,4 +100,7 @@ function StepNode({ data, selected }) {
   </div>;
 }
 
-export const NODE_TYPES = { start: StartNode, end: EndNode, battery: BatteryNode, step: StepNode };
+export const NODE_TYPES = {
+  start: StartNode, end: EndNode, battery: BatteryNode, step: StepNode,
+  screenLane: ScreenLaneNode, guestEvent: GuestEventNode,
+};

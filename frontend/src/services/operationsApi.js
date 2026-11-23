@@ -706,10 +706,13 @@ export const fetchAnalyticsSummary = async (period = 'all') => {
     total_robots: 1,
     dept_distribution: {
       Reception: 0,
-      Housekeeping: 0,
+      Concierge: 0,
       'F&B': 0,
+      Kitchen: 0,
+      Housekeeping: 0,
       'Bell Services': 0,
       Maintenance: 0,
+      Taxi: 0,
     },
     recent_activities: [],
   });

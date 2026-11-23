@@ -9,6 +9,7 @@ from app.schemas.scenario import (
     DialogueScenarioUpdate,
     DialogueScenarioResponse,
     DialogueScenarioListResponse,
+    ScenarioAudioSyncResponse,
 )
 from app.services.ai.scenario_service import scenario_service
 
@@ -25,7 +26,7 @@ async def list_scenarios(
 ):
     """
     Trả về danh sách tất cả các kịch bản hội thoại đã được cấu hình trước.
-    Cho phép lọc theo danh mục và tìm kiếm nhanh.
+    Tự động kèm trạng thái file audio tĩnh tại folder backend (has_audio_vi, audio_url_vi, v.v.).
     """
     try:
         items = await scenario_service.list_scenarios(
@@ -36,7 +37,10 @@ async def list_scenarios(
         )
         return DialogueScenarioListResponse(
             total=len(items),
-            items=[DialogueScenarioResponse.model_validate(it) for it in items],
+            items=[
+                DialogueScenarioResponse.model_validate(scenario_service.attach_audio_status(it))
+                for it in items
+            ],
         )
     except Exception as e:
         logger.error(f"[ScenariosAPI list_scenarios Error] {e}")
@@ -53,11 +57,11 @@ async def create_scenario(
 ):
     """
     Tạo một kịch bản hội thoại mới.
-    Sau khi tạo, hệ thống tự động làm mới In-Memory RAM Cache để robot nhận diện ngay (<1ms).
+    Sau khi tạo, hệ thống tự động làm mới In-Memory RAM Cache và tự động sinh file âm thanh offline vào folder backend.
     """
     try:
         created = await scenario_service.create_scenario(db=db, data=request)
-        return DialogueScenarioResponse.model_validate(created)
+        return DialogueScenarioResponse.model_validate(scenario_service.attach_audio_status(created))
     except Exception as e:
         logger.error(f"[ScenariosAPI create_scenario Error] {e}")
         raise HTTPException(
@@ -71,7 +75,7 @@ async def get_scenario(
     scenario_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    """Lấy thông tin chi tiết của một kịch bản theo ID."""
+    """Lấy thông tin chi tiết của một kịch bản theo ID kèm thông tin file audio."""
     try:
         item = await scenario_service.get_scenario(db=db, scenario_id=scenario_id)
         if not item:
@@ -79,7 +83,7 @@ async def get_scenario(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Không tìm thấy kịch bản với ID '{scenario_id}'",
             )
-        return DialogueScenarioResponse.model_validate(item)
+        return DialogueScenarioResponse.model_validate(scenario_service.attach_audio_status(item))
     except HTTPException:
         raise
     except Exception as e:
@@ -98,7 +102,7 @@ async def update_scenario(
 ):
     """
     Cập nhật nội dung câu trả lời, từ khóa hoặc hành động của kịch bản.
-    In-Memory RAM Cache sẽ được tự động đồng bộ ngay lập tức.
+    In-Memory RAM Cache sẽ được tự động đồng bộ và file audio backend được làm mới.
     """
     try:
         updated = await scenario_service.update_scenario(db=db, scenario_id=scenario_id, data=request)
@@ -107,7 +111,7 @@ async def update_scenario(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Không tìm thấy kịch bản với ID '{scenario_id}' để cập nhật",
             )
-        return DialogueScenarioResponse.model_validate(updated)
+        return DialogueScenarioResponse.model_validate(scenario_service.attach_audio_status(updated))
     except HTTPException:
         raise
     except Exception as e:
@@ -115,6 +119,84 @@ async def update_scenario(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Không thể cập nhật kịch bản: {str(e)}",
+        )
+
+
+@router.post("/generate-all-audio", response_model=ScenarioAudioSyncResponse, summary="Đồng bộ sinh toàn bộ file giọng nói offline vào folder backend")
+async def generate_all_audio(
+    only_fast_path: bool = Query(True, description="Chỉ sinh audio cho các kịch bản Fast-Path"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Duyệt qua tất cả kịch bản và sinh trước các file âm thanh MP3 lưu thẳng vào thư mục backend/static/audio_cache.
+    Điện thoại PWA và Robot có thể phát trực tiếp các file này ngay cả khi mất Internet hoàn toàn.
+    """
+    try:
+        res = await scenario_service.batch_pre_generate_all(db=db, only_fast_path=only_fast_path)
+        return ScenarioAudioSyncResponse(**res)
+    except Exception as e:
+        logger.error(f"[ScenariosAPI generate_all_audio Error] {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Không thể sinh audio hàng loạt: {str(e)}",
+        )
+
+
+@router.post("/{scenario_id}/generate-audio", response_model=DialogueScenarioResponse, summary="Sinh trước file âm thanh cho 1 kịch bản cụ thể")
+async def generate_scenario_audio(
+    scenario_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Kích hoạt sinh file audio MP3 cho kịch bản được chỉ định và lưu vào backend/static/audio_cache.
+    """
+    try:
+        item = await scenario_service.get_scenario(db=db, scenario_id=scenario_id)
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy kịch bản với ID '{scenario_id}'",
+            )
+        updated_info = await scenario_service.pre_generate_scenario_audio(item)
+        return DialogueScenarioResponse.model_validate(updated_info)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ScenariosAPI generate_scenario_audio Error] {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi sinh audio cho kịch bản: {str(e)}",
+        )
+
+
+@router.get("/{scenario_id}/audio-status", summary="Kiểm tra trạng thái file audio tĩnh")
+async def get_scenario_audio_status(
+    scenario_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Trả về chi tiết trạng thái file audio MP3 vật lý trong thư mục backend."""
+    try:
+        item = await scenario_service.get_scenario(db=db, scenario_id=scenario_id)
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Không tìm thấy kịch bản với ID '{scenario_id}'",
+            )
+        status_info = scenario_service.attach_audio_status(item)
+        return {
+            "scenario_id": item.id,
+            "has_audio_vi": status_info["has_audio_vi"],
+            "has_audio_en": status_info["has_audio_en"],
+            "audio_url_vi": status_info["audio_url_vi"],
+            "audio_url_en": status_info["audio_url_en"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ScenariosAPI get_scenario_audio_status Error] {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi kiểm tra audio: {str(e)}",
         )
 
 

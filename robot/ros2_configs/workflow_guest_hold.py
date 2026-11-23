@@ -4,10 +4,12 @@ The host provides: emit, check_control, last_control, spin_idle, stop_owned_goal
 _refresh_active_goals, _route_robot_xy, _wait_navigation_ready, readiness, index, goal,
 goal_future and finished_goal_ids. This module imports no ROS package.
 """
+import json
 import math
 import time
 
-from route_block_logic import RouteBlockDetector, StaticMap, route_ahead, scan_blocks_route
+from route_block_logic import RouteBlockDetector, StaticMap, blocking_bearings_deg, route_ahead
+from route_person_gate import PersonGate
 from workflow_navigation_logic import route_pose_targets
 
 REACHED_CLEARANCE_M = 0.35
@@ -30,7 +32,23 @@ class GuestHoldMixin:
         self.guest_route = None
         self.static_map = None
         self.block_detector = RouteBlockDetector()
+        self.person_gate = PersonGate()
+        self.vision_live = None
         self.last_control = {}
+
+    def on_person_detections(self, msg):
+        try:
+            payload = json.loads(msg.data)
+        except (TypeError, ValueError):
+            payload = None
+        self.person_gate.update(payload, time.monotonic())
+
+    def _report_vision(self, now):
+        """Write one run-log line whenever the stop decision changes source."""
+        live = self.person_gate.available(now)
+        if live != self.vision_live:
+            self.vision_live = live
+            self.emit('VISION_STATUS', 'YOLO đang xác nhận người' if live else 'Không có YOLO: tạm dùng chỉ LiDAR')
 
     def on_static_map(self, msg):
         info = msg.info
@@ -50,9 +68,11 @@ class GuestHoldMixin:
         except Exception:
             self.block_detector.reset()  # no pose: never decide from a stale position
             return
+        self._report_vision(now)
         first, targets = self.guest_route
         route = route_ahead(targets, self.index - first, base[:2])
-        blocked = bool(route) and scan_blocks_route(msg, laser, base[2], route, self.static_map)
+        bearings = blocking_bearings_deg(msg, laser, base[2], route, self.static_map) if route else []
+        blocked = bool(bearings) and self.person_gate.confirms(bearings, now)
         if self.block_detector.update(blocked, now):
             self.route_blocked = True
 

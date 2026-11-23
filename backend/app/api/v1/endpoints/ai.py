@@ -157,19 +157,14 @@ async def synthesize_voice_speech(request: TTSRequest):
             language=request.language,
             rate=request.rate,
         )
-        return TTSResponse(
-            audio_base64=tts_res.get("audio_base64", ""),
-            mime_type=tts_res.get("mime_type", "audio/mp3"),
-            provider_used=tts_res.get("provider_used", "none"),
-            error_code=tts_res.get("error_code"),
-            error_detail=tts_res.get("error_detail"),
-        )
+        return TTSResponse(**tts_res)
     except Exception as e:
         logger.error(f"[TTS Endpoint Error] {str(e)}")
         return TTSResponse(
             audio_base64="",
             mime_type="audio/mp3",
             provider_used="none",
+            audio_url=None,
             error_code="TTS_PROVIDER_ERROR",
             error_detail=str(e),
         )

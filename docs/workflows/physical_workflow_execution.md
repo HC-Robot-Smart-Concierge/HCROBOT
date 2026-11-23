@@ -73,7 +73,9 @@ Xe coi là bị chắn khi LiDAR thấy vật **không có trên map**, lệch k
 xe dừng. Cuộc trò chuyện kết thúc khi khách tạm biệt hoặc 20 giây không tương tác; xe giữ
 tối đa 10 phút. Sau khi đi tiếp, LiDAR bỏ qua chắn đường 30 giây để Nav2 lách qua.
 
-Chỉ dùng LiDAR nên vali hoặc ghế mới đặt trên tuyến cũng làm xe dừng và mời nói chuyện.
+Khi `/robot/person_detections` đang có dữ liệu, xe chỉ dừng nếu YOLO thấy người ở cùng hướng
+với vật LiDAR phát hiện. Nếu YOLO không chạy hoặc báo `FAILED`, xe tạm dùng chỉ LiDAR nên vali
+hoặc ghế mới đặt trên tuyến cũng làm xe dừng; log lượt chạy ghi `VISION_STATUS` khi đổi nguồn.
 Nếu màn hình robot tắt, xe vẫn dừng khi bị chắn rồi tự đi tiếp sau 20 giây. Sau khi cập
 nhật code cần khởi động lại backend; không cần deploy Pi hay nạp ESP32.
 

@@ -1,6 +1,8 @@
+import json
 import random
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,152 +36,9 @@ from app.schemas.response import NotFoundResponseSchema
 
 router = APIRouter()
 
-DEFAULT_MAINTENANCE_CATALOG = [
-    {
-        "id": "MNT-AC01",
-        "name_vi": "Điều hòa không mát / Chỉ có gió",
-        "name_en": "AC not cooling / Fan only",
-        "category": "hvac",
-        "priority": "HIGH",
-        "description_vi": "Điều hòa đang bật nhưng không tỏa hơi lạnh, phòng bị hầm bí.",
-        "description_en": "AC is running but blowing warm air, room feels stuffy.",
-        "estimated_fix_time": 15,
-        "is_active": True,
-        "display_order": 1,
-    },
-    {
-        "id": "MNT-AC02",
-        "name_vi": "Điều hòa kêu to / Rung lắc",
-        "name_en": "AC noisy / Heavy vibration",
-        "category": "hvac",
-        "priority": "NORMAL",
-        "description_vi": "Cánh đảo gió hoặc quạt gió phát ra tiếng ồn khó chịu khi ngủ.",
-        "description_en": "Loud rattling or fan noise disturbing guest rest.",
-        "estimated_fix_time": 20,
-        "is_active": True,
-        "display_order": 2,
-    },
-    {
-        "id": "MNT-AC03",
-        "name_vi": "Điều hòa chảy nước trong phòng",
-        "name_en": "AC leaking water inside room",
-        "category": "hvac",
-        "priority": "HIGH",
-        "description_vi": "Nước nhỏ giọt từ máng lạnh xuống sàn hoặc bàn phòng.",
-        "description_en": "Water dripping from the indoor unit onto the floor.",
-        "estimated_fix_time": 15,
-        "is_active": True,
-        "display_order": 3,
-    },
-    {
-        "id": "MNT-PL01",
-        "name_vi": "Rò rỉ vòi nước / Vòi sen tắm",
-        "name_en": "Faucet / Shower head leaking",
-        "category": "plumbing",
-        "priority": "NORMAL",
-        "description_vi": "Vòi rửa mặt hoặc sen tắm rỉ nước liên tục gây đọng nước.",
-        "description_en": "Continuous dripping from vanity faucet or shower head.",
-        "estimated_fix_time": 15,
-        "is_active": True,
-        "display_order": 4,
-    },
-    {
-        "id": "MNT-PL02",
-        "name_vi": "Nghẹt bồn rửa / Thoát nước chậm",
-        "name_en": "Sink clogged / Slow bathroom drainage",
-        "category": "plumbing",
-        "priority": "HIGH",
-        "description_vi": "Bồn rửa mặt hoặc sàn tắm thoát nước rất chậm.",
-        "description_en": "Water pooling and draining very slowly in the bathroom.",
-        "estimated_fix_time": 20,
-        "is_active": True,
-        "display_order": 5,
-    },
-    {
-        "id": "MNT-PL03",
-        "name_vi": "Không có nước nóng tắm",
-        "name_en": "No hot water in bathroom",
-        "category": "plumbing",
-        "priority": "HIGH",
-        "description_vi": "Hệ thống nước nóng trung tâm không cấp nước nóng.",
-        "description_en": "No hot water coming from shower or bathtub.",
-        "estimated_fix_time": 15,
-        "is_active": True,
-        "display_order": 6,
-    },
-    {
-        "id": "MNT-EL01",
-        "name_vi": "Bóng đèn phòng bị hỏng / Chớp nháy",
-        "name_en": "Room lighting not working / Flickering",
-        "category": "electrical",
-        "priority": "LOW",
-        "description_vi": "Đèn ngủ hoặc đèn phòng tắm bị đứt bóng hoặc chập chờn.",
-        "description_en": "Nightstand or bathroom light bulb burnt out or flickering.",
-        "estimated_fix_time": 10,
-        "is_active": True,
-        "display_order": 7,
-    },
-    {
-        "id": "MNT-EL02",
-        "name_vi": "Ổ cắm điện không có điện",
-        "name_en": "Wall electrical outlet not working",
-        "category": "electrical",
-        "priority": "NORMAL",
-        "description_vi": "Ổ cắm cạnh giường hoặc bàn làm việc không sạc được điện.",
-        "description_en": "Bedside or desk power socket has no power output.",
-        "estimated_fix_time": 15,
-        "is_active": True,
-        "display_order": 8,
-    },
-    {
-        "id": "MNT-EL03",
-        "name_vi": "Mất điện toàn bộ phòng",
-        "name_en": "Total room power outage",
-        "category": "electrical",
-        "priority": "URGENT",
-        "description_vi": "Aptomat phòng bị nhảy, mất toàn bộ điện chiếu sáng và ổ cắm.",
-        "description_en": "Circuit breaker tripped, room completely in darkness.",
-        "estimated_fix_time": 10,
-        "is_active": True,
-        "display_order": 9,
-    },
-    {
-        "id": "MNT-LK01",
-        "name_vi": "Khóa thẻ từ phòng báo lỗi / Nháy đỏ",
-        "name_en": "Keycard door lock error / Flashing red",
-        "category": "door_lock",
-        "priority": "URGENT",
-        "description_vi": "Quẹt thẻ từ cửa phòng không kêu tít và không mở được chốt.",
-        "description_en": "Door reader flashes red and refuses to unlock latch.",
-        "estimated_fix_time": 10,
-        "is_active": True,
-        "display_order": 10,
-    },
-    {
-        "id": "MNT-NW01",
-        "name_vi": "Wifi phòng chập chờn / Không kết nối được",
-        "name_en": "Room Wifi weak / Connection failure",
-        "category": "media_network",
-        "priority": "NORMAL",
-        "description_vi": "Bộ phát Wifi tại phòng mất tín hiệu hoặc sóng rất yếu.",
-        "description_en": "In-room access point disconnected or extremely weak signal.",
-        "estimated_fix_time": 10,
-        "is_active": True,
-        "display_order": 11,
-    },
-    {
-        "id": "MNT-NW02",
-        "name_vi": "Tivi phòng không lên tín hiệu",
-        "name_en": "Smart TV no signal / Cannot turn on",
-        "category": "media_network",
-        "priority": "LOW",
-        "description_vi": "Màn hình TV báo không có tín hiệu cáp hoặc mất remote.",
-        "description_en": "TV shows no signal screen or remote control unresponsive.",
-        "estimated_fix_time": 15,
-        "is_active": True,
-        "display_order": 12,
-    },
-]
+_MAINTENANCE_CATALOG_PATH = Path(__file__).resolve().parent / "data" / "maintenance_catalog.json"
+with _MAINTENANCE_CATALOG_PATH.open("r", encoding="utf-8") as _f:
+    DEFAULT_MAINTENANCE_CATALOG: List[Dict[str, Any]] = json.load(_f)
 
 
 # =====================================================================

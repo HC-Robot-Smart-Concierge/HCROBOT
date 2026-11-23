@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.services.ai.ollama_service import ollama_service
 from app.services.ai.session_manager import session_manager
 from app.services.ai.tts_service import tts_service
+from app.services.ai.speech_language import select_turn_language
 
 logger = logging.getLogger(__name__)
 
@@ -103,9 +104,11 @@ class PipecatPipelineService:
         session["is_speaking"] = True
 
         try:
+            turn_name, _ = select_turn_language(user_speech, "auto", session_manager.get_language(session_id))
+            session_manager.set_language(session_id, turn_name)
             reply, lang_name, lang_code = await ollama_service.generate_response(
                 prompt=user_speech,
-                language="auto",
+                language=turn_name,
                 stored_room_number=room_number,
             )
 
@@ -165,11 +168,8 @@ class PipecatPipelineService:
 
         try:
             # 1. Nhận diện ngôn ngữ
-            if not language or language.lower() in ["auto", ""]:
-                lang_name, lang_code = ollama_service.detect_language(user_speech)
-            else:
-                lang_name = language
-                lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
+            lang_name, lang_code = select_turn_language(user_speech, language, session_manager.get_language(session_id))
+            session_manager.set_language(session_id, lang_name)
 
             # 2. Lấy bộ nhớ hội thoại và số phòng từ session_manager để giao tiếp tự nhiên đa lượt
             from app.services.ai.session_manager import extract_room_number
@@ -183,10 +183,14 @@ class PipecatPipelineService:
 
             # 2.5. REDIS CLOUD FAST CACHE CHECK (< 5ms)
             from app.services.cache.redis_service import redis_service
-            cached_data = await redis_service.get_ai_cache(user_speech, language=lang_code)
+            from app.services.cache.knowledge_revision import get_knowledge_revision
+            knowledge_revision = get_knowledge_revision()
+            cached_data = await redis_service.get_ai_cache(
+                user_speech, language=lang_code, knowledge_revision=knowledge_revision
+            )
             if cached_data and cached_data.get("full_text"):
                 cached_text = cached_data["full_text"]
-                cached_lang = cached_data.get("lang_code", lang_code)
+                cached_lang = lang_code
                 cached_dest = cached_data.get("destination_key")
                 cached_vcall = cached_data.get("trigger_video_call", False)
 
@@ -279,7 +283,7 @@ class PipecatPipelineService:
                 except Exception as e_tts:
                     logger.warning(f"[PipecatService TTS chunk error]: {e_tts}")
 
-            _, final_lang_code = ollama_service.detect_language(full_reply)
+            final_lang_code = lang_code
 
             # Lưu lại lịch sử lượt nói vào bộ nhớ RAM của phiên để duy trì ngữ cảnh
             session_manager.add_turn(session_id, "user", user_speech, language=lang_code)
@@ -310,7 +314,8 @@ class PipecatPipelineService:
                         "action": "conversation",
                         "destination_key": dest_key,
                         "trigger_video_call": is_video_call,
-                    }
+                    },
+                    knowledge_revision=knowledge_revision,
                 )
             except Exception:
                 pass

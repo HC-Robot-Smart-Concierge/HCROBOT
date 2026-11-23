@@ -64,6 +64,7 @@ class Executor(GuestHoldMixin, Node):
         if self.parallel:
             self.create_subscription(LaserScan, '/scan', self.on_scan, qos_profile_sensor_data)
             self.create_subscription(OccupancyGrid, '/map', self.on_static_map, latched)
+            self.create_subscription(String, '/robot/person_detections', self.on_person_detections, 10)
         self.stop_pub = self.create_publisher(Empty, '/robot/nav_cancel', 10)
         self.client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.route_client = ActionClient(self, NavigateThroughPoses, '/navigate_through_poses')

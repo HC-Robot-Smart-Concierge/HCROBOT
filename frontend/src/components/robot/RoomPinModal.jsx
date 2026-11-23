@@ -1,31 +1,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-
 import {
-
   Lock,
-
   Delete,
-
   CheckCircle2,
-
   AlertCircle,
-
   X,
-
   ShieldCheck,
-
   KeyRound,
-
   CreditCard,
-
   Radio,
-
 } from 'lucide-react';
-
 import { verifyRoomPin, verifyRoomNfc } from '../../services/operationsApi';
-
-
-
 
 export const PIN_LOCKOUT_MAX_ATTEMPTS = 5;
 export const PIN_LOCKOUT_DURATION_SEC = 60;
@@ -60,71 +45,39 @@ export const clearRoomLockoutState = (roomNumber) => {
 };
 
 export const OFFICIAL_ROOMS = {
-
   floor3: ['301', '302', '303', '304', '305', '306', '307', '308', '309', '310'],
-
   floor4: ['401', '402', '403', '404', '405', '406', '407', '408', '409', '410'],
-
 };
 
-
-
 export const RoomPinModal = ({
-
   isOpen,
-
   onClose,
-
   roomNumber = '',
-
   onRoomSelect,
-
   pendingAction = 'room_service',
-
   pendingItems = 'Yêu cầu dịch vụ phòng',
-
   onVerifiedSuccess,
-
   onNotCheckedIn,
-
   onForgotPin,
-
   initialTab = 'pin',
-
   isSelectingRoomInitial = false,
-
   skipTicketCreation = true,
   sessionId = null,
 }) => {
-
   const [selectedRoom, setSelectedRoom] = useState(roomNumber || '');
-
   const [isSelectingRoom, setIsSelectingRoom] = useState(Boolean(isSelectingRoomInitial || !roomNumber));
-
   const [isForgotPinView, setIsForgotPinView] = useState(false);
-
   const [roomFloorTab, setRoomFloorTab] = useState(() => {
-
     if (roomNumber && String(roomNumber).startsWith('4')) return '4';
-
     return '3';
-
   });
 
-
-
   const [activeTab, setActiveTab] = useState(initialTab || 'pin');
-
   const [pin, setPin] = useState('');
-
   const [isLoading, setIsLoading] = useState(false);
-
   const [errorMessage, setErrorMessage] = useState('');
-
   const [isSuccess, setIsSuccess] = useState(false);
-
   const [successInfo, setSuccessInfo] = useState(null);
-
   const [isShaking, setIsShaking] = useState(false);
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
 
@@ -163,250 +116,127 @@ export const RoomPinModal = ({
     return () => clearInterval(timer);
   }, [lockoutRemaining, selectedRoom]);
 
-
-
   const [nfcStatus, setNfcStatus] = useState('idle');
-
   const [nfcStatusMsg, setNfcStatusMsg] = useState('');
 
-
-
   const nfcAbortControllerRef = useRef(null);
-
   const keyBufferRef = useRef('');
-
   const lastKeyTimeRef = useRef(0);
-
   const handleVerifyNfcRef = useRef(null);
 
-
-
   const startWebNfcScan = useCallback(async () => {
-
     if (typeof window === 'undefined') return;
 
-
-
     if (!('NDEFReader' in window)) {
-
       setNfcStatus('unsupported');
-
       setNfcStatusMsg('Trình duyệt chưa hỗ trợ Web NFC. Cần dùng Google Chrome trên Android.');
-
       return;
-
     }
-
-
 
     try {
-
       if (nfcAbortControllerRef.current) {
-
         try { nfcAbortControllerRef.current.abort(); } catch (e) { }
-
       }
-
-
 
       const controller = new AbortController();
-
       nfcAbortControllerRef.current = controller;
-
       const ndef = new window.NDEFReader();
 
-
-
       setNfcStatus('starting');
-
       setNfcStatusMsg('Đang kích hoạt đầu đọc thẻ NFC...');
 
-
-
       ndef.onreading = async (event) => {
-
         let ndefText = '';
-
         if (event.message && event.message.records && event.message.records.length > 0) {
-
           for (const record of event.message.records) {
-
             try {
-
               if (record.recordType === 'text') {
-
                 const textDecoder = new TextDecoder(record.encoding || 'utf-8');
-
                 ndefText = textDecoder.decode(record.data);
-
                 break;
-
               } else if (record.recordType === 'url' || record.data) {
-
                 const textDecoder = new TextDecoder();
-
                 ndefText = textDecoder.decode(record.data);
-
                 break;
-
               }
-
             } catch (decErr) {
-
               console.warn('[WebNFC] Decode error:', decErr);
-
             }
-
           }
-
         }
-
-
 
         const tagCode = (ndefText || '').trim() || event.serialNumber;
-
         if (tagCode) {
-
           setNfcStatus('read_detected');
-
           setNfcStatusMsg(`Đã nhận diện thẻ: ${tagCode}. Đang đối chiếu...`);
-
           setIsLoading(true);
-
           setErrorMessage('');
 
-
-
           if (typeof navigator !== 'undefined' && navigator.vibrate) {
-
             try { navigator.vibrate([100, 50, 100]); } catch (e) { }
-
           }
-
-
 
           try {
-
             const res = await verifyRoomNfc(
-
               tagCode,
-
               selectedRoom || null,
-
               pendingAction,
-
               pendingItems,
-
               null,
-
               (skipTicketCreation || ["taxi", "book_taxi", "taxi_booking", "query_order_status", "query_service_status", "query_taxi_status"].includes(pendingAction))
-
             );
-
             setIsSuccess(true);
-
             setSuccessInfo(res);
-
             setIsLoading(false);
-
             setNfcStatusMsg(`Xác thực thành công phòng ${res.room_number} (${res.guest_name})!`);
 
-
-
             if (onVerifiedSuccess) {
-
               onVerifiedSuccess(res, res.room_number || selectedRoom);
-
             }
-
             setTimeout(() => {
-
               onClose();
-
             }, 1000);
-
           } catch (err) {
-
             console.error('[RoomPinModal] verify-nfc error:', err);
-
             setIsLoading(false);
-
             setNfcStatus('error');
-
             setErrorMessage(err.message || 'Thẻ NFC không hợp lệ hoặc phòng chưa check-in.');
-
             setIsShaking(true);
-
             setTimeout(() => setIsShaking(false), 500);
-
           }
-
         } else {
-
           setErrorMessage('Thẻ không trả về dữ liệu NDEF hoặc mã UID.');
-
         }
-
       };
-
-
 
       ndef.onreadingerror = () => {
-
         setNfcStatusMsg('Lỗi đọc: Hãy giữ yên thẻ NFC trong 1-2 giây.');
-
       };
 
-
-
       await ndef.scan({ signal: controller.signal });
-
       setNfcStatus('scanning');
-
       setNfcStatusMsg('Đang lắng nghe thẻ NFC... Vui lòng áp thẻ vào mặt lưng thiết bị.');
-
     } catch (err) {
-
       console.warn('[WebNFC] Scan error:', err);
-
       setNfcStatus('error');
-
       if (err.name === 'NotAllowedError') {
-
         setNfcStatusMsg('Quyền truy cập NFC bị từ chối.');
-
       } else {
-
         setNfcStatusMsg(`Lỗi kích hoạt NFC: ${err.message || 'Không thể mở đầu đọc'}`);
-
       }
-
     }
-
   }, [selectedRoom, pendingAction, pendingItems, onVerifiedSuccess, onClose]);
 
-
-
   const handleVerifyNfc = useCallback(
-
     async (scannedCode) => {
-
       if (!scannedCode || isLoading || isSuccess) return;
 
-
-
       setIsLoading(true);
-
       setErrorMessage('');
-
       setNfcStatus('read_detected');
-
       setNfcStatusMsg(`Nhận diện thẻ USB: ${scannedCode}. Đang xác thực...`);
 
-
-
       try {
-
         const res = await verifyRoomNfc(
           scannedCode,
           selectedRoom || null,
@@ -416,223 +246,114 @@ export const RoomPinModal = ({
           (skipTicketCreation || ["taxi", "book_taxi", "taxi_booking", "query_order_status", "query_service_status", "query_taxi_status"].includes(pendingAction)),
           sessionId
         );
-
         setIsSuccess(true);
-
         setSuccessInfo(res);
-
         setIsLoading(false);
-
         setNfcStatusMsg(`Xác thực thành công phòng ${res.room_number} (${res.guest_name})!`);
 
-
-
         if (onVerifiedSuccess) {
-
           onVerifiedSuccess(res, res.room_number || selectedRoom);
-
         }
 
-
-
         setTimeout(() => {
-
           onClose();
-
         }, 1000);
-
       } catch (err) {
-
         console.error('[RoomPinModal] USB verify-nfc error:', err);
-
         setIsLoading(false);
-
         setNfcStatus('error');
-
         setErrorMessage(err.message || 'Thẻ phòng không khớp hoặc chưa làm thủ tục nhận phòng.');
-
         setIsShaking(true);
-
         setTimeout(() => setIsShaking(false), 500);
-
       }
-
     },
-
     [isLoading, isSuccess, selectedRoom, pendingAction, pendingItems, onVerifiedSuccess, onClose]
-
   );
-
-
 
   handleVerifyNfcRef.current = handleVerifyNfc;
 
-
-
   useEffect(() => {
-
     if (isOpen) {
-
       setIsForgotPinView(false);
-
       setPin('');
-
       setErrorMessage('');
-
       setIsSuccess(false);
-
       setSuccessInfo(null);
-
       setIsShaking(false);
-
       setNfcStatus('idle');
-
       setNfcStatusMsg('');
-
       setSelectedRoom(roomNumber || '');
-
       setIsSelectingRoom(Boolean(isSelectingRoomInitial || !roomNumber));
-
       if (roomNumber && String(roomNumber).startsWith('4')) {
-
         setRoomFloorTab('4');
-
       } else {
-
         setRoomFloorTab('3');
-
       }
-
       setActiveTab(initialTab || 'pin');
-
     } else {
-
       if (nfcAbortControllerRef.current) {
-
         try { nfcAbortControllerRef.current.abort(); } catch (e) { }
-
         nfcAbortControllerRef.current = null;
-
       }
-
     }
 
-
-
     return () => {
-
       if (nfcAbortControllerRef.current) {
-
         try { nfcAbortControllerRef.current.abort(); } catch (e) { }
-
         nfcAbortControllerRef.current = null;
-
       }
-
     };
-
   }, [isOpen, roomNumber, initialTab, isSelectingRoomInitial]);
 
-
-
   useEffect(() => {
-
     if (!isOpen || activeTab !== 'nfc') return;
 
-
-
     const handleKeyDown = (e) => {
-
       const now = Date.now();
-
       if (now - lastKeyTimeRef.current > 150) {
-
         keyBufferRef.current = '';
-
       }
-
       lastKeyTimeRef.current = now;
 
-
-
       if (e.key === 'Enter') {
-
         const scannedUid = keyBufferRef.current.trim();
-
         if (scannedUid.length >= 6) {
-
           handleVerifyNfcRef.current(scannedUid);
-
         }
-
         keyBufferRef.current = '';
-
       } else if (e.key.length === 1) {
-
         keyBufferRef.current += e.key;
-
       }
-
     };
 
-
-
     window.addEventListener('keydown', handleKeyDown);
-
     return () => window.removeEventListener('keydown', handleKeyDown);
-
   }, [isOpen, activeTab]);
 
-
-
   const handleKeyPress = useCallback((digit) => {
-
     if (isLoading || isSuccess || lockoutRemaining > 0) return;
-
     setErrorMessage('');
-
     setPin((prev) => (prev.length < 4 ? prev + digit : prev));
-
   }, [isLoading, isSuccess, lockoutRemaining]);
-
-
 
   const handleDelete = useCallback(() => {
-
     if (isLoading || isSuccess || lockoutRemaining > 0) return;
-
     setErrorMessage('');
-
     setPin((prev) => prev.slice(0, -1));
-
   }, [isLoading, isSuccess, lockoutRemaining]);
-
-
 
   const handleClear = useCallback(() => {
-
     if (isLoading || isSuccess || lockoutRemaining > 0) return;
-
     setErrorMessage('');
-
     setPin('');
-
   }, [isLoading, isSuccess, lockoutRemaining]);
 
-
-
   useEffect(() => {
-
     if (pin.length === 4 && !isLoading && !isSuccess && activeTab === 'pin' && selectedRoom && !isSelectingRoom) {
-
       const submitPin = async () => {
-
         setIsLoading(true);
-
         setErrorMessage('');
-
         try {
-
           const res = await verifyRoomPin(
             selectedRoom,
             pin,
@@ -647,61 +368,33 @@ export const RoomPinModal = ({
           // Xoa trang thai lockout va dem loi khi xac thuc thanh cong
           clearRoomLockoutState(selectedRoom);
           setLockoutRemaining(0);
-
           setIsSuccess(true);
-
           setSuccessInfo(res);
-
           setIsLoading(false);
-
-
 
           if (onVerifiedSuccess) {
-
             onVerifiedSuccess(res, selectedRoom);
-
           }
 
-
-
           setTimeout(() => {
-
             onClose();
-
           }, 1000);
-
         } catch (err) {
-
           setIsLoading(false);
-
           if (err.not_checked_in) {
-
             setErrorMessage(err.message || 'Phòng chưa làm thủ tục nhận phòng. Đang chuyển tới quầy Lễ tân...');
-
             setIsShaking(true);
-
             if (onNotCheckedIn) {
-
               setTimeout(() => {
-
                 onNotCheckedIn({
-
                   roomNumber: err.room_number || selectedRoom,
-
                   destination_key: err.destination_key || 'front_desk',
-
                   message: err.message,
-
                 });
-
                 onClose();
-
               }, 1200);
-
             }
-
             return;
-
           }
 
           // Xu ly neu backend tra ve HTTP 429 lockout
@@ -729,29 +422,17 @@ export const RoomPinModal = ({
             setRoomLockoutState(selectedRoom, { count: nextCount, lockedUntil: 0 });
             setErrorMessage(err.message || DEFAULT_WRONG_PIN_ERROR_MSG);
           }
-
           setIsShaking(true);
-
           setTimeout(() => setIsShaking(false), 500);
-
           setPin('');
-
         }
-
       };
 
-
-
       submitPin();
-
     }
-
   }, [pin, isLoading, isSuccess, activeTab, selectedRoom, isSelectingRoom, pendingAction, pendingItems, onVerifiedSuccess, onNotCheckedIn, onClose]);
 
-
-
   if (!isOpen) return null;
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150 select-none overscroll-contain">
       <div

@@ -85,7 +85,7 @@ Báo chắn đường khi có **≥ 3 tia liền nhau** là điểm chắn, duy 
 
 Ước tính xe dừng cách người khoảng 45 cm: 0,5 giây xác nhận + khoảng 0,3 giây dừng, ở 0,15 m/s. Khoảng này nằm ngoài ngưỡng sonar 25 cm, nên sonar vẫn là lớp phanh cuối. Cần đo lại trên xe thật. Các ngưỡng là hằng số đầu file. Ngưỡng cách đầu xe không nên dưới 40 cm.
 
-Điểm nối để đợt sau thêm YOLO: `RouteBlockDetector.update(blocked, now) -> bool`, trong đó `blocked` hiện lấy từ `scan_blocks_route()`.
+Xác nhận bằng YOLO (`route_person_gate.py`): khi `/robot/person_detections` còn dữ liệu trong 1,5 giây, xe chỉ dừng nếu có người ở cùng hướng với tia LiDAR chắn tuyến (sai số 8°, giữ kết quả 0,8 giây khi YOLO lỡ một khung hình). Nếu YOLO không chạy hoặc báo `FAILED`, xe tạm dùng chỉ LiDAR và ghi `VISION_STATUS` vào log lượt chạy.
 
 ### 5.3 Bộ thực thi (`workflow_executor.py` + `workflow_guest_hold.py` mới)
 

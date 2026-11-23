@@ -2,7 +2,7 @@
 
 Compared with the route drawn by the admin, not with Nav2's current path: Nav2 replans
 around a person, so its own path stops looking blocked before the robot gets close.
-A later YOLO check can replace or confirm this by feeding RouteBlockDetector.update().
+route_person_gate.py then checks that YOLO sees a person in the same direction.
 """
 import math
 
@@ -100,20 +100,24 @@ def blocking_beams(scan, laser_pose, base_yaw, route, static_map):
     return hits
 
 
-def largest_object(indexes, beam_count, max_gap=MAX_BEAM_GAP):
-    """Beams in the biggest group of neighbouring hits; the scan wraps around at 360 degrees."""
+def object_groups(indexes, beam_count, max_gap=MAX_BEAM_GAP):
+    """Neighbouring hits grouped into objects; the scan wraps around at 360 degrees."""
     if not indexes:
-        return 0
+        return []
     ordered = sorted(indexes)
-    groups = [1]
+    groups = [[ordered[0]]]
     for previous, current in zip(ordered, ordered[1:]):
         if current - previous <= max_gap + 1:
-            groups[-1] += 1
+            groups[-1].append(current)
         else:
-            groups.append(1)
+            groups.append([current])
     if len(groups) > 1 and ordered[0] + beam_count - ordered[-1] <= max_gap + 1:
-        groups[0] += groups.pop()
-    return max(groups)
+        groups[0] = groups.pop() + groups[0]
+    return groups
+
+
+def largest_object(indexes, beam_count, max_gap=MAX_BEAM_GAP):
+    return max((len(group) for group in object_groups(indexes, beam_count, max_gap)), default=0)
 
 
 class RouteBlockDetector:
@@ -138,6 +142,17 @@ class RouteBlockDetector:
         return now - self.since >= self.confirm_sec
 
 
-def scan_blocks_route(scan, laser_pose, base_yaw, route, static_map):
+def blocking_bearings_deg(scan, laser_pose, base_yaw, route, static_map):
+    """Robot-frame bearings (+ left, REP-103) of the beams on objects big enough to block."""
     hits = blocking_beams(scan, laser_pose, base_yaw, route, static_map)
-    return largest_object(hits, len(scan.ranges)) >= MIN_BLOCKING_BEAMS
+    bearings = []
+    for group in object_groups(hits, len(scan.ranges)):
+        if len(group) >= MIN_BLOCKING_BEAMS:
+            for index in group:
+                world = laser_pose[2] + scan.angle_min + index * scan.angle_increment
+                bearings.append(math.degrees(math.atan2(math.sin(world - base_yaw), math.cos(world - base_yaw))))
+    return bearings
+
+
+def scan_blocks_route(scan, laser_pose, base_yaw, route, static_map):
+    return bool(blocking_bearings_deg(scan, laser_pose, base_yaw, route, static_map))

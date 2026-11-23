@@ -19,9 +19,9 @@ export function ParallelLanePanel({ workflow, selectedId, onWorkflowChange, onSe
       <Columns2 className="w-4 h-4" />{guest ? 'Khi có người chắn đường' : 'Làn Màn hình'}
     </h4>
     <p className="text-blue-900">{guest
-      ? 'LiDAR thấy vật mới nằm trên tuyến, cách đầu xe tối đa 60 cm, thì xe dừng và chạy các bước nối từ node này. Khách chạm màn hình cũng làm xe dừng. Xong nhánh, xe đi tiếp từ điểm chưa qua.'
+      ? 'LiDAR thấy vật mới nằm trên tuyến, cách đầu xe tối đa 60 cm, và YOLO thấy người ở cùng hướng thì xe dừng và chạy các bước nối từ node này. Khách chạm màn hình cũng làm xe dừng. Xong nhánh, xe đi tiếp từ điểm chưa qua.'
       : 'Các bước nối từ node này chạy trên màn hình cùng lúc với Làn Xe và lặp lại đến khi xe xong. Làn này chỉ nhận Hiển thị, Phát lời và Chờ.'}</p>
-    {guest && <p className="text-amber-800">Hiện chỉ dùng LiDAR nên vali hoặc ghế mới đặt trên tuyến cũng làm xe dừng.</p>}
+    {guest && <p className="text-amber-800">Nếu YOLO không chạy, xe tạm dùng chỉ LiDAR nên vali hoặc ghế mới đặt trên tuyến cũng làm xe dừng.</p>}
     {SETTINGS.map(([key, label, min, max, fallback]) => <label key={key} className="block space-y-1">
       <span className="font-semibold text-blue-950">{label}</span>
       <input type="number" min={min} max={max} step="1" key={parallel[key]} defaultValue={parallel[key] ?? fallback}

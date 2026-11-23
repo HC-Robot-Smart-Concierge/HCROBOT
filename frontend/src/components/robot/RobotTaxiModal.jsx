@@ -68,7 +68,7 @@ export const AUTO_CLOSE_SECONDS = 45;
 export const CONFIRMED_AUTO_CLOSE_SECONDS = 5;
 
 export function isDismissVoiceIntent(transcript) {
-  return /cảm ơn|cám ơn|cam on|thank you|thanks|tắt|tat|đóng|dong|xong rồi|xong roi|được rồi|duoc roi|ok rồi|thôi|thoát|quay lại|close|dismiss/i.test(transcript || '');
+  return /cảm ơn|cám ơn|cam on|thank you|thanks|không cần(?: gì| nữa)?|khong can(?: gi| nua)?|không còn(?: gì)?(?: cần)? hỗ trợ|nothing else|no thanks|tắt|tat|đóng|dong|xong rồi|xong roi|được rồi|duoc roi|ok rồi|thôi|thoát|quay lại|close|dismiss/i.test(String(transcript || '').normalize('NFC'));
 }
 
 export function isSelfBookingVoiceIntent(transcript) {
@@ -279,7 +279,7 @@ export const RobotTaxiModal = ({
             clearInterval(countdownTimerRef.current);
             countdownTimerRef.current = null;
             if (typeof onClose === 'function') {
-              onClose();
+              onClose('auto');
             }
             return 0;
           }
@@ -313,7 +313,7 @@ export const RobotTaxiModal = ({
     if (mode === 'self_booking' || mode === 'concierge_confirmed') {
       if (isDismissVoiceIntent(transcriptLower)) {
         if (typeof onClose === 'function') {
-          onClose();
+          onClose('voice_dismiss');
         }
       }
       return;
@@ -521,7 +521,13 @@ export const RobotTaxiModal = ({
 
       const roomText = activeRoomNumber ? `phòng ${activeRoomNumber}` : 'quý khách';
       if (typeof speak === 'function') {
-        speak(`Dạ em đã chuyển tiếp yêu cầu đặt taxi của ${roomText} đến bộ phận Concierge ạ.`);
+        speak(
+          `Dạ em đã chuyển tiếp yêu cầu đặt taxi của ${roomText} đến bộ phận Concierge rồi ạ. Quý khách có cần em hỗ trợ thêm gì nữa không ạ?`,
+          'vi-VN',
+          () => {
+            if (typeof onStartTalk === 'function') onStartTalk({ silent: true });
+          }
+        );
       }
 
       if (typeof onSuccess === 'function') {

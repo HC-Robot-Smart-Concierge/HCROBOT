@@ -14,6 +14,13 @@ import {
 } from 'lucide-react';
 import { RoomPinModal } from './RoomPinModal';
 import { createRoomServiceOrder, fetchRoomServiceCatalog } from '../../services/operationsApi';
+import { MenuVoiceButton, MenuVoiceSubtitle } from './MenuVoiceBar';
+import { useMenuVoiceInteraction } from '../../hooks/useMenuVoiceInteraction';
+import {
+  extractRoomIfValid,
+  isMenuConfirmVoice,
+  matchCatalogItemsByVoice,
+} from '../../utils/menuVoiceAssistant';
 
 export const ROOM_SERVICE_CATALOG = [
   // 1. KHĂN & TIỆN ÍCH BUỒNG PHÒNG
@@ -207,6 +214,15 @@ export const RobotRoomServiceScreen = ({
   onNotCheckedIn,
   onPinVerifiedSuccess = () => {},
   sessionId = null,
+  lastVoiceTranscript = null,
+  voiceReplyText = '',
+  isListening = false,
+  isSpeaking = false,
+  transcript = '',
+  speak = null,
+  onStartTalk = null,
+  onStopSpeaking = null,
+  onUnhandledVoice = null,
 }) => {
   const [activeCategory, setActiveCategory] = useState(SERVICE_CATEGORIES[0].id);
   const [catalogItems, setCatalogItems] = useState(() =>
@@ -254,6 +270,9 @@ export const RobotRoomServiceScreen = ({
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successData, setSuccessData] = useState(null);
+  const [submitError, setSubmitError] = useState('');
+  const [voiceConfirmTick, setVoiceConfirmTick] = useState(0);
+  const usedVoiceRef = useRef(false);
 
   const mainScrollRef = useRef(null);
   const isManualScrollingRef = useRef(false);
@@ -398,6 +417,7 @@ export const RobotRoomServiceScreen = ({
 
   const executeSubmitRequest = async (verifiedRoom, guestNameOverride) => {
     setIsSubmitting(true);
+    setSubmitError('');
     const roomToUse = verifiedRoom || targetRoom;
     const itemsPayload = Object.values(cart).map((entry) => ({
       name: entry.item.name,
@@ -449,25 +469,115 @@ export const RobotRoomServiceScreen = ({
           itemsSummary,
         });
       }
-    } catch {
-      const fallbackCode = `RS-${Math.floor(1000 + Math.random() * 9000)}`;
-      setSuccessData({
-        orderCode: fallbackCode,
-        room: roomToUse,
-        totalAmount: totalPrice,
-        itemCount: totalItemsCount,
-        itemsSummary,
-      });
-      setCart({});
-      setIsReviewModalOpen(false);
-      setIsLocalPinVerified(true);
-      if (typeof onPinVerifiedSuccess === 'function') {
-        onPinVerifiedSuccess(roomToUse);
-      }
+    } catch (err) {
+      setSubmitError(err?.message || 'Chưa thể gửi yêu cầu tới Room Service lúc này. Quý khách vui lòng thử lại ạ.');
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const handleConfirmSubmit = () => {
+    if (totalItemsCount === 0 || isSubmitting) return;
+    const roomToUse = targetRoom || activeRoomNumber;
+    const isCurrentlyAuth = Boolean(
+      roomToUse &&
+      ((authenticatedRoom && String(authenticatedRoom).trim() === String(roomToUse).trim()) ||
+       isLocalPinVerified)
+    );
+    if (isCurrentlyAuth && roomToUse && String(roomToUse).trim()) {
+      setIsReviewModalOpen(false);
+      executeSubmitRequest(roomToUse);
+    } else {
+      setIsReviewModalOpen(false);
+      if (roomToUse && String(roomToUse).trim()) {
+        setIsPinModalSelectingRoom(false);
+      } else {
+        setIsPinModalSelectingRoom(true);
+      }
+      setIsPinModalOpen(true);
+    }
+  };
+
+  useEffect(() => {
+    if (voiceConfirmTick > 0) {
+      handleConfirmSubmit();
+    }
+  }, [voiceConfirmTick]);
+
+  const {
+    voiceReply,
+    clearVoiceReply,
+    announce,
+    toggleVoice,
+  } = useMenuVoiceInteraction({
+    lastVoiceTranscript,
+    voiceReplyText,
+    speak,
+    onStartTalk,
+    onStopSpeaking,
+    isSpeaking,
+    isEn: false,
+    onUnhandledVoice,
+    onVoiceCommand: (text) => {
+      usedVoiceRef.current = true;
+      setSubmitError('');
+      const spokenRoom = extractRoomIfValid(text);
+      if (spokenRoom) {
+        setTargetRoom(spokenRoom);
+        if (typeof onRoomChange === 'function') onRoomChange(spokenRoom);
+      }
+      const activeList = catalogItems.length > 0 ? catalogItems : ROOM_SERVICE_CATALOG;
+      const matched = matchCatalogItemsByVoice(text, activeList);
+      const isConfirm = isMenuConfirmVoice(text);
+
+      if (matched.length > 0) {
+        setCart((prev) => {
+          const next = { ...prev };
+          for (const { item, qty } of matched) {
+            const cur = next[item.id]?.qty || 0;
+            next[item.id] = { item, qty: cur + qty };
+          }
+          return next;
+        });
+        setIsReviewModalOpen(true);
+        const summary = matched.map((m) => `${m.qty} ${m.item.name}`).join(', ');
+        if (isConfirm) {
+          setVoiceConfirmTick((n) => n + 1);
+        } else {
+          announce(`Dạ em đã chọn ${summary}. Quý khách nói Xác nhận hoặc chạm Gửi yêu cầu để chuyển bộ phận Room Service nhé ạ.`);
+        }
+        return true;
+      }
+
+      if (isConfirm) {
+        if (totalItemsCount > 0) {
+          setVoiceConfirmTick((n) => n + 1);
+        } else {
+          announce('Quý khách chưa chọn dịch vụ nào. Quý khách cần khăn tắm, dọn phòng, giặt ủi hay massage ạ?');
+        }
+        return true;
+      }
+
+      return false;
+    },
+  });
+
+  useEffect(() => {
+    if (successData && usedVoiceRef.current) {
+      usedVoiceRef.current = false;
+      announce(
+        successData.isMerged
+          ? `Dạ yêu cầu cho Phòng ${successData.room} đã được gộp chung vào đơn Room Service #${successData.orderCode} ạ.`
+          : `Dạ yêu cầu dịch vụ #${successData.orderCode} cho Phòng ${successData.room} đã được lưu và gửi tới bộ phận Room Service rồi ạ.`
+      );
+    }
+  }, [successData, announce]);
+
+  useEffect(() => {
+    if (submitError && usedVoiceRef.current) {
+      announce(submitError);
+    }
+  }, [submitError, announce]);
 
   return (
     <div className="fixed inset-0 w-full h-[100dvh] max-h-[100dvh] bg-[#F5F2EB] text-[#1A1917] select-none flex overflow-hidden font-sans z-30 overscroll-none touch-none">
@@ -519,6 +629,15 @@ export const RobotRoomServiceScreen = ({
 
           {/* Thanh điều khiển Header: Chọn phòng, Quay lại Robot */}
           <div className="flex items-center gap-2 shrink-0">
+            <MenuVoiceButton
+              isListening={isListening}
+              isSpeaking={isSpeaking}
+              isEn={false}
+              onToggle={() => {
+                usedVoiceRef.current = true;
+                toggleVoice();
+              }}
+            />
             {/* 1. Nút Chọn / Sửa Số Phòng */}
             <button
               type="button"
@@ -815,6 +934,12 @@ export const RobotRoomServiceScreen = ({
                 </p>
               </div>
 
+              {submitError && (
+                <div className="p-2.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium">
+                  {submitError}
+                </div>
+              )}
+
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -826,26 +951,7 @@ export const RobotRoomServiceScreen = ({
                 <button
                   type="button"
                   disabled={totalItemsCount === 0 || isSubmitting}
-                  onClick={() => {
-                    const roomToUse = targetRoom || activeRoomNumber;
-                    const isCurrentlyAuth = Boolean(
-                      roomToUse &&
-                      ((authenticatedRoom && String(authenticatedRoom).trim() === String(roomToUse).trim()) ||
-                       isLocalPinVerified)
-                    );
-                    if (isCurrentlyAuth && roomToUse && String(roomToUse).trim()) {
-                      setIsReviewModalOpen(false);
-                      executeSubmitRequest(roomToUse);
-                    } else {
-                      setIsReviewModalOpen(false);
-                      if (roomToUse && String(roomToUse).trim()) {
-                        setIsPinModalSelectingRoom(false);
-                      } else {
-                        setIsPinModalSelectingRoom(true);
-                      }
-                      setIsPinModalOpen(true);
-                    }
-                  }}
+                  onClick={handleConfirmSubmit}
                   className="flex-1 py-2.5 px-3 rounded-2xl bg-[#1A1917] hover:bg-stone-800 disabled:opacity-50 text-white text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap"
                 >
                   {isSubmitting ? (
@@ -995,6 +1101,13 @@ export const RobotRoomServiceScreen = ({
         </div>
       )}
 
+      <MenuVoiceSubtitle
+        message={voiceReply}
+        transcript={transcript}
+        isListening={isListening}
+        isEn={false}
+        onClear={clearVoiceReply}
+      />
     </div>
   );
 };

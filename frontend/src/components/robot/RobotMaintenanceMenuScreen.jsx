@@ -17,6 +17,9 @@ import {
   Edit3,
 } from 'lucide-react';
 import { RoomPinModal } from './RoomPinModal';
+import { MenuVoiceButton, MenuVoiceSubtitle } from './MenuVoiceBar';
+import { useMenuVoiceInteraction } from '../../hooks/useMenuVoiceInteraction';
+import { extractRoomIfValid, isMenuConfirmVoice, matchMaintenanceVoiceIssue } from '../../utils/menuVoiceAssistant';
 import { RoomPickerModal } from './RoomPickerModal';
 import {
   fetchMaintenanceCatalog,
@@ -185,6 +188,15 @@ export const RobotMaintenanceMenuScreen = ({
   onClose = () => { },
   onRequestSuccess = () => { },
   onNotCheckedIn = () => { },
+  lastVoiceTranscript = null,
+  voiceReplyText = '',
+  isListening = false,
+  isSpeaking = false,
+  transcript = '',
+  speak = null,
+  onStartTalk = null,
+  onStopSpeaking = null,
+  onUnhandledVoice = null,
 }) => {
   // Follow the guest conversation, independently of the staff portal language.
   const isEn = language === 'English' || language === 'EN';
@@ -206,6 +218,8 @@ export const RobotMaintenanceMenuScreen = ({
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [isLocalPinVerified, setIsLocalPinVerified] = useState(false);
   const [isRoomPickerOpen, setIsRoomPickerOpen] = useState(false);
+  const [voiceSubmitTick, setVoiceSubmitTick] = useState(0);
+  const usedVoiceRef = useRef(false);
 
   const isRoomAuth = Boolean(
     targetRoom &&
@@ -222,6 +236,90 @@ export const RobotMaintenanceMenuScreen = ({
       setIsLocalPinVerified(false);
     }
   };
+
+  const {
+    voiceReply,
+    clearVoiceReply,
+    announce,
+    toggleVoice,
+  } = useMenuVoiceInteraction({
+    lastVoiceTranscript,
+    voiceReplyText,
+    speak,
+    onStartTalk,
+    onStopSpeaking,
+    isSpeaking,
+    isEn,
+    onUnhandledVoice,
+    onVoiceCommand: (text) => {
+      usedVoiceRef.current = true;
+      const spokenRoom = extractRoomIfValid(text);
+      if (spokenRoom) {
+        handleTargetRoomChange(spokenRoom);
+      }
+      const matched = matchMaintenanceVoiceIssue(text, catalogItems);
+      const isConfirm = isMenuConfirmVoice(text);
+
+      if (matched) {
+        if (MAINTENANCE_CATEGORIES.some((c) => c.id === matched.category)) {
+          setActiveCategory(matched.category);
+        }
+        setSelectedIssue(matched);
+        setErrorMsg('');
+        const issueLabel = isEn ? matched.name_en : matched.name_vi;
+        if (isConfirm) {
+          setVoiceSubmitTick((n) => n + 1);
+        } else {
+          announce(
+            isEn
+              ? `Selected issue "${issueLabel}". Say Confirm or tap Send Request to dispatch Maintenance.`
+              : `Dạ em đã chọn sự cố "${issueLabel}". Quý khách nói Xác nhận hoặc chạm Gửi yêu cầu để báo bộ phận Kỹ thuật nhé ạ.`
+          );
+        }
+        return true;
+      }
+
+      if (isConfirm) {
+        if (selectedIssue) {
+          setVoiceSubmitTick((n) => n + 1);
+        } else {
+          announce(
+            isEn
+              ? 'Please tell me the equipment issue first, such as AC, Wifi, light, or door lock.'
+              : 'Quý khách vui lòng cho em biết sự cố cụ thể (ví dụ điều hòa, wifi, đèn, khóa cửa) nhé ạ?'
+          );
+        }
+        return true;
+      }
+
+      return false;
+    },
+  });
+
+  useEffect(() => {
+    if (successTicket && usedVoiceRef.current) {
+      usedVoiceRef.current = false;
+      const code = successTicket.ticket_code || successTicket.id || '';
+      const msg = successTicket.merged
+        ? (isEn
+            ? `Added to open repair request #${code} for Room ${targetRoom}.`
+            : `Dạ sự cố bổ sung đã được gộp vào phiếu #${code} của Phòng ${targetRoom} và gửi bộ phận Kỹ thuật ạ.`)
+        : successTicket.duplicate
+          ? (isEn
+              ? `Room ${targetRoom} already has open repair request #${code}.`
+              : `Dạ Phòng ${targetRoom} đã có phiếu sửa chữa #${code} đang được bộ phận Kỹ thuật xử lý ạ.`)
+          : (isEn
+              ? `Your repair request #${code} for Room ${targetRoom} has been sent to Maintenance.`
+              : `Dạ phiếu báo hỏng #${code} cho Phòng ${targetRoom} đã được lưu và gửi tới bộ phận Kỹ thuật ạ.`);
+      announce(msg);
+    }
+  }, [successTicket, targetRoom, isEn, announce]);
+
+  useEffect(() => {
+    if (errorMsg && usedVoiceRef.current) {
+      announce(errorMsg);
+    }
+  }, [errorMsg, announce]);
 
   // Load catalog on mount
   useEffect(() => {
@@ -364,6 +462,12 @@ export const RobotMaintenanceMenuScreen = ({
     doSubmitRequest();
   };
 
+  useEffect(() => {
+    if (voiceSubmitTick > 0) {
+      handleConfirmSubmit();
+    }
+  }, [voiceSubmitTick]);
+
   return (
     <div className="fixed inset-0 w-full h-[100dvh] max-h-[100dvh] bg-[#F5F2EB] text-[#1A1917] select-none flex overflow-hidden font-sans z-50 overscroll-none touch-none">
       {/* 1. LEFT SIDEBAR: DANH MỤC SỰ CỐ */}
@@ -410,6 +514,15 @@ export const RobotMaintenanceMenuScreen = ({
 
           {/* Right Controls: Room badge & Quay lại Robot */}
           <div className="flex items-center gap-2 shrink-0">
+            <MenuVoiceButton
+              isListening={isListening}
+              isSpeaking={isSpeaking}
+              isEn={isEn}
+              onToggle={() => {
+                usedVoiceRef.current = true;
+                toggleVoice();
+              }}
+            />
             {/* Room selector badge (Bấm để chạm chọn số phòng trực tiếp trên màn hình, không mở bàn phím) */}
             <button
               type="button"
@@ -756,6 +869,13 @@ export const RobotMaintenanceMenuScreen = ({
           onNotCheckedIn={onNotCheckedIn}
         />
       )}
+      <MenuVoiceSubtitle
+        message={voiceReply}
+        transcript={transcript}
+        isListening={isListening}
+        isEn={isEn}
+        onClear={clearVoiceReply}
+      />
     </div>
   );
 };

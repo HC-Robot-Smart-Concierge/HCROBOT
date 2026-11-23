@@ -10,6 +10,7 @@ from app.schemas.ai import ChatRequest, ChatResponse
 from app.services.ai.ai_chat_stream import (
     _submit_bell_for_chat,
     _submit_maintenance_for_chat,
+    _submit_room_service_for_chat,
     generate_chat_stream,
 )
 from app.services.ai.ai_poi_detector import _detect_destination_poi
@@ -38,6 +39,7 @@ __all__ = [
     "get_dynamic_suggested_prompts",
     "_submit_maintenance_for_chat",
     "_submit_bell_for_chat",
+    "_submit_room_service_for_chat",
 ]
 
 
@@ -308,6 +310,10 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
                 call_ticket_code, bell_reply = await _submit_bell_for_chat(db, current_room, items, lang_code.startswith("en"))
                 reply = ensure_followup_question(bell_reply, action=act, lang_code=lang_code)
                 audio_b64 = None  # The reply now carries the real ticket code.
+            elif act in ("room_service", "housekeeping", "laundry", "restaurant"):
+                call_ticket_code, rs_reply = await _submit_room_service_for_chat(db, current_room, act, items, lang_code.startswith("en"))
+                reply = ensure_followup_question(rs_reply, action=act, lang_code=lang_code)
+                audio_b64 = None
             else:
                 asyncio.create_task(
                     background_extract_and_create_ticket(items, current_room, act, items)

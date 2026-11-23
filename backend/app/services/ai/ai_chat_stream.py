@@ -6,7 +6,10 @@ import logging
 import re
 from typing import AsyncGenerator
 
+from app.api.v1.endpoints.operations.room_service_helpers import execute_create_room_service_order
+from app.repositories.room_service_repository import RoomServiceRepository
 from app.schemas.ai import ChatRequest
+from app.schemas.operations import RoomServiceOrderCreate
 from app.services.ai.ai_poi_detector import _detect_destination_poi
 from app.services.ai.ai_suggested_prompts import get_dynamic_suggested_prompts
 from app.services.ai.ai_ticket_service import (
@@ -30,6 +33,61 @@ from app.services.maintenance_request_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+_ROOM_SERVICE_AMENITY_TOKENS = (
+    "khăn", "khan", "gối", "goi", "chăn", "chan", "dọn", "don", "giặt", "giat",
+    "ủi", "ui", "massage", "spa", "bàn ủi", "ban ui", "bàn chải", "ban chai",
+    "kem đánh răng", "dao cạo", "dầu gội", "sữa tắm", "áo choàng", "tinh dầu",
+    "dép", "nệm", "towel", "pillow", "blanket", "clean", "laundry", "iron",
+    "toothbrush", "shampoo", "slipper", "amenity",
+)
+
+
+def _is_room_service_amenity(action: str, items: str) -> bool:
+    if action in ("housekeeping", "laundry"):
+        return True
+    lower = (items or "").lower()
+    return any(tok in lower for tok in _ROOM_SERVICE_AMENITY_TOKENS)
+
+
+async def _submit_room_service_for_chat(db, room_number: str, action: str, items: str, english: bool):
+    """Persist F&B (Kitchen) or in-room services/housekeeping/laundry (Room Service) to DB before replying."""
+    is_service_req = _is_room_service_amenity(action, items)
+    clean_items = (items or "").strip() or ("Dịch vụ buồng phòng" if is_service_req else "Đơn gọi món tại phòng")
+    try:
+        order_in = RoomServiceOrderCreate(
+            room_number=str(room_number).strip(),
+            items=[{"name": clean_items[:140], "qty": 1}],
+            note=f"HCRobot Voice AI ({action}): {clean_items}",
+            is_service_request=is_service_req,
+            guest_name=f"Khách Phòng {str(room_number).strip()}",
+        )
+        repo = RoomServiceRepository(db)
+        order = await execute_create_room_service_order(order_in, db, repo)
+        code = getattr(order, "ticket_code", None) or getattr(order, "order_number", None) or getattr(order, "id", "")
+        is_merged = bool(getattr(order, "is_merged", False))
+        dept_label = "Room Service" if is_service_req else ("Kitchen" if english else "Bếp")
+        if is_merged:
+            msg = (
+                f"Your request has been added to Room {room_number}'s open {dept_label} order (#{code})."
+                if english
+                else f"Dạ yêu cầu của Phòng {room_number} đã được gộp chung vào đơn {dept_label} hiện tại (#{code}) để phục vụ cùng lượt ạ."
+            )
+        else:
+            msg = (
+                f"Your request for Room {room_number} has been saved and sent to {dept_label} (ticket #{code})."
+                if english
+                else f"Dạ yêu cầu của Phòng {room_number} đã được ghi nhận và chuyển tới bộ phận {dept_label}, mã #{code} ạ."
+            )
+        return code, msg
+    except Exception:
+        await db.rollback()
+        logger.exception("[AIChatService] Room service / kitchen voice request was not saved")
+        return None, (
+            "I couldn't save your request right now. Please try again or order directly on the menu."
+            if english
+            else "Dạ em chưa lưu được yêu cầu vào hệ thống. Quý khách vui lòng thử lại hoặc chọn trực tiếp trên menu giúp em nhé ạ."
+        )
 
 
 async def _submit_maintenance_for_chat(db, room_number, items, english):
@@ -197,6 +255,12 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
                     async with AsyncSessionLocal() as ticket_db:
                         ticket_code, fsm_reply = await _submit_bell_for_chat(
                             ticket_db, effective_room, fsm_items, bool(request.language and "en" in request.language.lower()),
+                        )
+                elif action in ("room_service", "housekeeping", "laundry", "restaurant"):
+                    from app.core.database import AsyncSessionLocal
+                    async with AsyncSessionLocal() as ticket_db:
+                        ticket_code, fsm_reply = await _submit_room_service_for_chat(
+                            ticket_db, effective_room, action, fsm_items, bool(request.language and "en" in request.language.lower()),
                         )
                 else:
                     asyncio.create_task(

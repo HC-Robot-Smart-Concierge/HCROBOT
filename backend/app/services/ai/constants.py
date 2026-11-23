@@ -191,10 +191,16 @@ BELLMAN_MENU_TRIGGER_KEYWORDS: List[str] = [
 ]
 
 LOST_FOUND_KEYWORDS: List[str] = [
-    "thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do",
-    "rơi đồ", "roi do", "tìm đồ", "tim do", "bỏ quên", "bo quen",
-    "lost", "missing", "forgot",
+    "thất lạc", "that lac", "bị mất", "bi mat", "mất đồ", "mat do",
+    "mất ví", "mat vi", "mất túi", "mat tui", "mất điện thoại", "mat dien thoai",
+    "mất thẻ", "mat the", "mất chìa", "mat chia", "quên đồ", "quen do",
+    "để quên", "de quen", "bỏ quên", "bo quen", "rơi đồ", "roi do",
+    "làm rơi", "lam roi", "tìm đồ", "tim do", "lost", "missing", "forgot",
 ]
+
+for _lf_kw in LOST_FOUND_KEYWORDS:
+    if _lf_kw not in SERVICE_KEYWORDS["bellman"]:
+        SERVICE_KEYWORDS["bellman"].append(_lf_kw)
 
 
 def is_lost_found_text(text: str) -> bool:

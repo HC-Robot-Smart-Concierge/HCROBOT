@@ -89,14 +89,20 @@ export const fetchRoomServiceDashboard = async (params = {}) => {
 };
 
 export const createRoomServiceOrder = async (orderData) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/room-service/orders`,
-    {
-      method: 'POST',
-      body: JSON.stringify(orderData),
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(`${BASE_URL}/room-service/orders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    { id: `ORD-${Date.now()}`, ...orderData, status: 'Pending' }
-  );
+    body: JSON.stringify(orderData),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.detail || `HTTP error! status: ${response.status}`);
+  }
+  return payload;
 };
 
 export const updateRoomServiceOrderStatus = async (orderId, statusData) => {

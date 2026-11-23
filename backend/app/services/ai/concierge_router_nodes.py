@@ -189,16 +189,11 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
             "trigger_menu": None,
         }
 
-    # Nếu khách yêu cầu dịch vụ phòng thực tế (Actionable Service Request) -> Bỏ qua fast-path để intent_router & service_fsm xử lý
     prompt_lower_fp = prompt.lower()
-    is_service_action = any(
-        any(re.search(rf'\b{re.escape(k)}\b', prompt_lower_fp) for k in kws)
-        for act, kws in SERVICE_KEYWORDS.items()
-        if act not in ["chitchat", "faq"]
-    )
     faq_kws_fp = [
         "ở đâu", "o dau", "mấy giờ", "may gio", "bao nhiêu", "bao nhieu", "giá", "gia", "thế nào", "the nao", "có không", "co khong",
         "where", "when", "how", "what", "giờ nào", "tầng mấy", "tang may", "bảng giá", "quy định", "chính sách",
+        "gồm những gì", "gom nhung gi", "có những gì", "co nhung gi",
         "đi tới", "di toi", "đi đến", "di den", "tới", "toi", "đến", "den", "chỉ đường", "chi duong",
         "dẫn đường", "dan duong", "hướng dẫn đường", "lối đi", "loi di", "lối lên", "loi len", "lối xuống", "loi xuong",
         "đường đến", "duong den", "đường đi", "duong di", "đường ra", "duong ra", "vị trí", "vi tri", "chỉ tôi", "chi toi",
@@ -206,13 +201,59 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
     ]
     is_asking_info_fp = any(k in prompt_lower_fp for k in faq_kws_fp)
     stored_room_fp = state.get("room_number") or session_manager.get_room_number(session_id)
+
+    # Lệnh mở trực tiếp Menu Dịch vụ phòng (khăn tắm, gối chăn, dọn phòng, spa, giặt ủi)
+    if not is_asking_info_fp and re.search(
+        r"\b(?:mở|mo|xem|hiện|hien|cho xem|open|show)\b.*\b(?:menu\s*dịch vụ|dịch vụ phòng|dich vu phong|tiện ích phòng|tien ich phong|room service)\b"
+        r"|^(?:menu\s*dịch vụ(?:\s*phòng)?|open room service(?:\s*menu)?)$",
+        prompt_lower_fp,
+    ):
+        lang_name_rs, lang_code_rs = (
+            ollama_service.detect_language(prompt)
+            if not language or language.lower() in ["auto", ""]
+            else (language, "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN")
+        )
+        reply_rs = (
+            "Here is our in-room service menu. You can tap items or speak directly to order towels, housekeeping, laundry, or spa!"
+            if lang_code_rs == "en-US"
+            else "Dạ đây là menu dịch vụ phòng. Quý khách có thể chọn trực tiếp hoặc nói với em món dịch vụ cần phục vụ nhé ạ!"
+        )
+        return {
+            "fast_path_hit": True,
+            "response": reply_rs,
+            "lang_name": lang_name_rs,
+            "lang_code": lang_code_rs,
+            "intent_category": "fast_path",
+            "action": "open_room_service_menu",
+            "destination_key": None,
+            "trigger_video_call": False,
+            "trigger_menu": "room_service",
+            "missing_room_number": False,
+            "room_number": stored_room_fp,
+            "target_room_number": stored_room_fp,
+        }
+
+    # Nếu khách yêu cầu dịch vụ phòng thực tế (Actionable Service Request) -> Bỏ qua fast-path để intent_router & service_fsm xử lý
+    is_service_action = any(
+        any(re.search(rf'\b{re.escape(k)}\b', prompt_lower_fp) for k in kws)
+        for act, kws in SERVICE_KEYWORDS.items()
+        if act not in ["chitchat", "faq"]
+    )
     pending_fp = session_manager.get_pending_intent(session_id)
 
     is_actionable_call = bool(re.search(
         r'(cho (tôi|mình|em)|xin|lấy|mang|đem|gửi|thêm|mượn|cần|muốn|đặt|yêu cầu|order|bring|send|give me|need)\b',
         prompt_lower_fp,
         re.IGNORECASE
-    )) or any(k in prompt_lower_fp for k in ['đặt dịch vụ', 'dat dich vu', 'dịch vụ lên phòng', 'dich vu len phong', 'thêm dịch vụ', 'them dich vu', 'dịch vụ phòng', 'dich vu phong', 'hỗ trợ hành lý', 'ho tro hanh ly', 'mang hành lý', 'gửi hành lý', 'xách đồ', 'chuyển phòng', 'báo mất đồ', 'bao mat do', 'đồ thất lạc', 'do that lac', 'thất lạc', 'that lac', 'mất đồ', 'mat do', 'quên đồ', 'quen do', 'rơi đồ', 'roi do', 'lost item', 'lost and found', 'luggage assistance'])
+    )) or any(k in prompt_lower_fp for k in [
+        'đặt dịch vụ', 'dat dich vu', 'dịch vụ lên phòng', 'dich vu len phong', 'thêm dịch vụ', 'them dich vu',
+        'dịch vụ phòng', 'dich vu phong', 'hỗ trợ hành lý', 'ho tro hanh ly', 'mang hành lý', 'gửi hành lý',
+        'xách đồ', 'chuyển phòng', 'báo mất', 'bao mat', 'đồ thất lạc', 'do that lac', 'thất lạc', 'that lac',
+        'bị mất', 'bi mat', 'mất đồ', 'mat do', 'mất ví', 'mat vi', 'mất túi', 'mat tui', 'mất điện thoại',
+        'quên đồ', 'quen do', 'để quên', 'de quen', 'bỏ quên', 'bo quen', 'rơi đồ', 'roi do', 'làm rơi',
+        'giặt ủi', 'giat ui', 'giặt là', 'giat la', 'giặt sấy', 'giat say', 'ủi đồ', 'laundry',
+        'lost item', 'lost and found', 'luggage assistance'
+    ])
 
     query_status_kws_fp = SERVICE_KEYWORDS.get("query_order_status", [])
     is_reject_inquiry_fp = any(k in prompt_lower_fp for k in [

@@ -16,6 +16,9 @@ import {
   X,
 } from 'lucide-react';
 import { RoomPinModal } from './RoomPinModal';
+import { MenuVoiceButton, MenuVoiceSubtitle } from './MenuVoiceBar';
+import { useMenuVoiceInteraction } from '../../hooks/useMenuVoiceInteraction';
+import { isMenuConfirmVoice, matchBellmanVoiceCommand } from '../../utils/menuVoiceAssistant';
 import { RoomPickerModal } from './RoomPickerModal';
 import { createBellRequest, fetchRoomBellStatus } from '../../services/operationsApi';
 
@@ -123,6 +126,15 @@ export const RobotBellmanMenuScreen = ({
   onClose = () => { },
   onRequestSuccess = () => { },
   onNotCheckedIn = () => { },
+  lastVoiceTranscript = null,
+  voiceReplyText = '',
+  isListening = false,
+  isSpeaking = false,
+  transcript = '',
+  speak = null,
+  onStartTalk = null,
+  onStopSpeaking = null,
+  onUnhandledVoice = null,
 }) => {
   // Follow the guest conversation, independently of the staff portal language.
   const isEn = language === 'English' || language === 'EN';
@@ -145,6 +157,10 @@ export const RobotBellmanMenuScreen = ({
   const [pinActionTarget, setPinActionTarget] = useState('submit'); // 'submit' | 'status'
   const [isLocalPinVerified, setIsLocalPinVerified] = useState(false);
   const [isRoomPickerOpen, setIsRoomPickerOpen] = useState(false);
+  const [pendingLostFoundText, setPendingLostFoundText] = useState(null);
+  const [voiceSubmitTick, setVoiceSubmitTick] = useState(0);
+  const usedVoiceRef = useRef(false);
+  const voiceActionRef = useRef(null);
 
   const isRoomAuth = Boolean(
     targetRoom &&
@@ -180,6 +196,125 @@ export const RobotBellmanMenuScreen = ({
       setIsLocalPinVerified(false);
     }
   };
+
+  const submitLostFoundVoice = useCallback(async (room, spokenText) => {
+    const cleanRoom = String(room || '').trim();
+    if (!cleanRoom || submittingRef.current) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
+    setErrorMsg('');
+    try {
+      const ticket = await createBellRequest({
+        title: `Báo cáo đồ thất lạc Phòng ${cleanRoom}: ${spokenText}`,
+        location: cleanRoom,
+        guest_name: `Guest (Room ${cleanRoom})`,
+        reporter: 'HCRobot Bellman Voice Menu',
+        description: `Khách báo tại Menu Bellman: ${spokenText}`,
+        request_type: 'lost_found',
+      });
+      setSuccessTicket(ticket);
+      setSelected(null);
+      onRequestSuccess(ticket);
+    } catch (err) {
+      setErrorMsg(err?.message || (isEn ? 'Could not submit lost & found report.' : 'Chưa gửi được báo cáo đồ thất lạc.'));
+    } finally {
+      setIsSubmitting(false);
+      submittingRef.current = false;
+    }
+  }, [isEn, onRequestSuccess]);
+
+  useEffect(() => {
+    voiceActionRef.current = { submitLostFound: submitLostFoundVoice };
+  }, [submitLostFoundVoice]);
+
+  const {
+    voiceReply,
+    clearVoiceReply,
+    announce,
+    toggleVoice,
+  } = useMenuVoiceInteraction({
+    lastVoiceTranscript,
+    voiceReplyText,
+    speak,
+    onStartTalk,
+    onStopSpeaking,
+    isSpeaking,
+    isEn,
+    onUnhandledVoice,
+    onVoiceCommand: (text) => {
+      usedVoiceRef.current = true;
+      const cmd = matchBellmanVoiceCommand(text, BELL_SERVICE_OPTIONS);
+      const isConfirm = isMenuConfirmVoice(text);
+      if (cmd?.roomNumber) {
+        handleTargetRoomChange(cmd.roomNumber);
+      }
+      const effectiveRoom = cmd?.roomNumber || targetRoom;
+      const effectiveAuth = Boolean(
+        effectiveRoom &&
+        ((authenticatedRoom && String(authenticatedRoom).trim() === String(effectiveRoom).trim()) || isLocalPinVerified)
+      );
+
+      if (cmd?.isLostFound) {
+        if (!effectiveRoom) {
+          setPendingLostFoundText(cmd.rawText);
+          setIsRoomPickerOpen(true);
+          announce(isEn ? 'Please select your room number so I can submit your lost item report.' : 'Quý khách vui lòng chọn số phòng để em gửi báo cáo đồ thất lạc tới bộ phận Bellman nhé ạ.');
+          return true;
+        }
+        if (!effectiveAuth) {
+          setPendingLostFoundText(cmd.rawText);
+          setPinActionTarget('submit');
+          setIsPinModalOpen(true);
+          announce(isEn ? `Please enter the PIN for room ${effectiveRoom} to submit your lost & found report.` : `Quý khách vui lòng nhập mã PIN phòng ${effectiveRoom} để gửi báo cáo thất lạc ạ.`, { relisten: false });
+          return true;
+        }
+        submitLostFoundVoice(effectiveRoom, cmd.rawText);
+        return true;
+      }
+
+      if (cmd?.service) {
+        setActiveGroup(cmd.service.group);
+        setSelected(cmd.service);
+        setBagCount(cmd.bagCount || '1');
+        setErrorMsg('');
+        const label = isEn ? cmd.service.nameEn : cmd.service.nameVi;
+        if (isConfirm) {
+          setVoiceSubmitTick((n) => n + 1);
+        } else {
+          announce(
+            isEn
+              ? `Selected "${label}" (${cmd.bagCount || 1} bag). Say Confirm or tap Send Request.`
+              : `Dạ em đã chọn dịch vụ "${label}" (${cmd.bagCount || 1} kiện). Quý khách nói Xác nhận hoặc chạm Gửi yêu cầu để chuyển bộ phận Bellman ạ.`
+          );
+        }
+        return true;
+      }
+
+      if (isConfirm) {
+        if (selected) {
+          setVoiceSubmitTick((n) => n + 1);
+        } else {
+          announce(isEn ? 'Please choose a luggage service first.' : 'Quý khách muốn chọn dịch vụ hành lý nào (mang hành lý lên phòng, gửi giữ hành lý hay chuyển phòng) ạ?');
+        }
+        return true;
+      }
+
+      return false;
+    },
+  });
+
+  useEffect(() => {
+    if (successTicket && usedVoiceRef.current) {
+      usedVoiceRef.current = false;
+      announce(bellRequestMessage(successTicket, isEn));
+    }
+  }, [successTicket, isEn, announce]);
+
+  useEffect(() => {
+    if (errorMsg && usedVoiceRef.current) {
+      announce(errorMsg);
+    }
+  }, [errorMsg, announce]);
 
   const services = useMemo(
     () => BELL_SERVICE_OPTIONS.filter((s) => s.group === activeGroup),
@@ -281,6 +416,12 @@ export const RobotBellmanMenuScreen = ({
     }
   };
 
+  useEffect(() => {
+    if (voiceSubmitTick > 0) {
+      handleConfirmSubmit();
+    }
+  }, [voiceSubmitTick]);
+
   const roomText = targetRoom ? `${isEn ? 'Room' : 'Phòng'} ${targetRoom}` : isEn ? 'Select Room' : 'Chọn số phòng';
 
   return (
@@ -320,6 +461,15 @@ export const RobotBellmanMenuScreen = ({
           </h1>
 
           <div className="flex items-center gap-2 shrink-0">
+            <MenuVoiceButton
+              isListening={isListening}
+              isSpeaking={isSpeaking}
+              isEn={isEn}
+              onToggle={() => {
+                usedVoiceRef.current = true;
+                toggleVoice();
+              }}
+            />
             <button
               type="button"
               onClick={() => setIsRoomPickerOpen(true)}
@@ -663,7 +813,10 @@ export const RobotBellmanMenuScreen = ({
       {isPinModalOpen && (
         <RoomPinModal
           isOpen={isPinModalOpen}
-          onClose={() => setIsPinModalOpen(false)}
+          onClose={() => {
+            setIsPinModalOpen(false);
+            setPendingLostFoundText(null);
+          }}
           roomNumber={targetRoom}
           isSelectingRoomInitial={!targetRoom}
           sessionId={sessionId}
@@ -673,13 +826,35 @@ export const RobotBellmanMenuScreen = ({
           pendingItems={
             pinActionTarget === 'status'
               ? isEn ? 'Check Bellman request status' : 'Tra cứu tiến độ yêu cầu Bellman'
-              : selected ? (isEn ? selected.nameEn : selected.nameVi) : isEn ? 'Luggage assistance' : 'Hỗ trợ hành lý'
+              : pendingLostFoundText || (selected ? (isEn ? selected.nameEn : selected.nameVi) : isEn ? 'Luggage assistance' : 'Hỗ trợ hành lý')
           }
-          onVerifiedSuccess={handlePinSuccess}
-          onSuccess={handlePinSuccess}
+          onVerifiedSuccess={(res, room) => {
+            if (pendingLostFoundText) {
+              const verified = room || (typeof res === 'string' ? res : res?.room_number) || String(targetRoom).trim();
+              const textToSend = pendingLostFoundText;
+              setPendingLostFoundText(null);
+              setIsLocalPinVerified(true);
+              setIsPinModalOpen(false);
+              onPinVerifiedSuccess(verified);
+              voiceActionRef.current?.submitLostFound(verified, textToSend);
+              return;
+            }
+            handlePinSuccess(res, room);
+          }}
+          onSuccess={(res, room) => {
+            if (pendingLostFoundText) return;
+            handlePinSuccess(res, room);
+          }}
           onNotCheckedIn={onNotCheckedIn}
         />
       )}
+      <MenuVoiceSubtitle
+        message={voiceReply}
+        transcript={transcript}
+        isListening={isListening}
+        isEn={isEn}
+        onClear={clearVoiceReply}
+      />
     </div>
   );
 };

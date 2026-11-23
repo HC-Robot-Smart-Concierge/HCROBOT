@@ -18,6 +18,13 @@ import {
 } from 'lucide-react';
 import { createRoomServiceOrder } from '../../services/operationsApi';
 import { RoomPinModal } from './RoomPinModal';
+import { MenuVoiceButton, MenuVoiceSubtitle } from './MenuVoiceBar';
+import { useMenuVoiceInteraction } from '../../hooks/useMenuVoiceInteraction';
+import {
+  extractRoomIfValid,
+  isMenuConfirmVoice,
+  matchCatalogItemsByVoice,
+} from '../../utils/menuVoiceAssistant';
 
 export const INITIAL_MENU_CATEGORIES = [
   { id: 'appetizers', name: 'Khai vị & Ăn nhẹ', icon: '' },
@@ -716,10 +723,22 @@ export const RobotFoodMenuScreen = ({
   onNotCheckedIn = () => {},
   onPinVerifiedSuccess = () => {},
   sessionId = null,
+  lastVoiceTranscript = null,
+  voiceReplyText = '',
+  isListening = false,
+  isSpeaking = false,
+  transcript = '',
+  speak = null,
+  onStartTalk = null,
+  onStopSpeaking = null,
+  onUnhandledVoice = null,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState(INITIAL_MENU_CATEGORIES[0]?.id || 'appetizers');
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState({}); // { [itemId]: { item, qty } }
+  const [orderError, setOrderError] = useState('');
+  const [voiceConfirmTick, setVoiceConfirmTick] = useState(0);
+  const usedVoiceRef = useRef(false);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [orderNote, setOrderNote] = useState('');
   const [deliveryRoom, setDeliveryRoom] = useState(() => {
@@ -935,6 +954,7 @@ export const RobotFoodMenuScreen = ({
 
   const executePlaceOrder = async (targetRoom, guestNameOverride) => {
     setIsSubmitting(true);
+    setOrderError('');
     const roomToUse = targetRoom || deliveryRoom;
     const orderItemsPayload = Object.values(cart).map((entry) => ({
       name: entry.item.name,
@@ -972,15 +992,8 @@ export const RobotFoodMenuScreen = ({
       try { localStorage.removeItem('robot_delivery_room'); } catch {}
       setIsReviewModalOpen(false);
       onOrderSuccess(res);
-    } catch {
-      setOrderSuccessData({
-        orderCode: `ORD-${Math.floor(100000 + Math.random() * 900000)}`,
-        room: roomToUse,
-        totalAmount: totalPrice,
-        itemCount: totalItemsCount,
-      });
-      setCart({});
-      setIsReviewModalOpen(false);
+    } catch (err) {
+      setOrderError(err?.message || 'Chưa thể gửi đơn món tới Bếp lúc này. Quý khách vui lòng thử lại ạ.');
     } finally {
       setIsSubmitting(false);
     }
@@ -1012,6 +1025,86 @@ export const RobotFoodMenuScreen = ({
       setIsPinModalOpen(true);
     }
   };
+
+  useEffect(() => {
+    if (voiceConfirmTick > 0) {
+      handleConfirmOrder();
+    }
+  }, [voiceConfirmTick]);
+
+  const {
+    voiceReply,
+    clearVoiceReply,
+    announce,
+    toggleVoice,
+  } = useMenuVoiceInteraction({
+    lastVoiceTranscript,
+    voiceReplyText,
+    speak,
+    onStartTalk,
+    onStopSpeaking,
+    isSpeaking,
+    isEn: false,
+    onUnhandledVoice,
+    onVoiceCommand: (text) => {
+      usedVoiceRef.current = true;
+      setOrderError('');
+      const spokenRoom = extractRoomIfValid(text);
+      if (spokenRoom) {
+        setDeliveryRoom(spokenRoom);
+        if (typeof onRoomChange === 'function') onRoomChange(spokenRoom);
+      }
+      const matched = matchCatalogItemsByVoice(text, INITIAL_FOOD_ITEMS);
+      const isConfirm = isMenuConfirmVoice(text);
+
+      if (matched.length > 0) {
+        setCart((prev) => {
+          const next = { ...prev };
+          for (const { item, qty } of matched) {
+            const cur = next[item.id]?.qty || 0;
+            next[item.id] = { item, qty: cur + qty };
+          }
+          return next;
+        });
+        setIsReviewModalOpen(true);
+        const summary = matched.map((m) => `${m.qty} ${m.item.name}`).join(', ');
+        if (isConfirm) {
+          setVoiceConfirmTick((n) => n + 1);
+        } else {
+          announce(`Dạ em đã thêm ${summary} vào giỏ món. Quý khách nói Xác nhận hoặc chạm Đặt món để gửi tới Bếp nhé ạ.`);
+        }
+        return true;
+      }
+
+      if (isConfirm) {
+        if (totalItemsCount > 0) {
+          setVoiceConfirmTick((n) => n + 1);
+        } else {
+          announce('Giỏ món hiện đang trống. Quý khách muốn gọi món gì trong thực đơn ạ?');
+        }
+        return true;
+      }
+
+      return false;
+    },
+  });
+
+  useEffect(() => {
+    if (orderSuccessData && usedVoiceRef.current) {
+      usedVoiceRef.current = false;
+      announce(
+        orderSuccessData.isMerged
+          ? `Dạ đơn món của Phòng ${orderSuccessData.room} đã được gộp chung vào đơn Bếp #${orderSuccessData.orderCode} ạ.`
+          : `Dạ đơn món #${orderSuccessData.orderCode} cho Phòng ${orderSuccessData.room} đã được lưu và gửi thẳng tới bộ phận Bếp rồi ạ.`
+      );
+    }
+  }, [orderSuccessData, announce]);
+
+  useEffect(() => {
+    if (orderError && usedVoiceRef.current) {
+      announce(orderError);
+    }
+  }, [orderError, announce]);
 
   return (
     <div className="fixed inset-0 w-full h-[100dvh] max-h-[100dvh] bg-[#F5F2EB] text-[#1A1917] select-none flex overflow-hidden font-sans z-30 overscroll-none touch-none">
@@ -1073,6 +1166,15 @@ export const RobotFoodMenuScreen = ({
           </div>
 
           <div className="flex items-center gap-2.5">
+            <MenuVoiceButton
+              isListening={isListening}
+              isSpeaking={isSpeaking}
+              isEn={false}
+              onToggle={() => {
+                usedVoiceRef.current = true;
+                toggleVoice();
+              }}
+            />
             {/* Search Box */}
             <div className="relative hidden lg:block w-48">
               <Search className="w-3.5 h-3.5 text-stone-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -1400,6 +1502,12 @@ export const RobotFoodMenuScreen = ({
                 </span>
               </div>
 
+              {orderError && (
+                <div className="p-2.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium">
+                  {orderError}
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={handleConfirmOrder}
@@ -1548,6 +1656,13 @@ export const RobotFoodMenuScreen = ({
           </div>
         </div>
       )}
+      <MenuVoiceSubtitle
+        message={voiceReply}
+        transcript={transcript}
+        isListening={isListening}
+        isEn={false}
+        onClear={clearVoiceReply}
+      />
     </div>
   );
 };

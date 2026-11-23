@@ -61,7 +61,7 @@ import {
  * - Cỡ chữ to rõ 16px - 18px, giới hạn tối đa 2 dòng chữ
  * - Tự động tách câu và chuyển câu mượt mà theo nhịp giọng nói
  */
-const FloatingCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
+const FloatingCinemaSubtitle = ({ fullText, userPrompt, isSpeaking, onClose }) => {
   const sentences = useMemo(() => {
     if (!fullText) return [];
     const raw = String(fullText).trim();
@@ -97,12 +97,20 @@ const FloatingCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
 
   return (
     <div
-      className="relative mt-4 sm:mt-5 w-[640px] max-w-[92vw] px-6 py-3.5 bg-stone-900/60 backdrop-blur-md border border-stone-700/50 rounded-2xl shadow-xl flex items-center justify-center text-center animate-in fade-in zoom-in-95 duration-300 z-20 group"
+      className="relative mt-4 sm:mt-5 w-[640px] max-w-[92vw] px-6 py-3.5 bg-stone-900/60 backdrop-blur-md border border-stone-700/50 rounded-2xl shadow-xl flex flex-col items-center justify-center text-center animate-in fade-in zoom-in-95 duration-300 z-20 group"
       role="region"
       aria-label="Phụ đề lời thoại của robot"
     >
+      {/* Phụ đề câu hỏi của khách (giữ lại câu khách vừa nói) */}
+      {userPrompt && (
+        <div className="flex items-center gap-1.5 text-xs text-stone-400 mb-1.5 max-w-full px-5 truncate">
+          <span className="font-bold text-stone-500 uppercase text-[10px] tracking-wider shrink-0">Khách hỏi:</span>
+          <span className="italic text-stone-300 truncate font-medium">"{userPrompt}"</span>
+        </div>
+      )}
+
       {/* Chỉ báo phát âm thanh mini & số câu */}
-      <div className="absolute left-3.5 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+      <div className="absolute left-3.5 top-3.5 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
         <span
           className={`w-2 h-2 rounded-full transition-colors ${isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-500'
             }`}
@@ -134,7 +142,7 @@ const FloatingCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3.5 w-5 h-5 rounded-full hover:bg-stone-800/80 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+          className="absolute right-3.5 top-3.5 w-5 h-5 rounded-full hover:bg-stone-800/80 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
           title="Ẩn phụ đề"
           aria-label="Ẩn phụ đề"
         >
@@ -3874,10 +3882,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               {(aiResponseText || (isWorkflowRunning && (activeStep?.type === 'GREET' || activeStep?.type === 'SPEAK') && (activeStep.params?.speech_text || activeStep.params?.greeting_text || activeStep.params?.text))) && (
                 <FloatingCinemaSubtitle
                   fullText={aiResponseText || (activeStep?.params?.speech_text || activeStep?.params?.greeting_text || activeStep?.params?.text)}
+                  userPrompt={lastUserPrompt}
                   isSpeaking={isSpeaking}
                   onClose={() => {
                     clearFollowUpTimer();
                     setAiResponseText('');
+                    setLastUserPrompt('');
                     setSuggestedPrompts([]);
                   }}
                 />

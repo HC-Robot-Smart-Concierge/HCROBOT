@@ -77,7 +77,7 @@ async def synthesize_edge_tts_detailed(
         selected_rate = "+0%"
     # Luôn dùng +0% khi gọi EdgeTTS để tránh lỗi NoAudioReceived; khuếch đại âm lượng được xử lý qua GainNode ở frontend.
     selected_volume = "+0%"
-    per_attempt_timeout = max(0.02, float(attempt_timeout)) if attempt_timeout is not None else 8.5
+    per_attempt_timeout = max(0.02, float(attempt_timeout)) if attempt_timeout is not None else 16.0
 
     try:
         import edge_tts as _edge_tts

@@ -3882,8 +3882,44 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 />
               </div>
 
-              {/* 1. Khi đang nói (Speaking) hoặc có câu trả lời: Phụ đề động tinh giản (Floating Cinema Captions) */}
-              {(aiResponseText || (isWorkflowRunning && (activeStep?.type === 'GREET' || activeStep?.type === 'SPEAK') && (activeStep.params?.speech_text || activeStep.params?.greeting_text || activeStep.params?.text))) && (
+              {/* 1. Khi đang lắng nghe khách nói (Hiển thị ngay phụ đề lời khách nói thời gian thực) */}
+              {(currentState === 'RT-03' || isListening) ? (
+                <div className="mt-6 flex flex-col items-center gap-3 animate-fadeIn">
+                  <div className="px-6 py-3.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-2xl flex items-center gap-4 text-stone-100 max-w-[620px] w-full">
+                    <AudioWave isActive={true} volumeLevel={volumeLevel} />
+                    <div className="flex flex-col text-left min-w-[240px] flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-stone-300 flex items-center gap-1.5">
+                          <span>{language === 'English' ? 'Guest speaking:' : 'Khách đang nói:'}</span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                        </span>
+                        {transcript && transcript.trim() && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleStopTalkAndProcess(transcript);
+                            }}
+                            className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
+                            title={language === 'English' ? 'Send question' : 'Gửi câu hỏi'}
+                          >
+                            <span>{language === 'English' ? 'Send' : 'Gửi'}</span>
+                          </button>
+                        )}
+                      </div>
+                      <span className="text-sm font-semibold text-stone-100 leading-snug break-words mt-1">
+                        {transcript ? `"${transcript}"` : (volumeLevel > 5 ? 'Đang nhận diện giọng nói...' : (language === 'English' ? 'Listening to you... Speak now' : 'Rora đang lắng nghe quý khách...'))}
+                      </span>
+                    </div>
+                  </div>
+                  {speechError && (
+                    <div className="px-4 py-2 bg-red-950/80 border border-red-700/80 rounded-xl text-red-200 text-xs font-medium max-w-md text-center shadow-lg">
+                      {speechError}
+                    </div>
+                  )}
+                </div>
+              ) : (aiResponseText || (isWorkflowRunning && (activeStep?.type === 'GREET' || activeStep?.type === 'SPEAK') && (activeStep.params?.speech_text || activeStep.params?.greeting_text || activeStep.params?.text))) ? (
+                /* 2. Khi đang nói (Speaking) hoặc có câu trả lời: Phụ đề động tinh giản (Floating Cinema Captions) */
                 <FloatingCinemaSubtitle
                   fullText={aiResponseText || (activeStep?.params?.speech_text || activeStep?.params?.greeting_text || activeStep?.params?.text)}
                   userPrompt={lastUserPrompt}
@@ -3895,10 +3931,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setSuggestedPrompts([]);
                   }}
                 />
-              )}
+              ) : null}
 
               {/* Interactive Quick-Reply Chips for Dynamic Conversation Continuation */}
-              {suggestedPrompts && suggestedPrompts.length > 0 && !isSpeaking && (
+              {suggestedPrompts && suggestedPrompts.length > 0 && !isSpeaking && !isListening && currentState !== 'RT-03' && (
                 <div className="mt-3 flex flex-wrap items-center justify-center gap-2 animate-fadeIn z-20 max-w-xl">
                   {suggestedPrompts.map((promptText, idx) => (
                     <button
@@ -3915,32 +3951,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                       <span>{promptText}</span>
                     </button>
                   ))}
-                </div>
-              )}
-
-              {/* 2. Khi đang nghe (Listening): Hiển thị AudioWave và trạng thái thu âm thực tế */}
-              {currentState === 'RT-03' && !aiResponseText && (
-                <div className="mt-6 flex flex-col items-center gap-3 animate-fadeIn">
-                  <div className="px-6 py-3.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-2xl flex items-center gap-4 text-stone-100 max-w-[620px]">
-                    <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
-                    <div className="flex flex-col text-left min-w-[240px]">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-stone-400">Khách nói:</span>
-                      </div>
-                      <span className="text-sm font-bold text-stone-100">
-                        {transcript ? `"${transcript}"` : (volumeLevel > 5 ? 'Đang nhận diện giọng nói...' : 'Listening... · Đang lắng nghe...')}
-                      </span>
-                      <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1.5 mt-0.5">
-                        <Globe className="w-3 h-3 text-stone-400" />
-                        <span>Auto-detect VI · EN · Tự động nhận diện</span>
-                      </span>
-                    </div>
-                  </div>
-                  {speechError && (
-                    <div className="px-4 py-2 bg-red-950/80 border border-red-700/80 rounded-xl text-red-200 text-xs font-medium max-w-md text-center shadow-lg">
-                      {speechError}
-                    </div>
-                  )}
                 </div>
               )}
 

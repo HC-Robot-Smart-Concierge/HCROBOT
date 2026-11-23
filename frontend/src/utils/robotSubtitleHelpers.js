@@ -14,6 +14,18 @@ export const formatGuestPrompt = (userPrompt, language = 'Tiếng Việt') => {
   };
 };
 
+export const formatGuestLiveSpeech = (transcript, language = 'Tiếng Việt') => {
+  const isEn = language === 'English';
+  const label = isEn ? 'Guest speaking:' : 'Khách đang nói:';
+  const trimmed = transcript && typeof transcript === 'string' ? transcript.trim() : '';
+  const placeholder = isEn ? 'Listening to you... Speak now' : 'Rora đang lắng nghe quý khách...';
+  return {
+    label,
+    text: trimmed ? `"${trimmed}"` : placeholder,
+    hasContent: Boolean(trimmed),
+  };
+};
+
 export const splitSubtitleSentences = (text) => {
   if (!text) return [];
   const raw = String(text).trim();

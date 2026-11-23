@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_, func
 from sqlalchemy.orm import selectinload
 
-from app.models.room_service import RoomServiceOrder, OrderItem
+from app.models.room_service import RoomServiceOrder, OrderItem, RoomServiceCatalogItem
 from app.models.hotel import Room
 from app.models.menu import FoodItem, MenuItem
 from app.repositories.base import BaseRepository
@@ -149,6 +149,30 @@ class RoomServiceRepository(BaseRepository[RoomServiceOrder]):
                 food_item = await self.db.get(FoodItem, m_item.food_item_id)
 
         return food_item, m_item
+
+    async def lookup_room_service_catalog_item(
+        self,
+        name: str,
+    ) -> Optional[RoomServiceCatalogItem]:
+        """Look up in-room service pricing (Spa, Laundry, Housekeeping, Amenities) by name."""
+        clean = (name or "").strip()
+        if not clean:
+            return None
+        exact = (
+            await self.db.execute(
+                select(RoomServiceCatalogItem).where(
+                    func.lower(func.trim(RoomServiceCatalogItem.name)) == clean.lower()
+                )
+            )
+        ).scalars().first()
+        if exact:
+            return exact
+        fuzzy = (
+            await self.db.execute(
+                select(RoomServiceCatalogItem).where(RoomServiceCatalogItem.name.ilike(f"%{clean}%"))
+            )
+        ).scalars().first()
+        return fuzzy
 
     async def find_order_by_linked_or_number(
         self,

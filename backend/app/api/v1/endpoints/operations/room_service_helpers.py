@@ -43,17 +43,20 @@ async def execute_create_room_service_order(
     order_items_to_create = []
 
     for it in order_in.items:
-        food_item, m_item = await repo.lookup_food_and_menu_item(
-            name=it.name or "",
-            food_item_id=getattr(it, "food_item_id", None),
-            menu_item_id=getattr(it, "menu_item_id", None),
-        )
-
-        # Xác định đơn giá từ MenuItem trong thực đơn
-        if m_item and m_item.price > 0:
-            price = m_item.price
-        else:
-            price = 0.0
+        food_item, m_item = (None, None)
+        price = 0.0
+        if order_in.is_service_request:
+            svc_item = await repo.lookup_room_service_catalog_item(it.name or "")
+            if svc_item and (svc_item.price or 0) > 0:
+                price = float(svc_item.price)
+        if price == 0.0 and not order_in.is_service_request:
+            food_item, m_item = await repo.lookup_food_and_menu_item(
+                name=it.name or "",
+                food_item_id=getattr(it, "food_item_id", None),
+                menu_item_id=getattr(it, "menu_item_id", None),
+            )
+            if m_item and m_item.price > 0:
+                price = float(m_item.price)
 
         qty = int(it.qty) if str(it.qty).isdigit() else 1
         subtotal = price * qty
@@ -192,6 +195,16 @@ async def execute_create_room_service_order(
             request_type="room_service",
             type="Request",
         )
+        if order_in.is_service_request:
+            await create_department_notification(
+                db=db,
+                department="Housekeeping",
+                title=f"Đơn gộp dịch vụ #{existing_order.order_number} - Phòng {order_in.room_number}",
+                description=f"Phòng {order_in.room_number}: Khách gộp thêm {items_desc}. Tổng chi phí: {existing_order.total_amount:,.0f} đ.",
+                request_id=existing_order.id,
+                request_type="room_service",
+                type="Request",
+            )
         await create_department_notification(
             db=db,
             department="Reception",
@@ -333,6 +346,16 @@ async def execute_create_room_service_order(
         request_type="room_service",
         type="Request",
     )
+    if order_in.is_service_request:
+        await create_department_notification(
+            db=db,
+            department="Housekeeping",
+            title=f"Yêu cầu Dịch vụ phòng mới #{order_num} - Phòng {order_in.room_number}",
+            description=f"Phòng {order_in.room_number}: {items_desc or order_in.note or 'Yêu cầu phục vụ phòng mới'}. Chi phí: {total_amount:,.0f} đ.",
+            request_id=new_order.id,
+            request_type="room_service",
+            type="Request",
+        )
     # Đồng bộ thông báo hóa đơn dịch vụ phòng về Quầy Lễ Tân (Reception) đối soát khi check-out
     await create_department_notification(
         db=db,

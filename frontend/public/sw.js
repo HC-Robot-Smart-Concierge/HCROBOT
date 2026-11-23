@@ -1,5 +1,5 @@
 // Service Worker for HC-Robot PWA
-const CACHE_NAME = 'hc-robot-app-cache-v3';
+const CACHE_NAME = 'hc-robot-app-cache-v4';
 const ASSETS_TO_CACHE = [
   '/map.html',
   '/manifest.json',

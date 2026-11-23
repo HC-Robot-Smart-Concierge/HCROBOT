@@ -36,6 +36,7 @@ const MobileCinemaSubtitle = ({
   fullText,
   userPrompt = '',
   isSpeaking,
+  isProcessing = false,
   onClose,
   onStartTalk,
   onStopSpeaking,
@@ -68,7 +69,8 @@ const MobileCinemaSubtitle = ({
     return () => clearTimeout(timer);
   }, [currentIndex, isSpeaking, sentences]);
 
-  const activeSentence = sentences[currentIndex] || fullText;
+  const thinkingText = isEn ? 'Finding the best answer...' : 'Rora đang suy nghĩ câu trả lời...';
+  const activeSentence = fullText ? (sentences[currentIndex] || fullText) : thinkingText;
 
   return (
     <div
@@ -78,11 +80,11 @@ const MobileCinemaSubtitle = ({
     >
       {/* Phụ đề câu hỏi của khách */}
       {userPrompt && (
-        <div className="flex items-center gap-1.5 text-[11px] text-stone-400 mb-1 max-w-full px-6 truncate">
-          <span className="font-bold text-stone-500 uppercase text-[9px] tracking-wider shrink-0">
+        <div className="flex items-center gap-1.5 text-xs text-stone-300 mb-1.5 max-w-full px-5">
+          <span className="font-bold text-stone-400 uppercase text-[9px] tracking-wider shrink-0">
             {isEn ? 'Guest:' : 'Khách hỏi:'}
           </span>
-          <span className="italic text-stone-300 truncate font-medium">"{userPrompt}"</span>
+          <span className="italic text-stone-100 font-semibold truncate">"{userPrompt}"</span>
         </div>
       )}
 
@@ -90,10 +92,14 @@ const MobileCinemaSubtitle = ({
         <div className="absolute left-0 flex items-center gap-1.5 opacity-60">
           <span
             className={`w-2 h-2 rounded-full transition-colors ${
-              isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-500'
+              isProcessing
+                ? 'bg-stone-300 animate-ping'
+                : isSpeaking
+                  ? 'bg-stone-300 animate-pulse'
+                  : 'bg-stone-500'
             }`}
           />
-          {sentences.length > 1 && (
+          {!isProcessing && sentences.length > 1 && (
             <span className="text-[9px] font-mono text-stone-400">
               {currentIndex + 1}/{sentences.length}
             </span>
@@ -101,8 +107,10 @@ const MobileCinemaSubtitle = ({
         </div>
 
         <p
-          key={currentIndex}
-          className="text-xs sm:text-[13px] font-medium text-stone-100 leading-snug px-7 select-text animate-in fade-in duration-200 line-clamp-3"
+          key={isProcessing ? 'thinking' : currentIndex}
+          className={`text-xs sm:text-[13px] font-medium leading-snug px-7 select-text animate-in fade-in duration-200 line-clamp-3 ${
+            isProcessing ? 'text-stone-400 italic' : 'text-stone-100'
+          }`}
         >
           {activeSentence}
         </p>
@@ -895,12 +903,13 @@ export const MobileRobotScreen = ({
                 />
               </div>
 
-              {/* 1. Khi đang nói hoặc có phụ đề trả lời: Subtitle điện ảnh nổi tinh tế (Tích hợp nút mic bên phải) */}
-              {displayText ? (
+              {/* 1. Khi có phụ đề trả lời HOẶC khi đang xử lý câu hỏi của khách (Hiển thị ngay phụ đề lời khách nói) */}
+              {displayText || (isBusy && userPrompt) ? (
                 <MobileCinemaSubtitle
                   fullText={displayText}
                   userPrompt={userPrompt}
                   isSpeaking={isSpeaking}
+                  isProcessing={isBusy && !displayText}
                   onClose={onCloseAiResponse}
                   onStartTalk={onStartTalk}
                   onStopSpeaking={onStopSpeaking}
@@ -951,20 +960,10 @@ export const MobileRobotScreen = ({
                   )}
                 </div>
               ) : isBusy ? (
-                /* 3. Khi đang suy nghĩ / xử lý: Dock xám hiển thị câu hỏi khách + trạng thái đang xử lý */
-                <div className="mt-2.5 flex flex-col items-center gap-1.5 px-4 py-2 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-lg text-stone-200 text-xs font-medium animate-fadeIn max-w-[92vw]">
-                  {userPrompt && (
-                    <div className="flex items-center gap-1.5 text-[11px] text-stone-400 max-w-full px-1 truncate">
-                      <span className="font-bold text-stone-500 uppercase text-[9px] tracking-wider shrink-0">
-                        {isEn ? 'Guest:' : 'Khách hỏi:'}
-                      </span>
-                      <span className="italic text-stone-300 truncate">"{userPrompt}"</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-stone-300 animate-ping" />
-                    <span>{isEn ? 'Processing...' : 'Đang xử lý...'}</span>
-                  </div>
+                /* 3. Khi đang suy nghĩ mà chưa có prompt cụ thể */
+                <div className="mt-2.5 flex items-center gap-2 px-3.5 py-1.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-full shadow-lg text-stone-200 text-xs font-medium animate-fadeIn">
+                  <span className="w-2 h-2 rounded-full bg-stone-300 animate-ping" />
+                  <span>{isEn ? 'Processing...' : 'Đang xử lý...'}</span>
                 </div>
               ) : (
                 /* 4. Trạng thái chờ: Nút chạm nói */

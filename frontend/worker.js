@@ -39,7 +39,29 @@ export default {
     }
 
     // 2. Các assets tĩnh (HTML, CSS, JS, ảnh) được phục vụ từ thư mục dist của Vite
-    return env.ASSETS.fetch(request);
+    const assetResponse = await env.ASSETS.fetch(request);
+
+    // Đảm bảo index.html, sw.js, manifest.json KHÔNG BAO GIỜ bị cache để PWA tự động cập nhật code mới tức thì
+    const pathname = url.pathname.toLowerCase();
+    if (
+      pathname === '/' ||
+      pathname === '/index.html' ||
+      pathname === '/sw.js' ||
+      pathname === '/manifest.json' ||
+      pathname === '/manifest-login.json'
+    ) {
+      const responseHeaders = new Headers(assetResponse.headers);
+      responseHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+      responseHeaders.set('Pragma', 'no-cache');
+      responseHeaders.set('Expires', '0');
+      return new Response(assetResponse.body, {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers: responseHeaders,
+      });
+    }
+
+    return assetResponse;
   },
 };
 

@@ -21,7 +21,13 @@ export const useSpeechSynthesis = () => {
   const [speechRate, setRate] = useState(() => {
     try { return clampRate(localStorage.getItem('rora_speech_rate')); } catch { return 1; }
   });
+  const clampVolume = value => Math.max(0.5, Math.min(3.0, Number(value) || 1.85));
+  const [speechVolume, setVolume] = useState(() => {
+    try { return clampVolume(localStorage.getItem('rora_speech_volume')); } catch { return 1.85; }
+  });
   const rateRef = useRef(speechRate);
+  const volumeRef = useRef(speechVolume);
+  const activeSourceRef = useRef(null);
   const epochRef = useRef(0);
   const controllerRef = useRef(null);
   const playerRef = useRef(null);
@@ -67,6 +73,11 @@ export const useSpeechSynthesis = () => {
     streamRef.current = null;
     controllerRef.current?.abort();
     controllerRef.current = null;
+    if (activeSourceRef.current) {
+      try { activeSourceRef.current.stop(); } catch {}
+      try { activeSourceRef.current.disconnect(); } catch {}
+      activeSourceRef.current = null;
+    }
     const player = playerRef.current;
     if (player) {
       player.pause();
@@ -84,14 +95,23 @@ export const useSpeechSynthesis = () => {
     setRate(next);
     try { localStorage.setItem('rora_speech_rate', String(next)); } catch { /* storage optional */ }
   }, []);
+  const updateSpeechVolume = useCallback(value => {
+    const next = clampVolume(value);
+    volumeRef.current = next;
+    setVolume(next);
+    try { localStorage.setItem('rora_speech_volume', String(next)); } catch { /* storage optional */ }
+  }, []);
   const updateVoiceSettings = useCallback(settings => {
     if (settings?.speech_rate != null) updateSpeechRate(settings.speech_rate);
+    if (settings?.volume != null || settings?.speech_volume != null) {
+      updateSpeechVolume(settings.volume ?? settings.speech_volume);
+    }
     // Ignore stale/male voice selections in storage and cross-tab messages.
     try {
       localStorage.setItem('rora_vi_voice', VI_VOICE);
       localStorage.setItem('rora_en_voice', EN_VOICE);
     } catch { /* storage optional */ }
-  }, [updateSpeechRate]);
+  }, [updateSpeechRate, updateSpeechVolume]);
 
   useEffect(() => {
     updateVoiceSettings({});
@@ -135,6 +155,72 @@ export const useSpeechSynthesis = () => {
       setIsSpeaking(true);
       onStart?.();
     };
+
+    // 1. Ưu tiên Web Audio API với GainNode khuếch đại âm lượng to rõ (+85%) và Compressor chống vỡ tiếng
+    const ctx = getContext();
+    if (ctx && ctx.state !== 'closed') {
+      try {
+        if (ctx.state === 'suspended') {
+          await ctx.resume().catch(() => {});
+        }
+        if (ctx.state === 'running') {
+          const decoded = await ctx.decodeAudioData(bytes.buffer.slice(0));
+          checkCurrent(epoch, signal);
+
+          await new Promise((resolve, reject) => {
+            let settled = false;
+            const source = ctx.createBufferSource();
+            source.buffer = decoded;
+            source.playbackRate.value = 1;
+
+            const gainNode = ctx.createGain();
+            const boost = Math.max(0.5, Math.min(3.0, Number(volumeRef.current) || 1.85));
+            gainNode.gain.value = boost;
+
+            const compressor = ctx.createDynamicsCompressor();
+            compressor.threshold.value = -15;
+            compressor.knee.value = 30;
+            compressor.ratio.value = 12;
+            compressor.attack.value = 0.003;
+            compressor.release.value = 0.25;
+
+            source.connect(gainNode);
+            gainNode.connect(compressor);
+            compressor.connect(ctx.destination);
+
+            activeSourceRef.current = source;
+
+            const cleanup = () => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              signal.removeEventListener('abort', aborted);
+              source.onended = null;
+              if (activeSourceRef.current === source) {
+                activeSourceRef.current = null;
+              }
+              try { source.stop(); } catch {}
+              try { source.disconnect(); } catch {}
+            };
+
+            const aborted = () => { cleanup(); reject(abortError()); };
+            const timer = setTimeout(() => { cleanup(); reject(new Error('Audio playback timed out.')); }, (decoded.duration + 5) * 1000);
+            signal.addEventListener('abort', aborted, { once: true });
+
+            source.onended = () => { cleanup(); resolve(); };
+            source.start(0);
+            started();
+          });
+          return;
+        }
+      } catch (webAudioErr) {
+        checkCurrent(epoch, signal);
+        if (began) throw webAudioErr;
+        // Fallback sang HTML5 Audio nếu Web Audio Context gặp lỗi decode
+      }
+    }
+
+    // 2. Dự phòng: HTML5 Audio Player
     const player = getPlayer();
     const url = URL.createObjectURL(new Blob([bytes], { type: data.mime_type || 'audio/mpeg' }));
     try {
@@ -155,40 +241,12 @@ export const useSpeechSynthesis = () => {
         player.onplaying = started;
         player.onended = () => done();
         player.onerror = () => done(new Error('Audio playback failed.'));
-        // Rate is applied once by the TTS engine, with neutral pitch.
         player.playbackRate = 1;
         player.preservesPitch = true;
         player.volume = 1;
         player.src = url;
         window._activeAudioPlayer = player;
         try { Promise.resolve(player.play()).catch(done); } catch (error) { done(error); }
-      });
-    } catch (error) {
-      checkCurrent(epoch, signal);
-      if (began) throw error; // Never restart a partially spoken answer.
-      // iOS can reject HTML media after an async fetch. Play the SAME audio via the unlocked context.
-      const ctx = getContext();
-      if (!ctx || ctx.state !== 'running') throw error;
-      const decoded = await ctx.decodeAudioData(bytes.buffer.slice(0));
-      checkCurrent(epoch, signal);
-      await new Promise((resolve, reject) => {
-        const source = ctx.createBufferSource();
-        source.buffer = decoded;
-        source.playbackRate.value = 1;
-        source.connect(ctx.destination);
-        const cleanup = () => {
-          clearTimeout(timer);
-          signal.removeEventListener('abort', aborted);
-          source.onended = null;
-          try { source.stop(); } catch { /* already ended */ }
-          source.disconnect();
-        };
-        const aborted = () => { cleanup(); reject(abortError()); };
-        const timer = setTimeout(() => { cleanup(); reject(new Error('Audio playback timed out.')); }, (decoded.duration + 5) * 1000);
-        signal.addEventListener('abort', aborted, { once: true });
-        source.onended = () => { cleanup(); resolve(); };
-        source.start();
-        started();
       });
     } finally {
       URL.revokeObjectURL(url);
@@ -302,6 +360,7 @@ export const useSpeechSynthesis = () => {
     isSpeechActive: isSpeaking || isSpeechPending, speechError,
     voices: [{ name: VI_VOICE, lang: 'vi-VN' }, { name: EN_VOICE, lang: 'en-US' }],
     speechRate, setSpeechRate: updateSpeechRate, updateSpeechRate,
+    speechVolume, setSpeechVolume: updateSpeechVolume, updateSpeechVolume,
     viVoice: VI_VOICE, enVoice: EN_VOICE, updateVoiceSettings,
     initStreamSpeech, enqueueStreamChunk, endStreamSpeech,
   };

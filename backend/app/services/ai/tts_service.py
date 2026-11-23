@@ -304,7 +304,8 @@ class TTSService:
         if waiters is None:
             waiters = {}
             self._inflight_waiters = waiters
-        attempt_timeout = max(2.0, min(float(timeout) * 0.9, float(timeout) - 1.5))
+        # Chia đều thời gian cho 2 lần thử (mỗi lần tối đa 8s) để lần thử 2 luôn có đủ thời gian hoàn tất
+        attempt_timeout = min(8.0, max(3.0, (float(timeout) - 1.0) / 2))
         inflight = None
         counted = False
         try:

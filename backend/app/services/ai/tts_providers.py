@@ -81,6 +81,8 @@ async def synthesize_edge_tts_detailed(
 
     try:
         import edge_tts as _edge_tts
+        import aiohttp as _aiohttp
+        import socket as _socket
     except ImportError:
         logger.info("[TTSService] edge_tts library not installed.")
         return None, "TTS_PROVIDER_ERROR", "edge_tts library not installed"
@@ -95,9 +97,24 @@ async def synthesize_edge_tts_detailed(
             logger.info(f"[TTSService] EdgeTTS attempt {attempt + 1}: Retrying same voice {current_voice}")
 
         try:
-            communicate = _edge_tts.Communicate(
-                clean_text, current_voice, rate=selected_rate, volume=selected_volume
-            )
+            # Ép dùng IPv4 trực tiếp qua TCPConnector để triệt tiêu độ trễ 10s fallback IPv6 trên Windows/Tailscale
+            try:
+                connector = _aiohttp.TCPConnector(family=_socket.AF_INET)
+                communicate = _edge_tts.Communicate(
+                    clean_text,
+                    current_voice,
+                    rate=selected_rate,
+                    volume=selected_volume,
+                    connector=connector,
+                    connect_timeout=5,
+                )
+            except TypeError:
+                communicate = _edge_tts.Communicate(
+                    clean_text,
+                    current_voice,
+                    rate=selected_rate,
+                    volume=selected_volume,
+                )
             audio_bytes = await asyncio.wait_for(
                 _collect_edge_audio(communicate),
                 timeout=per_attempt_timeout,
@@ -119,7 +136,7 @@ async def synthesize_edge_tts_detailed(
             log_fn = logger.warning if attempt == max_attempts - 1 else logger.info
             log_fn(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
         if attempt < max_attempts - 1:
-            await asyncio.sleep(0.5 * (attempt + 1))
+            await asyncio.sleep(0.3 * (attempt + 1))
 
     return None, last_err_code, last_err_detail
 

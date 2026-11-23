@@ -665,11 +665,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Workflow Native Runner Hook (tích hợp Micro & Loa máy tính)
   const {
     stepRun, guestRequest, setGuestRequest, systemRequestState,
+    feedbackState, submitWorkflowStepFeedback,
     activeWorkflow,
     isWorkflowRunning,
     currentStepIndex,
     activeStep,
     totalSteps,
+    silenceRemaining,
     choiceRemaining,
     startWorkflow,
     stopWorkflow,
@@ -684,6 +686,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     transcript,
     resetTranscript,
     isListening,
+    sessionId,
+    roomNumber: authenticatedRoom || activeRoomNumber || null,
   });
 
   // Pin yếu: cùng quy tắc với Studio (utils/batteryPolicy). Pin ước tính từ Pi 5 đại diện cho cả pin động cơ.
@@ -3760,14 +3764,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             <div className="w-[700px] max-h-[610px] bg-white/98 backdrop-blur-2xl border-2 border-stone-200/90 rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col overflow-hidden animate-fadeIn">
               <KioskDisplayPreview
                 activeStep={activeStep}
+                stepRun={stepRun}
                 transcript={transcript}
                 isListening={isListening}
-                silenceRemaining={30}
-                onNextStep={() => { }}
+                silenceRemaining={silenceRemaining}
+                onNextStep={nextStep}
                 choiceRemaining={choiceRemaining}
                 onChooseOption={chooseOption}
                 onCancelChoice={cancelChoice}
                 requestState={systemRequestState}
+                feedbackState={feedbackState}
+                onSubmitFeedback={submitWorkflowStepFeedback}
               />
             </div>
           ) : currentState === 'RT-05' ? (

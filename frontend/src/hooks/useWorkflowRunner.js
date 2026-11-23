@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { guestRequestPhase, submitSystemWorkflowRequest } from '../utils/workflowGuestRequest';
+import { isFeedbackWorkflowStep, submitWorkflowFeedback } from '../utils/workflowFeedback';
 import {
   OUTCOME,
   getChoiceTimeoutSec,
@@ -21,6 +22,8 @@ export function useWorkflowRunner({
   transcript = '',
   resetTranscript = () => {},
   isListening = false,
+  sessionId = null,
+  roomNumber = null,
 }) {
   const [activeWorkflow, setActiveWorkflow] = useState(null);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
@@ -29,8 +32,11 @@ export function useWorkflowRunner({
   const [stepRun, setStepRun] = useState(0);
   const [guestRequest, setGuestRequest] = useState({});
   const [systemRequestState, setSystemRequestState] = useState(null);
+  const [feedbackState, setFeedbackState] = useState(null);
   const timerRef = useRef(null);
   const speechEndDebounceRef = useRef(null);
+  const savedFeedbackFromShowRef = useRef(null);
+  const feedbackSubmittingRef = useRef(false);
 
   const [silenceRemaining, setSilenceRemaining] = useState(30);
   const [choiceRemaining, setChoiceRemaining] = useState(null);
@@ -39,8 +45,8 @@ export function useWorkflowRunner({
   const steps = activeWorkflow?.steps || [];
   const activeStep = isWorkflowRunning && currentStepIndex < steps.length ? steps[currentStepIndex] : null;
 
-  const flowRef = useRef({ steps, index: currentStepIndex });
-  flowRef.current = { steps, index: currentStepIndex };
+  const flowRef = useRef({ steps, index: currentStepIndex, stepRun, sessionId, roomNumber, activeStep, isWorkflowRunning });
+  flowRef.current = { steps, index: currentStepIndex, stepRun, sessionId, roomNumber, activeStep, isWorkflowRunning };
 
   const cleanupTimers = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -56,6 +62,9 @@ export function useWorkflowRunner({
 
     setGuestRequest({});
     setSystemRequestState(null);
+    setFeedbackState(null);
+    savedFeedbackFromShowRef.current = null;
+    feedbackSubmittingRef.current = false;
     setActiveWorkflow(wf);
     setCurrentStepIndex(Number.isInteger(startIndex) && wf.steps[startIndex] ? startIndex : 0);
     setStepRun((n) => n + 1);
@@ -72,6 +81,9 @@ export function useWorkflowRunner({
     setSilenceRemaining(30);
     setChoiceRemaining(null);
     setSystemRequestState(null);
+    setFeedbackState(null);
+    savedFeedbackFromShowRef.current = null;
+    feedbackSubmittingRef.current = false;
   };
 
   const finishStep = (outcome = { type: OUTCOME.DONE }) => {
@@ -92,6 +104,65 @@ export function useWorkflowRunner({
   const nextStep = () => finishStep({ type: OUTCOME.DONE });
   const chooseOption = (optionId) => finishStep({ type: OUTCOME.CHOSEN, optionId });
   const cancelChoice = () => finishStep({ type: OUTCOME.CANCEL });
+
+  const submitWorkflowStepFeedback = useCallback(async ({ rating, comment = '' } = {}) => {
+    const {
+      isWorkflowRunning: running,
+      activeStep: currentStep,
+      stepRun: targetRun,
+      sessionId: currentSessionId,
+      roomNumber: currentRoomNumber,
+    } = flowRef.current;
+
+    if (!running || !currentStep || !isFeedbackWorkflowStep(currentStep)) return null;
+    if (feedbackSubmittingRef.current) return null;
+
+    feedbackSubmittingRef.current = true;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setFeedbackState({ stepRun: targetRun, status: 'submitting', rating, record: null, error: null });
+
+    try {
+      const record = await submitWorkflowFeedback({
+        step: currentStep,
+        rating,
+        comment,
+        sessionId: currentSessionId,
+        roomNumber: currentRoomNumber,
+      });
+
+      if (currentStep.type === 'SHOW') {
+        savedFeedbackFromShowRef.current = { rating, record };
+      }
+
+      if (flowRef.current.isWorkflowRunning && flowRef.current.stepRun === targetRun) {
+        setFeedbackState({ stepRun: targetRun, status: 'saved', rating, record, error: null });
+        timerRef.current = setTimeout(() => {
+          if (flowRef.current.isWorkflowRunning && flowRef.current.stepRun === targetRun) {
+            finishStep({ type: OUTCOME.DONE });
+          }
+        }, 1400);
+      }
+      return record;
+    } catch (err) {
+      if (flowRef.current.isWorkflowRunning && flowRef.current.stepRun === targetRun) {
+        setFeedbackState({
+          stepRun: targetRun,
+          status: 'error',
+          rating,
+          record: null,
+          error: err?.message || 'Không thể lưu đánh giá lên máy chủ',
+        });
+        timerRef.current = setTimeout(() => {
+          if (flowRef.current.isWorkflowRunning && flowRef.current.stepRun === targetRun) {
+            finishStep({ type: OUTCOME.DONE });
+          }
+        }, 12000);
+      }
+      return null;
+    } finally {
+      feedbackSubmittingRef.current = false;
+    }
+  }, []);
 
   // Tự động nhận diện khi người dùng nói xong trong bước LISTEN (kế thừa) hoặc phát hiện từ khóa tạm biệt trong COMMUNICATE
   useEffect(() => {
@@ -147,6 +218,13 @@ export function useWorkflowRunner({
     let cancelled = false;
     cleanupTimers();
     setSystemRequestState(null);
+    feedbackSubmittingRef.current = false;
+
+    const isFeedbackStep = isFeedbackWorkflowStep(activeStep);
+    if (!isFeedbackStep) {
+      savedFeedbackFromShowRef.current = null;
+      setFeedbackState(null);
+    }
 
     if (guestRequestPhase(activeWorkflow.id, activeStep)) return;
 
@@ -186,6 +264,24 @@ export function useWorkflowRunner({
     } else if (activeStep.type === 'MOVE') {
       const moveTimeout = activeStep.params?.timeout || activeStep.params?.timeout_sec || 6;
       durationMs = Math.max(4000, moveTimeout * 1000);
+    } else if (isFeedbackStep) {
+      const alreadySavedFromShow = activeStep.type === 'FEEDBACK' ? savedFeedbackFromShowRef.current : null;
+      if (alreadySavedFromShow) {
+        // SHOW UI_RATING immediately before FEEDBACK (e.g. wf-05-feedback): reuse saved rating instead of double-posting.
+        savedFeedbackFromShowRef.current = null;
+        setFeedbackState({
+          stepRun,
+          status: 'saved',
+          rating: alreadySavedFromShow.rating,
+          record: alreadySavedFromShow.record,
+          error: null,
+        });
+        durationMs = 1200;
+      } else {
+        setFeedbackState({ stepRun, status: 'idle', rating: null, record: null, error: null });
+        const feedbackTimeout = activeStep.params?.timeout || activeStep.params?.timeout_sec || (activeStep.type === 'FEEDBACK' ? 15 : 10);
+        durationMs = Math.max(5000, Number(feedbackTimeout) * 1000);
+      }
     } else if (activeStep.type === 'SHOW') {
       const showTimeout = activeStep.params?.timeout || activeStep.params?.slide_duration_sec || 10;
       durationMs = Math.max(3000, showTimeout * 1000);
@@ -199,8 +295,6 @@ export function useWorkflowRunner({
       if (startListening) {
         startListening(activeStep.params?.language || 'vi-VN');
       }
-    } else if (activeStep.type === 'FEEDBACK') {
-      durationMs = 7000;
     } else if (activeStep.type === 'CREATE_REQUEST') {
       // System/automated CREATE_REQUEST (e.g. ROBOT_CHARGING) persists to the backend before advancing.
       durationMs = null;
@@ -264,6 +358,7 @@ export function useWorkflowRunner({
 
   return {
     stepRun, guestRequest, setGuestRequest, systemRequestState,
+    feedbackState, submitWorkflowStepFeedback,
     activeWorkflow,
     isWorkflowRunning,
     currentStepIndex,

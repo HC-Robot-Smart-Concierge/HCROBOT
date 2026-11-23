@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Star, X, Check } from 'lucide-react';
-import { submitFeedback } from '../../services/aiApi';
+import { submitFeedbackStrict } from '../../services/aiApi';
 
 const COUNTDOWN_SECONDS = 8;
 
@@ -67,6 +67,7 @@ export const RobotQuickFeedbackModal = ({
   const [countdown, setCountdown] = useState(COUNTDOWN_SECONDS);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [submitError, setSubmitError] = useState(false);
 
   const countdownCleanupRef = useRef(null);
   const postSubmitTimerRef = useRef(null);
@@ -106,17 +107,19 @@ export const RobotQuickFeedbackModal = ({
       countdownCleanupRef.current = null;
     }
     setIsSubmitting(true);
+    setSubmitError(false);
 
     try {
-      await submitFeedback({
+      await submitFeedbackStrict({
         chat_session_id: sessionIdRef.current || undefined,
         rating: targetRating,
         category: 'Robot Concierge',
         room_number: roomNumberRef.current || undefined,
         guest_name: guestNameRef.current || undefined,
-      });
+      }, { timeoutMs: 3000 });
     } catch (err) {
       console.warn('[FeedbackModal] Error submitting feedback:', err);
+      setSubmitError(true);
     } finally {
       setIsSubmitting(false);
       setIsSuccess(true);
@@ -143,12 +146,14 @@ export const RobotQuickFeedbackModal = ({
       setCountdown(COUNTDOWN_SECONDS);
       setIsSubmitting(false);
       setIsSuccess(false);
+      setSubmitError(false);
       submittedRef.current = false;
       return undefined;
     }
 
     submittedRef.current = false;
     setIsSuccess(false);
+    setSubmitError(false);
     setIsSubmitting(false);
     setRating(5);
     ratingRef.current = 5;
@@ -198,12 +203,18 @@ export const RobotQuickFeedbackModal = ({
               <Check className="w-6 h-6" />
             </div>
             <h3 className="text-base font-bold text-white tracking-wide">
-              {isEn ? 'Thank You!' : 'Cảm Ơn Quý Khách!'}
+              {submitError
+                ? (isEn ? 'Could Not Save Rating' : 'Chưa Lưu Được Đánh Giá')
+                : (isEn ? 'Thank You!' : 'Cảm Ơn Quý Khách!')}
             </h3>
-            <p className="text-xs text-stone-400">
-              {isEn
-                ? `Your ${rating}-star rating has been recorded.`
-                : `Đánh giá ${rating} sao của quý khách đã được ghi nhận.`}
+            <p className={`text-xs ${submitError ? 'text-red-300' : 'text-stone-400'}`}>
+              {submitError
+                ? (isEn
+                    ? 'The server did not confirm your rating.'
+                    : 'Máy chủ chưa xác nhận đã lưu đánh giá.')
+                : isEn
+                  ? `Your ${rating}-star rating has been recorded.`
+                  : `Đánh giá ${rating} sao của quý khách đã được ghi nhận.`}
             </p>
           </div>
         ) : (

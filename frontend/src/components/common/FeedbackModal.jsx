@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Star, MessageSquare, X, Check, RefreshCw } from 'lucide-react';
-import { submitFeedback, fetchFeedbacks } from '../../services/aiApi';
+import { submitFeedbackStrict, fetchFeedbacks } from '../../services/aiApi';
 
 export const FeedbackModal = ({ isOpen, onClose, onNotify = () => {}, sessionId = 'default_session', roomNumber = null }) => {
   const [activeTab, setActiveTab] = useState('write'); // 'write' | 'view'
@@ -44,7 +44,7 @@ export const FeedbackModal = ({ isOpen, onClose, onNotify = () => {}, sessionId 
         guest_name: guestName || 'Khách lưu trú',
         room_number: roomNumber || 'Sảnh Kiosk',
       };
-      const res = await submitFeedback(payload);
+      const res = await submitFeedbackStrict(payload);
       if (res) {
         onNotify('Cảm ơn bạn đã gửi đánh giá trải nghiệm!');
         setComment('');
@@ -52,7 +52,7 @@ export const FeedbackModal = ({ isOpen, onClose, onNotify = () => {}, sessionId 
         loadFeedbacks();
       }
     } catch (err) {
-      onNotify('Không thể gửi đánh giá lúc này.');
+      onNotify(err?.message ? `Không thể gửi đánh giá lúc này (${err.message}).` : 'Không thể gửi đánh giá lúc này.');
     } finally {
       setIsSubmitting(false);
     }

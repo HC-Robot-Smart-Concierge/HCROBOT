@@ -428,10 +428,13 @@ export const fetchSessionMessages = async (sessionId) => {
 
 /**
  * Gui danh gia va nhan xet cua khach hang (1 - 5 sao)
+ * Pass `{ strict: true }` (or call `submitFeedbackStrict`) to propagate server/network failures instead of returning a synthetic fallback ID.
  */
-export const submitFeedback = async (feedbackData) => {
+export const submitFeedback = async (feedbackData, options = {}) => {
+  const strict = Boolean(options?.strict);
+  const timeoutMs = Number(options?.timeoutMs) > 0 ? Number(options.timeoutMs) : 3000;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 3000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(`${API_BASE_URL}/feedback`, {
       method: 'POST',
@@ -442,10 +445,19 @@ export const submitFeedback = async (feedbackData) => {
       body: JSON.stringify(feedbackData),
     });
     clearTimeout(timeoutId);
-    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-    return await response.json();
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(data?.detail || `HTTP error ${response.status}`);
+    }
+    if (!data?.id) {
+      throw new Error('Missing feedback ID from server');
+    }
+    return data;
   } catch (error) {
     clearTimeout(timeoutId);
+    if (strict) {
+      throw error;
+    }
     console.warn('[AIApi] submitFeedback fallback:', error.message);
     return {
       id: `fb_${Date.now()}`,
@@ -453,6 +465,9 @@ export const submitFeedback = async (feedbackData) => {
     };
   }
 };
+
+export const submitFeedbackStrict = (feedbackData, options = {}) =>
+  submitFeedback(feedbackData, { timeoutMs: 5000, ...options, strict: true });
 
 /**
  * Xem danh sach tat ca danh gia phan hoi cua khach hang

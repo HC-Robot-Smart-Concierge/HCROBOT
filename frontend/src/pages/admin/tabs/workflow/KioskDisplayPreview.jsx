@@ -25,9 +25,11 @@ import { KioskMediaPromo } from './KioskMediaPromo';
 import { KioskWayfindingQR } from './KioskWayfindingQR';
 import { KioskDiningMenu } from './KioskDiningMenu';
 import { KioskChoicePrompt } from './KioskChoicePrompt';
+import { isFeedbackWorkflowStep } from '../../../../utils/workflowFeedback';
 
 export const KioskDisplayPreview = ({
   activeStep,
+  stepRun = 0,
   transcript = '',
   isListening = false,
   silenceRemaining = 30,
@@ -37,17 +39,17 @@ export const KioskDisplayPreview = ({
   onCancelChoice = () => {},
   preview = false,
   requestState = null,
+  feedbackState = null,
+  onSubmitFeedback = null,
 }) => {
-  const [feedbackRating, setFeedbackRating] = useState(5);
-  const [hasRated, setHasRated] = useState(false);
+  const [previewRating, setPreviewRating] = useState(5);
+  const [hasPreviewRated, setHasPreviewRated] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState('vi');
 
   useEffect(() => {
-    if (activeStep?.type === 'FEEDBACK') {
-      setHasRated(false);
-      setFeedbackRating(5);
-    }
-  }, [activeStep?.type]);
+    setHasPreviewRated(false);
+    setPreviewRating(5);
+  }, [activeStep?.step_id, stepRun]);
 
   if (!activeStep) {
     return (
@@ -65,6 +67,114 @@ export const KioskDisplayPreview = ({
   const contentId = params.content_id || '';
   const screenType = params.screen_type || '';
   const screenMode = params.screen_mode || '';
+  const isFeedbackScreen = isFeedbackWorkflowStep(activeStep);
+
+  const liveFeedback = feedbackState && feedbackState.stepRun === stepRun ? feedbackState : null;
+  const activeRating = preview ? previewRating : (liveFeedback?.rating ?? 5);
+  const isSubmittingFeedback = !preview && liveFeedback?.status === 'submitting';
+  const isFeedbackSaved = preview ? hasPreviewRated : liveFeedback?.status === 'saved';
+  const feedbackError = !preview && liveFeedback?.status === 'error' ? liveFeedback.error : null;
+
+  const handleFeedbackSelect = (ratingValue, commentText = '') => {
+    if (preview) {
+      setPreviewRating(ratingValue);
+      setHasPreviewRated(true);
+      return;
+    }
+    if (isSubmittingFeedback || isFeedbackSaved) return;
+    if (onSubmitFeedback) {
+      onSubmitFeedback({ rating: ratingValue, comment: commentText });
+    }
+  };
+
+  const renderFeedbackCard = () => (
+    <div className="flex flex-col items-center justify-center py-4 space-y-3 animate-in fade-in duration-300">
+      <div className="text-center space-y-1">
+        <h4 className="text-sm font-extrabold text-stone-900 px-3">
+          {params.question_text || 'Quý khách có hài lòng với sự hỗ trợ của Robot không?'}
+        </h4>
+        <p className="text-xs text-stone-500">Đánh giá của quý khách giúp chúng tôi phục vụ tốt hơn</p>
+      </div>
+
+      {params.survey_type === 'YES_NO' ? (
+        <div className="flex items-center gap-3 py-2">
+          <button
+            type="button"
+            disabled={isSubmittingFeedback || isFeedbackSaved}
+            onClick={() => handleFeedbackSelect(5, 'Khảo sát: Hài lòng')}
+            className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer disabled:opacity-60 ${
+              isFeedbackSaved && activeRating >= 4
+                ? 'bg-emerald-600 text-white border-emerald-700'
+                : 'bg-white text-stone-900 border-stone-300 hover:border-emerald-500 hover:bg-emerald-50'
+            }`}
+          >
+            Hài lòng (5 sao)
+          </button>
+          <button
+            type="button"
+            disabled={isSubmittingFeedback || isFeedbackSaved}
+            onClick={() => handleFeedbackSelect(2, 'Khảo sát: Chưa hài lòng')}
+            className={`px-4 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer disabled:opacity-60 ${
+              isFeedbackSaved && activeRating <= 3
+                ? 'bg-amber-600 text-white border-amber-700'
+                : 'bg-white text-stone-900 border-stone-300 hover:border-amber-500 hover:bg-amber-50'
+            }`}
+          >
+            Chưa hài lòng (2 sao)
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2.5 py-1">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <button
+              key={star}
+              type="button"
+              disabled={isSubmittingFeedback || isFeedbackSaved}
+              onClick={() => handleFeedbackSelect(star)}
+              className="p-1 rounded-full hover:scale-125 transition-transform cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+              title={`${star} sao`}
+            >
+              <Star
+                className={`w-8 h-8 transition-colors ${
+                  (preview ? star <= activeRating : liveFeedback?.rating != null && star <= liveFeedback.rating)
+                    ? 'fill-amber-400 text-amber-500'
+                    : 'text-stone-300 hover:text-amber-400'
+                }`}
+              />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {isSubmittingFeedback && (
+        <span className="text-[11px] font-semibold text-stone-700 bg-stone-100 px-3 py-1 rounded-full border border-stone-300">
+          Đang lưu đánh giá lên hệ thống...
+        </span>
+      )}
+
+      {feedbackError && (
+        <div role="alert" className="p-3 rounded-2xl bg-red-50 border border-red-300 text-red-800 text-xs font-semibold text-center max-w-md space-y-1">
+          <p>Chưa lưu được đánh giá lên máy chủ: {feedbackError}</p>
+          <p className="text-[11px] text-red-700">Quý khách vui lòng chạm lại số sao để thử lại.</p>
+        </div>
+      )}
+
+      {isFeedbackSaved ? (
+        <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-950 text-xs font-bold text-center animate-in zoom-in-95 shadow-sm max-w-md space-y-1">
+          <p>{params.thank_you_message || 'Cảm ơn quý khách đã đánh giá! Chúc quý khách một kỳ nghỉ tuyệt vời tại Aurora.'}</p>
+          <p className="text-[11px] font-semibold text-emerald-800">
+            {preview
+              ? `Chế độ mô phỏng (${activeRating} sao) — chưa lưu vào CSDL`
+              : `Đã lưu đánh giá ${activeRating} sao vào hệ thống (${liveFeedback?.record?.id || 'OK'})`}
+          </p>
+        </div>
+      ) : !isSubmittingFeedback && !feedbackError ? (
+        <span className="text-[11px] font-semibold text-stone-700 bg-stone-100 px-3 py-1 rounded-full border border-stone-300">
+          Chạm vào số sao để gửi đánh giá
+        </span>
+      ) : null}
+    </div>
+  );
 
   return (
     <div className="flex-1 min-h-0 flex flex-col p-3 sm:p-4 bg-gradient-to-br from-stone-50 via-white to-amber-50/40 rounded-2xl border border-stone-200/90 shadow-inner overflow-y-auto select-none">
@@ -201,6 +311,9 @@ export const KioskDisplayPreview = ({
               </div>
             </div>
           )}
+
+          {/* E2. Rating / Feedback Display inside SHOW (UI_RATING or screen_mode FEEDBACK) */}
+          {isFeedbackScreen && renderFeedbackCard()}
 
           {/* G. Services Grid Default (Luminous 5-Star Amenities Directory) */}
           {(screenMode === 'SERVICES_GRID' || contentId === 'UI_MAIN_MENU' || (!screenType && !contentId && !screenMode)) && (
@@ -520,49 +633,7 @@ export const KioskDisplayPreview = ({
       })()}
 
       {/* 6. FEEDBACK: 5-STAR INTERACTIVE */}
-      {activeStep.type === 'FEEDBACK' && (
-        <div className="flex flex-col items-center justify-center py-4 space-y-3 animate-in fade-in duration-300">
-          <div className="text-center space-y-1">
-            <h4 className="text-sm font-extrabold text-stone-900 px-3">
-              {params.question_text || 'Quý khách có hài lòng với sự hỗ trợ của Robot không?'}
-            </h4>
-            <p className="text-xs text-stone-500">Đánh giá của quý khách giúp chúng tôi phục vụ tốt hơn</p>
-          </div>
-
-          <div className="flex items-center gap-2.5 py-1">
-            {[1, 2, 3, 4, 5].map((star) => (
-              <button
-                key={star}
-                type="button"
-                onClick={() => {
-                  setFeedbackRating(star);
-                  setHasRated(true);
-                }}
-                className="p-1 rounded-full hover:scale-125 transition-transform cursor-pointer"
-                title={`${star} sao`}
-              >
-                <Star
-                  className={`w-8 h-8 transition-colors ${
-                    star <= feedbackRating
-                      ? 'fill-stone-800 text-stone-800'
-                      : 'text-stone-300 hover:text-stone-400'
-                  }`}
-                />
-              </button>
-            ))}
-          </div>
-
-          {hasRated ? (
-            <div className="p-3 rounded-2xl bg-stone-100 border border-stone-300 text-stone-900 text-xs font-bold text-center animate-in zoom-in-95 shadow-sm max-w-md">
-              {params.thank_you_message || 'Cảm ơn quý khách đã đánh giá! Chúc quý khách một kỳ nghỉ tuyệt vời tại Aurora.'}
-            </div>
-          ) : (
-            <span className="text-[11px] font-semibold text-stone-700 bg-stone-100 px-3 py-1 rounded-full border border-stone-300">
-              Chạm vào số sao để gửi đánh giá
-            </span>
-          )}
-        </div>
-      )}
+      {activeStep.type === 'FEEDBACK' && renderFeedbackCard()}
     </div>
   );
 };

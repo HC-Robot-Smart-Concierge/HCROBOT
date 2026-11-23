@@ -748,26 +748,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     }
     shouldListenRef.current = true;
 
-    // Kích hoạt audio analyser & recorder
-    const isStreamActive =
-      mediaStreamRef.current &&
-      mediaStreamRef.current.active &&
-      mediaStreamRef.current.getAudioTracks().some((t) => t.readyState === 'live');
-    if (!isStreamActive) {
-      const ready = await startAudioAnalyser();
-      if (!ready || !shouldListenRef.current) {
-        shouldListenRef.current = false;
-        setIsListening(false);
-        return;
-      }
-    } else {
-      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-        try {
-          await audioContextRef.current.resume();
-        } catch (e) {}
-      }
-    }
-
+    // 1. Kích hoạt Web Speech API ngay lập tức và đồng bộ để giữ User Gesture Context (đặc biệt quan trọng trên iOS Safari/PWA)
     if (recognitionRef.current) {
       setError(null);
       setTranscript('');
@@ -794,6 +775,26 @@ export const useSpeechRecognition = (callbacks = {}) => {
       // Trường hợp trình duyệt không có Web Speech API: dùng 100% Backend STT Recorder
       setIsListening(true);
       setMicLive(true);
+    }
+
+    // 2. Kích hoạt audio analyser & recorder song song không block luồng Web Speech
+    const isStreamActive =
+      mediaStreamRef.current &&
+      mediaStreamRef.current.active &&
+      mediaStreamRef.current.getAudioTracks().some((t) => t.readyState === 'live');
+    if (!isStreamActive) {
+      startAudioAnalyser().then((ready) => {
+        if (!ready && !recognitionRef.current) {
+          shouldListenRef.current = false;
+          setIsListening(false);
+        }
+      }).catch(() => {});
+    } else {
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        try {
+          audioContextRef.current.resume().catch(() => {});
+        } catch (e) {}
+      }
     }
   };
 

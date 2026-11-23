@@ -905,13 +905,13 @@ export const MobileRobotScreen = ({
                         onStartTalk();
                       }
                     }}
-                    className="px-4 py-2 bg-stone-900/90 hover:bg-stone-850 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-auto min-w-[200px] max-w-sm cursor-pointer active:scale-[0.99] transition-all touch-manipulation"
+                    className="px-4 py-2 bg-stone-900/90 hover:bg-stone-850 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-auto min-w-[220px] max-w-md cursor-pointer active:scale-[0.99] transition-all touch-manipulation"
                     title={transcript ? (isEn ? 'Tap to send immediately' : 'Chạm để gửi ngay') : (isEn ? 'Tap to restart mic' : 'Chạm để kích hoạt lại Micro')}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <AudioWave isActive={isListening || currentState === "RT-03"} volumeLevel={volumeLevel} />
-                      <span className="text-xs font-semibold text-stone-200 truncate">
-                        {transcript ? `"${transcript}"` : (isEn ? 'Listening...' : 'Đang lắng nghe...')}
+                      <span className="text-xs sm:text-[13px] font-semibold text-stone-100 line-clamp-2 select-text leading-snug">
+                        {transcript ? `"${transcript}"` : (volumeLevel > 5 ? (isEn ? 'Recognizing voice...' : 'Đang nhận diện giọng nói...') : (isEn ? 'Listening...' : 'Đang lắng nghe...'))}
                       </span>
                     </div>
 
@@ -922,7 +922,7 @@ export const MobileRobotScreen = ({
                           e.stopPropagation();
                           onSubmitTalk();
                         }}
-                        className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
+                        className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer ml-1"
                         title={isEn ? 'Send question' : 'Gửi câu hỏi'}
                       >
                         <span>{isEn ? 'Send' : 'Gửi'}</span>

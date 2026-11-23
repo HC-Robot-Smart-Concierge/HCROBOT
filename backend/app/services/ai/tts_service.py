@@ -304,8 +304,9 @@ class TTSService:
         if waiters is None:
             waiters = {}
             self._inflight_waiters = waiters
-        # Chia đều thời gian cho 2 lần thử (mỗi lần tối đa 8s) để lần thử 2 luôn có đủ thời gian hoàn tất
-        attempt_timeout = min(8.0, max(3.0, (float(timeout) - 1.0) / 2))
+        # Cho phép thời gian tổng hợp lên tới (timeout - 1.5s) để các câu trả lời dài
+        # (150-400 ký tự) có đủ thời gian hoàn tất stream qua mạng quốc tế tới server Bing.
+        attempt_timeout = max(5.0, float(timeout) - 1.5)
         inflight = None
         counted = False
         try:

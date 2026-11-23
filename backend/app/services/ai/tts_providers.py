@@ -105,6 +105,8 @@ async def synthesize_edge_tts_detailed(
     last_err_detail = f"EdgeTTS returned 0 bytes for voice={voice}"
 
     max_attempts = 2
+    per_attempt_timeout = max(0.02, float(attempt_timeout)) if attempt_timeout is not None else 16.0
+
     for attempt in range(max_attempts):
         current_voice = voice
         if attempt > 0:
@@ -130,13 +132,11 @@ async def synthesize_edge_tts_detailed(
         except asyncio.TimeoutError:
             last_err_code = "TTS_TIMEOUT"
             last_err_detail = f"EdgeTTS attempt {attempt + 1} timed out after {per_attempt_timeout:.1f}s (voice={current_voice})"
-            log_fn = logger.warning if attempt == max_attempts - 1 else logger.info
-            log_fn(f"[TTSService] {last_err_detail}")
+            logger.warning(f"[TTSService] {last_err_detail}")
         except Exception as e:
             last_err_code = "TTS_PROVIDER_ERROR"
             last_err_detail = f"{type(e).__name__}: {e} (voice={current_voice}, attempt={attempt + 1})"
-            log_fn = logger.warning if attempt == max_attempts - 1 else logger.info
-            log_fn(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
+            logger.warning(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
         if attempt < max_attempts - 1:
             await asyncio.sleep(0.3 * (attempt + 1))
 

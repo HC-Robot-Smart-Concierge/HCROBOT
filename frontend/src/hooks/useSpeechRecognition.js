@@ -525,7 +525,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
   useEffect(() => {
     destroyedRef.current = false;
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const SpeechRecognition = callbacksRef.current?.preferBackend ? null : (window.SpeechRecognition || window.webkitSpeechRecognition);
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
       recognition.continuous = true;

@@ -146,7 +146,10 @@ async def create_maintenance_request(
         service_type_id="ST-MAINTENANCE",
         status="Pending",
     )
-    new_req, created, merged = await get_or_create_maintenance_request(db, new_req, req_in.catalog_item_id)
+    try:
+        new_req, created, merged = await get_or_create_maintenance_request(db, new_req, req_in.catalog_item_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not created and not merged:
         result = MaintenanceRequestResponse.model_validate(new_req).model_copy(update={"duplicate": True})
         await db.commit()

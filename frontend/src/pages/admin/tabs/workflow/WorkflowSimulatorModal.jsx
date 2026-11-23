@@ -298,7 +298,7 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
             </div>
 
             {/* Lower Kiosk Preview */}
-            <KioskDisplayPreview activeStep={activeStep} />
+            <KioskDisplayPreview activeStep={activeStep} preview />
           </div>
         </div>
       </div>

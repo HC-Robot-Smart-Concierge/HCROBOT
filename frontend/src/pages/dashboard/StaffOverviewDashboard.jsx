@@ -136,7 +136,8 @@ export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => 
     const uD = staffDept.toLowerCase().trim();
     if (rD === uD) return true;
     if ((uD.includes('f&b') || uD.includes('room')) && (rD.includes('f&b') || rD.includes('room') || rD.includes('ẩm thực'))) return true;
-    if ((uD.includes('housekeeping') || uD.includes('buồng')) && (rD.includes('housekeeping') || rD.includes('buồng'))) return true;
+    if ((uD.includes('housekeeping') || uD.includes('buồng')) && (rD.includes('housekeeping') || rD.includes('buồng') || rD.includes('room service'))) return true;
+    if ((uD.includes('room') || uD.includes('phục vụ')) && (rD.includes('housekeeping') || rD.includes('buồng'))) return true;
     if ((uD.includes('bell') || uD.includes('hành lý')) && (rD.includes('bell') || rD.includes('hành lý'))) return true;
     if ((uD.includes('maint') || uD.includes('bảo trì') || uD.includes('kỹ thuật')) && (rD.includes('maint') || rD.includes('bảo trì') || rD.includes('kỹ thuật'))) return true;
     if ((uD.includes('reception') || uD.includes('lễ tân')) && (rD.includes('reception') || rD.includes('lễ tân'))) return true;

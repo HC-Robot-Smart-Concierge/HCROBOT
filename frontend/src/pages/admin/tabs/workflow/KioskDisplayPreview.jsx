@@ -35,6 +35,8 @@ export const KioskDisplayPreview = ({
   choiceRemaining = null,
   onChooseOption = () => {},
   onCancelChoice = () => {},
+  preview = false,
+  requestState = null,
 }) => {
   const [feedbackRating, setFeedbackRating] = useState(5);
   const [hasRated, setHasRated] = useState(false);
@@ -422,38 +424,100 @@ export const KioskDisplayPreview = ({
       )}
 
       {/* 5. CREATE_REQUEST DISPATCH BADGE */}
-      {activeStep.type === 'CREATE_REQUEST' && (
-        params.service_type === 'CALL_STAFF' || params.urgency === 'HIGH' ? (
-          <KioskStaffAlert activeStep={activeStep} />
-        ) : (
-          <div className="p-4 rounded-2xl bg-white border border-stone-300 shadow-md space-y-2.5 animate-in fade-in duration-300">
-            <div className="flex items-center justify-between text-xs font-bold">
-              <span className="text-[#262626] flex items-center gap-1.5 font-extrabold">
-                <Send className="w-4 h-4" />
-                PHIẾU DỊCH VỤ #{params.room_number ? `REQ-${params.room_number}` : 'REQ-882'}
-              </span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                TIẾP NHẬN
-              </span>
+      {activeStep.type === 'CREATE_REQUEST' && (() => {
+        const deptLabel = params.target_department || (params.service_type === 'CALL_STAFF' ? 'Reception' : 'Housekeeping');
+        if (preview) {
+          return (
+            <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-300 shadow-sm space-y-2.5 animate-in fade-in duration-300">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span className="text-[#262626] flex items-center gap-1.5 font-extrabold">
+                  <Send className="w-4 h-4 text-amber-700" />
+                  BƯỚC TẠO YÊU CẦU ({deptLabel})
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                  MÔ PHỎNG
+                </span>
+              </div>
+              <div className="text-xs text-stone-700">
+                Trên Robot thật, bước này sẽ mở xác nhận dịch vụ & gửi phiếu thật đến bộ phận:{' '}
+                <strong className="text-stone-900 font-extrabold">{deptLabel}</strong>
+              </div>
+              {params.note && (
+                <div className="p-2.5 rounded-xl bg-white border border-amber-200 text-xs text-stone-800 font-medium">
+                  Nội dung mặc định: <em>"{params.note}"</em>
+                </div>
+              )}
+              <div className="text-[11px] text-amber-800 font-semibold">
+                Chế độ mô phỏng Studio — chưa tạo phiếu trong cơ sở dữ liệu.
+              </div>
             </div>
-            <div className="text-xs text-stone-700">
-              Đã gửi thông báo đến bộ phận:{' '}
-              <strong className="text-stone-900 font-extrabold">
-                {params.target_department || 'Housekeeping'}
-              </strong>
+          );
+        }
+
+        if (requestState?.status === 'error') {
+          return (
+            <div className="p-4 rounded-2xl bg-red-50 border border-red-300 shadow-md space-y-2 animate-in fade-in duration-300">
+              <div className="flex items-center justify-between text-xs font-bold text-red-800">
+                <span>KHÔNG GỬI ĐƯỢC YÊU CẦU ĐẾN {deptLabel}</span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-100 border border-red-300">
+                  LỖI
+                </span>
+              </div>
+              <p className="text-xs text-red-700">{requestState.error || 'Máy chủ chưa xác nhận đã lưu phiếu.'}</p>
+            </div>
+          );
+        }
+
+        if (requestState?.status === 'sent' && requestState?.ticket?.code) {
+          return (
+            <div className="p-4 rounded-2xl bg-white border border-emerald-300 shadow-md space-y-2.5 animate-in fade-in duration-300">
+              <div className="flex items-center justify-between text-xs font-bold">
+                <span className="text-[#262626] flex items-center gap-1.5 font-extrabold">
+                  <Send className="w-4 h-4 text-emerald-700" />
+                  PHIẾU DỊCH VỤ #{requestState.ticket.code}
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  ĐÃ LƯU CSDL
+                </span>
+              </div>
+              <div className="text-xs text-stone-700">
+                Đã gửi thông báo đến bộ phận:{' '}
+                <strong className="text-stone-900 font-extrabold">
+                  {requestState.ticket.department || deptLabel}
+                </strong>
+              </div>
+              {params.note && (
+                <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-800 font-medium">
+                  Ghi chú: <em>"{params.note}"</em>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 text-xs text-emerald-800 font-bold pt-1">
+                <CheckCircle className="w-4 h-4 text-emerald-700" />
+                <span>Hệ thống đã lưu và chuyển tiếp yêu cầu thật thành công</span>
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="p-4 rounded-2xl bg-white border border-stone-300 shadow-md space-y-2 animate-in fade-in duration-300">
+            <div className="flex items-center justify-between text-xs font-bold text-stone-800">
+              <span className="flex items-center gap-1.5">
+                <Send className="w-4 h-4" />
+                ĐANG GỬI YÊU CẦU ĐẾN {deptLabel}...
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-stone-100 text-stone-700 border border-stone-200">
+                ĐANG XỬ LÝ
+              </span>
             </div>
             {params.note && (
               <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200 text-xs text-stone-800 font-medium">
                 Ghi chú: <em>"{params.note}"</em>
               </div>
             )}
-            <div className="flex items-center gap-1.5 text-xs text-[#262626] font-bold pt-1">
-              <CheckCircle className="w-4 h-4 text-[#262626]" />
-              <span>Hệ thống buồng phòng đã tiếp nhận yêu cầu</span>
-            </div>
           </div>
-        )
-      )}
+        );
+      })()}
 
       {/* 6. FEEDBACK: 5-STAR INTERACTIVE */}
       {activeStep.type === 'FEEDBACK' && (

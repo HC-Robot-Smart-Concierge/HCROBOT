@@ -834,7 +834,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
       } else if (step.type === 'CREATE_REQUEST') {
         setSimLogs((prev) => [
           ...prev,
-          `[BƯỚC ${i + 1}: CREATE_REQUEST] Tạo phiếu [${step.params?.urgency || 'NORMAL'}] gửi ${step.params?.target_department || 'Housekeeping'} (Phòng ${step.params?.room_number || '402'})`,
+          `[BƯỚC ${i + 1}: CREATE_REQUEST] Tạo phiếu [${step.params?.urgency || 'NORMAL'}] gửi ${step.params?.target_department || 'Housekeeping'} (${step.params?.room_number || 'Theo phòng khách'})`,
         ]);
         await new Promise((resolve) => setTimeout(resolve, 2000));
       } else if (step.type === 'FEEDBACK') {

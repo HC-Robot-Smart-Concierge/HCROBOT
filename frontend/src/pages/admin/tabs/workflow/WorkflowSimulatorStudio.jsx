@@ -85,7 +85,7 @@ import {
   validateWorkflowStepZone,
   resolveMoveTarget,
 } from './workflowSimulatorUtils';
-import { guestRequestPhase } from '../../../../utils/workflowGuestRequest';
+import { guestRequestPhase, hasFollowUpConfirmationStep } from '../../../../utils/workflowGuestRequest';
 import { WorkflowGuestRequestPanel } from './WorkflowGuestRequestPanel';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { KioskChoicePrompt } from './KioskChoicePrompt';
@@ -3007,8 +3007,9 @@ export const WorkflowSimulatorStudio = ({
 
           {requestPhase && !isPaused && (
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-[min(440px,94%)] max-h-[90%] overflow-y-auto rounded-xl border bg-white p-4 shadow-xl">
-              <WorkflowGuestRequestPanel key={activeStep.step_id + ':' + stepRun} workflowId={activeWorkflow.id} phase={requestPhase}
-                session={guestRequest} setSession={setGuestRequest} preview english={language === 'EN'}
+              <WorkflowGuestRequestPanel key={activeStep.step_id + ':' + stepRun} workflowId={activeWorkflow.id} step={activeStep}
+                followUpConfirmation={hasFollowUpConfirmationStep(steps, currentStepIndex)}
+                phase={requestPhase} session={guestRequest} setSession={setGuestRequest} preview english={language === 'EN'}
                 onNext={() => handleStepFinish()} onCancel={handleStopSim} />
             </div>
           )}

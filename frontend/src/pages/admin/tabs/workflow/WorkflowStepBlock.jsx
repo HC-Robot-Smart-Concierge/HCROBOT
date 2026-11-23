@@ -559,17 +559,23 @@ export const WorkflowStepBlock = ({
                 onChange={(e) => handleFieldChange('target_department', e.target.value)}
                 className="bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-bold border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white cursor-pointer shadow-2xs"
               >
-                <option value="Housekeeping">Buồng Phòng</option>
-                <option value="Food_and_Beverage">Nhà Hàng & Bếp</option>
-                <option value="Front_Desk">Lễ Tân</option>
-                <option value="Reception">Tiếp Tân Sảnh</option>
+                <option value="Housekeeping">Buồng Phòng (Housekeeping)</option>
+                <option value="Room_Service">Phục Vụ Phòng (Room Service)</option>
+                <option value="Food_and_Beverage">Nhà Hàng & Bếp (Kitchen)</option>
+                <option value="Front_Desk">Lễ Tân (Front Desk)</option>
+                <option value="Reception">Tiếp Tân Sảnh (Reception)</option>
+                <option value="Bell_Services">Hành Lý & Đồ Thất Lạc (Bellman)</option>
+                <option value="Maintenance">Kỹ Thuật & Bảo Trì (Maintenance)</option>
+                <option value="Taxi">Đặt Xe Taxi (Concierge)</option>
+                <option value="Concierge">Trợ Lý Concierge</option>
               </select>
-              <span>phòng</span>
+              <span>phòng / vị trí</span>
               <input
                 type="text"
-                value={params.room_number || '402'}
+                value={params.room_number || ''}
                 onChange={(e) => handleFieldChange('room_number', e.target.value)}
-                className="w-16 bg-stone-50 hover:bg-white text-stone-900 px-2 py-1 rounded-lg text-xs font-bold text-center border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white shadow-2xs"
+                placeholder="Hỏi khách / PIN"
+                className="w-28 bg-stone-50 hover:bg-white text-stone-900 px-2 py-1 rounded-lg text-xs font-bold text-center border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white shadow-2xs"
               />
               <span>ghi chú</span>
               <input

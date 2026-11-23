@@ -91,9 +91,10 @@ export const OTTO_STEP_TYPES = [
   {
     type: 'CREATE_REQUEST',
     label: '7. CREATE_REQUEST (Khởi tạo yêu cầu dịch vụ)',
-    desc: 'Đóng gói phiếu dịch vụ gửi tới bộ phận buồng phòng, gọi taxi, gọi nhân viên',
+    desc: 'Khách xác nhận và gửi phiếu dịch vụ thật tới bộ phận tương ứng (Buồng phòng, Bếp, Lễ tân, Bellman, Kỹ thuật, Taxi, Concierge)',
     defaultParams: {
       target_department: 'Housekeeping',
+      room_source: 'verified_guest',
       fallback_staff: true,
     },
   },

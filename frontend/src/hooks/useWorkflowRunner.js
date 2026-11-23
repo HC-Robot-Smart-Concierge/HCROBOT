@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { guestRequestPhase } from '../utils/workflowGuestRequest';
+import { guestRequestPhase, submitSystemWorkflowRequest } from '../utils/workflowGuestRequest';
 import {
   OUTCOME,
   getChoiceTimeoutSec,
@@ -28,6 +28,7 @@ export function useWorkflowRunner({
   // Tăng mỗi lần vào bước, để bước nhảy về chính nó vẫn chạy lại
   const [stepRun, setStepRun] = useState(0);
   const [guestRequest, setGuestRequest] = useState({});
+  const [systemRequestState, setSystemRequestState] = useState(null);
   const timerRef = useRef(null);
   const speechEndDebounceRef = useRef(null);
 
@@ -54,6 +55,7 @@ export function useWorkflowRunner({
     if (stopListening) stopListening();
 
     setGuestRequest({});
+    setSystemRequestState(null);
     setActiveWorkflow(wf);
     setCurrentStepIndex(Number.isInteger(startIndex) && wf.steps[startIndex] ? startIndex : 0);
     setStepRun((n) => n + 1);
@@ -69,6 +71,7 @@ export function useWorkflowRunner({
     setCurrentStepIndex(0);
     setSilenceRemaining(30);
     setChoiceRemaining(null);
+    setSystemRequestState(null);
   };
 
   const finishStep = (outcome = { type: OUTCOME.DONE }) => {
@@ -141,7 +144,9 @@ export function useWorkflowRunner({
   useEffect(() => {
     if (!isWorkflowRunning || !activeStep) return;
 
+    let cancelled = false;
     cleanupTimers();
+    setSystemRequestState(null);
 
     if (guestRequestPhase(activeWorkflow.id, activeStep)) return;
 
@@ -197,7 +202,28 @@ export function useWorkflowRunner({
     } else if (activeStep.type === 'FEEDBACK') {
       durationMs = 7000;
     } else if (activeStep.type === 'CREATE_REQUEST') {
-      durationMs = 4500;
+      // System/automated CREATE_REQUEST (e.g. ROBOT_CHARGING) persists to the backend before advancing.
+      durationMs = null;
+      setSystemRequestState({ status: 'submitting', ticket: null, error: null });
+      submitSystemWorkflowRequest(activeStep)
+        .then((ticket) => {
+          if (cancelled) return;
+          setSystemRequestState({ status: 'sent', ticket, error: null });
+          timerRef.current = setTimeout(() => {
+            if (!cancelled) finishStep({ type: OUTCOME.DONE });
+          }, 3500);
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setSystemRequestState({
+            status: 'error',
+            ticket: null,
+            error: err?.message || 'Không gửi được yêu cầu lên máy chủ',
+          });
+          timerRef.current = setTimeout(() => {
+            if (!cancelled) finishStep({ type: OUTCOME.DONE });
+          }, 4500);
+        });
     } else if (activeStep.type === 'RECOMMEND') {
       durationMs = 6000;
     }
@@ -228,6 +254,7 @@ export function useWorkflowRunner({
     }
 
     return () => {
+      cancelled = true;
       cleanupTimers();
       if ((activeStep?.type === 'LISTEN' || activeStep?.type === 'COMMUNICATE' || activeStep?.type === 'CHOICE') && stopListening) {
         stopListening();
@@ -236,7 +263,7 @@ export function useWorkflowRunner({
   }, [isWorkflowRunning, currentStepIndex, activeWorkflow?.id, stepRun]);
 
   return {
-    stepRun, guestRequest, setGuestRequest,
+    stepRun, guestRequest, setGuestRequest, systemRequestState,
     activeWorkflow,
     isWorkflowRunning,
     currentStepIndex,

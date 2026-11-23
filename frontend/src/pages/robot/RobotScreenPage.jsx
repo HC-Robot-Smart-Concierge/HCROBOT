@@ -19,7 +19,7 @@ import {
   isConciergeVoiceIntent,
   isDismissVoiceIntent,
 } from '../../components/robot/RobotTaxiModal';
-import { guestRequestPhase } from '../../utils/workflowGuestRequest';
+import { guestRequestPhase, hasFollowUpConfirmationStep } from '../../utils/workflowGuestRequest';
 import { WorkflowGuestRequestPanel } from '../admin/tabs/workflow/WorkflowGuestRequestPanel';
 import { useWorkflowRunner } from '../../hooks/useWorkflowRunner';
 import { KioskDisplayPreview } from '../admin/tabs/workflow/KioskDisplayPreview';
@@ -664,7 +664,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Workflow Native Runner Hook (tích hợp Micro & Loa máy tính)
   const {
-    stepRun, guestRequest, setGuestRequest,
+    stepRun, guestRequest, setGuestRequest, systemRequestState,
     activeWorkflow,
     isWorkflowRunning,
     currentStepIndex,
@@ -3767,6 +3767,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 choiceRemaining={choiceRemaining}
                 onChooseOption={chooseOption}
                 onCancelChoice={cancelChoice}
+                requestState={systemRequestState}
               />
             </div>
           ) : currentState === 'RT-05' ? (
@@ -4161,6 +4162,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         <div className="fixed inset-0 z-[80] grid place-items-center bg-black/40 p-3" role="dialog" aria-modal="true" aria-label={language === 'English' ? 'Guest service' : 'Dịch vụ khách'}>
           <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-5 text-stone-900 shadow-xl">
             <WorkflowGuestRequestPanel key={activeWorkflow.id + ':' + stepRun} workflowId={activeWorkflow.id}
+              step={activeStep} followUpConfirmation={hasFollowUpConfirmationStep(activeWorkflow?.steps, currentStepIndex)}
               phase={requestPhase} session={guestRequest} setSession={setGuestRequest}
               english={language === 'English'} verifiedRoom={authenticatedRoom} sessionId={sessionId}
               onRoomVerified={room => { setAuthenticatedRoom(room); setActiveRoomNumber(room); }}

@@ -6,7 +6,7 @@ import pytest
 
 from app.schemas.ai import ChatRequest
 from app.services.ai.ai_chat_service import process_chat_request
-from app.services.ai.tts_providers import synthesize_edge_tts_detailed
+from app.services.ai.tts_providers import synthesize_azure_speech_detailed, synthesize_edge_tts_detailed
 from app.services.ai.tts_service import TTSService, tts_service
 
 
@@ -191,3 +191,106 @@ async def test_synthesize_with_details_cancels_orphaned_edge_task_on_timeout(tmp
     assert res["error_code"] == "TTS_TIMEOUT"
     assert cancelled_flag is True
     assert svc._inflight_tasks == {}
+
+
+@pytest.mark.asyncio
+async def test_azure_speech_detailed_not_configured():
+    with patch("app.services.ai.tts_providers.settings.AZURE_SPEECH_KEY", None):
+        b64, err_code, err_detail = await synthesize_azure_speech_detailed(
+            "Xin chào", "vi-VN-HoaiMyNeural", api_key=None
+        )
+    assert b64 is None
+    assert err_code == "AZURE_NOT_CONFIGURED"
+
+
+@pytest.mark.asyncio
+async def test_azure_speech_detailed_success():
+    fake_audio = b"fake_azure_audio_bytes_1234567890" * 10
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.content = fake_audio
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, headers=None, content=None):
+            assert "southeastasia.tts.speech.microsoft.com" in url
+            assert headers["Ocp-Apim-Subscription-Key"] == "test_azure_key"
+            assert "vi-VN-HoaiMyNeural" in content.decode("utf-8")
+            return mock_resp
+
+    with patch("httpx.AsyncClient", FakeAsyncClient):
+        b64, err_code, err_detail = await synthesize_azure_speech_detailed(
+            "Dạ vâng, em chào quý khách!",
+            "vi-VN-HoaiMyNeural",
+            api_key="test_azure_key",
+            region="southeastasia",
+        )
+
+    assert err_code is None
+    assert err_detail is None
+    assert b64 == base64.b64encode(fake_audio).decode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_multi_endpoint_falls_back_to_azure_when_edge_slow(tmp_path):
+    svc = TTSService(load_persisted=False)
+    svc._cache_dir = str(tmp_path)
+
+    async def hanging_edge(*args, **kwargs):
+        await asyncio.sleep(5.0)
+        return None, "TTS_TIMEOUT", "Edge timed out"
+
+    fake_azure_audio = base64.b64encode(b"azure_singapore_hoaimy_fast" * 10).decode("utf-8")
+    mock_azure = AsyncMock(return_value=(fake_azure_audio, None, None))
+
+    with (
+        patch("app.services.ai.tts_service.settings.AZURE_SPEECH_KEY", "valid_azure_key"),
+        patch.object(svc, "_synthesize_edge_tts_detailed", new=hanging_edge),
+        patch.object(svc, "_synthesize_azure_speech_detailed", new=mock_azure),
+    ):
+        res = await svc.synthesize_with_details(
+            "Xung quanh đây có gì chơi không?",
+            language="vi-VN",
+            timeout=10.0,
+        )
+
+    assert res["audio_base64"] == fake_azure_audio
+    assert res["provider_used"] == "azure_speech"
+    assert res["voice"] == "vi-VN-HoaiMyNeural"
+    mock_azure.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_multi_endpoint_falls_back_to_azure_when_edge_fails_early(tmp_path):
+    svc = TTSService(load_persisted=False)
+    svc._cache_dir = str(tmp_path)
+
+    async def failing_edge(*args, **kwargs):
+        return None, "TTS_PROVIDER_ERROR", "NoAudioReceived"
+
+    fake_azure_audio = base64.b64encode(b"azure_singapore_immediate_fallback" * 10).decode("utf-8")
+    mock_azure = AsyncMock(return_value=(fake_azure_audio, None, None))
+
+    with (
+        patch("app.services.ai.tts_service.settings.AZURE_SPEECH_KEY", "valid_azure_key"),
+        patch.object(svc, "_synthesize_edge_tts_detailed", new=failing_edge),
+        patch.object(svc, "_synthesize_azure_speech_detailed", new=mock_azure),
+    ):
+        res = await svc.synthesize_with_details(
+            "Giới thiệu bản thân đi.",
+            language="vi-VN",
+            timeout=10.0,
+        )
+
+    assert res["audio_base64"] == fake_azure_audio
+    assert res["provider_used"] == "azure_speech"
+    assert res["voice"] == "vi-VN-HoaiMyNeural"
+    mock_azure.assert_awaited_once()

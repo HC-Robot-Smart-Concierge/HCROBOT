@@ -15,6 +15,7 @@ from .tts_providers import (
     common_warmup_phrases,
     is_vietnamese as _is_vi,
     rate_float_to_percentage as _rate_to_pct,
+    synthesize_azure_speech_detailed,
     synthesize_edge_tts_detailed,
 )
 
@@ -328,9 +329,13 @@ class TTSService:
 
             waiters[cache_key] = waiters.get(cache_key, 0) + 1
             counted = True
-            edge_b64, edge_err_code, edge_err_detail = await asyncio.wait_for(asyncio.shield(inflight), timeout=effective_timeout)
+            synth_res = await asyncio.wait_for(asyncio.shield(inflight), timeout=effective_timeout)
+            edge_b64 = synth_res[0] if synth_res else None
+            edge_err_code = synth_res[1] if synth_res and len(synth_res) > 1 else None
+            edge_err_detail = synth_res[2] if synth_res and len(synth_res) > 2 else None
+            provider_used = synth_res[3] if synth_res and len(synth_res) > 3 and synth_res[3] else "edge"
             if edge_b64:
-                return {**self._ok_result(edge_b64, "edge", audio_url=audio_static_url), **metadata}
+                return {**self._ok_result(edge_b64, provider_used, audio_url=audio_static_url), **metadata}
             last_error_code = edge_err_code or "TTS_AUDIO_EMPTY"
             last_error_detail = edge_err_detail or f"EdgeTTS returned no audio for voice={target_voice}"
         except asyncio.TimeoutError:
@@ -380,6 +385,78 @@ class TTSService:
         )
         return res["audio_base64"], res["mime_type"], res["provider_used"]
 
+    async def _synthesize_multi_endpoint(
+        self,
+        clean_text: str,
+        voice: str,
+        rate: str,
+        attempt_timeout: Optional[float] = None,
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], str]:
+        """
+        Multi-Endpoint TTS: Primary EdgeTTS WebSocket (free) + Secondary Azure Speech API Singapore fallback.
+        Both endpoints synthesize the exact same neural voice (vi-VN-HoaiMyNeural / en-US-JennyNeural).
+        If EdgeTTS WebSocket takes > 2.0s or fails early, immediately queries Azure Speech API in Singapore.
+        """
+        edge_task = asyncio.create_task(
+            self._synthesize_edge_tts_detailed(clean_text, voice, rate, attempt_timeout=attempt_timeout)
+        )
+
+        try:
+            # 1. Cho EdgeTTS co hoi hoan thanh trong nguong 2.0 giay (zero-cost)
+            edge_res = await asyncio.wait_for(asyncio.shield(edge_task), timeout=2.0)
+            audio_b64 = edge_res[0] if edge_res else None
+            if audio_b64:
+                return audio_b64, None, None, "edge"
+            err_code = edge_res[1] if edge_res and len(edge_res) > 1 else "TTS_PROVIDER_ERROR"
+            err_detail = edge_res[2] if edge_res and len(edge_res) > 2 else "EdgeTTS early failure"
+            logger.info(
+                f"[TTSService Multi-Endpoint] EdgeTTS early failure ({err_code}: {err_detail}). "
+                f"Falling back immediately to Azure Speech API Singapore for voice={voice}..."
+            )
+        except asyncio.TimeoutError:
+            logger.info(
+                f"[TTSService Multi-Endpoint] EdgeTTS exceeded 2.0s threshold (len={len(clean_text)}, voice={voice}). "
+                f"Calling Azure Speech API Singapore fallback in parallel..."
+            )
+        except Exception as e:
+            logger.warning(f"[TTSService Multi-Endpoint] EdgeTTS exception before 2.0s: {e}")
+
+        # 2. Goi Azure Speech API Singapore fallback (ha tang tra phi truc tiep tu Singapore, tre <800ms)
+        azure_task = asyncio.create_task(
+            self._synthesize_azure_speech_detailed(clean_text, voice, rate, timeout=8.0)
+        )
+
+        done, pending = await asyncio.wait({edge_task, azure_task}, return_when=asyncio.FIRST_COMPLETED)
+
+        for t in done:
+            try:
+                res = t.result()
+                if res and res[0]:
+                    provider_used = "azure_speech" if t is azure_task else "edge"
+                    for p in pending:
+                        p.cancel()
+                    logger.info(
+                        f"[TTSService Multi-Endpoint] {provider_used} returned audio first for voice={voice} (len={len(clean_text)})"
+                    )
+                    return res[0], None, None, provider_used
+            except Exception as e:
+                logger.debug(f"[TTSService Multi-Endpoint] Task in done set raised: {e}")
+
+        if pending:
+            for p in pending:
+                try:
+                    res = await p
+                    if res and res[0]:
+                        provider_used = "azure_speech" if p is azure_task else "edge"
+                        logger.info(
+                            f"[TTSService Multi-Endpoint] Second task ({provider_used}) succeeded for voice={voice}"
+                        )
+                        return res[0], None, None, provider_used
+                except Exception as e:
+                    logger.debug(f"[TTSService Multi-Endpoint] Second task raised: {e}")
+
+        return None, "TTS_PROVIDER_ERROR", "Both EdgeTTS and Azure Speech fallback failed", "none"
+
     async def _synthesize_and_cache_edge_tts_detailed(
         self,
         clean_text: str,
@@ -387,30 +464,38 @@ class TTSService:
         rate: str,
         cache_key: str,
         attempt_timeout: Optional[float] = None,
-    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
         try:
             if hasattr(self._synthesize_edge_tts, "assert_called") or getattr(self._synthesize_edge_tts, "_is_mock", False):
                 audio_b64 = await self._synthesize_edge_tts(clean_text, voice, rate)
                 if audio_b64:
                     self._save_to_cache(cache_key, audio_b64)
-                    return audio_b64, None, None
-                return None, "TTS_AUDIO_EMPTY", "EdgeTTS returned no audio"
+                    return audio_b64, None, None, "edge"
+                return None, "TTS_AUDIO_EMPTY", "EdgeTTS returned no audio", "edge"
 
             if hasattr(self._synthesize_edge_tts_detailed, "assert_called") or getattr(self._synthesize_edge_tts_detailed, "_is_mock", False):
                 audio_b64, err_code, err_detail = await self._synthesize_edge_tts_detailed(clean_text, voice, rate)
+                provider_used = "edge"
             else:
-                audio_b64, err_code, err_detail = await self._synthesize_edge_tts_detailed(
-                    clean_text, voice, rate, attempt_timeout=attempt_timeout
-                )
+                azure_key = getattr(settings, "AZURE_SPEECH_KEY", None)
+                if azure_key and str(azure_key).strip():
+                    audio_b64, err_code, err_detail, provider_used = await self._synthesize_multi_endpoint(
+                        clean_text, voice, rate, attempt_timeout=attempt_timeout
+                    )
+                else:
+                    audio_b64, err_code, err_detail = await self._synthesize_edge_tts_detailed(
+                        clean_text, voice, rate, attempt_timeout=attempt_timeout
+                    )
+                    provider_used = "edge"
             if audio_b64:
                 self._save_to_cache(cache_key, audio_b64)
-                return audio_b64, None, None
-            return None, err_code, err_detail
+                return audio_b64, None, None, provider_used
+            return None, err_code, err_detail, provider_used
         except asyncio.CancelledError:
             raise
         except Exception as e:
             logger.debug(f"[TTSService] EdgeTTS single-flight task exception: {e}")
-            return None, "TTS_PROVIDER_ERROR", f"{type(e).__name__}: {e}"
+            return None, "TTS_PROVIDER_ERROR", f"{type(e).__name__}: {e}", "none"
         finally:
             if self._inflight_tasks.get(cache_key) is asyncio.current_task():
                 self._inflight_tasks.pop(cache_key, None)
@@ -418,8 +503,15 @@ class TTSService:
     async def _synthesize_and_cache_edge_tts(
         self, clean_text: str, voice: str, rate: str, cache_key: str
     ) -> Optional[str]:
-        audio_b64, _, _ = await self._synthesize_and_cache_edge_tts_detailed(clean_text, voice, rate, cache_key)
-        return audio_b64
+        res = await self._synthesize_and_cache_edge_tts_detailed(clean_text, voice, rate, cache_key)
+        return res[0] if res else None
+
+    async def _synthesize_azure_speech_detailed(
+        self, text: str, voice: str, rate: Optional[str] = None, timeout: float = 6.0
+    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        return await synthesize_azure_speech_detailed(
+            text, voice, rate=rate, timeout=timeout
+        )
 
     async def _synthesize_edge_tts_detailed(
         self, text: str, voice: str, rate: Optional[str] = None, attempt_timeout: Optional[float] = None

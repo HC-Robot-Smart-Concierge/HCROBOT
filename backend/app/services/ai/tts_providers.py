@@ -143,6 +143,89 @@ async def synthesize_edge_tts_detailed(
     return None, last_err_code, last_err_detail
 
 
+def escape_ssml_text(text: str) -> str:
+    """Escape special XML characters for SSML payload."""
+    if not text:
+        return ""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
+
+
+async def synthesize_azure_speech_detailed(
+    text: str,
+    voice: str,
+    *,
+    rate: Optional[str] = None,
+    api_key: Optional[str] = None,
+    region: Optional[str] = None,
+    timeout: float = 6.0,
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Synthesize speech via Microsoft Azure Speech Services REST API.
+    Uses the exact same neural voice (vi-VN-HoaiMyNeural / en-US-JennyNeural)
+    hosted on Microsoft's paid infrastructure in Singapore (southeastasia) for 300ms - 800ms latency.
+    """
+    key = api_key or getattr(settings, "AZURE_SPEECH_KEY", None)
+    if not key or not str(key).strip():
+        return None, "AZURE_NOT_CONFIGURED", "AZURE_SPEECH_KEY is not configured"
+
+    clean_text = clean_text_for_tts(text)
+    if not clean_text:
+        return None, "TTS_INPUT_EMPTY", "Cleaned text is empty"
+
+    reg = region or getattr(settings, "AZURE_SPEECH_REGION", "southeastasia") or "southeastasia"
+    selected_rate = rate or getattr(settings, "TTS_RATE", "+0%")
+    if not re.match(r"^[+-]\d+%$", str(selected_rate)):
+        selected_rate = "+0%"
+
+    parts = voice.split("-")
+    lang = f"{parts[0]}-{parts[1]}" if len(parts) >= 2 else "vi-VN"
+
+    escaped_text = escape_ssml_text(clean_text)
+    ssml = (
+        f"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{lang}'>"
+        f"<voice name='{voice}'>"
+        f"<prosody rate='{selected_rate}'>{escaped_text}</prosody>"
+        f"</voice></speak>"
+    )
+
+    url = f"https://{reg}.tts.speech.microsoft.com/cognitiveservices/v1"
+    headers = {
+        "Ocp-Apim-Subscription-Key": str(key).strip(),
+        "Content-Type": "application/ssml+xml",
+        "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3",
+        "User-Agent": "HC-Robot-Concierge",
+    }
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=float(timeout)) as client:
+            resp = await client.post(url, headers=headers, content=ssml.encode("utf-8"))
+            if resp.status_code == 200:
+                audio_bytes = resp.content
+                if audio_bytes and len(audio_bytes) > 100:
+                    return base64.b64encode(audio_bytes).decode("utf-8"), None, None
+                return None, "TTS_AUDIO_EMPTY", f"Azure Speech returned {len(audio_bytes)} bytes"
+            error_detail = f"Azure Speech HTTP {resp.status_code}: {resp.text[:200]}"
+            logger.warning(f"[TTSService] {error_detail}")
+            return None, "AZURE_PROVIDER_ERROR", error_detail
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        if type(e).__name__ in ("TimeoutException", "ReadTimeout", "ConnectTimeout"):
+            err_msg = f"Azure Speech timed out after {timeout:.1f}s (region={reg}, voice={voice})"
+            logger.warning(f"[TTSService] {err_msg}")
+            return None, "TTS_TIMEOUT", err_msg
+        err_msg = f"Azure Speech exception: {type(e).__name__}: {e}"
+        logger.warning(f"[TTSService] {err_msg}")
+        return None, "TTS_PROVIDER_ERROR", err_msg
+
+
 def common_warmup_phrases(target_vi: str, target_en: str):
     return [
         ("Dạ đợi em một tí nhé ạ.", "vi-VN", target_vi),

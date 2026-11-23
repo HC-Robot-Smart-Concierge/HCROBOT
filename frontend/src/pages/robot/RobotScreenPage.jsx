@@ -466,7 +466,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     hasSupport,
     volumeLevel = 0,
   } = useSpeechRecognition({
-    preferBackend: true,
     isSpeaking: Boolean(isSpeaking || isSpeechPending || isSpeechActive),
   }) || {};
 
@@ -1117,12 +1116,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Bộ đếm thời gian im lặng khi không có tiếng nói (No-Speech Timeout: 8s)
   // Tránh tình trạng robot treo vĩnh viễn ở trạng thái "Đang lắng nghe..." khi khách không nói gì
+  const lastVoiceActivityTimeRef = useRef(Date.now());
+  useEffect(() => {
+    if (volumeLevel >= 6 || (transcript && transcript.trim().length > 0)) {
+      lastVoiceActivityTimeRef.current = Date.now();
+    }
+  }, [volumeLevel, transcript]);
+
   useEffect(() => {
     if (
       currentState === 'RT-03' &&
       isListening &&
-      !isTranscribing &&
-      volumeLevel < 6 &&
       !isSpeaking &&
       !isSpeakingRef.current &&
       !isSpeechActive &&
@@ -1130,18 +1134,20 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       !isProcessing &&
       !isProcessingRef.current &&
       !isVideoCallOpen &&
-      !isPinModalOpen &&
-      (!transcript || transcript.trim().length === 0)
+      !isPinModalOpen
     ) {
-      const noSpeechTimer = setTimeout(() => {
-        if (!transcript || transcript.trim().length === 0) {
+      lastVoiceActivityTimeRef.current = Date.now();
+      const checkSilenceInterval = setInterval(() => {
+        const isSilent = Date.now() - lastVoiceActivityTimeRef.current >= 8000;
+        const hasNoText = !transcriptRef.current || transcriptRef.current.trim().length === 0;
+        if (isSilent && hasNoText && !isTranscribing) {
           stopListening();
           setCurrentState('RT-02');
         }
-      }, 8000);
-      return () => clearTimeout(noSpeechTimer);
+      }, 1000);
+      return () => clearInterval(checkSilenceInterval);
     }
-  }, [currentState, isListening, isSpeaking, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen, transcript, stopListening, isTranscribing, volumeLevel]);
+  }, [currentState, isListening, isSpeaking, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen, stopListening, isTranscribing]);
 
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = (detection) => {

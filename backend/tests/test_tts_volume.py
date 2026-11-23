@@ -65,34 +65,24 @@ async def test_edge_tts_uses_zero_volume_and_retries_same_voice():
 
 
 @pytest.mark.asyncio
-async def test_google_fallback_is_not_cached_under_edge_cache_key(tmp_path):
-    """google_fallback audio must NEVER be stored under edge cache_key in memory or on disk."""
+async def test_failed_tts_is_not_cached(tmp_path):
+    """Failed TTS must NEVER be stored in memory or on disk."""
     svc = TTSService(load_persisted=False)
     svc._cache_dir = str(tmp_path)
 
-    fake_google_b64 = base64.b64encode(b"google_mp3_bytes_" * 20).decode("utf-8")
-
-    with (
-        patch.object(
-            svc,
-            "_synthesize_edge_tts_detailed",
-            new=AsyncMock(return_value=(None, "TTS_PROVIDER_ERROR", "edge failed")),
-        ),
-        patch.object(
-            svc,
-            "_synthesize_google_tts",
-            new=AsyncMock(return_value=fake_google_b64),
-        ),
+    with patch.object(
+        svc,
+        "_synthesize_edge_tts_detailed",
+        new=AsyncMock(return_value=(None, "TTS_PROVIDER_ERROR", "edge failed")),
     ):
         result = await svc.synthesize_with_details(
             "Chào mừng quý khách đến khách sạn.",
             provider="edge",
             language="vi-VN",
-            allow_fallback=True,
         )
 
-    assert result["provider_used"] == "google_fallback"
-    assert result["audio_base64"] == fake_google_b64
+    assert result["audio_base64"] == ""
+    assert result["error_code"] == "TTS_PROVIDER_ERROR"
     assert svc._memory_cache == {}
     assert list(tmp_path.glob("*.mp3")) == []
 
@@ -107,13 +97,13 @@ async def test_redis_ai_cache_hit_auto_lang_prefers_cached_lang_code_or_reply():
         "action": "conversation",
     }
 
-    synth_mock = AsyncMock(return_value=("", "audio/mp3", "edge"))
+    synth_mock = AsyncMock(return_value={"audio_base64": "", "mime_type": "audio/mp3", "provider_used": "edge"})
     with (
         patch(
             "app.services.cache.redis_service.redis_service.get_ai_cache",
             new=AsyncMock(return_value=cached_payload),
         ),
-        patch("app.services.ai.ai_chat_service.tts_service.synthesize", new=synth_mock),
+        patch("app.services.ai.ai_chat_service.tts_service.synthesize_with_details", new=synth_mock),
     ):
         resp = await process_chat_request(None, req)
 
@@ -129,13 +119,13 @@ async def test_redis_ai_cache_hit_auto_lang_prefers_cached_lang_code_or_reply():
         "full_text": "Dạ, mật khẩu Wi-Fi của khách sạn là GrandHotel2026 ạ.",
         "action": "conversation",
     }
-    synth_mock_2 = AsyncMock(return_value=("", "audio/mp3", "edge"))
+    synth_mock_2 = AsyncMock(return_value={"audio_base64": "", "mime_type": "audio/mp3", "provider_used": "edge"})
     with (
         patch(
             "app.services.cache.redis_service.redis_service.get_ai_cache",
             new=AsyncMock(return_value=cached_payload_no_lang),
         ),
-        patch("app.services.ai.ai_chat_service.tts_service.synthesize", new=synth_mock_2),
+        patch("app.services.ai.ai_chat_service.tts_service.synthesize_with_details", new=synth_mock_2),
     ):
         resp2 = await process_chat_request(None, req2)
 

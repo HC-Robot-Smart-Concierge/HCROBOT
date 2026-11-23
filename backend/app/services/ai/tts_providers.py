@@ -77,7 +77,7 @@ async def synthesize_edge_tts_detailed(
         selected_rate = "+0%"
     # Luôn dùng +0% khi gọi EdgeTTS để tránh lỗi NoAudioReceived; khuếch đại âm lượng được xử lý qua GainNode ở frontend.
     selected_volume = "+0%"
-    per_attempt_timeout = max(0.02, float(attempt_timeout)) if attempt_timeout is not None else 3.2
+    per_attempt_timeout = max(0.02, float(attempt_timeout)) if attempt_timeout is not None else 8.5
 
     try:
         import edge_tts as _edge_tts
@@ -88,14 +88,15 @@ async def synthesize_edge_tts_detailed(
     last_err_code = "TTS_AUDIO_EMPTY"
     last_err_detail = f"EdgeTTS returned 0 bytes for voice={voice}"
 
-    for attempt in range(3):
+    max_attempts = 2
+    for attempt in range(max_attempts):
         current_voice = voice
         if attempt > 0:
             logger.info(f"[TTSService] EdgeTTS attempt {attempt + 1}: Retrying same voice {current_voice}")
 
         try:
             communicate = _edge_tts.Communicate(
-                clean_text, current_voice, rate=selected_rate, volume=selected_volume, pitch="+0Hz"
+                clean_text, current_voice, rate=selected_rate, volume=selected_volume
             )
             audio_bytes = await asyncio.wait_for(
                 _collect_edge_audio(communicate),
@@ -110,14 +111,14 @@ async def synthesize_edge_tts_detailed(
         except asyncio.TimeoutError:
             last_err_code = "TTS_TIMEOUT"
             last_err_detail = f"EdgeTTS attempt {attempt + 1} timed out after {per_attempt_timeout:.1f}s (voice={current_voice})"
-            log_fn = logger.warning if attempt == 2 else logger.info
+            log_fn = logger.warning if attempt == max_attempts - 1 else logger.info
             log_fn(f"[TTSService] {last_err_detail}")
         except Exception as e:
             last_err_code = "TTS_PROVIDER_ERROR"
             last_err_detail = f"{type(e).__name__}: {e} (voice={current_voice}, attempt={attempt + 1})"
-            log_fn = logger.warning if attempt == 2 else logger.info
+            log_fn = logger.warning if attempt == max_attempts - 1 else logger.info
             log_fn(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
-        if attempt < 2:
+        if attempt < max_attempts - 1:
             await asyncio.sleep(0.3 * (attempt + 1))
 
     return None, last_err_code, last_err_detail

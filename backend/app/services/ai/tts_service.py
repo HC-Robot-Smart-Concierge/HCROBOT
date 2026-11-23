@@ -260,7 +260,7 @@ class TTSService:
         voice: Optional[str] = None,
         language: Optional[str] = None,
         rate: Optional[str] = None,
-        timeout: float = 10.0,
+        timeout: float = 12.0,
         allow_fallback: bool = False,
     ) -> Dict[str, Any]:
         """Tổng hợp giọng đọc kèm mã lỗi chuẩn hóa để phục vụ chẩn đoán cuộc gọi."""
@@ -304,7 +304,7 @@ class TTSService:
         if waiters is None:
             waiters = {}
             self._inflight_waiters = waiters
-        attempt_timeout = min(4.5, max(1.0, float(timeout) * 0.75))
+        attempt_timeout = max(1.0, min(float(timeout) * 0.85, float(timeout) - 1.5))
         inflight = None
         counted = False
         try:
@@ -363,7 +363,7 @@ class TTSService:
         voice: Optional[str] = None,
         language: Optional[str] = None,
         rate: Optional[str] = None,
-        timeout: float = 10.0,
+        timeout: float = 12.0,
     ) -> Tuple[str, str, str]:
         """Tổng hợp giọng đọc từ văn bản kèm bộ đệm âm thanh siêu tốc."""
         res = await self.synthesize_with_details(

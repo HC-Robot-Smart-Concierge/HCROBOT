@@ -34,6 +34,7 @@ const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListeni
 
 const MobileCinemaSubtitle = ({
   fullText,
+  userPrompt = '',
   isSpeaking,
   onClose,
   onStartTalk,
@@ -71,63 +72,75 @@ const MobileCinemaSubtitle = ({
 
   return (
     <div
-      className="relative mt-2.5 max-w-[92vw] sm:max-w-lg px-5 py-2.5 bg-stone-900/85 backdrop-blur-md border border-stone-700/60 rounded-2xl shadow-xl flex items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200 z-20 group"
+      className="relative mt-2.5 max-w-[92vw] sm:max-w-lg px-5 py-2.5 bg-stone-900/85 backdrop-blur-md border border-stone-700/60 rounded-2xl shadow-xl flex flex-col items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200 z-20 group"
       role="region"
       aria-label="Phụ đề lời thoại của robot"
     >
-      <div className="absolute left-3 flex items-center gap-1.5 opacity-60">
-        <span
-          className={`w-2 h-2 rounded-full transition-colors ${
-            isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-500'
-          }`}
-        />
-        {sentences.length > 1 && (
-          <span className="text-[9px] font-mono text-stone-400">
-            {currentIndex + 1}/{sentences.length}
+      {/* Phụ đề câu hỏi của khách */}
+      {userPrompt && (
+        <div className="flex items-center gap-1.5 text-[11px] text-stone-400 mb-1 max-w-full px-6 truncate">
+          <span className="font-bold text-stone-500 uppercase text-[9px] tracking-wider shrink-0">
+            {isEn ? 'Guest:' : 'Khách hỏi:'}
           </span>
-        )}
-      </div>
+          <span className="italic text-stone-300 truncate font-medium">"{userPrompt}"</span>
+        </div>
+      )}
 
-      <p
-        key={currentIndex}
-        className="text-xs sm:text-[13px] font-medium text-stone-100 leading-snug px-8 select-text animate-in fade-in duration-200 line-clamp-2"
-      >
-        {activeSentence}
-      </p>
+      <div className="w-full flex items-center justify-center relative">
+        <div className="absolute left-0 flex items-center gap-1.5 opacity-60">
+          <span
+            className={`w-2 h-2 rounded-full transition-colors ${
+              isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-500'
+            }`}
+          />
+          {sentences.length > 1 && (
+            <span className="text-[9px] font-mono text-stone-400">
+              {currentIndex + 1}/{sentences.length}
+            </span>
+          )}
+        </div>
 
-      {/* Cụm công cụ bên phải subtitle: Nút Micro & Nút Đóng */}
-      <div className="absolute right-2.5 flex items-center gap-1.5">
-        {onStartTalk && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onStopSpeaking && isSpeaking) onStopSpeaking();
-              if (onPrime) onPrime();
-              onStartTalk();
-            }}
-            className="w-6 h-6 rounded-full bg-stone-800/80 hover:bg-stone-700 text-stone-300 hover:text-white flex items-center justify-center transition-all cursor-pointer active:scale-95"
-            title={isSpeaking ? (isEn ? 'Stop and speak' : 'Dừng & Nói tiếp') : (isEn ? 'Touch or speak' : 'Chạm hoặc nói')}
-            aria-label={isEn ? 'Microphone' : 'Micro'}
-          >
-            <Mic className="w-3 h-3 text-stone-300" />
-          </button>
-        )}
+        <p
+          key={currentIndex}
+          className="text-xs sm:text-[13px] font-medium text-stone-100 leading-snug px-7 select-text animate-in fade-in duration-200 line-clamp-3"
+        >
+          {activeSentence}
+        </p>
 
-        {onClose && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClose();
-            }}
-            className="w-6 h-6 rounded-full hover:bg-stone-800 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-all cursor-pointer active:scale-95"
-            title={isEn ? 'Hide subtitle' : 'Ẩn phụ đề'}
-            aria-label={isEn ? 'Close' : 'Đóng'}
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        )}
+        {/* Cụm công cụ bên phải subtitle: Nút Micro & Nút Đóng */}
+        <div className="absolute right-0 flex items-center gap-1.5">
+          {onStartTalk && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onStopSpeaking && isSpeaking) onStopSpeaking();
+                if (onPrime) onPrime();
+                onStartTalk();
+              }}
+              className="w-6 h-6 rounded-full bg-stone-800/80 hover:bg-stone-700 text-stone-300 hover:text-white flex items-center justify-center transition-all cursor-pointer active:scale-95"
+              title={isSpeaking ? (isEn ? 'Stop and speak' : 'Dừng & Nói tiếp') : (isEn ? 'Touch or speak' : 'Chạm hoặc nói')}
+              aria-label={isEn ? 'Microphone' : 'Micro'}
+            >
+              <Mic className="w-3 h-3 text-stone-300" />
+            </button>
+          )}
+
+          {onClose && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              className="w-6 h-6 rounded-full hover:bg-stone-800 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-all cursor-pointer active:scale-95"
+              title={isEn ? 'Hide subtitle' : 'Ẩn phụ đề'}
+              aria-label={isEn ? 'Close' : 'Đóng'}
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -138,6 +151,7 @@ export const MobileRobotScreen = ({
   guestEmotion = 'neutral',
   aiResponseText,
   spokenSubtitle = '',
+  userPrompt = '',
   currentState = 'RT-02',
   hasSpeechSupport = true,
   isAutoListen = false,
@@ -885,6 +899,7 @@ export const MobileRobotScreen = ({
               {displayText ? (
                 <MobileCinemaSubtitle
                   fullText={displayText}
+                  userPrompt={userPrompt}
                   isSpeaking={isSpeaking}
                   onClose={onCloseAiResponse}
                   onStartTalk={onStartTalk}
@@ -936,10 +951,20 @@ export const MobileRobotScreen = ({
                   )}
                 </div>
               ) : isBusy ? (
-                /* 3. Khi đang suy nghĩ / xử lý: Dock xám tối giản từ ngữ */
-                <div className="mt-2.5 flex items-center gap-2 px-3.5 py-1.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-full shadow-lg text-stone-200 text-xs font-medium animate-fadeIn">
-                  <span className="w-2 h-2 rounded-full bg-stone-300 animate-ping" />
-                  <span>{isEn ? 'Processing...' : 'Đang xử lý...'}</span>
+                /* 3. Khi đang suy nghĩ / xử lý: Dock xám hiển thị câu hỏi khách + trạng thái đang xử lý */
+                <div className="mt-2.5 flex flex-col items-center gap-1.5 px-4 py-2 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-lg text-stone-200 text-xs font-medium animate-fadeIn max-w-[92vw]">
+                  {userPrompt && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-stone-400 max-w-full px-1 truncate">
+                      <span className="font-bold text-stone-500 uppercase text-[9px] tracking-wider shrink-0">
+                        {isEn ? 'Guest:' : 'Khách hỏi:'}
+                      </span>
+                      <span className="italic text-stone-300 truncate">"{userPrompt}"</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-stone-300 animate-ping" />
+                    <span>{isEn ? 'Processing...' : 'Đang xử lý...'}</span>
+                  </div>
                 </div>
               ) : (
                 /* 4. Trạng thái chờ: Nút chạm nói */

@@ -119,7 +119,7 @@ async def synthesize_edge_tts_detailed(
             log_fn = logger.warning if attempt == max_attempts - 1 else logger.info
             log_fn(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
         if attempt < max_attempts - 1:
-            await asyncio.sleep(0.3 * (attempt + 1))
+            await asyncio.sleep(0.5 * (attempt + 1))
 
     return None, last_err_code, last_err_detail
 

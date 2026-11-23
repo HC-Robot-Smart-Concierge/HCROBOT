@@ -3092,6 +3092,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         guestEmotion={guestEmotion}
         eyeExpression={activeEyeExpression}
         aiResponseText={aiResponseText}
+        userPrompt={lastUserPrompt}
         currentState={currentState}
         hasSpeechSupport={hasSupport}
         isAutoListen={isAutoListen}
@@ -3240,7 +3241,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onSelectTaxiConciergeBooking={handleSelectTaxiConciergeBooking}
         onCancelTaxiFlow={handleCancelTaxiFlow}
         onSubmitTaxiRoomNumber={handleTaxiRoomProvided}
-        onCloseAiResponse={() => setAiResponseText('')}
+        onCloseAiResponse={() => {
+          setAiResponseText('');
+          setLastUserPrompt('');
+        }}
         navigationDestinationKey={navigationDestinationKey}
         onSelectDestination={setNavigationDestinationKey}
         showQrModalExternal={isAutoQrModalOpen}

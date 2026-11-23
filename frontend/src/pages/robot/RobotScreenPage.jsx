@@ -2896,6 +2896,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       <RobotFoodMenuScreen
         activeRoomNumber={activeRoomNumber || ''}
         authenticatedRoom={authenticatedRoom}
+        language={language}
         onPinVerifiedSuccess={(room) => setAuthenticatedRoom(room)}
         sessionId={sessionId}
         onClose={() => {
@@ -3911,16 +3912,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 <div className="mt-6 flex flex-col items-center gap-3 animate-fadeIn">
                   <div className="px-6 py-3.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-2xl flex items-center gap-4 text-stone-100 max-w-[620px]">
                     <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
-                    <div className="flex flex-col text-left min-w-[240px]">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-stone-400">Khách nói:</span>
-                      </div>
-                      <span className="text-sm font-bold text-stone-100">
-                        {transcript ? `"${transcript}"` : (volumeLevel > 5 ? 'Đang nhận diện giọng nói...' : 'Listening... · Đang lắng nghe...')}
-                      </span>
-                      <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1.5 mt-0.5">
-                        <Globe className="w-3 h-3 text-stone-400" />
-                        <span>Auto-detect VI · EN · Tự động nhận diện</span>
+                    <div className="flex items-center text-left min-w-[200px]">
+                      <span className="text-sm font-semibold text-stone-100">
+                        {transcript ? `"${transcript}"` : (language === 'English' ? 'Listening...' : 'Đang lắng nghe...')}
                       </span>
                     </div>
                   </div>
@@ -3967,7 +3961,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 <div className="mt-5 px-6 py-3.5 bg-stone-900/85 backdrop-blur-md border border-stone-700/60 rounded-2xl flex flex-col items-center gap-2 shadow-xl animate-fadeIn max-w-[600px]">
                   {lastUserPrompt ? (
                     <div className="flex items-center gap-2 text-stone-200 text-sm font-semibold text-center">
-                      <span className="text-stone-400 text-xs uppercase tracking-wider font-bold shrink-0">Khách hỏi:</span>
                       <span className="italic text-stone-100">"{lastUserPrompt}"</span>
                     </div>
                   ) : null}

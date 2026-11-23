@@ -204,6 +204,30 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
             "response": intro_reply,
         }
 
+    # Kiểm tra yêu cầu mở menu thực đơn món ăn / ẩm thực nhà bếp (Food & Dining Menu) trước khi bắt buộc số phòng
+    raw_prompt = state.get("prompt") or ""
+    is_general_food_menu_request = any(k in f"{items or ''} {raw_prompt}".lower() for k in [
+        "thực đơn", "thuc don", "menu món", "menu do an", "menu đồ ăn",
+        "đặt món", "dat mon", "gọi món", "goi mon", "chọn món", "chon mon",
+        "món ăn", "mon an", "đồ ăn", "do an", "menu ẩm thực", "menu nhà bếp", "dining menu",
+        "food menu", "order food", "can i order food", "want to order food", "in-room dining",
+        "in room dining", "order meal", "order meals", "order dishes", "show menu", "open food menu"
+    ])
+    if action == "room_service" and is_general_food_menu_request:
+        if is_en:
+            food_reply = f"Certainly! I have opened our In-Room Dining Menu on screen{' for Room ' + current_room if current_room else ''}. Please browse and choose your favorite dishes and drinks!"
+        else:
+            food_reply = f"Dạ em đã mở Thực đơn chọn món trên màn hình{' cho Phòng ' + current_room if current_room else ''} rồi ạ. Quý khách chạm chọn món ăn và đồ uống yêu thích nhé ạ!"
+        return {
+            "missing_room_number": False,
+            "room_number": current_room,
+            "target_room_number": current_room,
+            "response": food_reply,
+            "trigger_menu": "food_menu",
+            "action": "open_food_menu",
+            "require_room_pin": False,
+        }
+
     # Trường hợp 4: Yêu cầu dịch vụ liên quan phòng nhưng CHƯA CÓ SỐ PHÒNG -> Bắt buộc hỏi khách số phòng!
     if not current_room:
         if action == "maintenance":

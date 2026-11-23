@@ -911,7 +911,7 @@ export const MobileRobotScreen = ({
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <AudioWave isActive={isListening || currentState === "RT-03"} volumeLevel={volumeLevel} />
                       <span className="text-xs sm:text-[13px] font-semibold text-stone-100 line-clamp-2 select-text leading-snug">
-                        {transcript ? `"${transcript}"` : (volumeLevel > 5 ? (isEn ? 'Recognizing voice...' : 'Đang nhận diện giọng nói...') : (isEn ? 'Listening...' : 'Đang lắng nghe...'))}
+                        {transcript ? `"${transcript}"` : (isEn ? 'Listening...' : 'Đang lắng nghe...')}
                       </span>
                     </div>
 

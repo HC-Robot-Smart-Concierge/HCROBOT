@@ -124,7 +124,7 @@ export const sendChatPrompt = async (
   demographics = null
 ) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const timeoutId = setTimeout(() => controller.abort(), 38000);
 
   if (externalSignal) {
     if (externalSignal.aborted) {
@@ -261,7 +261,7 @@ export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice =
   let targetVoice = voice;
   let targetLang = language;
   let externalSignal = optionalSignal;
-  let timeoutMs = 18000;
+  let timeoutMs = 32000;
   let targetRate = null;
 
   if (typeof optionsOrProvider === 'object' && optionsOrProvider !== null) {

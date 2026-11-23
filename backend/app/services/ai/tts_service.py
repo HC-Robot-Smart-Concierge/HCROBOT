@@ -304,9 +304,16 @@ class TTSService:
         if waiters is None:
             waiters = {}
             self._inflight_waiters = waiters
-        # Cho phép thời gian tổng hợp lên tới (timeout - 1.5s) để các câu trả lời dài
-        # (150-400 ký tự) có đủ thời gian hoàn tất stream qua mạng quốc tế tới server Bing.
-        attempt_timeout = max(5.0, float(timeout) - 1.5)
+        if float(timeout) < 2.0:
+            effective_timeout = float(timeout)
+            attempt_timeout = float(timeout)
+        else:
+            clean_len = len(clean_text)
+            # Tính timeout linh hoạt theo độ dài văn bản (lên tới 35s) để các câu trả lời dài (150-400 ký tự)
+            # luôn có đủ thời gian stream qua mạng quốc tế tới server Bing mà không bị hủy ngang.
+            effective_timeout = max(float(timeout), min(35.0, clean_len * 0.12 + 10.0))
+            attempt_timeout = max(8.0, effective_timeout - 2.0)
+
         inflight = None
         counted = False
         try:
@@ -321,7 +328,7 @@ class TTSService:
 
             waiters[cache_key] = waiters.get(cache_key, 0) + 1
             counted = True
-            edge_b64, edge_err_code, edge_err_detail = await asyncio.wait_for(asyncio.shield(inflight), timeout=timeout)
+            edge_b64, edge_err_code, edge_err_detail = await asyncio.wait_for(asyncio.shield(inflight), timeout=effective_timeout)
             if edge_b64:
                 return {**self._ok_result(edge_b64, "edge", audio_url=audio_static_url), **metadata}
             last_error_code = edge_err_code or "TTS_AUDIO_EMPTY"

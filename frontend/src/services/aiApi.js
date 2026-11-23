@@ -261,7 +261,7 @@ export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice =
   let targetVoice = voice;
   let targetLang = language;
   let externalSignal = optionalSignal;
-  let timeoutMs = 12000;
+  let timeoutMs = 18000;
   let targetRate = null;
 
   if (typeof optionsOrProvider === 'object' && optionsOrProvider !== null) {

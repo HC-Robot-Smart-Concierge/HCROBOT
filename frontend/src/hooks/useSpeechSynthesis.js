@@ -113,7 +113,7 @@ export const useSpeechSynthesis = () => {
     const key = JSON.stringify([POLICY, voice, percentage, text]);
     if (matchesPolicy(preloaded)) return preloaded;
     if (audioCache.has(key)) return audioCache.get(key);
-    const data = await synthesizeSpeech(text, { provider: 'edge', language, voice, rate: percentage, signal, timeoutMs: 12000 });
+    const data = await synthesizeSpeech(text, { provider: 'edge', language, voice, rate: percentage, signal, timeoutMs: 18000 });
     if (signal.aborted) throw abortError();
     if (!matchesPolicy(data)) {
       throw Object.assign(new Error(data?.error_detail || 'Speech audio is unavailable.'), { code: data?.error_code || 'TTS_VOICE_MISMATCH' });

@@ -84,7 +84,9 @@ class LocalizationManager(Node):
         self.odom_at = None
         self.amcl = None
         self.match = None
+        self.match_failure_reason = None
         self.active_goals = 0
+        self.active_goals_by_action = {}
         self.pending_source = None
         self.restore_tried = not self.persist_pose
         self.last_cancel = 0.0
@@ -97,10 +99,13 @@ class LocalizationManager(Node):
         self.create_subscription(PoseWithCovarianceStamped, "/amcl_pose", self._on_amcl, 10)
         self.create_subscription(PoseWithCovarianceStamped, "/initialpose", self._on_initial_pose, 10)
         self.create_subscription(GoalStatusArray, "/navigate_to_pose/_action/status", self._on_goal_status, LATCHED)
+        self.create_subscription(GoalStatusArray, "/navigate_through_poses/_action/status",
+                                 lambda msg: self._on_goal_status(msg, 'route'), LATCHED)
         self.state_pub = self.create_publisher(String, "/localization/state", LATCHED)
         self.initial_pub = self.create_publisher(PoseWithCovarianceStamped, "/initialpose", 10)
         self.stop_pub = self.create_publisher(Empty, "/robot/nav_cancel", 10)
         self.cancel_client = self.create_client(CancelGoal, "/navigate_to_pose/_action/cancel_goal")
+        self.route_cancel_client = self.create_client(CancelGoal, "/navigate_through_poses/_action/cancel_goal")
         # Khoi phuc pose cu chi khi AMCL da active: gui som AMCL bo qua => khong co frame map,
         # global costmap cho TF qua lau va lifecycle manager huy ca Nav2.
         self.amcl_state_client = self.create_client(GetState, "/amcl/get_state")
@@ -144,8 +149,9 @@ class LocalizationManager(Node):
         )
         self._publish_state()
 
-    def _on_goal_status(self, msg):
-        self.active_goals = sum(1 for s in msg.status_list if s.status in ACTIVE_GOAL)
+    def _on_goal_status(self, msg, action='pose'):
+        self.active_goals_by_action[action] = sum(1 for s in msg.status_list if s.status in ACTIVE_GOAL)
+        self.active_goals = sum(self.active_goals_by_action.values())
         self._gate_goals()
 
     # ------------------------------------------------------------------ vong chinh
@@ -158,23 +164,40 @@ class LocalizationManager(Node):
             return False, "Chưa nhận odom (/odom): kiểm tra encoder/bridge."
         return True, "Chưa có vị trí: đặt vị trí ban đầu trên Web (Chọn trên map / Đặt tại Dock)."
 
-    def _lookup(self, child):
+    def _lookup(self, child, stamp=None):
         try:
-            t = self.tf_buffer.lookup_transform("map", child, Time())
-        except Exception:
+            when = Time.from_msg(stamp) if stamp is not None else Time()
+            t = self.tf_buffer.lookup_transform("map", child, when)
+        except Exception as exc:
+            if stamp is not None:
+                self.match_failure_reason = f"Không có TF tại thời điểm scan: {exc}"
             return None
         tr = t.transform
         return tr.translation.x, tr.translation.y, _yaw(tr.rotation)
 
     def _compute_match(self):
+        self.match_failure_reason = None
         s = self.scan
         if s is None or self.mask is None:
             return None
-        laser = self._lookup(s.header.frame_id.lstrip("/"))
+        # /scan is stamped in the past by the bridge. Comparing it with the
+        # latest robot pose creates an artificial mismatch during translation
+        # and rotation. Never fall back to latest TF if historical TF is absent.
+        if s.header.stamp.sec == 0 and s.header.stamp.nanosec == 0:
+            self.match_failure_reason = "Scan thiếu timestamp, chưa đánh giá được định vị."
+            return None
+        scan_age = (self.get_clock().now() - Time.from_msg(s.header.stamp)).nanoseconds / 1e9
+        if scan_age < -0.1 or scan_age > self.input_timeout:
+            self.match_failure_reason = f"Timestamp scan không hợp lệ hoặc dữ liệu cũ ({scan_age:.2f} s)."
+            return None
+        laser = self._lookup(s.header.frame_id.lstrip("/"), s.header.stamp)
         if laser is None:
             return None
-        return scan_match(list(s.ranges), s.angle_min, s.angle_increment, max(s.range_min, 0.05),
-                          s.range_max, laser, self.mask, self.grid)
+        match = scan_match(list(s.ranges), s.angle_min, s.angle_increment, max(s.range_min, 0.05),
+                           s.range_max, laser, self.mask, self.grid)
+        if match is None:
+            self.match_failure_reason = "Không đủ tia LiDAR hợp lệ để kiểm tra định vị."
+        return match
 
     def _sigmas(self):
         if self.amcl is None:
@@ -220,6 +243,8 @@ class LocalizationManager(Node):
         if inputs_ok and self.sm.state == UNLOCALIZED and not self.restore_tried and self._amcl_is_active():
             self._try_restore()
         self.match = self._compute_match() if inputs_ok else None
+        if inputs_ok and self.match is None and self.match_failure_reason:
+            inputs_ok, missing = False, self.match_failure_reason
         sigma_xy, sigma_yaw = self._sigmas()
         before, source = self.sm.state, self.sm.source
         if self.sm.update(now, inputs_ok, missing, self.match, sigma_xy, sigma_yaw):
@@ -254,6 +279,8 @@ class LocalizationManager(Node):
         self.get_logger().warn(f"🛑 Hủy goal Nav2 + dừng xe: {why}")
         if self.cancel_client.service_is_ready():
             self.cancel_client.call_async(CancelGoal.Request())  # goal_info rong = huy tat ca
+        if self.route_cancel_client.service_is_ready():
+            self.route_cancel_client.call_async(CancelGoal.Request())
         self.stop_pub.publish(Empty())
 
     def _save_pose(self):
@@ -280,6 +307,7 @@ class LocalizationManager(Node):
             "sigma_xy": round(sigma_xy, 3) if sigma_xy is not None else None,
             "sigma_yaw": round(sigma_yaw, 3) if sigma_yaw is not None else None,
             "good_score": self.sm.good_score,
+            "match_failure_reason": self.match_failure_reason,
         }
         self.state_pub.publish(String(data=json.dumps(state, ensure_ascii=False)))
 

@@ -21,15 +21,23 @@ import { WorkflowSimulatorModal } from './workflow/WorkflowSimulatorModal';
 import { WorkflowSimulatorStudio } from './workflow/WorkflowSimulatorStudio';
 
 import { useRobotControlText } from '../../../context/RobotControlLanguage';
+import { executionError, executionSummary } from '../../../utils/workflowExecution';
+import { explicitLinks } from '../../../utils/workflowGraph';
+import { useWorkflowEditing } from './workflow/useWorkflowEditing';
+import { expandWorkflowRoutes, unconfiguredRouteSteps } from '../../../utils/physicalMapRoute';
+import { stepSetup } from '../../../utils/workflowStepSetup';
+import { WorkflowRunsPanel } from './workflow/WorkflowRunsPanel';
 
 export { OTTO_STEP_TYPES };
 
 export const AdminWorkflowTab = () => {
   const rc = useRobotControlText();
   const [workflows, setWorkflows] = useState([]);
+  const [routes, setRoutes] = useState([]);
   const [waypoints, setWaypoints] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
+  const [startedRunId, setStartedRunId] = useState(null);
 
   // View state: 'list' (Quản lý kịch bản) | 'simulator' (Phòng giả lập Gazebo & Kiosk)
   const [activeView, setActiveView] = useState('list');
@@ -37,6 +45,7 @@ export const AdminWorkflowTab = () => {
   // Editor State
   const [editingWorkflow, setEditingWorkflow] = useState(null);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const editing = useWorkflowEditing(setEditingWorkflow, setIsEditorOpen);
 
   // Simulation State
   const [simulatingWorkflow, setSimulatingWorkflow] = useState(null);
@@ -69,11 +78,18 @@ export const AdminWorkflowTab = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [wfList, wpList] = await Promise.all([fetchWorkflows(), fetchWaypoints()]);
-      setWorkflows(wfList || []);
-      setWaypoints(wpList || []);
-    } catch {
-      showNotification('Lỗi khi tải danh sách kịch bản hoặc waypoints.');
+      const [workflowResult, waypointResult] = await Promise.allSettled([fetchWorkflows(), fetchWaypoints()]);
+      const errors = [];
+      if (workflowResult.status === 'fulfilled') {
+        const wfList = workflowResult.value || [];
+        setWorkflows(wfList.filter((wf) => !wf.execution_config?.route));
+        setRoutes(wfList.filter((wf) => wf.is_active && wf.execution_config?.route));
+      } else errors.push(`Không tải được workflow: ${workflowResult.reason.message}`);
+      if (waypointResult.status === 'fulfilled') setWaypoints(waypointResult.value || []);
+      else errors.push(`Không tải được điểm mốc: ${waypointResult.reason.message}`);
+      if (errors.length) showNotification(errors.join(' · '));
+    } catch (err) {
+      showNotification(`Lỗi tải dữ liệu: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -83,51 +99,30 @@ export const AdminWorkflowTab = () => {
     loadData();
   }, []);
 
-  const handleOpenCreate = () => {
-    setEditingWorkflow({
-      id: `wf-${Date.now().toString(36)}`,
-      name: 'Kịch bản phục vụ khách mới',
-      description: 'Mô tả chu trình hoạt động của robot...',
-      trigger_type: 'AUTO_DETECT',
-      is_active: true,
-      steps: [
-        {
-          step_id: `step-${Date.now()}-1`,
-          type: 'MOVE',
-          title: 'Di chuyển lại gần khách tại Sảnh',
-          params: { ...OTTO_STEP_TYPES[0].defaultParams },
-        },
-        {
-          step_id: `step-${Date.now()}-2`,
-          type: 'GREET',
-          title: 'Chào hỏi và biểu cảm',
-          params: { ...OTTO_STEP_TYPES[1].defaultParams },
-        },
-        {
-          step_id: `step-${Date.now()}-3`,
-          type: 'SPEAK',
-          title: 'Phát âm thanh giới thiệu',
-          params: { ...OTTO_STEP_TYPES[2].defaultParams },
-        },
-      ],
-    });
-    setIsEditorOpen(true);
-  };
-
-  const handleOpenEdit = (wf) => {
-    setEditingWorkflow(JSON.parse(JSON.stringify(wf)));
-    setIsEditorOpen(true);
-  };
-
   const handleSaveWorkflow = async () => {
+    const pendingRoutes = unconfiguredRouteSteps(editingWorkflow);
+    for (const step of editingWorkflow.steps || []) {
+      if (step.type !== 'FOLLOW_ROUTE') continue;
+      if (step.params?.route_id && !routes.some((r) => r.id === step.params.route_id)) { showNotification('Tuyến đã chọn không còn khả dụng. Chọn lại hoặc để trống để cấu hình sau trên Map.'); return; }
+      if (!Number.isInteger(step.params.repeat_count) || step.params.repeat_count < 1 || step.params.repeat_count > 100) { showNotification('Số vòng của bước Đi theo tuyến phải từ 1 đến 100.'); return; }
+    }
+    const configError = executionError(editingWorkflow, { allowDraft: pendingRoutes.length > 0 || !editingWorkflow.is_active, forSave: true });
+    if (configError) {
+      showNotification(configError);
+      return;
+    }
     if (!editingWorkflow.name.trim()) {
       showNotification('Vui lòng nhập tên kịch bản workflow');
       return;
     }
     try {
       setIsLoading(true);
-      await saveWorkflow(editingWorkflow);
-      showNotification(`Đã lưu kịch bản "${editingWorkflow.name}" thành công!`);
+      // Canvas links are explicit so steps reached only by a branch never fall through.
+      const toSave = explicitLinks(editingWorkflow);
+      await saveWorkflow(pendingRoutes.length ? { ...toSave, is_active: false } : toSave);
+      showNotification(pendingRoutes.length
+        ? `Đã lưu bản nháp "${editingWorkflow.name}". Sang Physical Map → Tuyến đường, chọn workflow và bước để gán tuyến.`
+        : `Đã lưu kịch bản "${editingWorkflow.name}" thành công!`);
       setIsEditorOpen(false);
       setEditingWorkflow(null);
       await loadData();
@@ -153,6 +148,10 @@ export const AdminWorkflowTab = () => {
   };
 
   const handleToggleActive = async (wf) => {
+    if (!wf.is_active && unconfiguredRouteSteps(wf).length) {
+      showNotification('Workflow còn bước chưa có tuyến. Sang Physical Map → Tuyến đường để cấu hình tham số trước khi bật.');
+      return;
+    }
     try {
       await saveWorkflow({ ...wf, is_active: !wf.is_active });
       await loadData();
@@ -161,79 +160,33 @@ export const AdminWorkflowTab = () => {
     }
   };
 
+  const hasRunConfiguration = (wf) => {
+    const error = executionError(wf);
+    if (error) { showNotification(error); return false; }
+    if (!wf.steps?.length) { showNotification('Thêm ít nhất một bước trước khi chạy workflow.'); return false; }
+    const index = wf.steps.findIndex((step) => !stepSetup(step, routes).ready);
+    if (index >= 0) {
+      showNotification(`Bước ${index + 1} cần cấu hình: ${stepSetup(wf.steps[index], routes).issues.join(' ')}`);
+      return false;
+    }
+    return true;
+  };
+
   const handleTestRun = (wf) => {
-    setSimulatingWorkflow(wf);
-    setActiveView('simulator');
+    if (!hasRunConfiguration(wf)) return;
+    try { setSimulatingWorkflow(expandWorkflowRoutes(wf, routes)); setActiveView('simulator'); }
+    catch (err) { showNotification(err.message); }
   };
 
   const handleDispatchToRobot = async (wf) => {
+    if (!hasRunConfiguration(wf)) return;
     try {
-      const bc = new BroadcastChannel('hcrobot_workflow_channel');
-      bc.postMessage({ type: 'EXECUTE_WORKFLOW', workflow: wf });
-      bc.close();
-    } catch {
-      // BroadcastChannel fallback
+      const result = await executeWorkflow(wf.id, { robot_id: 'RC-001' });
+      if (result.run_id) setStartedRunId(result.run_id);
+      showNotification(result.message || 'Đã gửi workflow.');
+    } catch (err) {
+      showNotification(`Không gửi được workflow: ${err.message}`);
     }
-
-    try {
-      await executeWorkflow(wf.id, { robot_id: 'RC-001' });
-      showNotification(`Đã phát lệnh kịch bản "${wf.name}" tới màn hình Robot!`);
-    } catch {
-      showNotification(`Đã gửi lệnh nội bộ tới màn hình Robot: "${wf.name}"`);
-    }
-  };
-
-  // Step operations in builder
-  const handleAddStep = (stepType) => {
-    const stepDef = OTTO_STEP_TYPES.find((s) => s.type === stepType);
-    if (!stepDef) return;
-
-    const newStep = {
-      step_id: `step-${Date.now()}`,
-      type: stepDef.type,
-      title: stepDef.label,
-      params: JSON.parse(JSON.stringify(stepDef.defaultParams)),
-    };
-
-    setEditingWorkflow((prev) => ({
-      ...prev,
-      steps: [...(prev.steps || []), newStep],
-    }));
-  };
-
-  const handleRemoveStep = (index) => {
-    const updated = [...editingWorkflow.steps];
-    updated.splice(index, 1);
-    setEditingWorkflow({ ...editingWorkflow, steps: updated });
-  };
-
-  const handleMoveStep = (index, direction) => {
-    const newIdx = index + direction;
-    if (newIdx < 0 || newIdx >= editingWorkflow.steps.length) return;
-    const updated = [...editingWorkflow.steps];
-    const temp = updated[index];
-    updated[index] = updated[newIdx];
-    updated[newIdx] = temp;
-    setEditingWorkflow({ ...editingWorkflow, steps: updated });
-  };
-
-  // Functional update: one edit may change several params in a row (e.g. picking a MOVE target)
-  const handleStepParamChange = (stepIndex, paramKey, val) => {
-    setEditingWorkflow((prev) => {
-      const updated = [...prev.steps];
-      updated[stepIndex] = {
-        ...updated[stepIndex],
-        params: {
-          ...(updated[stepIndex].params || {}),
-          [paramKey]: val,
-        },
-      };
-      return { ...prev, steps: updated };
-    });
-  };
-
-  const handleWorkflowMetaChange = (key, val) => {
-    setEditingWorkflow({ ...editingWorkflow, [key]: val });
   };
 
   return (
@@ -294,15 +247,18 @@ export const AdminWorkflowTab = () => {
         </div>
 
         {activeView === 'list' && (
+          <div className="flex items-center gap-2">
+          <button type="button" onClick={editing.openRouteWorkflow} className="rounded-lg border border-cyan-800 px-3 py-1.5 text-xs font-bold text-cyan-900">Tạo workflow chạy tuyến</button>
           <button
             type="button"
-            onClick={handleOpenCreate} title={rc('New workflow')} aria-label={rc('New workflow')}
+            onClick={editing.openCreate} title={rc('New workflow')} aria-label={rc('New workflow')}
             className="px-3.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 shadow-2xs hover:bg-[#363636]"
             style={{ backgroundColor: '#262626', color: '#FFFFFF', borderColor: '#262626' }}
           >
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">{rc('New workflow')}</span>
           </button>
+          </div>
         )}
       </div>
 
@@ -327,6 +283,7 @@ export const AdminWorkflowTab = () => {
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 space-y-4" style={{ backgroundColor: '#F2EFE9' }}>
+        <WorkflowRunsPanel key={startedRunId || 'latest'} runId={startedRunId || undefined} />
         {/* Workflow Cards Grid - 2 Cột rộng rãi, màu xám #E9E5DC đồng bộ */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {workflows.length === 0 ? (
@@ -374,6 +331,8 @@ export const AdminWorkflowTab = () => {
                     <p className="text-[11px] line-clamp-2 min-h-[32px] mt-1.5 leading-relaxed" style={{ color: '#8C8C8C' }}>
                       {wf.description || 'Chưa có mô tả chi tiết'}
                     </p>
+                    <p className="mt-2 text-[11px] font-semibold text-stone-600">{executionSummary(wf)}</p>
+                    {unconfiguredRouteSteps(wf).length > 0 && <p className="mt-1 text-[11px] text-amber-800">Bản nháp · Chờ gán tuyến cho {unconfiguredRouteSteps(wf).length} bước tại Physical Map.</p>}
 
                     {/* Steps Pipeline Preview */}
                     <div className="mt-3 pt-2.5 border-t flex items-center justify-between text-xs" style={{ borderColor: '#BFBFBD' }}>
@@ -418,10 +377,10 @@ export const AdminWorkflowTab = () => {
                         onClick={() => handleDispatchToRobot(wf)}
                         className="px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer hover:bg-[#363636] transition-colors flex items-center gap-1.5 shadow-2xs"
                         style={{ backgroundColor: '#262626', borderColor: '#262626', color: '#FFFFFF' }}
-                        title="Phát lệnh điều khiển trực tiếp tới màn hình Robot"
+                        title={wf.execution_config?.execution_mode === 'ROBOT' ? 'Tạo lượt chạy trên xe thật' : 'Gửi kịch bản tới màn hình Robot'}
                       >
                         <Send className="w-3 h-3" />
-                        <span>Gửi Robot</span>
+                        <span>{wf.execution_config?.execution_mode === 'ROBOT' ? 'Chạy xe thật' : 'Gửi màn hình'}</span>
                       </button>
                     </div>
 
@@ -438,7 +397,7 @@ export const AdminWorkflowTab = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleOpenEdit(wf)}
+                        onClick={() => editing.openEdit(wf)}
                         className="p-1.5 rounded-lg border cursor-pointer hover:bg-[#F2EFE9] transition-colors"
                         style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
                         title="Chỉnh sửa kịch bản"
@@ -468,18 +427,24 @@ export const AdminWorkflowTab = () => {
       <WorkflowBuilderModal
         isOpen={isEditorOpen}
         workflow={editingWorkflow}
+        workflows={workflows}
+        onSelectWorkflow={(id) => {
+          const selected = workflows.find((item) => item.id === id);
+          if (selected) editing.openEdit(selected);
+        }}
         waypoints={waypoints}
+        routes={routes}
+        onRouteSaved={(route) => setRoutes((previous) => [...previous.filter((r) => r.id !== route.id), route])}
         isLoading={isLoading}
         onClose={() => {
           setIsEditorOpen(false);
           setEditingWorkflow(null);
         }}
         onSave={handleSaveWorkflow}
-        onAddStep={handleAddStep}
-        onRemoveStep={handleRemoveStep}
-        onMoveStep={handleMoveStep}
-        onStepParamChange={handleStepParamChange}
-        onWorkflowMetaChange={handleWorkflowMetaChange}
+        onWorkflowChange={editing.replaceWorkflow}
+        onRemoveStep={editing.removeStep}
+        onStepParamChange={editing.changeStepParam}
+        onWorkflowMetaChange={editing.changeMeta}
       />
 
       {/* MODAL 2: WORKFLOW SIMULATOR (Live Robot reactions & laptop audio) */}

@@ -4,8 +4,18 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
+from sqlalchemy.engine import make_url
 
 from app.core.config import settings
+
+
+def connection_pool_limits(database_url):
+    url = make_url(database_url)
+    # Supavisor session mode keeps one server-side client for every pooled
+    # connection, including idle ones. Leave room for other backend sessions.
+    if (url.host or '').endswith('pooler.supabase.com') and url.port != 6543:
+        return {"pool_size": 3, "max_overflow": 2}
+    return {"pool_size": 10, "max_overflow": 10}
 
 connect_args = {}
 # Supabase Pooler (Transaction Mode port 6543 / PgBouncer) requires statement_cache_size=0 for asyncpg
@@ -23,8 +33,7 @@ if os.getenv("TESTING") == "1" or "pytest" in sys.modules:
 else:
     engine_kwargs["pool_pre_ping"] = True
     engine_kwargs["pool_recycle"] = 300
-    engine_kwargs["pool_size"] = 10
-    engine_kwargs["max_overflow"] = 10
+    engine_kwargs.update(connection_pool_limits(settings.async_database_url))
 
 # Create Async SQLAlchemy Engine
 engine = create_async_engine(
@@ -61,6 +70,11 @@ async def init_db() -> None:
     from sqlalchemy import text
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Workflow schedule settings are metadata, separate from executable steps.
+        from sqlalchemy import inspect
+        workflow_columns = await conn.run_sync(lambda connection: inspect(connection).get_columns("robot_workflows"))
+        if not any(column["name"] == "execution_config" for column in workflow_columns):
+            await conn.execute(text("ALTER TABLE robot_workflows ADD COLUMN execution_config JSON NOT NULL DEFAULT '{}'"))
         # Existing installations must retain the orientation when editing zones.
         # Keep this additive patch independent of the legacy optional patches below.
         if conn.dialect.name == "postgresql":

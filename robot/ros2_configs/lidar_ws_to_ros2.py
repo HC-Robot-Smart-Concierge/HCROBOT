@@ -31,8 +31,11 @@ from diff_drive import (  # noqa: E402
     DiffDriveConfig, StraightDriveConfig, twist_to_straight_command, twist_to_wheel_pwm,
 )
 from nav_result_tracker import NavResultTracker  # noqa: E402
+from encoder_guard import PARTNER, EncoderSampleGuard, side_tick_deltas  # noqa: E402
+from sonar_escape import pi_sonar_snapshot  # noqa: E402
 from localization_support import LocalizationWarmup, sensor_frame_is_fresh  # noqa: E402
 from speed_zone_logic import limit_wheel_pwm  # noqa: E402
+from vision_udp_link import VisionUdpLink  # noqa: E402
 from robot_geometry import BODY_LENGTH_M, BODY_WIDTH_M, HALF_LENGTH_M, LIDAR_X_M  # noqa: E402
 from robot_status import (  # noqa: E402
     describe_drive_block, diagnose_stuck, format_status_line, lidar_clearances, threshold_warnings,
@@ -74,8 +77,12 @@ class LidarWsToRos2Bridge(Node):
         self._pose_lock = threading.RLock()
         self.wheel_l_pos = 0.0
         self.wheel_r_pos = 0.0
-        self.wheel_radius = 0.033
-        self.wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.297"))
+        # Measured wheel diameter: 6.5 cm. Allow a calibrated rolling radius.
+        self.wheel_radius = float(os.getenv("HCROBOT_WHEEL_RADIUS", "0.0325"))
+        if not math.isfinite(self.wheel_radius) or self.wheel_radius <= 0:
+            raise ValueError("HCROBOT_WHEEL_RADIUS must be a positive radius in meters")
+        # Measured left-to-right wheel centre spacing, not front-to-rear.
+        self.wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.17"))
         # Skid-steer trượt ngang khi quay nên track hiệu dụng lớn hơn khoảng
         # cách hai bên bánh. Chỉ dùng khi không có gyro; hiệu chỉnh bằng cách
         # quay đúng 360° rồi chỉnh tới khi yaw encoder khớp.
@@ -93,6 +100,9 @@ class LidarWsToRos2Bridge(Node):
         self.imu_seen = False
         self.last_encoder_sample_time = None
         self.encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
+        self.encoder_guard = EncoderSampleGuard()
+        self.encoder_fault_cancelled = False
+        self.manual_active_until = 0.0
         # Firmware hiện tại đã chuẩn hóa tick: khi tiến, M1/M2 và M3/M4 đều
         # tăng dương. Giữ override theo biến môi trường để tương thích nếu đổi
         # dây hoặc nạp lại một firmware dùng quy ước khác.
@@ -136,6 +146,7 @@ class LidarWsToRos2Bridge(Node):
         )
         self.zone_speed_limit = None
         self.zone_speed_blocked = False
+        self.manual_cmd_sub = self.create_subscription(Twist, '/robot/manual_cmd_vel', self.on_manual_cmd_vel, 10)
         self.speed_limit_sub = self.create_subscription(SpeedLimit, '/speed_limit', self.on_speed_limit, 10)
 
         # Lắng nghe topic /robot/reset_map để reset sạch SLAM và đưa robot về (0,0)
@@ -177,6 +188,7 @@ class LidarWsToRos2Bridge(Node):
         # Nut "Dung" tren Web (che do ROS 2): huy MOI goal Nav2. Chi gui /cmd_vel=0 thi
         # controller van phat lenh 10 Hz va xe chay tiep.
         self.nav_cancel_client = self.create_client(CancelGoal, '/navigate_to_pose/_action/cancel_goal')
+        self.route_cancel_client = self.create_client(CancelGoal, '/navigate_through_poses/_action/cancel_goal')
         self.nav_cancel_sub = self.create_subscription(Empty, '/robot/nav_cancel', self.on_nav_cancel, 10)
 
         # Service Clients kết nối tới SLAM Toolbox
@@ -260,17 +272,17 @@ class LidarWsToRos2Bridge(Node):
         ).strip().lower()
         self.straight_cfg = StraightDriveConfig(
             track_m=self.yaw_track,
-            mps_per_pct=float(os.getenv("HCROBOT_DIFF_MPS_PER_PCT", "0.0048")),
+            mps_per_pct=float(os.getenv("HCROBOT_DIFF_MPS_PER_PCT", "0.0035")),
             min_pwm=int(os.getenv("HCROBOT_STRAIGHT_MIN_PWM", str(self.teleop_pwm_forward))),
-            max_pwm=int(os.getenv("HCROBOT_DIFF_MAX_PWM", "50")),
+            max_pwm=int(os.getenv("HCROBOT_DIFF_MAX_PWM", "43")),
             spin_radius_m=float(os.getenv("HCROBOT_STRAIGHT_SPIN_RADIUS", "0.15")),
         )
         self.diff_cfg = DiffDriveConfig(
             track_m=self.yaw_track,
-            mps_per_pct=float(os.getenv("HCROBOT_DIFF_MPS_PER_PCT", "0.0048")),
+            mps_per_pct=float(os.getenv("HCROBOT_DIFF_MPS_PER_PCT", "0.0035")),
             min_pwm=int(os.getenv("HCROBOT_DIFF_MIN_PWM", "22")),
             spin_min_pwm=int(os.getenv("HCROBOT_DIFF_SPIN_MIN_PWM", "38")),
-            max_pwm=int(os.getenv("HCROBOT_DIFF_MAX_PWM", "50")),
+            max_pwm=int(os.getenv("HCROBOT_DIFF_MAX_PWM", "43")),
         )
         self.identity_map_odom_on_stale = os.getenv("HCROBOT_IDENTITY_MAP_ODOM_ON_STALE", "0") == "1"
         self._turn_pulse_started = None
@@ -279,7 +291,7 @@ class LidarWsToRos2Bridge(Node):
         self.scan_period_sec = 0.125  # cập nhật từ khoảng cách scan_id thật
 
         # Cấu hình UDP gửi lệnh sang Pi 5
-        self.pi5_ip = os.getenv("PI5_IP", "100.99.72.51")
+        self.pi5_ip = os.getenv("PI5_IP", "100.93.152.7")
         self.pi5_port = int(os.getenv("PI5_PORT", "9999"))
         self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # Bind cong tam ngay de luong nhan pi_status (Pi tra loi ve dung cong nguon cua lenh).
@@ -294,6 +306,11 @@ class LidarWsToRos2Bridge(Node):
         # Khởi động UDP listener nhận tín hiệu từ main.py trên Pi 5 (port 9998)
         self.start_pi5_telemetry_udp_server()
         self.start_pi_status_receiver()
+
+        # Kết quả YOLO từ Pi (UDP 9997) để workflow xác nhận người chắn tuyến
+        self.person_detections_pub = self.create_publisher(String, '/robot/person_detections', 10)
+        VisionUdpLink(self.pi5_ip, lambda text: self.person_detections_pub.publish(String(data=text)),
+                      rclpy.ok).start()
 
         self.get_logger().info(
             f"🚀 LidarWsToRos2Bridge san sang - mode={self.robot_mode}, "
@@ -375,12 +392,19 @@ class LidarWsToRos2Bridge(Node):
             reasons.append("NO_LIDAR_SCAN")
         if self.encoder_packets == 0:
             reasons.append("NO_ENCODER_TELEMETRY")
+        if self.encoder_guard.fault:
+            reasons.append(self.encoder_guard.fault)
         elif not self.encoder_motion_detected:
             reasons.append("NO_ODOMETRY_MOTION")
 
         msg = String()
         msg.data = json.dumps({
             "pi_ws_connected": self.pi_ws_connected,
+            "encoder_valid": self.encoder_guard.valid,
+            "encoder_fault": self.encoder_guard.fault,
+            "wheel_radius_m": self.wheel_radius,
+            "wheel_base_m": self.wheel_sep,
+            "encoder_cpr": self.encoder_cpr,
             "speed_limit_mps": self.zone_speed_limit,
             "speed_limit_below_motor_floor": self.zone_speed_blocked,
             "motor_min_linear_speed_mps": self.straight_cfg.min_pwm * self.straight_cfg.mps_per_pct,
@@ -396,11 +420,15 @@ class LidarWsToRos2Bridge(Node):
             "last_encoder_age_sec": None if self.last_encoder_time <= 0 else round(now - self.last_encoder_time, 3),
             "encoder_motion_detected": self.encoder_motion_detected,
             "ready_for_static_capture": lidar_live,
-            "ready_for_mobile_mapping": lidar_live and self.encoder_motion_detected,
+            "ready_for_mobile_mapping": lidar_live and self.encoder_guard.valid and self.encoder_motion_detected,
             "reasons": reasons,
             # Xe dung yen >= 2 s du Nav2/lai tay dang ra lenh: vi sao (Pi chan huong nao, cam bien
             # nao bao bao nhieu cm) + goi y. Web (tab Physical Map) hien thanh khung do.
             "drive_block": self._drive_block(now),
+            # Sonar Pi dang dung de chan (null = khong do duoc) + nguong: explorer chon huong thoat ket.
+            "pi_sonar": pi_sonar_snapshot(
+                self.pi_status, (now - self.pi_status_time) if self.pi_status is not None else None
+            ),
         })
         self.sensor_health_pub.publish(msg)
 
@@ -586,6 +614,8 @@ class LidarWsToRos2Bridge(Node):
             self.nav_cancel_client.call_async(CancelGoal.Request())
         else:
             self.get_logger().warn("⚠️ Nav2 chưa chạy (không có cancel_goal), chỉ dừng motor")
+        if self.route_cancel_client.service_is_ready():
+            self.route_cancel_client.call_async(CancelGoal.Request())
         self.current_vx = 0.0
         self.current_wz = 0.0
         self.desired_motion = "stop"
@@ -742,11 +772,13 @@ class LidarWsToRos2Bridge(Node):
             m3 = encoders.get("m3", {})
             m4 = encoders.get("m4", {})
             motor_ticks = {
-                "m1": float(m1.get("ticks", 0)),
-                "m2": float(m2.get("ticks", 0)),
-                "m3": float(m3.get("ticks", 0)),
-                "m4": float(m4.get("ticks", 0)),
+                "m1": float(m1["ticks"]),
+                "m2": float(m2["ticks"]),
+                "m3": float(m3["ticks"]),
+                "m4": float(m4["ticks"]),
             }
+            if not all(math.isfinite(value) for value in motor_ticks.values()):
+                raise ValueError('Non-finite encoder ticks')
             left_ticks = (
                 self.encoder_signs["m1"] * motor_ticks["m1"]
                 + self.encoder_signs["m2"] * motor_ticks["m2"]
@@ -755,7 +787,9 @@ class LidarWsToRos2Bridge(Node):
                 self.encoder_signs["m3"] * motor_ticks["m3"]
                 + self.encoder_signs["m4"] * motor_ticks["m4"]
             ) / 2.0
-        except (TypeError, ValueError):
+        except (KeyError, TypeError, ValueError):
+            self.encoder_guard.reject('ENCODER_MISSING_OR_INVALID_CHANNEL')
+            self._freeze_invalid_encoder()
             return
 
         try:
@@ -800,23 +834,33 @@ class LidarWsToRos2Bridge(Node):
                 self.prev_motor_ticks = motor_ticks
                 self.predicted_distance_since_encoder = 0.0
                 self.predicted_yaw_since_encoder = 0.0
+                self.encoder_guard.reject('ENCODER_SAMPLE_TIME_INVALID')
+                self._freeze_invalid_encoder()
                 return
 
-            delta_left_ticks = left_ticks - self.prev_left_ticks
-            delta_right_ticks = right_ticks - self.prev_right_ticks
+            valid_encoder = self.encoder_guard.check(
+                motor_ticks, self.prev_motor_ticks, self.encoder_signs, dt,
+                self.wheel_radius, self.encoder_cpr
+            )
+            if self.encoder_guard.newly_excluded:
+                bad = self.encoder_guard.newly_excluded
+                self.get_logger().error(
+                    f"🔧 Encoder {bad.upper()} đếm xung khi xe đứng yên (dây lỏng/nhiễu): bỏ kênh này, "
+                    f"dùng {PARTNER[bad].upper()} cùng bên cho odometry. Kiểm tra dây encoder {bad.upper()}."
+                )
+            # Delta theo từng bánh, bánh hỏng thay bằng bánh cùng bên (không nhảy khi vừa loại kênh).
+            delta_left_ticks, delta_right_ticks = side_tick_deltas(
+                motor_ticks, self.prev_motor_ticks, self.encoder_signs, self.encoder_guard.excluded
+            )
             self.prev_left_ticks = left_ticks
             self.prev_right_ticks = right_ticks
             self.prev_motor_ticks = motor_ticks
+            if not valid_encoder:
+                self._freeze_invalid_encoder()
+                return
+            self.encoder_fault_cancelled = False
             if abs(delta_left_ticks) >= 1.0 or abs(delta_right_ticks) >= 1.0:
                 self.encoder_motion_detected = True
-
-            # Bo qua packet reset/wrap bat thuong thay vi keo map di mot quang lon.
-            max_ticks_per_packet = self.encoder_cpr * 2.0
-            if abs(delta_left_ticks) > max_ticks_per_packet or abs(delta_right_ticks) > max_ticks_per_packet:
-                self.get_logger().warn("Encoder jump/reset detected; bỏ qua một mẫu odometry.")
-                self.predicted_distance_since_encoder = 0.0
-                self.predicted_yaw_since_encoder = 0.0
-                return
 
             distance_per_tick = (2.0 * math.pi * self.wheel_radius) / self.encoder_cpr
             delta_left_m = delta_left_ticks * distance_per_tick
@@ -876,7 +920,7 @@ class LidarWsToRos2Bridge(Node):
             self.zone_speed_limit = 0.0
             return
         # Nav2 uses zero to restore the normal controller speed.
-        reference = float(os.getenv('HCROBOT_NAV_MAX_LINEAR_SPEED', '0.2'))
+        reference = float(os.getenv('HCROBOT_NAV_MAX_LINEAR_SPEED', '0.15'))
         self.zone_speed_limit = None if value == 0 else (reference * value / 100 if msg.percentage else value)
         self.zone_speed_blocked = False
 
@@ -892,7 +936,43 @@ class LidarWsToRos2Bridge(Node):
         )
         return limited
 
+    def _freeze_invalid_encoder(self):
+        with self._pose_lock:
+            self.measured_vx = self.measured_wz = 0.0
+            self.predicted_distance_since_encoder = self.predicted_yaw_since_encoder = 0.0
+            self.encoder_motion_detected = False
+        self.get_logger().warn(f'Odometry rejected: {self.encoder_guard.fault}', throttle_duration_sec=2.0)
+        if time.monotonic() >= self.manual_active_until:
+            self.current_vx = self.current_wz = 0.0
+            self.desired_motion = 'stop'
+            self._send_udp_to_pi5('stop')
+            if not self.encoder_fault_cancelled:
+                self.on_nav_cancel()
+                self.encoder_fault_cancelled = True
+
+    def on_manual_cmd_vel(self, msg: Twist):
+        now = time.monotonic()
+        if not all(math.isfinite(v) for v in (msg.linear.x, msg.angular.z)):
+            self.on_nav_cancel()
+            return
+        moving = abs(msg.linear.x) > 0.001 or abs(msg.angular.z) > 0.001
+        if moving and now >= self.manual_active_until:
+            self.on_nav_cancel()
+        self.manual_active_until = now + 0.9
+        # Manual escape still passes through the Pi's existing ultrasonic interlock.
+        self._apply_cmd_vel(msg)
+
     def on_cmd_vel_received(self, msg: Twist):
+        if time.monotonic() < self.manual_active_until:
+            return
+        if not self.encoder_guard.valid:
+            self.current_vx = self.current_wz = 0.0
+            self.desired_motion = 'stop'
+            self._send_udp_to_pi5('stop')
+            return
+        self._apply_cmd_vel(msg)
+
+    def _apply_cmd_vel(self, msg: Twist):
         now = time.monotonic()
         was_active = (now - self.last_cmd_time) < 0.8 and (
             abs(self.current_vx) > 0.02 or abs(self.current_wz) > 0.1
@@ -1060,7 +1140,7 @@ class LidarWsToRos2Bridge(Node):
 
             # Fallback nay mac dinh TAT. cmd_vel la lenh mong muon, khong phai
             # chuyen dong da do; dung no lam odom chinh la nguyen nhan map bi chong.
-            if self.allow_cmd_vel_odom and not encoder_is_fresh and (
+            if self.allow_cmd_vel_odom and not self.encoder_guard.fault and not encoder_is_fresh and (
                 abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001
             ):
                 yaw_deg = self.current_pose['yaw'] + math.degrees(self.current_wz * dt)
@@ -1071,8 +1151,8 @@ class LidarWsToRos2Bridge(Node):
                 self.current_pose['y'] += self.current_vx * math.sin(yaw_rad) * dt
 
             if not encoder_is_fresh:
-                self.measured_vx = self.current_vx if self.allow_cmd_vel_odom else 0.0
-                self.measured_wz = self.current_wz if self.allow_cmd_vel_odom else 0.0
+                self.measured_vx = self.current_vx if self.allow_cmd_vel_odom and not self.encoder_guard.fault else 0.0
+                self.measured_wz = self.current_wz if self.allow_cmd_vel_odom and not self.encoder_guard.fault else 0.0
 
             # Luôn phát /odom và TF odom -> base_link đều đặn 30Hz để robot model di chuyển mượt mà trên RViz2
             now = self.get_clock().now().to_msg()
@@ -1249,10 +1329,14 @@ class LidarWsToRos2Bridge(Node):
         msg.angle_max = msg.angle_min + (num_bins - 1) * msg.angle_increment
         msg.time_increment = 0.0
         msg.scan_time = self.scan_period_sec
-        msg.range_min = 0.20
+        # RPLiDAR A1 specifies 0.15 m minimum. Discarding 0.15..0.20 m
+        # observations hid walls just beyond the front/rear edge of this body.
+        msg.range_min = 0.15
         msg.range_max = 12.0
 
-        ranges = [float('inf')] * num_bins
+        # An empty bin is unobserved, not a measured "no obstacle" ray. Recovery
+        # must not infer free space from holes in the sparse RPLiDAR point set.
+        ranges = [float('nan')] * num_bins
         intensities = [0.0] * num_bins
 
         for pt in points:
@@ -1265,7 +1349,7 @@ class LidarWsToRos2Bridge(Node):
                 # 0° -> Tiến (+X), 90° -> Trái (+Y), 180° -> Lùi (-X), 270° -> Phải (-Y)
                 bin_idx = int(angle_deg) % num_bins
                 # Giu khoang cach nho nhat neu co nhieu diem trong 1 bin
-                if dist < ranges[bin_idx]:
+                if not math.isfinite(ranges[bin_idx]) or dist < ranges[bin_idx]:
                     ranges[bin_idx] = float(dist)
                     intensities[bin_idx] = float(quality)
 
@@ -1324,7 +1408,7 @@ class LidarWsToRos2Bridge(Node):
             self.localization_warmup.sent(now, self.last_published_scan_time)
 
 
-async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.99.72.51:8000/api/v1/map/ws?consumer=ros2"):
+async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.93.152.7:8000/api/v1/map/ws?consumer=ros2"):
     while rclpy.ok():
         try:
             async with websockets.connect(ws_url, ping_interval=10, ping_timeout=5) as ws:

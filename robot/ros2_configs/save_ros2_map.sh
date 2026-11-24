@@ -20,7 +20,7 @@ if [ "$PAUSE_MODE" != "--no-pause" ]; then
   # Dong bang Slam Toolbox sau khi luu. /scan van tiep tuc hoat dong de hien thi
   # va tranh vat can, nhung occupancy grid khong con nhan measurement moi.
   ros2 topic pub --once /robot/pause_map std_msgs/msg/Empty '{}' >/dev/null 2>&1 || true
-  curl -fsS -X POST "http://${PI5_IP:-100.99.72.51}:8000/api/v1/map/mode" \
+  curl -fsS -X POST "http://${PI5_IP:-100.93.152.7}:8000/api/v1/map/mode" \
     -H 'Content-Type: application/json' -d '{"mode":"NAVIGATION"}' >/dev/null 2>&1 || true
 fi
 

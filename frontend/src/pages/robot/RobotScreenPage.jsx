@@ -20,6 +20,8 @@ import {
 import { guestRequestPhase, hasFollowUpConfirmationStep } from '../../utils/workflowGuestRequest';
 import { WorkflowGuestRequestPanel } from '../admin/tabs/workflow/WorkflowGuestRequestPanel';
 import { useWorkflowRunner } from '../../hooks/useWorkflowRunner';
+import { useParallelWorkflowRun } from '../../hooks/useParallelWorkflowRun';
+import { isGuestFarewell, isGuestTalkStep, laneOfWorkflow } from '../../utils/workflowParallelRun';
 import { KioskDisplayPreview } from '../admin/tabs/workflow/KioskDisplayPreview';
 import { fetchWorkflows } from '../../services/workflowApi';
 import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket';
@@ -378,6 +380,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         startWorkflow(event.workflow);
       }
     },
+    // Xe thật đang chạy workflow song song: màn hình theo pha của xe
+    onRobotRunStatus: (payload) => parallelRun.handleRunStatus(payload),
   });
 
   // Session Memory & Room Number States
@@ -709,6 +713,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isListening,
     sessionId,
     roomNumber: authenticatedRoom || activeRoomNumber || null,
+    isExternalTalkStep: isGuestTalkStep,
   });
 
   // Pin yếu: cùng quy tắc với Studio (utils/batteryPolicy). Pin ước tính từ Pi 5 đại diện cho cả pin động cơ.
@@ -717,7 +722,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const chargeRoutine = useMemo(() => findChargeRoutine(availableWorkflows), [availableWorkflows]);
   const isChargeRoutineRunning = isWorkflowRunning && activeWorkflow?.id === chargeRoutine.id;
   const isIdlePromo = false;
-  const isServingGuest = (isWorkflowRunning && !isChargeRoutineRunning) || currentState !== 'RT-01' || isVideoCallOpen;
+  // Quảng cáo của làn màn hình không phải là đang phục vụ khách
+  const isScreenLaneRunning = isWorkflowRunning && laneOfWorkflow(activeWorkflow?.id) === 'screen';
+  const isServingGuest = (isWorkflowRunning && !isChargeRoutineRunning && !isScreenLaneRunning) || currentState !== 'RT-01' || isVideoCallOpen;
   const batteryGuard = useLowBatteryGuard({
     percent: batteryPercent,
     routine: chargeRoutine,
@@ -753,6 +760,81 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isWaitingForCharge: batteryGuard.isWaitingForCharge,
     english: language === 'English',
   });
+
+  // Kết thúc phiên khách: đóng modal, lưu hội thoại, về trạng thái nghỉ RT-01
+  const endGuestSession = () => {
+    stopSpeaking();
+    stopListening();
+    resetTranscript();
+    setAiResponseText('');
+    setActiveRoomNumber(null);
+    setAuthenticatedRoom(null);
+    clearRouteGuidanceTimers();
+    setIsFoodMenuOpen(false);
+    setIsRoomServiceMenuOpen(false);
+    setIsTaxiModalOpen(false);
+    setTaxiFlowStage(null);
+    setIsFacilitiesModalOpen(false);
+    setIsFeedbackModalOpen(false);
+    setIsAutoQrModalOpen(false);
+    setIsPinModalOpen(false);
+    isPinModalOpenRef.current = false;
+    setShowQuickMenu(false);
+    setShowLangMenu(false);
+    flushSession(sessionId).catch(() => {});
+    setSessionId('session_kiosk_' + Math.random().toString(36).substring(2, 9));
+    setCurrentState('RT-01');
+    lastInteractionTimeRef.current = Date.now();
+  };
+
+  // Workflow song song: nhánh gặp khách dùng luồng hội thoại AI có sẵn của màn hình
+  const parallelTalkOpenRef = useRef(false);
+  const parallelFarewellRef = useRef(false);
+  const closeParallelTalk = (force = false) => {
+    if (!force && !parallelTalkOpenRef.current) return;
+    parallelTalkOpenRef.current = false;
+    parallelFarewellRef.current = false;
+    activeChatRequestIdRef.current += 1;
+    if (chatAbortControllerRef.current) {
+      try { chatAbortControllerRef.current.abort(); } catch (e) { }
+      chatAbortControllerRef.current = null;
+    }
+    if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
+    if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
+    isProcessingRef.current = false;
+    setIsProcessing(false);
+    clearFollowUpTimer();
+    setIsMaintenanceMenuOpen(false);
+    setIsBellmanMenuOpen(false);
+    endGuestSession();
+  };
+  const beginParallelTalk = (step) => {
+    const params = step.params || {};
+    const prompt = params.initial_prompt || params.speech_text || params.text;
+    const openMic = () => handleStartTalkRef.current?.({ silent: true, keepIdleTimer: true });
+    parallelTalkOpenRef.current = true;
+    lastInteractionTimeRef.current = Date.now();
+    setIsStandby(false);
+    setCurrentState('RT-02');
+    if (prompt && prompt.trim()) {
+      speak(prompt, params.language || 'vi-VN', () => setTimeout(openMic, 120), null, null, parseFloat(params.voice_speed) || 1.0);
+    } else {
+      openMic();
+    }
+  };
+  const parallelRun = useParallelWorkflowRun({
+    activeWorkflow, activeStep, isWorkflowRunning, currentStepIndex, stepRun,
+    startWorkflow, stopWorkflow, nextStep,
+    canStart: batteryGuard.canStartGuestSession,
+    busy: Boolean(isSpeaking || isSpeechActive || isProcessing || isVideoCallOpen || (transcript && transcript.trim())),
+    activeAds,
+    lastInteractionRef: lastInteractionTimeRef,
+    onEnterPatrol: () => { setGuestPresent(false); setIsStandby(false); closeParallelTalk(true); },
+    onBeginTalk: beginParallelTalk,
+    onEndTalk: () => closeParallelTalk(),
+  });
+  const showParallelAds = parallelRun.showAds && !isVideoCallOpen;
+
   const pausePromoForGuest = () => {
     if (!isIdlePromo) return;
     pausedPromo.current = { workflow: activeWorkflow, index: currentStepIndex };
@@ -1000,7 +1082,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         isVideoCallOpen ||
         isTaxiModalOpen ||
         isTaxiModalOpenRef.current ||
-        isWorkflowRunning ||
+        (isWorkflowRunning && !parallelRun.isTalking) ||
         isViewingMap
       );
 
@@ -1009,34 +1091,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         return;
       }
 
+      // Đang nói chuyện trong workflow song song: useParallelWorkflowRun quyết định khi nào kết thúc
+      if (parallelRun.isTalking) return;
+
       const idleDuration = Date.now() - lastInteractionTimeRef.current;
 
       // 2. Nếu đang trong phiên hội thoại hoặc có phòng active hoặc mở modal nhưng khách bỏ đi quá 30 giây:
       if (currentState !== 'RT-01' || activeRoomNumber !== null) {
         if (idleDuration >= CONVERSATION_IDLE_TIMEOUT_MS) {
           // Tự động kết thúc phiên hội thoại một cách lịch sự, đóng toàn bộ modal và về chế độ RT-01
-          stopSpeaking();
-          stopListening();
-          resetTranscript();
-          setAiResponseText('');
-          setActiveRoomNumber(null);
-          setAuthenticatedRoom(null);
-          clearRouteGuidanceTimers();
-          setIsFoodMenuOpen(false);
-          setIsRoomServiceMenuOpen(false);
-          setIsTaxiModalOpen(false);
-          setTaxiFlowStage(null);
-          setIsFacilitiesModalOpen(false);
-          setIsFeedbackModalOpen(false);
-          setIsAutoQrModalOpen(false);
-          setIsPinModalOpen(false);
-          isPinModalOpenRef.current = false;
-          setShowQuickMenu(false);
-          setShowLangMenu(false);
-          flushSession(sessionId).catch(() => { });
-          setSessionId('session_kiosk_' + Math.random().toString(36).substring(2, 9));
-          setCurrentState('RT-01');
-          lastInteractionTimeRef.current = Date.now();
+          endGuestSession();
         }
         return; // Tuyệt đối KHÔNG tự ý bật quảng cáo khi chưa về trạng thái RT-01
       }
@@ -1085,6 +1149,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isVideoCallOpen,
     isTaxiModalOpen,
     isWorkflowRunning,
+    parallelRun.isTalking,
     activeRoomNumber,
     isStandby,
     currentState,
@@ -1153,6 +1218,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Tránh tình trạng robot treo vĩnh viễn ở trạng thái "Đang lắng nghe..." khi khách không nói gì
   useEffect(() => {
     if (
+      !parallelRun.isTalking &&
       currentState === 'RT-03' &&
       isListening &&
       !isTranscribing &&
@@ -1176,10 +1242,24 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       }, 8000);
       return () => clearTimeout(noSpeechTimer);
     }
-  }, [currentState, isListening, isSpeaking, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen, isTaxiModalOpen, transcript, stopListening, isTranscribing, volumeLevel]);
+  }, [parallelRun.isTalking, currentState, isListening, isSpeaking, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen, isTaxiModalOpen, transcript, stopListening, isTranscribing, volumeLevel]);
+
+  // Đang nói chuyện trong workflow song song: mic tắt giữa chừng thì bật lại, không tính là khách tương tác
+  useEffect(() => {
+    if (!parallelRun.isTalking || isListening || isSpeaking || isSpeechActive || isProcessing || isVideoCallOpen ||
+        isPinModalOpen || isFeedbackModalOpen) return undefined;
+    const timer = setTimeout(() => {
+      if (!parallelFarewellRef.current && !isSpeakingRef.current && !isSpeechActiveRef.current && !isProcessingRef.current && !isListeningRef.current) {
+        handleStartTalkRef.current?.({ silent: true, keepIdleTimer: true });
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [parallelRun.isTalking, isListening, isSpeaking, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen, isFeedbackModalOpen]);
 
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = (detection) => {
+    // Workflow song song: chỉ LiDAR hoặc chạm màn hình mới được dừng xe, camera không mở hội thoại
+    if (parallelRun.active) return;
     setGuestPresent(true);
     // Pin yếu: không mở phiên mới, không dừng kịch bản về trạm sạc, chỉ báo khách
     if (!batteryGuard.canStartGuestSession) {
@@ -1230,11 +1310,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB, dọn dẹp âm thanh & chuyển sang ngủ nhẹ (RT-01)
   const handleGuestApproachedByTouch = () => {
     if (!batteryGuard.canStartGuestSession) { announceLowBattery(); return; }
+    if (parallelRun.phase === 'MOVING') { parallelRun.requestGuest(); return; }
     pausePromoForGuest();
     handleStartTalk();
   };
 
   const handleGuestLeft = async () => {
+    if (parallelRun.active) return;
     setGuestPresent(false);
     if (unhappyTimerRef.current) {
       clearTimeout(unhappyTimerRef.current);
@@ -1310,7 +1392,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       return;
     }
     // Khi RoomPickerModal mở, KHÔNG chặn mic: Cho phép khách nói số phòng bằng giọng nói song song với chạm cảm ứng
-    lastInteractionTimeRef.current = Date.now();
+    if (!options?.keepIdleTimer) lastInteractionTimeRef.current = Date.now();
     if (isStandby) setIsStandby(false);
     activeChatRequestIdRef.current += 1;
     if (chatAbortControllerRef.current) {
@@ -1615,6 +1697,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       if (currentState !== 'RT-05') {
         setCurrentState('RT-02');
       }
+      return;
+    }
+
+    // Workflow song song: khách chào tạm biệt -> chào lại rồi cho xe đi tiếp
+    if (parallelRun.isTalking && !isTaxiModalOpenRef.current && isGuestFarewell(query)) {
+      parallelFarewellRef.current = true;
+      resetTranscript();
+      stopListening();
+      const isEn = languageRef.current === 'English';
+      speak(isEn ? 'Thank you. Have a great day!' : 'Dạ em cảm ơn quý khách. Chúc quý khách một ngày tốt lành!',
+        isEn ? 'en-US' : 'vi-VN', () => parallelRun.finishTalk());
       return;
     }
 
@@ -3128,14 +3221,20 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     <div className="w-full h-[100dvh] bg-aurora-canvas overflow-hidden font-sans select-none relative">
       {/* Màn hình Trình chiếu Quảng cáo Cloudinary (Khi rảnh rỗi hoặc nhận lệnh push từ Admin) */}
       <RobotAdPlayer
-        isOpen={isStandby && !isWorkflowRunning && !guestPresent}
+        isOpen={showParallelAds || (isStandby && !isWorkflowRunning && !guestPresent)}
         onClose={() => {
+          // Xe đang đi tuyến: chạm quảng cáo là khách muốn nói chuyện, báo xe dừng
+          if (showParallelAds) {
+            parallelRun.requestGuest();
+            return;
+          }
           setIsStandby(false);
           resetStandbyTimer();
         }}
-        ads={activeAds}
-        pushedAd={pushedAd}
+        ads={showParallelAds ? parallelRun.ads : activeAds}
+        pushedAd={showParallelAds ? null : pushedAd}
         onUserInteract={() => {
+          if (showParallelAds) return;
           setIsStandby(false);
           resetStandbyTimer();
         }}
@@ -3744,8 +3843,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           </div>
         )}
 
-        {/* Aurora Workflow Floating Status Banner */}
-        {isWorkflowRunning && (
+        {/* Aurora Workflow Floating Status Banner (ẩn khi chạy song song để khách không bấm dừng làn) */}
+        {isWorkflowRunning && !parallelRun.active && (
           <div className="absolute top-5 left-1/2 -translate-x-1/2 z-40 px-5 py-2 rounded-full bg-stone-900/90 border border-stone-700 shadow-xl backdrop-blur-md flex items-center gap-3 animate-fadeIn text-stone-200">
             <span className="w-2.5 h-2.5 rounded-full bg-stone-300 animate-pulse" />
             <span className="text-xs font-bold text-stone-200 tracking-wide uppercase">
@@ -3781,7 +3880,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         <main className="w-full flex-1 px-16 py-[54px] flex items-center justify-center gap-16 overflow-hidden">
 
           {/* Render Workflow Kiosk Interface trực tiếp tại trung tâm màn hình robot (loại trừ wf-06-idle-promo) */}
-          {requestPhase ? null : isWorkflowRunning && activeWorkflow?.id !== 'wf-06-idle-promo' && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || activeStep?.type === 'COMMUNICATE' || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST' || activeStep?.type === 'CHOICE') ? (
+          {requestPhase ? null : isWorkflowRunning && activeWorkflow?.id !== 'wf-06-idle-promo' && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || (activeStep?.type === 'COMMUNICATE' && !parallelRun.isTalking) || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST' || activeStep?.type === 'CHOICE') ? (
             <div className="w-[700px] max-h-[610px] bg-white/98 backdrop-blur-2xl border-2 border-stone-200/90 rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col overflow-hidden animate-fadeIn">
               <KioskDisplayPreview
                 activeStep={activeStep}

@@ -10,7 +10,7 @@ export const PI5_CAMERA_SPECS = {
   MAX_FPS: 20,
   ASPECT_RATIO: 4 / 3,
   DEFAULT_PORT: 8554,
-  DEFAULT_IP: '100.99.72.51',
+  DEFAULT_IP: '100.93.152.7',
 };
 
 /**

@@ -8,6 +8,10 @@ export function describeExploreResult(result) {
       return { tone: 'success', title: 'Robot đã quét xong bản đồ', detail };
     case 'FAILED':
       return { tone: 'warning', title: 'Robot dừng tự quét nhưng chưa đi được', detail };
+    case 'BLOCKED':
+      return { tone: 'warning', title: 'Chưa quét xong — đang chờ thử lại', detail };
+    case 'INCOMPLETE':
+      return { tone: 'warning', title: 'Bản đồ còn vùng chưa khám phá', detail };
     case 'STOPPED':
       return { tone: 'neutral', title: 'Đã dừng tự quét', detail };
     default:

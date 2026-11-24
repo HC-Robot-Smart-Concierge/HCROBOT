@@ -66,8 +66,10 @@ export function polygonValidationError(points) {
 // Bounding box metadata only; vertices are the authoritative polygon shape.
 export function zoneFromVertices(vertices) {
   const b = zoneBounds({ vertices });
-  return { vertices, x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2,
-    width: b.maxX - b.minX, height: b.maxY - b.minY, yaw: 0 };
+  return {
+    vertices, x: (b.minX + b.maxX) / 2, y: (b.minY + b.maxY) / 2,
+    width: b.maxX - b.minX, height: b.maxY - b.minY, yaw: 0
+  };
 }
 
 export function removeZoneVertex(zone, index) {
@@ -116,14 +118,18 @@ export function zoneLocalPoint(zone, point) {
 
 export function zoneWorldPoint(zone, point) {
   const a = normalizeZoneYaw(zone.yaw) * Math.PI / 180;
-  return { x: Number(zone.x || 0) + point.x * Math.cos(a) - point.y * Math.sin(a),
-    y: Number(zone.y || 0) + point.x * Math.sin(a) + point.y * Math.cos(a) };
+  return {
+    x: Number(zone.x || 0) + point.x * Math.cos(a) - point.y * Math.sin(a),
+    y: Number(zone.y || 0) + point.x * Math.sin(a) + point.y * Math.cos(a)
+  };
 }
 
 export function zoneBounds(zone) {
   const points = isPolygonZone(zone) ? zone.vertices : Object.values(zoneCorners(zone));
-  return { minX: Math.min(...points.map((p) => p.x)), maxX: Math.max(...points.map((p) => p.x)),
-    minY: Math.min(...points.map((p) => p.y)), maxY: Math.max(...points.map((p) => p.y)) };
+  return {
+    minX: Math.min(...points.map((p) => p.x)), maxX: Math.max(...points.map((p) => p.x)),
+    minY: Math.min(...points.map((p) => p.y)), maxY: Math.max(...points.map((p) => p.y))
+  };
 }
 
 export function zoneCorners(zone) {

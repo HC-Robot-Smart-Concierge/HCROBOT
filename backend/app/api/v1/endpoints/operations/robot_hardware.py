@@ -29,7 +29,7 @@ _MOTION_MAP = {
 
 class RobotMoveCommand(BaseModel):
     command: str
-    target_ip: Optional[str] = "100.99.72.51"
+    target_ip: Optional[str] = "100.93.152.7"
     port: Optional[int] = 9999
     speed: Optional[int] = None
 
@@ -37,7 +37,7 @@ class RobotMoveCommand(BaseModel):
 class WebRTCOfferRequest(BaseModel):
     sdp: str
     type: str = "offer"
-    target_ip: Optional[str] = "100.99.72.51"
+    target_ip: Optional[str] = "100.93.152.7"
     port: Optional[int] = 8554
 
 
@@ -81,7 +81,7 @@ async def control_robot_movement(cmd: RobotMoveCommand):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(0.5)
-        target_host = cmd.target_ip or "100.99.72.51"
+        target_host = cmd.target_ip or "100.93.152.7"
         target_port = cmd.port or 9999
 
         raw_cmd = cmd.command.lower().strip()
@@ -113,7 +113,7 @@ async def control_robot_movement(cmd: RobotMoveCommand):
     summary="Reverse Proxy MJPEG Camera Stream từ Raspberry Pi 5 sang HTTPS",
 )
 async def proxy_camera_stream(
-    target_ip: Optional[str] = "100.99.72.51",
+    target_ip: Optional[str] = "100.93.152.7",
     port: Optional[int] = 8554,
 ):
     """
@@ -154,7 +154,7 @@ async def proxy_camera_stream(
     summary="Kiểm tra trạng thái kết nối Camera Stream Pi 5",
 )
 async def check_camera_health(
-    target_ip: Optional[str] = "100.99.72.51",
+    target_ip: Optional[str] = "100.93.152.7",
     port: Optional[int] = 8554,
 ):
     """Kiểm tra xem service camera_stream.py trên Pi 5 có đang online không."""
@@ -179,7 +179,7 @@ async def exchange_camera_webrtc_offer(payload: WebRTCOfferRequest):
     Chuyển tiếp SDP Offer từ Web Frontend tới WebRTC Server trên Pi 5 (port 8554/offer)
     và trả về SDP Answer từ Pi 5 để thiết lập kết nối WebRTC P2P siêu mượt không độ trễ.
     """
-    target_host = payload.target_ip or "100.99.72.51"
+    target_host = payload.target_ip or "100.93.152.7"
     target_port = payload.port or 8554
     pi_offer_url = f"http://{target_host}:{target_port}/offer"
     try:
@@ -211,7 +211,7 @@ async def exchange_camera_webrtc_offer(payload: WebRTCOfferRequest):
     summary="Reverse Proxy các request điều khiển phần cứng Pi 5 (tránh Mixed Content trên HTTPS)",
 )
 async def proxy_pi5_hardware_api(request: Request, path: str):
-    target_url = f"http://100.99.72.51:8000/api/v1/{path}"
+    target_url = f"http://100.93.152.7:8000/api/v1/{path}"
     if request.url.query:
         target_url = f"{target_url}?{request.url.query}"
 

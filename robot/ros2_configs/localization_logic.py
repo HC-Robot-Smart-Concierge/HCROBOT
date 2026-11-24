@@ -136,7 +136,7 @@ class LocalizationStateMachine:
                      and sigma_xy <= self.max_sigma_xy and sigma_yaw <= self.max_sigma_yaw)
         score = match.score if match is not None else None
         aligned = match is not None and match.weak_sector >= self.min_sector_score
-        good = score is not None and score >= self.good_score and aligned and confident
+        good = inputs_ok and score is not None and score >= self.good_score and aligned and confident
         pct = f"{score:.0%}" if score is not None else "?"
 
         if self.state == UNLOCALIZED:
@@ -167,11 +167,16 @@ class LocalizationStateMachine:
             return False
 
         if self.state == LOCALIZED:
-            bad = score is not None and score < self.lost_score
+            # Missing scan/TF is not evidence that localization is still valid.
+            # Keep the existing grace period for brief gaps during turn pulses.
+            bad = not inputs_ok or match is None or score < self.lost_score
             if bad:
                 self._bad_since = self._bad_since if self._bad_since is not None else now
                 if now - self._bad_since >= self.lost_sec:
-                    return self._set(LOST, f"Mất định vị: LiDAR chỉ còn khớp {pct} bản đồ. Đã dừng xe.")
+                    why = (missing_reason if not inputs_ok else
+                           "chưa đánh giá được LiDAR/TF" if match is None else
+                           f"LiDAR chỉ còn khớp {pct} bản đồ")
+                    return self._set(LOST, f"Mất định vị: {why}. Đã gửi yêu cầu dừng xe.")
             else:
                 self._bad_since = None
                 if score is not None:

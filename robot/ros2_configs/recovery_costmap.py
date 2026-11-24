@@ -30,7 +30,24 @@ def motion_samples(pose, vx, wz, duration, step=0.05):
         yield x, y, angle
 
 
-def scan_sweep_clear(points, coverage, vx, wz, duration, margin=COLLISION_MARGIN_M):
+def body_clearance(point, pose):
+    """Signed clearance to the real body, using the conservative box metric."""
+    dx, dy = point[0] - pose[0], point[1] - pose[1]
+    c, s = math.cos(pose[2]), math.sin(pose[2])
+    return max(abs(c * dx + s * dy) - HALF_LENGTH_M,
+               abs(-s * dx + c * dy) - HALF_WIDTH_M)
+
+
+def margin_escape_allowed(initial, current, margin, vx, wz, enabled):
+    # Only straight movement, never rotation/arcs or actual body contact. An
+    # obstacle already in the padding may stay equally distant or move away;
+    # obstacles initially outside the padding must retain the full margin.
+    return (enabled and abs(vx) > 1e-6 and abs(wz) < 1e-6 and initial > 0.005
+            and current + 1e-9 >= min(margin, initial))
+
+
+def scan_sweep_clear(points, coverage, vx, wz, duration, margin=COLLISION_MARGIN_M,
+                     allow_margin_escape=False):
     if not coverage:
         return False
     for x, y, yaw in motion_samples((0.0, 0.0, 0.0), vx, wz, duration):
@@ -38,11 +55,15 @@ def scan_sweep_clear(points, coverage, vx, wz, duration, margin=COLLISION_MARGIN
         for px, py in points:
             dx, dy = px - x, py - y
             if abs(c * dx + s * dy) <= HALF_LENGTH_M + margin and abs(-s * dx + c * dy) <= HALF_WIDTH_M + margin:
-                return False
+                if not margin_escape_allowed(body_clearance((px, py), (0, 0, 0)),
+                                             body_clearance((px, py), (x, y, yaw)), margin,
+                                             vx, wz, allow_margin_escape):
+                    return False
     return True
 
 
-def grid_sweep_clear(grid, pose, vx, wz, duration, margin=COLLISION_MARGIN_M):
+def grid_sweep_clear(grid, pose, vx, wz, duration, margin=COLLISION_MARGIN_M,
+                     allow_margin_escape=False):
     """Reject unknown/lethal cells under the whole body at every sampled pose.
 
     Nav2's OccupancyGrid encodes lethal obstacles as 100; 1..99 is soft inflation
@@ -54,6 +75,8 @@ def grid_sweep_clear(grid, pose, vx, wz, duration, margin=COLLISION_MARGIN_M):
         return False
     ox, oy, origin_yaw = grid.origin
     co, so = math.cos(origin_yaw), math.sin(origin_yaw)
+    initial_pose = (co * (pose[0] - ox) + so * (pose[1] - oy),
+                    -so * (pose[0] - ox) + co * (pose[1] - oy), pose[2] - origin_yaw)
     cell_margin = grid.resolution / math.sqrt(2)
     half_x, half_y = HALF_LENGTH_M + margin, HALF_WIDTH_M + margin
     for x, y, yaw in motion_samples(pose, vx, wz, duration):
@@ -77,5 +100,12 @@ def grid_sweep_clear(grid, pose, vx, wz, duration, margin=COLLISION_MARGIN_M):
                 dx = (cx + 0.5) * grid.resolution - gx
                 if (abs(c * dx + s * dy) <= half_x + cell_margin
                         and abs(-s * dx + c * dy) <= half_y + cell_margin):
-                    return False
+                    point = ((cx + 0.5) * grid.resolution, (cy + 0.5) * grid.resolution)
+                    # Unknown cells are never treated as free escape space.
+                    if value < 0 or not margin_escape_allowed(
+                        body_clearance(point, initial_pose) - cell_margin,
+                        body_clearance(point, (gx, gy, yaw - origin_yaw)) - cell_margin,
+                        margin, vx, wz, allow_margin_escape,
+                    ):
+                        return False
     return True

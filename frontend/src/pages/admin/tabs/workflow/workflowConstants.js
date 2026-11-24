@@ -1,4 +1,4 @@
-import { Move, Smile, Volume2, Monitor, Mic, Sliders, Send, Star, MessagesSquare, GitBranch } from 'lucide-react';
+import { Move, Smile, Volume2, Monitor, Mic, Sliders, Send, Star, MessagesSquare, GitBranch, Clock } from 'lucide-react';
 
 /**
  * Standard Otto Step Types for Hotel Concierge Robot
@@ -123,13 +123,25 @@ export const OTTO_STEP_TYPES = [
       cancel_next_step_id: 'END',
     },
   },
+  {
+    type: 'FOLLOW_ROUTE',
+    label: 'Đi theo tuyến (FOLLOW_ROUTE)',
+    desc: 'Chọn tuyến đường đã lưu trên Physical Map; có thể lặp riêng tuyến này',
+    defaultParams: { route_id: '', repeat_count: 1 },
+  },
+  {
+    type: 'WAIT', label: 'Chờ (WAIT)', desc: 'Dừng tại điểm hiện tại trong thời gian cấu hình',
+    defaultParams: { duration_sec: 5 },
+  },
 ];
 
 /**
  * Clean Neutral Palette Definitions for Otto Steps (Minimalist Slate / Stone)
  */
 export const STEP_SCRATCH_THEMES = {
+  WAIT: { label: 'Wait', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Clock },
   MOVE: { label: 'Motion', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Move },
+  FOLLOW_ROUTE: { label: 'Route', bg: '#ffffff', border: '#67e8f9', accent: '#0e7490', icon: Move },
   GREET: { label: 'Looks', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Smile },
   COMMUNICATE: { label: 'Converse', bg: '#ffffff', border: '#38bdf8', accent: '#0284c7', icon: MessagesSquare },
   SHOW: { label: 'Display', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Monitor },

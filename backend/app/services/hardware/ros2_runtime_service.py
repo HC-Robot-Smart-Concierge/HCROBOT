@@ -185,7 +185,7 @@ class Ros2RuntimeService:
 
     def _send_udp_stop(self, repeats: int = 5) -> None:
         """Gửi thẳng 'stop' tới main.py trên Pi (UDP 9999), không phụ thuộc bridge ROS."""
-        target = (os.getenv("PI5_IP", "100.99.72.51"), int(os.getenv("PI5_PORT", "9999")))
+        target = (os.getenv("PI5_IP", "100.93.152.7"), int(os.getenv("PI5_PORT", "9999")))
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             for _ in range(repeats):

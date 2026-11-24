@@ -10,6 +10,7 @@ Usage tren Pi 5:
     python3 camera_stream.py --port 8554 --fps 15 --width 640 --height 480
 """
 import io
+import json
 import os
 import sys
 import time
@@ -474,6 +475,11 @@ camera_backend = None
 camera_broadcaster = None
 
 
+def camera_frame_age():
+    age = camera_broadcaster.frame_age() if camera_broadcaster else None
+    return None if age is None else round(age, 2)
+
+
 class CameraBroadcaster:
     """Thread doc camera duy nhat va broadcast frame cho ca WebRTC va MJPEG client."""
 
@@ -485,6 +491,7 @@ class CameraBroadcaster:
         self.backend = None
         self._current_frame = None
         self._current_raw_frame = None
+        self._live_at = None
         self._lock = threading.Lock()
         self._cond = threading.Condition(self._lock)
         self._running = False
@@ -526,6 +533,8 @@ class CameraBroadcaster:
                     if hasattr(self.backend, "capture_raw_frame"):
                         raw_frame = self.backend.capture_raw_frame()
                     jpeg_frame = self.backend.capture_jpeg()
+                    sensor_at = getattr(self.backend, "_last_frame_ts", None)
+                    self._live_at = time.time() if sensor_at is None else sensor_at
                 except Exception as e:
                     logger.debug("Loi capture frame: %s", e)
                     jpeg_frame = None
@@ -542,6 +551,10 @@ class CameraBroadcaster:
                 self._cond.notify_all()
 
             time.sleep(target_interval)
+
+    def frame_age(self):
+        """Giay ke tu frame that cuoi cung cua cam bien; frame placeholder khong tinh."""
+        return None if self._live_at is None else max(0.0, time.time() - self._live_at)
 
     def get_frame(self, timeout=0.2):
         with self._cond:
@@ -731,6 +744,7 @@ async def handle_health(request):
             "service": "pi5-camera-stream",
             "webrtc": WEBRTC_AVAILABLE,
             "active_webrtc_peers": len(pcs),
+            "frame_age_s": camera_frame_age(),
         },
         headers={"Access-Control-Allow-Origin": "*"},
     )
@@ -856,7 +870,8 @@ class MJPEGHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
-        self.wfile.write(b'{"status":"ok","service":"pi5-camera-stream","webrtc":false}')
+        self.wfile.write(json.dumps({"status": "ok", "service": "pi5-camera-stream", "webrtc": False,
+                                     "frame_age_s": camera_frame_age()}).encode())
 
     def _handle_index(self):
         self.send_response(200)

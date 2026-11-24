@@ -92,7 +92,7 @@ def exploration_result(visited: int, stuck_count: int, frontiers: Sequence[Front
                        stopped: bool = False) -> dict:
     """Ket qua cuoi phien tu quet (phat /explore/status cho Web hien popup luu map).
 
-    DONE: da toi it nhat 1 frontier. FAILED: chua toi duoc frontier nao (Nav2/TF/motor
+    DONE: da tham frontier va khong con cum nao. FAILED: chua toi duoc frontier nao (Nav2/TF/motor
     loi, map gan nhu chua quet). STOPPED: bi dung giua chung (/robot/nav_cancel).
     """
     left = len(frontiers)
@@ -102,6 +102,9 @@ def exploration_result(visited: int, stuck_count: int, frontiers: Sequence[Front
         state = "FAILED"
         message = (f"Robot chưa tới được điểm khám phá nào ({left} cụm còn lại): "
                    "kiểm tra Nav2/motor, map có thể chưa đầy đủ.")
+    elif left:
+        state = "INCOMPLETE"
+        message = f"Bản đồ chưa hoàn tất: đã thăm {visited} chỗ, còn {left} vùng chưa khám phá."
     else:
         state = "DONE"
         message = f"Đã quét xong: thăm {visited} chỗ, thoát kẹt {stuck_count} lần"
@@ -325,11 +328,11 @@ def choose_unstick_direction(
 ) -> Optional[str]:
     """Thoát kẹt: chạy THẲNG ra phía thoáng hơn (tiến/lùi không cần hông trống như xoay).
 
-    Khoảng hở tính từ mép xe (None = LiDAR không thấy gì phía đó => coi là rất thoáng).
+    Khoảng hở tính từ mép xe. None/NaN là chưa biết, không phải khoảng trống.
     Trả về "forward" / "backward" / None (kẹt cả hai đầu: để Nav2/người xử lý).
     """
-    front = 999.0 if front_cm is None else front_cm
-    rear = 999.0 if rear_cm is None else rear_cm
+    front = front_cm if front_cm is not None and math.isfinite(front_cm) else 0.0
+    rear = rear_cm if rear_cm is not None and math.isfinite(rear_cm) else 0.0
     if front >= min_front_cm and front >= rear:
         return "forward"
     if rear >= min_rear_cm:

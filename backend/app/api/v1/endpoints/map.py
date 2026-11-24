@@ -205,7 +205,7 @@ async def connect_lidar_hardware():
 async def trigger_scan_360():
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
-            res = await client.post("http://100.99.72.51:8000/api/v1/map/scan_360")
+            res = await client.post("http://100.93.152.7:8000/api/v1/map/scan_360")
             return res.json()
     except Exception:
         return {"status": "SUCCESS", "message": "Đã gửi lệnh quét 360 độ tới robot"}
@@ -215,7 +215,7 @@ async def trigger_scan_360():
 async def trigger_teleop(payload: dict):
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
-            res = await client.post("http://100.99.72.51:8000/api/v1/map/teleop", json=payload)
+            res = await client.post("http://100.93.152.7:8000/api/v1/map/teleop", json=payload)
             return res.json()
     except Exception:
         return {"status": "SUCCESS", "command": payload.get("command")}

@@ -1,0 +1,37 @@
+<!-- A single continuous path through route viapoints. Only the final goal
+     uses the goal checker; intermediate points are culled as they are passed.
+     Preserve checked backup/wait recovery and all costmap collision checks. -->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector"/>
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathThroughPoses">
+            <ReactiveSequence>
+              <RemovePassedGoals input_goals="{goals}" output_goals="{goals}" radius="0.25"/>
+              <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+            </ReactiveSequence>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap" server_timeout="1000"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap" server_timeout="1000"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Sequence name="ClearAndBackUp">
+            <ForceSuccess><ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap" server_timeout="1000"/></ForceSuccess>
+            <ForceSuccess><ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap" server_timeout="1000"/></ForceSuccess>
+            <BackUp backup_dist="0.15" backup_speed="0.10" error_code_id="{backup_code_id}"/>
+          </Sequence>
+          <Wait wait_duration="3.0"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

@@ -56,8 +56,8 @@ class _SensorState:
 class ObstacleSafetyController:
     """Chỉ chuyển lệnh tới motor khi mọi cảm biến liên quan đều an toàn.
 
-    Khi quay tại chỗ, đầu và đuôi xe cùng quét theo vòng cung. Vì vậy lệnh quay
-    kiểm tra cảm biến bên quay, phía trước và phía sau thay vì chỉ kiểm tra bên hông.
+    Khi quay tại chỗ, đầu và đuôi xe quét sang hai phía đối nhau. Kiểm tra
+    cả hai hông, phía trước và phía sau để tránh quệt góc đuôi bên đối diện.
     """
 
     def __init__(
@@ -116,8 +116,10 @@ class ObstacleSafetyController:
             return (("rear", self.thresholds_cm["backward"]),)
         elif motion in ("left", "right"):
             side = "left" if motion == "left" else "right"
+            opposite = "right" if side == "left" else "left"
             return (
                 (side, self.thresholds_cm[side]),
+                (opposite, self.thresholds_cm[opposite]),
                 ("front", self.turn_clearance_cm),
                 ("rear", self.turn_clearance_cm),
             )
@@ -158,12 +160,6 @@ class ObstacleSafetyController:
                 continue
             distance = snapshot.distance(sensor_name)
             if distance is None:
-                if sensor_name in ("left", "right"):
-                    continue
-                state = self._sensor_states.get(sensor_name)
-                if state and (state.last_valid_distance is None or state.consecutive_invalid > 3):
-                    # Sensor chưa từng có số đo hoặc đang chập chờn mất tín hiệu -> không chặn resume
-                    continue
                 return False
             if distance <= stop_threshold + self.resume_margin_cm:
                 return False
@@ -200,34 +196,12 @@ class ObstacleSafetyController:
         if current is not None:
             return current, False, None
 
-        if sensor_name in ("left", "right"):
-            # Cảm biến sườn nếu không có số đo (không cắm hoặc out of range) thì không chặn xe
-            return None, False, None
-
         state = self._sensor_states[sensor_name]
         if state.last_valid_distance is None or state.last_valid_at is None:
-            # Cảm biến chưa từng hoạt động từ lúc khởi động (tuột dây/mất tín hiệu):
-            # Tự động bỏ qua để không khóa cứng xe, LiDAR 360° vẫn bảo vệ phía trước.
-            if sensor_name not in self.ignored_sensors:
-                logger.warning(
-                    "⚠️ Cảm biến %s không có tín hiệu phần cứng (null). Tự động bỏ qua để không khóa xe.",
-                    sensor_name.upper(),
-                )
-                self.ignored_sensors.add(sensor_name)
-            return None, False, None
+            return None, False, f"sensor {sensor_name} chưa có số đo hợp lệ"
 
         valid_age = now - state.last_valid_at
         if state.consecutive_invalid > self.allowed_null_packets:
-            if valid_age > 3.0:
-                # Nếu mất tín hiệu liên tục hơn 3 giây, tự động bỏ qua để không làm kẹt robot
-                if sensor_name not in self.ignored_sensors:
-                    logger.warning(
-                        "⚠️ Cảm biến %s mất tín hiệu quá %.1fs. Tự động bypass để không kẹt xe (LiDAR bảo vệ).",
-                        sensor_name.upper(),
-                        valid_age,
-                    )
-                    self.ignored_sensors.add(sensor_name)
-                return None, False, None
             return (
                 None,
                 False,
@@ -330,10 +304,7 @@ class ObstacleSafetyController:
             self.stop()
             return True
 
-        if motion == self.motion:
-            # Đang di chuyển đúng hướng này, không ngắt dòng điện để tránh cà giật
-            return True
-
+        same_motion = motion == self.motion
         was_blocked = motion in self._blocked_motions
         decision = self.evaluate(motion)
         if not decision.allowed:
@@ -347,6 +318,9 @@ class ObstacleSafetyController:
             return False
 
         self._blocked_motions.discard(motion)
+        if same_motion:
+            # Recheck sensors on repeated commands, but do not toggle motor pins.
+            return True
         actions = {
             "forward": self.motor.forward,
             "backward": self.motor.backward,
@@ -375,19 +349,19 @@ class ObstacleSafetyController:
         if not hasattr(self.motor, "drive_wheels"):
             return self.command(motion)
 
+        was_blocked = motion in self._blocked_motions
+        decision = self.evaluate(motion)
+        if not decision.allowed:
+            self.motor.stop()
+            self.motion = "stop"
+            self._blocked_motions.add(motion)
+            if not was_blocked:
+                self._clear_streak[motion] = 0
+            self._note_block(motion, decision.reason)
+            logger.warning("SAFETY BLOCK DRIVE %s: %s", motion.upper(), decision.reason)
+            return False
+        self._blocked_motions.discard(motion)
         if motion != self.motion:
-            was_blocked = motion in self._blocked_motions
-            decision = self.evaluate(motion)
-            if not decision.allowed:
-                self.motor.stop()
-                self.motion = "stop"
-                self._blocked_motions.add(motion)
-                if not was_blocked:
-                    self._clear_streak[motion] = 0
-                self._note_block(motion, decision.reason)
-                logger.warning("SAFETY BLOCK DRIVE %s: %s", motion.upper(), decision.reason)
-                return False
-            self._blocked_motions.discard(motion)
             logger.info("SAFETY ALLOW DRIVE %s: %s", motion.upper(), decision.reason)
 
         self.motor.drive_wheels(int(left), int(right))

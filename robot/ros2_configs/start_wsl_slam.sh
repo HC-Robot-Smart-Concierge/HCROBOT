@@ -4,7 +4,7 @@
 #   bash robot/ros2_configs/start_wsl_slam.sh                       # lai tay (WASD / Web / Foxglove)
 #   EXPLORE=1 bash robot/ros2_configs/start_wsl_slam.sh             # XE TU DI quet het map (Nav2 + frontier)
 #   EXPLORE=1 EXPLORE_SAVE=phong_khach bash ...                     # ten map tu luu khi quet xong
-#   PI5_IP=192.168.1.50 bash ...                                    # IP Pi (mac dinh Tailscale 100.99.72.51)
+#   PI5_IP=192.168.1.50 bash ...                                    # IP Pi (mac dinh Tailscale 100.93.152.7)
 #
 # EXPLORE=1: XE THAT SE TU CHAY. Ctrl+C trong terminal nay de dung; Pi tu ngat motor
 # sau 0.5 s mat lenh (watchdog) va cam bien sieu am tren Pi van chan va cham.
@@ -61,6 +61,9 @@ sleep 2
 
 echo "=== [4/5] KHOI DONG LIDAR BRIDGE (Pi 5 WS -> ROS 2 /scan & TF) ==="
 HCROBOT_MODE=MAPPING \
+HCROBOT_DIFF_MPS_PER_PCT="${HCROBOT_DIFF_MPS_PER_PCT:-0.0035}" \
+HCROBOT_DIFF_MAX_PWM="${HCROBOT_DIFF_MAX_PWM:-43}" \
+HCROBOT_NAV_MAX_LINEAR_SPEED="${HCROBOT_NAV_MAX_LINEAR_SPEED:-0.15}" \
 HCROBOT_TELEOP_PWM=30 \
 HCROBOT_TELEOP_TURN_PWM=38 \
 HCROBOT_TURN_PULSE_ON_SEC=0.20 \
@@ -111,10 +114,20 @@ if [ "$EXPLORE" = "1" ] && [ "$SLAM_READY" = "1" ]; then
     # nen "lidar_live" nam o phan bi cat => truoc day script khong bao gio thay LiDAR san sang
     # va xe khong bao gio tu chay (09/11). Phan tich JSON thay vi grep chuoi.
     HEALTH="$(timeout 4 ros2 topic echo --once --full-length /robot/sensor_health std_msgs/msg/String 2>/dev/null || true)"
+    # Fast DDS in loi ("RTPS_TRANSPORT_SHM Error ... open_and_lock_file failed", co ma mau ANSI)
+    # ra STDOUT, truoc dong "data:" => YAML ca khoi hong, ca 30 lan deu WAIT va xe KHONG BAO GIO
+    # tu chay du Pi/LiDAR/encoder deu OK (19/11). Chi phan tich tu dong "data:" tro di.
     VERDICT="$(printf '%s' "$HEALTH" | python3 -c '
 import json, sys, yaml
+lines = sys.stdin.read().splitlines()
 try:
-    d = json.loads(next(yaml.safe_load_all(sys.stdin.read()))["data"])
+    start = next(i for i, line in enumerate(lines) if line.startswith("data:"))
+    block = []
+    for line in lines[start:]:
+        if line.strip() == "---":
+            break
+        block.append(line)
+    d = json.loads(yaml.safe_load("\n".join(block))["data"])
 except Exception:
     print("WAIT chua nhan /robot/sensor_health tu bridge"); sys.exit()
 reasons = d.get("reasons") or []
@@ -180,7 +193,7 @@ fi
 # co the bi tat truoc -> Pi giu lenh "drive" cuoi.
 stop_robot() {
   for _ in 1 2 3 4 5; do
-    echo -n stop > "/dev/udp/${PI5_IP:-100.99.72.51}/9999" 2>/dev/null || true
+    echo -n stop > "/dev/udp/${PI5_IP:-100.93.152.7}/9999" 2>/dev/null || true
     sleep 0.1
   done
 }

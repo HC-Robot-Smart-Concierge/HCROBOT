@@ -127,7 +127,7 @@ def monitor_exploration_progress(pi5_ip: str, port: int = 8000, map_name: str = 
 
 def main():
     parser = argparse.ArgumentParser(description="HC-Robot: 1 Lệnh Tự Hành Tự Quét & Lưu Map")
-    parser.add_argument("--ip", default=os.getenv("PI5_IP", "100.99.72.51"), help="Địa chỉ IP của Raspberry Pi 5")
+    parser.add_argument("--ip", default=os.getenv("PI5_IP", "100.93.152.7"), help="Địa chỉ IP của Raspberry Pi 5")
     parser.add_argument("--port", type=int, default=8000, help="Cổng LiDAR Server (mặc định 8000)")
     parser.add_argument("--map-name", default="ban_do_khach_san_tu_dong", help="Tên file bản đồ muốn lưu")
     args = parser.parse_args()

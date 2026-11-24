@@ -1582,7 +1582,9 @@ export const WorkflowSimulatorStudio = ({
     } else {
       // CAC BUOC TUONG TAC (GREET, COMMUNICATE, SPEAK, SHOW, LISTEN, RECOMMEND, CREATE_REQUEST, FEEDBACK)
       let waitDurationSec = 3.5;
-      if (stepType === 'COMMUNICATE') {
+      if (stepType === 'WAIT') {
+        waitDurationSec = Number(params.duration_sec) || 5;
+      } else if (stepType === 'COMMUNICATE') {
         const textContent = params.initial_prompt || params.speech_text || params.text || '';
         const len = textContent.trim().length;
         const silenceSec = parseInt(params.silence_timeout_sec || params.timeout) || 30;

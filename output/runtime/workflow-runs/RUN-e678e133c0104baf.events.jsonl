@@ -1,0 +1,3 @@
+{"type": "STARTED", "message": null, "step_index": 0, "round_index": 0, "at": 1794815373.5569584}
+{"type": "STEP_STARTED", "message": "TEST · vòng 1 · Điểm trung gian", "step_index": 0, "round_index": 0, "at": 1794815373.5633762}
+{"type": "FAILED", "message": "Chưa có vị trí robot trên map để bắt đầu tuyến.", "step_index": 0, "round_index": 0, "at": 1794815373.5651255}

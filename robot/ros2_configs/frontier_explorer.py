@@ -13,7 +13,9 @@ Chống kẹt (xe thật: sonar trên Pi chặn lệnh khi sát vật cản, Nav
 - Quay/rẽ qua kiểm tra vùng quét của LiDAR + local costmap; vướng thì chọn đường khác.
 - Thiếu cảm biến/costmap kéo dài: dừng tự hành và báo lý do.
 
-Kết thúc (xong / không tới được frontier nào / bị dừng): phát kết quả JSON lên /explore/status
+Còn frontier nhưng hết đích phù hợp: giữ phiên, báo BLOCKED và kiểm tra lại sau
+blocked_retry_sec (mặc định 30 giây), không báo quét xong.
+Kết thúc (hết frontier / lỗi cảm biến kéo dài / bị dừng): phát kết quả JSON lên /explore/status
 (latched) rồi THOÁT tiến trình sau vài giây => backend chuyển về MAPPING (SLAM vẫn chạy, giữ
 map) và Web hiện bảng đặt tên + lưu map.
 
@@ -55,6 +57,11 @@ from retreat_logic import (  # noqa: E402
 )
 from recovery_costmap import CostmapGrid, grid_sweep_clear, scan_sweep_clear  # noqa: E402
 from robot_geometry import TURN_CLEARANCE_RADIUS_M  # noqa: E402
+from sonar_escape import SONAR_FRESH_SEC, null_sonars, plan_sonar_escape  # noqa: E402
+
+SONAR_VI = {"front": "trước", "rear": "sau", "left": "trái", "right": "phải"}
+# Thu thoat ket vi sonar null toi da N lan lien tiep (chua toi duoc dich nao) roi dung, bao Web.
+MAX_SONAR_ESCAPES = 4
 
 
 def _yaw_from_quat(q):
@@ -74,6 +81,8 @@ class FrontierExplorer(Node):
         # Het cho de di ma van con frontier: mo lai cac cho da bo, thu them toi da N vong.
         self.max_retry_rounds = int(p("max_retry_rounds", 2).value)
         self.retry_rounds = 0
+        self.blocked_retry_sec = max(5.0, float(p("blocked_retry_sec", 30.0).value))
+        self.blocked_retry_at = None
         # Measured 33 x 17 cm body + 4 cm padding (~24.1 cm turning radius).
         # Nav2 and recovery check the actual swept body before changing heading.
         self.goal_clearance_m = float(p("goal_clearance_m", TURN_CLEARANCE_RADIUS_M).value)
@@ -84,7 +93,7 @@ class FrontierExplorer(Node):
         self.reach_radius_m = float(p("reach_radius_m", 0.30).value)
         # Toi noi: dung yen cho LiDAR/SLAM cap nhat roi moi xet frontier con hay khong.
         self.settle_sec = float(p("settle_sec", 2.0).value)
-        self.stuck_timeout_sec = float(p("stuck_timeout_sec", 8.0).value)
+        self.stuck_timeout_sec = float(p("stuck_timeout_sec", 3.0).value)
         self.unstick_dist_m = float(p("unstick_dist_m", 0.15).value)
         self.unstick_speed = float(p("unstick_speed", 0.12).value)
         self.retreat_speed = float(p("retreat_speed", 0.08).value)
@@ -128,6 +137,10 @@ class FrontierExplorer(Node):
         self.finished = False
         self.visited = 0
         self.stuck_count = 0
+        # Sonar Pi (bridge /robot/sensor_health "pi_sonar"): null = không đo được (vd vật cản chéo).
+        self.pi_sonar = None
+        self.pi_sonar_at = None
+        self.sonar_escapes = 0
 
         map_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                              reliability=ReliabilityPolicy.RELIABLE)
@@ -141,6 +154,7 @@ class FrontierExplorer(Node):
         self.exit_at = None  # time.monotonic() luc thoat tien trinh sau khi bao ket qua
         self.exit_requested = False
         self.create_subscription(Empty, "/robot/nav_cancel", self._on_stop, 10)
+        self.create_subscription(String, "/robot/sensor_health", self._on_sensor_health, 10)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.nav = ActionClient(self, NavigateToPose, "navigate_to_pose")
@@ -217,8 +231,8 @@ class FrontierExplorer(Node):
         else:
             check_vx, check_wz = 0.0, math.copysign(0.8, wz)
             duration = max(0.5, (abs(rotation or 0.0) + 0.18) / 0.8)
-        return (scan_sweep_clear(points, coverage, check_vx, check_wz, duration)
-                and grid_sweep_clear(grid, pose, check_vx, check_wz, duration))
+        return (scan_sweep_clear(points, coverage, check_vx, check_wz, duration, allow_margin_escape=True)
+                and grid_sweep_clear(grid, pose, check_vx, check_wz, duration, allow_margin_escape=True))
 
     def _on_stop(self, _msg):
         self.finished = True
@@ -235,6 +249,14 @@ class FrontierExplorer(Node):
     def _on_scan(self, msg):
         self.scan_msg = msg
         self.scan_received_at = self._now()
+
+    def _on_sensor_health(self, msg):
+        try:
+            snap = json.loads(msg.data).get("pi_sonar")
+        except (ValueError, AttributeError):
+            return
+        if isinstance(snap, dict):
+            self.pi_sonar, self.pi_sonar_at = snap, self._now()
 
     def _retreat_scan(self, now):
         s = self.scan_msg
@@ -366,6 +388,9 @@ class FrontierExplorer(Node):
                 continue
             break
         if target is None:
+            if frontiers and self.blocked_retry_at is not None:
+                self._wait_for_frontiers(frontiers, now)
+                return
             if frontiers and self.retry_rounds < self.max_retry_rounds:
                 reopened = self.memory.retry_round()
                 if reopened:
@@ -376,12 +401,39 @@ class FrontierExplorer(Node):
                         f"đã bỏ (vòng {self.retry_rounds}/{self.max_retry_rounds})"
                     )
                     return
+            if frontiers:
+                self._wait_for_frontiers(frontiers, now)
+                return
             self.empty_checks += 1
             if self.empty_checks >= self.done_checks:
                 self._finish(frontiers)
             return
         self.empty_checks = 0
+        if self.blocked_retry_at is not None:
+            self.blocked_retry_at = None
+            self._publish_status({"state": "EXPLORING", "message": "Robot tiếp tục khám phá vùng chưa quét."})
         self._send_goal(goal, target.goal, robot, len(frontiers))
+
+    def _wait_for_frontiers(self, frontiers, now):
+        """Keep SLAM and the exploration session alive while unresolved regions remain."""
+        self.empty_checks = 0
+        if self.blocked_retry_at is None:
+            self.blocked_retry_at = now + self.blocked_retry_sec
+            message = (
+                f"Còn {len(frontiers)} vùng chưa khám phá; chưa tìm được đích an toàn để đi tiếp. "
+                f"Giữ phiên quét, kiểm tra lại sau {self.blocked_retry_sec:.0f} giây. "
+                "Kiểm tra encoder, LiDAR và vật cản nếu xe vẫn đứng yên."
+            )
+            self.get_logger().warn(message)
+            self._publish_status({"state": "BLOCKED", "frontiers_left": len(frontiers),
+                                  "visited": self.visited, "stuck": self.stuck_count,
+                                  "message": message})
+        elif now >= self.blocked_retry_at:
+            # Reopen temporary navigation failures, keeping blind spots and all
+            # collision/scan checks. Never turn remaining frontiers into DONE.
+            self.memory.retry_round()
+            self.retry_rounds = 0
+            self.blocked_retry_at = None
 
     def _watch_goal(self, now):
         # 1. Tới gần đích: tự dừng (khỏi chờ Nav2 xoay đúng hướng đích - sát tường Pi chặn xoay).
@@ -496,6 +548,8 @@ class FrontierExplorer(Node):
         self.goal_frontier = None
         if spot is None:
             return
+        if vanished or success:
+            self.sonar_escapes = 0  # đã tới được chỗ quét: đếm lại số lần thoát kẹt sonar
         if vanished:
             self.visited += 1
             self.memory.mark_done(spot)
@@ -547,7 +601,67 @@ class FrontierExplorer(Node):
             missing.append("local costmap chưa sẵn sàng/mới trong 1.5 s")
         return "; ".join(missing)
 
+    def _start_sonar_escape(self, now):
+        """Pi chặn vì sonar null: đi thẳng/lượn theo hướng Pi còn kiểm tra được (sonar_escape.py).
+
+        Không cần đủ 24 vùng góc LiDAR (sát vật cản chéo thường thiếu tia): chỉ cần khoảng hở
+        LiDAR phía đi tới + hai hông khi lượn. Trả về True nếu đã xử lý (đang thoát / đã dừng).
+        """
+        snap = self.pi_sonar
+        if snap is None or self.pi_sonar_at is None or now - self.pi_sonar_at > SONAR_FRESH_SEC:
+            return False
+        nulls = null_sonars(snap.get("sonar") or {})
+        if not nulls:
+            return False
+        names = ", ".join(SONAR_VI[s] for s in nulls)
+        if self.sonar_escapes >= MAX_SONAR_ESCAPES:
+            self._stop_recovery(f"Đã thử thoát kẹt {self.sonar_escapes} lần mà sonar {names} vẫn không đo được")
+            return True
+        start = self._odom_pose()
+        c = self._clearances()
+        moves = plan_sonar_escape(snap["sonar"], snap.get("thresholds") or {}, c, speed=self.unstick_speed)
+        if start is None or not moves:
+            self.get_logger().warn(
+                f"Sonar {names} không đo được nhưng không có hướng thoát an toàn "
+                f"(LiDAR trước {self._cm(c.get('front'))} sau {self._cm(c.get('rear'))} "
+                f"trái {self._cm(c.get('left'))} phải {self._cm(c.get('right'))} cm)"
+            )
+            return False
+        move = moves[0]
+        self.sonar_escapes += 1
+        self.maneuver = {"sonar_escape": move, "start": start, "until": now + 4.0,
+                         "progress_at": now, "best": 0.0}
+        self.get_logger().info(
+            f"↩️ Sonar {names} không đo được (vật cản chéo?): {move.label} {self.unstick_dist_m:.2f} m, "
+            f"Pi chỉ cần sonar {SONAR_VI[move.travel]} (lần {self.sonar_escapes}/{MAX_SONAR_ESCAPES})"
+        )
+        return True
+
+    def _sonar_escape_step(self, m, now, pose):
+        move = m["sonar_escape"]
+        if pose is None:
+            self._publish_vx(0.0)
+            self.maneuver = None
+            self.get_logger().warn("Mất odom khi thoát kẹt sonar: dừng, giao lại Nav2")
+            return
+        moved = math.hypot(pose[0] - m["start"][0], pose[1] - m["start"][1])
+        if moved > m["best"] + 0.01:
+            m["best"], m["progress_at"] = moved, now
+        gap = self._clearances().get(move.travel)
+        too_close = gap is None or gap < (28.0 if move.travel == "front" else 23.0)
+        stalled = now - m["progress_at"] > 1.5
+        if moved >= self.unstick_dist_m or now > m["until"] or too_close or stalled:
+            for _ in range(3):
+                self._publish_vx(0.0)
+            self.maneuver = None
+            note = " (Pi vẫn chặn)" if stalled and moved < 0.03 else ""
+            self.get_logger().info(f"↩️ Thoát kẹt sonar xong ({move.label}): đã đi {moved:.2f} m{note}")
+            return
+        self._publish_motion(move.vx, move.wz)
+
     def _start_unstick(self, now):
+        if self._start_sonar_escape(now):
+            return True
         points, coverage = self._retreat_scan(now)
         start = self._odom_pose()
         snapshot = self._costmap_snapshot(now)
@@ -575,7 +689,7 @@ class FrontierExplorer(Node):
             return True
         c = self._clearances()
         direction = choose_unstick_direction(c.get("front"), c.get("rear"),
-                                             min_front_cm=24.0, min_rear_cm=20.0)
+                                             min_front_cm=30.0, min_rear_cm=25.0)
         if direction is None or start is None:
             self.get_logger().warn(
                 f"Kẹt cả trước (≈{self._cm(c.get('front'))} cm) lẫn sau (≈{self._cm(c.get('rear'))} cm): "
@@ -603,6 +717,12 @@ class FrontierExplorer(Node):
         self.maneuver = None
         self.recovery_blocked = True
         self.get_logger().error(f"⛔ Tạm dừng tự hành: {reason}. Kiểm tra/lái tay ra chỗ rộng rồi khởi động lại tự quét.")
+        # Web (trang LiDAR) hiện message của BLOCKED: báo rõ thay vì xe đứng im không nói gì.
+        self._publish_status({
+            "state": "BLOCKED", "visited": self.visited, "stuck": self.stuck_count,
+            "message": f"Xe bị kẹt và đã tạm dừng tự quét: {reason}. "
+                       "Lái tay ra chỗ rộng rồi bấm Dừng và Tự quét lại.",
+        })
 
     def _retry_navigation(self, now, reason):
         self._publish_vx(0.0)
@@ -634,6 +754,9 @@ class FrontierExplorer(Node):
                 # Preserve valid anchors through a brief scan/TF gap. record()
                 # still rejects an odometry jump once observations resume.
                 self.trail.record(pose, turn_clear(points, coverage, self.turn_radius_m))
+            return
+        if "sonar_escape" in m:
+            self._sonar_escape_step(m, now, pose)
             return
         snapshot = self._costmap_snapshot(now)
         if m.get("awaiting_sensors"):
@@ -687,7 +810,15 @@ class FrontierExplorer(Node):
                             m["align_logged"] = True
                         self._publish_motion(vx_try, wz_try)
                         return
-                self._wait_recovery(now, "Vùng quay/rẽ đang vướng vật cản; thử đường khác")
+                # Padding can prohibit rotation beside a wall even though
+                # moving straight back increases clearance. Use a bounded
+                # short reverse, then hand back to Nav2 for a fresh heading.
+                if self._motion_allowed(-self.unstick_speed, 0.0, points, coverage, snapshot):
+                    self.maneuver = {"dir": "backward", "start": pose, "until": now + 4.0}
+                    self._publish_vx(0.0)
+                    self.get_logger().info("↩️ Chưa đủ chỗ quay: lùi thẳng có kiểm tra rồi tính lại hướng")
+                    return
+                self._wait_recovery(now, "Vùng quay/rẽ và đường lùi đều vướng; thử đường khác")
                 return
             m["turn_watchdog"].reset(now, pose)
             m.pop("align_logged", None)
@@ -707,7 +838,7 @@ class FrontierExplorer(Node):
         moved = 0.0 if pose is None else math.hypot(pose[0] - m["start"][0], pose[1] - m["start"][1])
         side = "front" if m["dir"] == "forward" else "rear"
         gap = self._clearances().get(side)
-        too_close = gap is not None and gap < (22.0 if side == "front" else 16.0)
+        too_close = gap is not None and gap < (28.0 if side == "front" else 23.0)
         if moved >= self.unstick_dist_m or now > m["until"] or too_close:
             for _ in range(3):
                 self._publish_vx(0.0)
@@ -719,6 +850,9 @@ class FrontierExplorer(Node):
 
     # ------------------------------------------------------------------ kết thúc
     def _finish(self, frontiers):
+        if frontiers:
+            self._wait_for_frontiers(frontiers, self._now())
+            return
         self.finished = True
         left = ", ".join(f"({f.goal[0]:.2f}, {f.goal[1]:.2f})" for f in frontiers[:6])
         result = exploration_result(self.visited, self.stuck_count, frontiers)

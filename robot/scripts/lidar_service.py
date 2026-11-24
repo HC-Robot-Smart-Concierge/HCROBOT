@@ -115,8 +115,11 @@ class RPLidarSLAMCore:
         self.known_cells: Dict[int, int] = {}
         self._ws_cycle = 0
         self._encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
-        self._wheel_radius = 0.033
-        self._wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.22"))
+        # Same measured diameter / optional calibration as the ROS odom bridge.
+        self._wheel_radius = float(os.getenv("HCROBOT_WHEEL_RADIUS", "0.0325"))
+        if not math.isfinite(self._wheel_radius) or self._wheel_radius <= 0:
+            raise ValueError("HCROBOT_WHEEL_RADIUS must be a positive radius in meters")
+        self._wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.17"))
         self._encoder_signs = {
             "m1": float(os.getenv("HCROBOT_ENCODER_M1_SIGN", "1")),
             "m2": float(os.getenv("HCROBOT_ENCODER_M2_SIGN", "1")),

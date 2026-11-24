@@ -1,0 +1,3 @@
+{"type": "STARTED", "message": null, "step_index": 0, "round_index": 0, "at": 1794812659.4613633}
+{"type": "STEP_STARTED", "message": "TEST · vòng 1 · Điểm trung gian", "step_index": 0, "round_index": 0, "at": 1794812659.5717533}
+{"type": "FAILED", "message": "Không có trạng thái định vị mới.", "step_index": 0, "round_index": 0, "at": 1794812661.6266477}

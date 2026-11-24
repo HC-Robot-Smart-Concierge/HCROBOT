@@ -21,6 +21,7 @@ import {
   createZoneSyncMsg,
 } from '../../../services/rosbridgeService';
 import { OTTO_STEP_TYPES } from './AdminWorkflowTab';
+import { unconfiguredRouteSteps } from '../../../utils/physicalMapRoute';
 import { Trash2, RotateCw, Compass, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 /**
@@ -150,7 +151,7 @@ export const getEndpointTemplateInfo = (type) => {
 };
 
 // Pi5 Connection
-const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
+const PI5_IP = import.meta.env.VITE_PI5_IP || '100.93.152.7';
 const PI5_API = `http://${PI5_IP}:8000/api/v1`;
 const PI5_WS = `ws://${PI5_IP}:8000/api/v1`;
 
@@ -684,8 +685,9 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
   const handleSaveCurrentWorkflow = async () => {
     if (!activeWf) return;
     try {
-      await saveWorkflow(activeWf);
-      showNotification(`Đã lưu kịch bản "${activeWf.name}" thành công!`);
+      const pending = unconfiguredRouteSteps(activeWf).length > 0;
+      await saveWorkflow(pending ? { ...activeWf, is_active: false } : activeWf);
+      showNotification(pending ? 'Đã lưu bản nháp. Sang Physical Map → Tuyến đường để gán tuyến cho bước workflow.' : `Đã lưu kịch bản "${activeWf.name}" thành công!`);
       await loadAll();
     } catch (err) {
       showNotification('Lỗi khi lưu kịch bản: ' + err.message);
@@ -705,6 +707,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
       return;
     }
     const updatedWf = { ...activeWf, name: newWfName.trim() };
+    if (unconfiguredRouteSteps(updatedWf).length) updatedWf.is_active = false;
     try {
       await saveWorkflow(updatedWf);
       setActiveWf(updatedWf);

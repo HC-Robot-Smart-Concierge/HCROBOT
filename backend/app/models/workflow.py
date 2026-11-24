@@ -20,6 +20,7 @@ class RobotWorkflow(Base):
     trigger_type: Mapped[str] = mapped_column(String(50), default="MANUAL")  # 'AUTO_DETECT', 'MANUAL', 'SCHEDULE', 'GUEST_TAP'
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     steps: Mapped[List[Any]] = mapped_column(JSON, default=list)
+    execution_config: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -64,7 +64,7 @@ export const AdminCameraTab = ({ currentUser, active = true, telemetry, emergenc
 
   // Teleop Motion state
   const [activeMotion, setActiveMotion] = useState('stop');
-  const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.99.72.51');
+  const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.93.152.7');
 
   const startWebRTC = useCallback(async () => {
     if (pcRef.current) {

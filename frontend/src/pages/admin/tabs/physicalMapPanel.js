@@ -6,6 +6,7 @@ export const PANEL_SECTIONS = [
   { key: 'nav2', label: 'Nav2 & bản đồ' },
   { key: 'pose', label: 'Vị trí ban đầu' },
   { key: 'WAYPOINTS', label: 'Điểm mốc', tab: true },
+  { key: 'ROUTES', label: 'Thư viện tuyến đường', tab: true },
   { key: 'ZONES', label: 'Vùng', tab: true },
   { key: 'TELEOP', label: 'Lái tay', tab: true },
 ];

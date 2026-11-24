@@ -1,0 +1,5 @@
+{"type": "STARTED", "message": null, "step_index": 0, "round_index": 0, "at": 1794816863.3267846}
+{"type": "STEP_STARTED", "message": "TEST · vòng 1 · Điểm trung gian", "step_index": 0, "round_index": 0, "at": 1794816863.3366008}
+{"type": "STEP_COMPLETED", "message": null, "step_index": 0, "round_index": 0, "at": 1794816874.2624369}
+{"type": "STEP_STARTED", "message": "TEST · vòng 1 · Điểm trung gian", "step_index": 1, "round_index": 0, "at": 1794816874.264144}
+{"type": "FAILED", "message": "Backend mất kết nối: lease của lượt chạy hết hạn.", "step_index": 1, "round_index": 0, "at": 1794816875.9988842}

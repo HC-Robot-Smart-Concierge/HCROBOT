@@ -33,7 +33,7 @@ import {
 } from '../../../services/operationsApi';
 import { useLanguage } from '../../../context/LanguageContext';
 
-const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
+const PI5_IP = import.meta.env.VITE_PI5_IP || '100.93.152.7';
 const PI5_API = `http://${PI5_IP}:8000/api/v1`;
 
 const ROBOT_STATUS_OPTIONS = ['IDLE', 'NAVIGATING', 'INTERACTING', 'CHARGING', 'MAINTENANCE', 'ERROR', 'OFFLINE'];

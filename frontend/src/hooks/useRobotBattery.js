@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
+const PI5_IP = import.meta.env.VITE_PI5_IP || '100.93.152.7';
 export const PI5_API_BASE = `http://${PI5_IP}:8000/api/v1`;
 
 /**

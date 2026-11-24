@@ -232,3 +232,9 @@ docs/*.html
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# Graphify (personal local knowledge graph & Antigravity rule/workflow)
+graphify-out/
+.agents/rules/graphify.md
+.agents/workflows/graphify.md
+

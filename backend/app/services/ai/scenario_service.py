@@ -15,6 +15,7 @@ from app.services.ai.scenario_matcher import (
     match_fast_path_scenarios,
 )
 from app.services.ai.scenario_seed_data import DEFAULT_SEED_SCENARIOS
+from app.services.cache.knowledge_revision import invalidate_knowledge_answers
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +241,7 @@ class ScenarioService:
 
             self._cache.append(_scenario_to_cache_dict(item, include_flags=False))
             self._cache.sort(key=lambda x: x.get("priority", 0), reverse=True)
+            invalidate_knowledge_answers()
 
             if item.is_fast_path:
                 try:
@@ -279,6 +281,7 @@ class ScenarioService:
                     entry.update(update_dict)
                     break
             self._cache.sort(key=lambda x: x.get("priority", 0), reverse=True)
+            invalidate_knowledge_answers()
 
             if item.is_fast_path:
                 try:
@@ -304,6 +307,7 @@ class ScenarioService:
             await db.delete(item)
             await db.commit()
             self._cache = [e for e in self._cache if e.get("id") != scenario_id]
+            invalidate_knowledge_answers()
 
             try:
                 await self.initialize_cache(db)

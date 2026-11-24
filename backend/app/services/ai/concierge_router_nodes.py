@@ -643,7 +643,7 @@ def ensure_followup_question(
         return base
     if (action or "") in _FOLLOWUP_SKIP_ACTIONS:
         return base
-    if _FOLLOWUP_SKIP_TEXT_RE.search(base) or has_followup_question(base):
+    if base.rstrip().endswith("?") or _FOLLOWUP_SKIP_TEXT_RE.search(base) or has_followup_question(base):
         return base
 
     is_en = bool(lang_code and str(lang_code).lower().startswith("en"))

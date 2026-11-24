@@ -6,7 +6,7 @@ import pytest
 
 from app.schemas.ai import ChatRequest
 from app.services.ai.ai_chat_service import process_chat_request
-from app.services.ai.tts_providers import synthesize_edge_tts_detailed
+from app.services.ai.tts_providers import synthesize_azure_speech_detailed, synthesize_edge_tts_detailed
 from app.services.ai.tts_service import TTSService, tts_service
 
 
@@ -65,34 +65,24 @@ async def test_edge_tts_uses_zero_volume_and_retries_same_voice():
 
 
 @pytest.mark.asyncio
-async def test_google_fallback_is_not_cached_under_edge_cache_key(tmp_path):
-    """google_fallback audio must NEVER be stored under edge cache_key in memory or on disk."""
+async def test_failed_tts_is_not_cached(tmp_path):
+    """Failed TTS must NEVER be stored in memory or on disk."""
     svc = TTSService(load_persisted=False)
     svc._cache_dir = str(tmp_path)
 
-    fake_google_b64 = base64.b64encode(b"google_mp3_bytes_" * 20).decode("utf-8")
-
-    with (
-        patch.object(
-            svc,
-            "_synthesize_edge_tts_detailed",
-            new=AsyncMock(return_value=(None, "TTS_PROVIDER_ERROR", "edge failed")),
-        ),
-        patch.object(
-            svc,
-            "_synthesize_google_tts",
-            new=AsyncMock(return_value=fake_google_b64),
-        ),
+    with patch.object(
+        svc,
+        "_synthesize_edge_tts_detailed",
+        new=AsyncMock(return_value=(None, "TTS_PROVIDER_ERROR", "edge failed")),
     ):
         result = await svc.synthesize_with_details(
             "Chào mừng quý khách đến khách sạn.",
             provider="edge",
             language="vi-VN",
-            allow_fallback=True,
         )
 
-    assert result["provider_used"] == "google_fallback"
-    assert result["audio_base64"] == fake_google_b64
+    assert result["audio_base64"] == ""
+    assert result["error_code"] == "TTS_PROVIDER_ERROR"
     assert svc._memory_cache == {}
     assert list(tmp_path.glob("*.mp3")) == []
 
@@ -107,13 +97,13 @@ async def test_redis_ai_cache_hit_auto_lang_prefers_cached_lang_code_or_reply():
         "action": "conversation",
     }
 
-    synth_mock = AsyncMock(return_value=("", "audio/mp3", "edge"))
+    synth_mock = AsyncMock(return_value={"audio_base64": "", "mime_type": "audio/mp3", "provider_used": "edge"})
     with (
         patch(
             "app.services.cache.redis_service.redis_service.get_ai_cache",
             new=AsyncMock(return_value=cached_payload),
         ),
-        patch("app.services.ai.ai_chat_service.tts_service.synthesize", new=synth_mock),
+        patch("app.services.ai.ai_chat_service.tts_service.synthesize_with_details", new=synth_mock),
     ):
         resp = await process_chat_request(None, req)
 
@@ -129,13 +119,13 @@ async def test_redis_ai_cache_hit_auto_lang_prefers_cached_lang_code_or_reply():
         "full_text": "Dạ, mật khẩu Wi-Fi của khách sạn là GrandHotel2026 ạ.",
         "action": "conversation",
     }
-    synth_mock_2 = AsyncMock(return_value=("", "audio/mp3", "edge"))
+    synth_mock_2 = AsyncMock(return_value={"audio_base64": "", "mime_type": "audio/mp3", "provider_used": "edge"})
     with (
         patch(
             "app.services.cache.redis_service.redis_service.get_ai_cache",
             new=AsyncMock(return_value=cached_payload_no_lang),
         ),
-        patch("app.services.ai.ai_chat_service.tts_service.synthesize", new=synth_mock_2),
+        patch("app.services.ai.ai_chat_service.tts_service.synthesize_with_details", new=synth_mock_2),
     ):
         resp2 = await process_chat_request(None, req2)
 
@@ -201,3 +191,106 @@ async def test_synthesize_with_details_cancels_orphaned_edge_task_on_timeout(tmp
     assert res["error_code"] == "TTS_TIMEOUT"
     assert cancelled_flag is True
     assert svc._inflight_tasks == {}
+
+
+@pytest.mark.asyncio
+async def test_azure_speech_detailed_not_configured():
+    with patch("app.services.ai.tts_providers.settings.AZURE_SPEECH_KEY", None):
+        b64, err_code, err_detail = await synthesize_azure_speech_detailed(
+            "Xin chào", "vi-VN-HoaiMyNeural", api_key=None
+        )
+    assert b64 is None
+    assert err_code == "AZURE_NOT_CONFIGURED"
+
+
+@pytest.mark.asyncio
+async def test_azure_speech_detailed_success():
+    fake_audio = b"fake_azure_audio_bytes_1234567890" * 10
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.content = fake_audio
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def post(self, url, headers=None, content=None):
+            assert "southeastasia.tts.speech.microsoft.com" in url
+            assert headers["Ocp-Apim-Subscription-Key"] == "test_azure_key"
+            assert "vi-VN-HoaiMyNeural" in content.decode("utf-8")
+            return mock_resp
+
+    with patch("httpx.AsyncClient", FakeAsyncClient):
+        b64, err_code, err_detail = await synthesize_azure_speech_detailed(
+            "Dạ vâng, em chào quý khách!",
+            "vi-VN-HoaiMyNeural",
+            api_key="test_azure_key",
+            region="southeastasia",
+        )
+
+    assert err_code is None
+    assert err_detail is None
+    assert b64 == base64.b64encode(fake_audio).decode("utf-8")
+
+
+@pytest.mark.asyncio
+async def test_multi_endpoint_falls_back_to_azure_when_edge_slow(tmp_path):
+    svc = TTSService(load_persisted=False)
+    svc._cache_dir = str(tmp_path)
+
+    async def hanging_edge(*args, **kwargs):
+        await asyncio.sleep(5.0)
+        return None, "TTS_TIMEOUT", "Edge timed out"
+
+    fake_azure_audio = base64.b64encode(b"azure_singapore_hoaimy_fast" * 10).decode("utf-8")
+    mock_azure = AsyncMock(return_value=(fake_azure_audio, None, None))
+
+    with (
+        patch("app.services.ai.tts_service.settings.AZURE_SPEECH_KEY", "valid_azure_key"),
+        patch.object(svc, "_synthesize_edge_tts_detailed", new=hanging_edge),
+        patch.object(svc, "_synthesize_azure_speech_detailed", new=mock_azure),
+    ):
+        res = await svc.synthesize_with_details(
+            "Xung quanh đây có gì chơi không?",
+            language="vi-VN",
+            timeout=10.0,
+        )
+
+    assert res["audio_base64"] == fake_azure_audio
+    assert res["provider_used"] == "azure_speech"
+    assert res["voice"] == "vi-VN-HoaiMyNeural"
+    mock_azure.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_multi_endpoint_falls_back_to_azure_when_edge_fails_early(tmp_path):
+    svc = TTSService(load_persisted=False)
+    svc._cache_dir = str(tmp_path)
+
+    async def failing_edge(*args, **kwargs):
+        return None, "TTS_PROVIDER_ERROR", "NoAudioReceived"
+
+    fake_azure_audio = base64.b64encode(b"azure_singapore_immediate_fallback" * 10).decode("utf-8")
+    mock_azure = AsyncMock(return_value=(fake_azure_audio, None, None))
+
+    with (
+        patch("app.services.ai.tts_service.settings.AZURE_SPEECH_KEY", "valid_azure_key"),
+        patch.object(svc, "_synthesize_edge_tts_detailed", new=failing_edge),
+        patch.object(svc, "_synthesize_azure_speech_detailed", new=mock_azure),
+    ):
+        res = await svc.synthesize_with_details(
+            "Giới thiệu bản thân đi.",
+            language="vi-VN",
+            timeout=10.0,
+        )
+
+    assert res["audio_base64"] == fake_azure_audio
+    assert res["provider_used"] == "azure_speech"
+    assert res["voice"] == "vi-VN-HoaiMyNeural"
+    mock_azure.assert_awaited_once()

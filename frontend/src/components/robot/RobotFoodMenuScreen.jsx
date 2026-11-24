@@ -27,16 +27,16 @@ import {
 } from '../../utils/menuVoiceAssistant';
 
 export const INITIAL_MENU_CATEGORIES = [
-  { id: 'appetizers', name: 'Khai vị & Ăn nhẹ', icon: '' },
-  { id: 'soups_porridge', name: 'Súp & Cháo', icon: '' },
-  { id: 'salads', name: 'Salad & Gỏi', icon: '' },
-  { id: 'mains', name: 'Món chính', icon: '' },
-  { id: 'seafood', name: 'Hải sản', icon: '' },
-  { id: 'noodles_rice', name: 'Mì – Cơm – Pasta', icon: '' },
-  { id: 'hotpot', name: 'Lẩu', icon: '' },
-  { id: 'sides_veggies', name: 'Rau & Món thêm', icon: '' },
-  { id: 'desserts', name: 'Trái cây & Tráng miệng', icon: '' },
-  { id: 'drinks', name: 'Đồ uống', icon: '' },
+  { id: 'appetizers', name: 'Khai vị & Ăn nhẹ', nameEn: 'Appetizers & Snacks', icon: '' },
+  { id: 'soups_porridge', name: 'Súp & Cháo', nameEn: 'Soups & Porridge', icon: '' },
+  { id: 'salads', name: 'Salad & Gỏi', nameEn: 'Salads', icon: '' },
+  { id: 'mains', name: 'Món chính', nameEn: 'Main Dishes', icon: '' },
+  { id: 'seafood', name: 'Hải sản', nameEn: 'Seafood', icon: '' },
+  { id: 'noodles_rice', name: 'Mì – Cơm – Pasta', nameEn: 'Noodles, Rice & Pasta', icon: '' },
+  { id: 'hotpot', name: 'Lẩu', nameEn: 'Hotpot', icon: '' },
+  { id: 'sides_veggies', name: 'Rau & Món thêm', nameEn: 'Sides & Vegetables', icon: '' },
+  { id: 'desserts', name: 'Trái cây & Tráng miệng', nameEn: 'Desserts & Fruits', icon: '' },
+  { id: 'drinks', name: 'Đồ uống', nameEn: 'Beverages', icon: '' },
 ];
 
 export const INITIAL_FOOD_ITEMS = [
@@ -723,6 +723,7 @@ export const RobotFoodMenuScreen = ({
   onNotCheckedIn = () => {},
   onPinVerifiedSuccess = () => {},
   sessionId = null,
+  language = 'Tiếng Việt',
   lastVoiceTranscript = null,
   voiceReplyText = '',
   isListening = false,
@@ -733,6 +734,7 @@ export const RobotFoodMenuScreen = ({
   onStopSpeaking = null,
   onUnhandledVoice = null,
 }) => {
+  const isEn = language === 'English';
   const [selectedCategory, setSelectedCategory] = useState(INITIAL_MENU_CATEGORIES[0]?.id || 'appetizers');
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState({}); // { [itemId]: { item, qty } }
@@ -1122,7 +1124,7 @@ export const RobotFoodMenuScreen = ({
         {/* Tiêu đề Danh mục */}
         <div className="h-11 sm:h-12 shrink-0 px-2 sm:px-3 border-b border-[#E3DFD5] flex items-center bg-white/40 touch-none">
           <span className="text-[10px] sm:text-[11px] font-black uppercase text-stone-700 tracking-wider truncate">
-            Danh Mục Món Ăn
+            {isEn ? 'Food Categories' : 'Danh Mục Món Ăn'}
           </span>
         </div>
 
@@ -1148,7 +1150,7 @@ export const RobotFoodMenuScreen = ({
                     : 'text-stone-700 hover:bg-white/70 hover:text-stone-900'
                 }`}
               >
-                <span className="block truncate">{cat.name}</span>
+                <span className="block truncate">{isEn && cat.nameEn ? cat.nameEn : cat.name}</span>
               </button>
             );
           })}
@@ -1161,7 +1163,7 @@ export const RobotFoodMenuScreen = ({
         <header className="h-11 sm:h-12 shrink-0 border-b border-[#E3DFD5] px-3 sm:px-4 pr-[max(0.75rem,env(safe-area-inset-right,0px))] flex items-center justify-between bg-white/80 backdrop-blur-md touch-none">
           <div className="flex items-center">
             <h1 className="text-xs sm:text-sm font-black text-stone-900 tracking-tight">
-              Xin mời quý khách chọn món ăn
+              {isEn ? 'Please choose your dishes' : 'Xin mời quý khách chọn món ăn'}
             </h1>
           </div>
 
@@ -1182,7 +1184,7 @@ export const RobotFoodMenuScreen = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm món ngon..."
+                placeholder={isEn ? 'Search delicious dishes...' : 'Tìm món ngon...'}
                 className="w-full h-8 pl-8 pr-3 rounded-full bg-stone-100 border border-stone-300 text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-500"
               />
               {searchQuery && (
@@ -1201,10 +1203,10 @@ export const RobotFoodMenuScreen = ({
               type="button"
               onClick={handleOpenRoomModal}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-stone-50 border border-[#E3DFD5] hover:border-stone-400 text-[11px] font-bold text-stone-800 shadow-sm transition-all cursor-pointer active:scale-95 group"
-              title="Bấm để thay đổi số phòng nhận món"
+              title={isEn ? 'Click to change delivery room number' : 'Bấm để thay đổi số phòng nhận món'}
             >
               <span className="w-2 h-2 rounded-full bg-stone-400" />
-              <span>{deliveryRoom ? `Phòng ${deliveryRoom}` : 'Chưa có phòng'}</span>
+              <span>{deliveryRoom ? (isEn ? `Room ${deliveryRoom}` : `Phòng ${deliveryRoom}`) : (isEn ? 'No room' : 'Chưa có phòng')}</span>
               <Edit3 className="w-3 h-3 text-stone-400 group-hover:text-stone-700 transition-colors ml-0.5" />
             </button>
 
@@ -1213,10 +1215,10 @@ export const RobotFoodMenuScreen = ({
               type="button"
               onClick={onClose}
               className="h-8 px-3.5 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-sm"
-              title="Quay lại giao diện Robot"
+              title={isEn ? 'Back to Robot screen' : 'Quay lại giao diện Robot'}
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Quay lại Robot</span>
+              <span>{isEn ? 'Back to Robot' : 'Quay lại Robot'}</span>
             </button>
           </div>
         </header>
@@ -1356,7 +1358,7 @@ export const RobotFoodMenuScreen = ({
         <footer className="h-11 sm:h-12 shrink-0 bg-white border-t border-[#E3DFD5] px-4 sm:px-6 pr-[max(1rem,env(safe-area-inset-right,0px))] flex items-center justify-between shadow-lg z-10 touch-none pb-[env(safe-area-inset-bottom,0px)]">
           <div className="flex items-baseline gap-2">
             <span className="text-[10px] sm:text-xs font-bold text-stone-500 uppercase tracking-wider">
-              Tổng cộng:
+              {isEn ? 'Total:' : 'Tổng cộng:'}
             </span>
             <span className="text-lg sm:text-xl font-black text-stone-900 tracking-tight">
               {formatCurrency(totalPrice)} đ
@@ -1376,7 +1378,7 @@ export const RobotFoodMenuScreen = ({
               }`}
             >
               <ShoppingBag className="w-3.5 h-3.5" />
-              <span>Xem lại menu</span>
+              <span>{isEn ? 'View Cart' : 'Xem lại menu'}</span>
               <span
                 className={`px-1.5 py-0.2 rounded-full text-[9px] sm:text-[10px] font-black min-w-4 text-center ${
                   totalItemsCount > 0 ? 'bg-amber-400 text-stone-950' : 'bg-stone-300 text-stone-500'
@@ -1404,7 +1406,7 @@ export const RobotFoodMenuScreen = ({
               <div className="flex items-center gap-2">
                 <ShoppingBag className="w-4 h-4 text-stone-800" />
                 <h3 className="text-sm font-black text-stone-900 uppercase tracking-tight">
-                  Món Đã Chọn ({totalItemsCount})
+                  {isEn ? `Selected Items (${totalItemsCount})` : `Món Đã Chọn (${totalItemsCount})`}
                 </h3>
               </div>
               <button
@@ -1420,7 +1422,7 @@ export const RobotFoodMenuScreen = ({
             <div className="cart-drawer-scrollable flex-1 min-h-0 overflow-y-auto p-4 space-y-3 custom-scrollbar overscroll-contain touch-pan-y">
               {Object.values(cart).length === 0 ? (
                 <div className="h-40 flex items-center justify-center text-xs text-stone-400">
-                  Chưa có món nào được chọn.
+                  {isEn ? 'No items selected yet.' : 'Chưa có món nào được chọn.'}
                 </div>
               ) : (
                 Object.values(cart).map(({ item, qty }) => (
@@ -1482,21 +1484,21 @@ export const RobotFoodMenuScreen = ({
               <div className="flex items-center justify-between text-xs py-2 px-3 bg-stone-50 rounded-2xl border border-stone-200">
                 <span className="text-stone-500 font-semibold flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-stone-400" />
-                  <span>Giao đến phòng:</span>
+                  <span>{isEn ? 'Deliver to room:' : 'Giao đến phòng:'}</span>
                 </span>
                 <button
                   type="button"
                   onClick={handleOpenRoomModal}
                   className="font-black text-stone-900 hover:text-stone-700 flex items-center gap-1 cursor-pointer transition-colors px-2 py-0.5 rounded-lg hover:bg-stone-200/60"
-                  title="Bấm để thay đổi số phòng nhận món"
+                  title={isEn ? 'Click to change room number' : 'Bấm để thay đổi số phòng nhận món'}
                 >
-                  <span>{deliveryRoom ? `Phòng ${deliveryRoom}` : 'Chưa có phòng'}</span>
+                  <span>{deliveryRoom ? (isEn ? `Room ${deliveryRoom}` : `Phòng ${deliveryRoom}`) : (isEn ? 'No room selected' : 'Chưa có phòng')}</span>
                   <Edit3 className="w-3 h-3 text-stone-400" />
                 </button>
               </div>
 
               <div className="flex justify-between items-baseline text-xs">
-                <span className="font-black text-stone-900 text-sm">Tổng cộng:</span>
+                <span className="font-black text-stone-900 text-sm">{isEn ? 'Total:' : 'Tổng cộng:'}</span>
                 <span className="font-black text-xl text-stone-900">
                   {formatCurrency(totalPrice)} đ
                 </span>
@@ -1515,14 +1517,14 @@ export const RobotFoodMenuScreen = ({
                 className="w-full py-3.5 rounded-full bg-[#1A1917] hover:bg-stone-800 disabled:opacity-50 text-white font-black text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
               >
                 {isSubmitting ? (
-                  <span>Đang gửi yêu cầu...</span>
+                  <span>{isEn ? 'Sending order...' : 'Đang gửi yêu cầu...'}</span>
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4 text-stone-300" />
                     <span>
                       {deliveryRoom || activeRoomNumber
-                        ? `Đặt Món (Phòng ${deliveryRoom || activeRoomNumber})`
-                        : `Xác Nhận Đặt Món (${totalItemsCount})`}
+                        ? (isEn ? `Place Order (Room ${deliveryRoom || activeRoomNumber})` : `Đặt Món (Phòng ${deliveryRoom || activeRoomNumber})`)
+                        : (isEn ? `Confirm Order (${totalItemsCount})` : `Xác Nhận Đặt Món (${totalItemsCount})`)}
                     </span>
                   </>
                 )}

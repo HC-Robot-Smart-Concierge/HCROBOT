@@ -124,7 +124,7 @@ export const sendChatPrompt = async (
   demographics = null
 ) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  const timeoutId = setTimeout(() => controller.abort(), 38000);
 
   if (externalSignal) {
     if (externalSignal.aborted) {
@@ -146,6 +146,7 @@ export const sendChatPrompt = async (
         prompt: prompt,
         rag_context: ragContext,
         language: language,
+        preferred_language: demographics?.preferredLanguage || null,
         emotion: emotion,
         room_number: roomNumber,
         age_group: demographics?.age_group || demographics?.ageGroup || 'adult',
@@ -260,10 +261,12 @@ export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice =
   let targetVoice = voice;
   let targetLang = language;
   let externalSignal = optionalSignal;
-  let timeoutMs = 7000;
+  let timeoutMs = 32000;
+  let targetRate = null;
 
   if (typeof optionsOrProvider === 'object' && optionsOrProvider !== null) {
-    provider = optionsOrProvider.provider || 'edge';
+    provider = 'edge';
+    targetRate = optionsOrProvider.rate ?? null;
     targetVoice = optionsOrProvider.voice || voice;
     targetLang = optionsOrProvider.language || language;
     externalSignal = optionsOrProvider.signal || optionalSignal || null;
@@ -313,6 +316,7 @@ export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice =
         provider,
         voice: targetVoice,
         language: targetLang,
+        rate: targetRate,
       }),
     });
 
@@ -559,13 +563,11 @@ export const getVoiceSettings = async () => {
   } catch (err) {
     console.warn('[AIApi] getVoiceSettings error:', err.message);
     const savedRate = typeof window !== 'undefined' ? localStorage.getItem('rora_speech_rate') : null;
-    const savedViVoice = typeof window !== 'undefined' ? localStorage.getItem('rora_vi_voice') : null;
-    const savedEnVoice = typeof window !== 'undefined' ? localStorage.getItem('rora_en_voice') : null;
     return {
       speech_rate: savedRate ? parseFloat(savedRate) : 1.0,
       rate_percentage: '+0%',
-      vi_voice: savedViVoice || 'vi-VN-HoaiMyNeural',
-      en_voice: savedEnVoice || 'en-US-JennyNeural',
+      vi_voice: 'vi-VN-HoaiMyNeural',
+      en_voice: 'en-US-JennyNeural',
     };
   }
 };
@@ -573,7 +575,9 @@ export const getVoiceSettings = async () => {
 /**
  * Admin cập nhật cấu hình tốc độ phát và giọng nói toàn hệ thống
  */
-export const updateVoiceSettings = async ({ speech_rate, vi_voice, en_voice }) => {
+export const updateVoiceSettings = async ({ speech_rate }) => {
+  const vi_voice = 'vi-VN-HoaiMyNeural';
+  const en_voice = 'en-US-JennyNeural';
   try {
     const res = await fetch(`${API_BASE_URL}/voice-settings`, {
       method: 'POST',

@@ -41,6 +41,38 @@ class WebRTCOfferRequest(BaseModel):
     port: Optional[int] = 8554
 
 
+class GuestPerceptionSync(BaseModel):
+    emotion: Optional[str] = None
+    gender: Optional[str] = None
+    age_group: Optional[str] = None
+    confidence: Optional[float] = None
+    is_face_detected: Optional[bool] = None
+
+
+@router.post(
+    "/robot/guest-perception",
+    tags=TAG_OPS,
+    summary="Đồng bộ kết quả nhận diện khuôn mặt & biểu cảm từ Camera Pi 5 tới Robot",
+)
+async def sync_guest_perception(payload: GuestPerceptionSync):
+    """
+    Nhận kết quả AI nhận diện (biểu cảm khó chịu, giới tính, độ tuổi) từ camera Pi 5 / Admin
+    và phát sóng WebSocket tới màn hình điện thoại Robot để hiển thị hỗ trợ hoặc gợi ý dịch vụ.
+    """
+    from app.services.notification_manager import notification_manager
+
+    event_data = {
+        "type": "GUEST_PERCEPTION_UPDATE",
+        "emotion": payload.emotion,
+        "gender": payload.gender,
+        "age_group": payload.age_group,
+        "confidence": payload.confidence,
+        "is_face_detected": payload.is_face_detected,
+    }
+    await notification_manager.broadcast_to_department("All", event_data)
+    return {"status": "ok", "synced": event_data}
+
+
 @router.post("/robot/control", tags=TAG_OPS, summary="Điều khiển di chuyển HCRobot (UDP Remote)")
 @audit_action(action="ROBOT_MOVE", resource_type="ROBOT", default_actor_id="operator")
 @measure_performance(action_name="control_robot_movement", slow_threshold_ms=300.0)

@@ -38,13 +38,13 @@ class Settings(BaseSettings):
     GROQ_API_KEY: Optional[str] = None
     GROQ_MODEL: str = "qwen/qwen3.8-27b"
 
-    # AI Voice Concierge TTS Configuration
-    TTS_PROVIDER: str = "edge"  # Options: 'edge', 'elevenlabs', 'openai', 'browser'
+    # Free Edge TTS: no API key or billing configuration is required.
+    TTS_PROVIDER: str = "edge"  # Compatibility field; speech uses fixed female Edge voices only.
     TTS_RATE: str = "+0%"  # Default speech rate: '+0%' (natural), '-10%' (slower), '+10%' (faster)
-    ELEVENLABS_API_KEY: Optional[str] = None
-    ELEVENLABS_VOICE_ID: Optional[str] = "21m00Tcm4TlvDq8ikWAM"
-    OPENAI_API_KEY: Optional[str] = None
-    OPENAI_TTS_VOICE: str = "alloy"
+
+    # Multi-Endpoint TTS: Microsoft Azure Speech Services (Optional Secondary Fallback for HoaiMy/Jenny Neural)
+    AZURE_SPEECH_KEY: Optional[str] = None
+    AZURE_SPEECH_REGION: str = "southeastasia"
 
     # Pipecat Realtime Audio Pipeline Configuration
     ENABLE_PIPECAT: bool = True

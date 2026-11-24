@@ -4,8 +4,6 @@ import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl, detectDestinationPoi } from '../../components/robot/FloorMap';
 import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck, Wrench, Luggage } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { CameraPreview } from '../../components/robot/CameraPreview';
-import { useKioskStreamBroadcaster } from '../../hooks/useKioskStreamBroadcaster';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
 import { RobotRoomServiceScreen } from '../../components/robot/RobotRoomServiceScreen';
@@ -339,13 +337,35 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     };
   }, []);
 
-  // Lắng nghe lệnh đẩy quảng cáo từ Admin qua WebSocket
+  const handleGuestEmotionDetectedRef = useRef(null);
+  const handleGuestDemographicsDetectedRef = useRef(null);
+  const handleGuestApproachedRef = useRef(null);
+  const handleGuestLeftRef = useRef(null);
+  const guestPresentRef = useRef(false);
+
+  // Lắng nghe lệnh đẩy quảng cáo & đồng bộ nhận diện khách (Biểu cảm, Giới tính, Độ tuổi) từ Admin/Pi 5 qua WebSocket
   useNotificationWebSocket({
     department: 'All',
     onNotificationReceived: (event) => {
       if (event && event.type === 'ADVERTISEMENT_PUSH' && event.advertisement && !isServingGuest && !guestPresent && batteryGuard.canStartGuestSession) {
         setPushedAd(event.advertisement);
         setIsStandby(true);
+      }
+      if (event && event.type === 'GUEST_PERCEPTION_UPDATE') {
+        if (event.is_face_detected === true && !guestPresentRef.current) {
+          handleGuestApproachedRef.current?.();
+        } else if (event.is_face_detected === false && guestPresentRef.current) {
+          handleGuestLeftRef.current?.();
+        }
+        if (event.emotion) {
+          handleGuestEmotionDetectedRef.current?.(event.emotion);
+        }
+        if (event.gender || event.age_group) {
+          handleGuestDemographicsDetectedRef.current?.({
+            gender: event.gender,
+            ageGroup: event.age_group,
+          });
+        }
       }
     },
     // Studio "Gửi tới robot" -> chạy kịch bản trên màn hình này bằng cùng bộ quyết định rẽ nhánh
@@ -378,18 +398,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const isVideoCallOpenRef = useRef(false);
   const [videoCallSessionId, setVideoCallSessionId] = useState(null);
   const [videoCallTicketCode, setVideoCallTicketCode] = useState(null);
-
-  // Kiosk Phone Camera Broadcaster to Admin WebRTC (kiosk-live-feed)
-  const {
-    stream: kioskCameraStream,
-    isCameraActive: isKioskCameraActive,
-    isBroadcasting: isKioskBroadcasting,
-    needsUserGesture: needsKioskCameraGesture,
-    startCamera: startKioskCamera,
-  } = useKioskStreamBroadcaster({
-    enabled: true,
-    isPaused: isVideoCallOpen,
-  });
 
   useEffect(() => {
     isVideoCallOpenRef.current = isVideoCallOpen;
@@ -440,6 +448,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, []);
 
   const [guestPresent, setGuestPresent] = useState(false);
+  guestPresentRef.current = guestPresent;
   const pausedPromo = useRef(null);
 
   // Available Workflows State (for AUTO_DETECT and manual triggers)
@@ -455,6 +464,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isSpeechPending = false,
     isSpeechActive = false,
     speechRate,
+    speechError: ttsError,
     updateSpeechRate,
     viVoice,
     enVoice,
@@ -470,6 +480,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const {
     isListening = false,
     transcript = '',
+    isTranscribing = false,
+    finishVoiceCapture,
     error: speechError = null,
     startListening,
     stopListening,
@@ -515,7 +527,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [language]);
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
-  const [guestAgeGroup, setGuestAgeGroup] = useState('adult');
+  const guestEmotionRef = useRef('neutral');
+  const [guestAgeGroup, setGuestAgeGroup] = useState('young_adult');
   const [guestGender, setGuestGender] = useState('unknown');
   const [suggestedPrompts, setSuggestedPrompts] = useState([]);
   const lastUnhappyAlertTimeRef = useRef(0);
@@ -577,22 +590,28 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const handleGuestEmotionDetected = useCallback(
     (emotion) => {
       setGuestEmotion(emotion);
+      guestEmotionRef.current = emotion;
 
       if (emotion === 'unhappy') {
-        // Đang có timer đếm ngược hoặc video call đang mở hoặc popup đã mở -> Bỏ qua
+        // Dang co timer dem nguoc hoac video call dang mo hoac popup da mo -> Bo qua
         if (unhappyTimerRef.current || isVideoCallOpenRef.current || isUnhappyAssistanceOpen) {
           return;
         }
 
         const now = Date.now();
-        // Cooldown 60s giữa các lần hỏi để tránh spam
-        if (now - lastUnhappyAlertTimeRef.current <= 60000) {
+        // Cooldown 15s giua cac lan hoi de tranh lam phien khach
+        if (now - lastUnhappyAlertTimeRef.current <= 15000) {
           return;
         }
 
-        // Bắt đầu đếm nhăn mặt duy trì liên tục khoảng 2 giây (2000ms)
+        // Bat dau dem nhan mat duy tri 2 giay (2000ms)
         unhappyTimerRef.current = setTimeout(() => {
           unhappyTimerRef.current = null;
+
+          // Bat buoc kiem tra lai: CHI KHI KHIEU NAI/NHAN MAT VAN DANG LA UNHAPPY
+          if (guestEmotionRef.current !== 'unhappy') {
+            return;
+          }
 
           // Kiểm tra lại trạng thái sau 2 giây: không gọi video, không đang nói hoặc chờ phát âm thanh
           if (!isVideoCallOpenRef.current && !isSpeakingRef.current && !isSpeechActiveRef.current) {
@@ -608,7 +627,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           }
         }, 2000);
       } else {
-        // Nếu khách hết nhăn mặt (về neutral/happy hoặc cử động khác) trước 2s -> Hủy timer ngay
+        // Khi bieu cam chuyen ve neutral hoac happy -> HUY NGAY timer hoi tro giup
         if (unhappyTimerRef.current) {
           clearTimeout(unhappyTimerRef.current);
           unhappyTimerRef.current = null;
@@ -617,6 +636,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     },
     [language, speak, isUnhappyAssistanceOpen]
   );
+  handleGuestEmotionDetectedRef.current = handleGuestEmotionDetected;
 
   const handleGuestDemographicsDetected = useCallback(({ gender, ageGroup }) => {
     if (gender && gender !== 'unknown') {
@@ -626,6 +646,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setGuestAgeGroup((prev) => (prev !== ageGroup ? ageGroup : prev));
     }
   }, []);
+  handleGuestDemographicsDetectedRef.current = handleGuestDemographicsDetected;
 
   // Lang nghe phan hoi bang giong noi khi Modal ho tro bieu cam dang mo
   useEffect(() => {
@@ -1134,6 +1155,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     if (
       currentState === 'RT-03' &&
       isListening &&
+      !isTranscribing &&
+      volumeLevel < 6 &&
       !isSpeaking &&
       !isSpeakingRef.current &&
       !isSpeechActive &&
@@ -1153,7 +1176,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       }, 8000);
       return () => clearTimeout(noSpeechTimer);
     }
-  }, [currentState, isListening, isSpeaking, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen, isTaxiModalOpen, transcript, stopListening]);
+  }, [currentState, isListening, isSpeaking, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen, isTaxiModalOpen, transcript, stopListening, isTranscribing, volumeLevel]);
 
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = (detection) => {
@@ -1202,6 +1225,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       }
     }
   };
+  handleGuestApproachedRef.current = handleGuestApproached;
 
   // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB, dọn dẹp âm thanh & chuyển sang ngủ nhẹ (RT-01)
   const handleGuestApproachedByTouch = () => {
@@ -1270,6 +1294,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     resetSession(sessionId);
     setCurrentState('RT-01');
   };
+  handleGuestLeftRef.current = handleGuestLeft;
 
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động rảnh tay)
   const handleStartTalk = (options = {}) => {
@@ -1884,7 +1909,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         sessionId,
         effectiveRoomNumber,
         chatSignal,
-        { ageGroup: guestAgeGroup, gender: guestGender }
+        { ageGroup: guestAgeGroup, gender: guestGender, preferredLanguage: languageRef.current }
       );
 
       // Nếu người dùng đã kích hoạt câu nói mới, ngắt lời hoặc timeout xảy ra -> Hủy bỏ câu cũ
@@ -2562,9 +2587,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             clearTimeout(textSafetyTimer);
             revealSubtitle();
           },
-          chatRes.audio_base64,
+          chatRes.audio_base64 ? chatRes.speech_audio : null,
           null,
-          { skipRemoteTts: false }
+          { onError: () => {
+            clearTimeout(textSafetyTimer);
+            clearTimeout(processingSafetyTimerRef.current);
+            processingSafetyTimerRef.current = null;
+            isProcessingRef.current = false;
+            setIsProcessing(false);
+            setAiResponseText(replyText);
+            setCurrentState('RT-02');
+          } }
         );
       };
 
@@ -2912,6 +2945,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         activeRoomNumber={activeRoomNumber || ''}
         authenticatedRoom={authenticatedRoom}
         {...menuVoiceProps}
+        language={language}
         onPinVerifiedSuccess={(room) => {
           setAuthenticatedRoom(room);
           if (room) setActiveRoomNumber(room);
@@ -3105,25 +3139,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }}
       />
 
-      {/* Camera AI (Chạy ngầm nhận diện khách/cảm xúc và stream WebRTC về Admin) */}
-      <CameraPreview
-        autoStart={true}
-        externalStream={kioskCameraStream}
-        controlsClassName="robot-camera-control"
-        onGuestApproached={handleGuestApproached}
-        onGuestLeft={handleGuestLeft}
-        onEmotionChange={handleGuestEmotionDetected}
-        onDemographicsChange={handleGuestDemographicsDetected}
-        source="local"
-        defaultMinimized={true}
-        visible={false}
-      />
-
-
       <MobileRobotScreen
-        isKioskCameraActive={isKioskCameraActive}
-        onStartKioskCamera={startKioskCamera}
-        kioskCameraStream={kioskCameraStream}
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
         eyeExpression={activeEyeExpression}
@@ -3145,11 +3161,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onResetToIdle={resetToIdle}
         onPrime={prime}
         onStartTalk={handleStartTalk}
-        onSubmitTalk={() => handleStopTalkAndProcess(transcript || '')}
+        onSubmitTalk={() => transcript?.trim() ? handleStopTalkAndProcess(transcript) : finishVoiceCapture()}
         onStopSpeaking={handleStopSpeaking}
         onToggleAutoListen={() => setIsAutoListen((value) => !value)}
         onToggleLanguage={toggleLanguage}
-        speechError={speechError}
+        speechError={ttsError || speechError}
         transcript={transcript}
         volumeLevel={volumeLevel}
         workflowTrigger={null}
@@ -3284,7 +3300,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onSelectTaxiConciergeBooking={handleSelectTaxiConciergeBooking}
         onCancelTaxiFlow={handleCancelTaxiFlow}
         onSubmitTaxiRoomNumber={handleTaxiRoomProvided}
-        onCloseAiResponse={() => setAiResponseText('')}
+        onCloseAiResponse={() => {
+          setAiResponseText('');
+          setLastUserPrompt('');
+        }}
         navigationDestinationKey={navigationDestinationKey}
         onSelectDestination={setNavigationDestinationKey}
         showQrModalExternal={isAutoQrModalOpen}
@@ -3977,16 +3996,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 <div className="mt-6 flex flex-col items-center gap-3 animate-fadeIn">
                   <div className="px-6 py-3.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-2xl flex items-center gap-4 text-stone-100 max-w-[620px]">
                     <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
-                    <div className="flex flex-col text-left min-w-[240px]">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-stone-400">Khách nói:</span>
-                      </div>
-                      <span className="text-sm font-bold text-stone-100">
-                        {transcript ? `"${transcript}"` : (volumeLevel > 5 ? 'Đang nhận diện giọng nói...' : 'Listening... · Đang lắng nghe...')}
-                      </span>
-                      <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1.5 mt-0.5">
-                        <Globe className="w-3 h-3 text-stone-400" />
-                        <span>Auto-detect VI · EN · Tự động nhận diện</span>
+                    <div className="flex items-center text-left min-w-[200px]">
+                      <span className="text-sm font-semibold text-stone-100">
+                        {transcript ? `"${transcript}"` : (language === 'English' ? 'Listening...' : 'Đang lắng nghe...')}
                       </span>
                     </div>
                   </div>
@@ -4033,7 +4045,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 <div className="mt-5 px-6 py-3.5 bg-stone-900/85 backdrop-blur-md border border-stone-700/60 rounded-2xl flex flex-col items-center gap-2 shadow-xl animate-fadeIn max-w-[600px]">
                   {lastUserPrompt ? (
                     <div className="flex items-center gap-2 text-stone-200 text-sm font-semibold text-center">
-                      <span className="text-stone-400 text-xs uppercase tracking-wider font-bold shrink-0">Khách hỏi:</span>
                       <span className="italic text-stone-100">"{lastUserPrompt}"</span>
                     </div>
                   ) : null}
@@ -4049,6 +4060,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         </main>
 
         {/* 3. Bottom Dev State Switcher (Chỉ là các hình tròn nhỏ màu xám/trung tính đại diện cho State, không chữ) */}
+        {ttsError && (
+          <div role="alert" className="absolute bottom-16 left-1/2 -translate-x-1/2 z-[70] max-w-[90%] rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 shadow">
+            {ttsError}
+          </div>
+        )}
+
         <footer className={`absolute bottom-4 left-1/2 -translate-x-1/2 bg-stone-900/80 px-3.5 py-2 rounded-full flex items-center gap-3 shadow-2xl backdrop-blur-md border border-stone-800/80 z-10 transition-all duration-300 ${aiResponseText || isSpeaking ? 'opacity-0 pointer-events-none' : 'opacity-20 hover:opacity-100'
           }`}>
           {[

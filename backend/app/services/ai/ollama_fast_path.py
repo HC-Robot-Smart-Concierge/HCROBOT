@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Any, Dict, Optional, Tuple
 
-from app.services.ai.constants import BELLMAN_MENU_TRIGGER_KEYWORDS, SERVICE_KEYWORDS
+from app.services.ai.constants import BELLMAN_MENU_TRIGGER_KEYWORDS, FOOD_MENU_TRIGGER_KEYWORDS, SERVICE_KEYWORDS
 from app.services.ai.scenario_service import scenario_service
 from app.services.bell_request_service import classify_bell_request
 from app.services.maintenance_request_service import is_fault_report
@@ -106,11 +106,11 @@ def check_fast_path_full(
     has_action_verb = any(v in prompt_lower for v in _SERVICE_ACTION_VERBS)
     has_service_noun = any(n in prompt_lower for n in _SERVICE_NOUNS)
     is_bell_task = any(k in prompt_lower for k in SERVICE_KEYWORDS["bellman"]) and bool(classify_bell_request(prompt))
-    if (
+    is_menu_trigger = any(k in prompt_lower for k in FOOD_MENU_TRIGGER_KEYWORDS) or any(k in prompt_lower for k in BELLMAN_MENU_TRIGGER_KEYWORDS)
+    if not is_menu_trigger and (
         (has_action_verb and has_service_noun)
         or is_fault_report(prompt)
         or is_bell_task
-        or any(k in prompt_lower for k in BELLMAN_MENU_TRIGGER_KEYWORDS)
     ):
         logger.info(f"[OllamaService Fast-Path Bypass] Service action intent detected, skipping fast-path for: '{prompt[:40]}'")
         return None

@@ -217,7 +217,11 @@ ROOM_SERVICE_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set(
 
 FOOD_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set(
     SERVICE_KEYWORDS["room_service"] + [
-        "menu đồ ăn", "thực đơn", "menu món ăn", "food menu", "đặt món", "gọi món", "order món", "open food menu"
+        "menu đồ ăn", "thực đơn", "menu món ăn", "food menu", "đặt món", "gọi món", "order món", "open food menu",
+        "order food", "can i order food", "i want to order food", "i'd like to order food", "order a meal",
+        "order meals", "order dishes", "dining menu", "restaurant menu", "in-room dining", "in room dining",
+        "room service food", "room service menu", "show food menu", "show me the menu", "view menu", "open menu",
+        "cho tôi đặt món", "cho tôi xem thực đơn", "cho tôi xem menu", "mở thực đơn", "mở menu", "đặt đồ ăn", "gọi đồ ăn"
     ]
 )))
 

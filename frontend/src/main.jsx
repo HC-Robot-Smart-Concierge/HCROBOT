@@ -31,6 +31,14 @@ if ('serviceWorker' in navigator) {
       });
     }).catch(() => {});
   } else {
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
+    });
+
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((registration) => {
         registration.update();
@@ -45,6 +53,13 @@ if ('serviceWorker' in navigator) {
                 newWorker.postMessage({ type: 'SKIP_WAITING' });
               }
             });
+          }
+        });
+
+        // Kiểm tra cập nhật ngầm tự động mỗi khi người dùng mở lại PWA từ nền
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            registration.update().catch(() => {});
           }
         });
       }).catch((err) => {

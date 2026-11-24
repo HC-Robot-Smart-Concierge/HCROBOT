@@ -26,6 +26,7 @@ from app.services.ai.session_manager import (
     session_manager,
 )
 from app.services.ai.tts_service import tts_service
+from app.services.ai.speech_language import select_turn_language
 from app.services.bell_request_service import bell_request_message
 from app.services.maintenance_request_service import (
     duplicate_maintenance_message,
@@ -140,6 +141,9 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             session_manager.set_room_number(sid, extracted_from_prompt)
         current_room = session_manager.get_room_number(sid)
         history = session_manager.get_history(sid)
+        turn_name, turn_code = select_turn_language(request.prompt, request.language, request.preferred_language or session_manager.get_language(sid))
+        request = request.model_copy(update={"language": turn_name})
+        session_manager.set_language(sid, turn_name)
 
         # 0. Instant ACK (< 5ms)
         yield f"data: {json.dumps({'event': 'ack', 'status': 'connected'}, ensure_ascii=False)}\n\n"
@@ -189,8 +193,8 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
 
             try:
                 audio_b64, mime_type, _ = await asyncio.wait_for(
-                    tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=2.0),
-                    timeout=3.8
+                    tts_service.synthesize(reply, provider="edge", language=lang_code, timeout=10.0),
+                    timeout=10.5
                 )
             except Exception:
                 audio_b64, mime_type = None, "audio/mp3"
@@ -268,7 +272,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
                     )
                 logger.info(f"[AIChatStream] Dispatched ticket creation for '{action}' (Room {effective_room}): {fsm_items}")
 
-            _, final_lang_code = ollama_service.detect_language(fsm_reply)
+            final_lang_code = turn_code
             fsm_reply = ensure_followup_question(
                 fsm_reply,
                 action=fsm_action,
@@ -334,7 +338,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             full_text += token
             yield f"data: {json.dumps({'event': 'token', 'token': token}, ensure_ascii=False)}\n\n"
 
-        _, final_lang_code = ollama_service.detect_language(full_text)
+        final_lang_code = turn_code
         base_trimmed = full_text.strip()
         updated_full = ensure_followup_question(base_trimmed, action="conversation", lang_code=final_lang_code)
         if len(updated_full) > len(base_trimmed):

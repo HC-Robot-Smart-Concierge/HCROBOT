@@ -39,7 +39,26 @@ export default {
     }
 
     // 2. Các assets tĩnh (HTML, CSS, JS, ảnh) được phục vụ từ thư mục dist của Vite
-    return env.ASSETS.fetch(request);
+    const res = await env.ASSETS.fetch(request);
+    if (
+      url.pathname === '/' ||
+      url.pathname === '/index.html' ||
+      url.pathname === '/sw.js' ||
+      url.pathname === '/manifest.json' ||
+      url.pathname === '/manifest-login.json'
+    ) {
+      const newHeaders = new Headers(res.headers);
+      newHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+      newHeaders.set('Pragma', 'no-cache');
+      newHeaders.set('Expires', '0');
+      return new Response(res.body, {
+        status: res.status,
+        statusText: res.statusText,
+        headers: newHeaders,
+      });
+    }
+
+    return res;
   },
 };
 

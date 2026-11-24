@@ -13,6 +13,8 @@ except ImportError:
     HAS_REDIS = False
 
 from app.core.config import settings
+from app.services.cache.knowledge_revision import get_knowledge_revision
+from app.services.rag.knowledge_language import normalize_knowledge_language
 
 logger = logging.getLogger("app.services.cache.redis_service")
 
@@ -97,20 +99,25 @@ class RedisService:
         q = re.sub(r'\s+', ' ', q).strip()
         return q
 
-    def _get_query_cache_key(self, query: str, language: str) -> str:
+    def _get_query_cache_key(self, query: str, language: str, revision: str) -> str:
         clean = self.normalize_query(query)
         q_hash = hashlib.md5(clean.encode("utf-8")).hexdigest()
-        lang_tag = "en" if "en" in language.lower() else "vi"
-        return f"hcrobot:ai:{lang_tag}:{q_hash}"
+        lang_tag = normalize_knowledge_language(language) or "unknown"
+        return f"hcrobot:ai:{revision}:{lang_tag}:{q_hash}"
 
     # =========================================================================
     # 1. AI QUERY & FAST RESPONSE CACHE
     # =========================================================================
 
-    async def get_ai_cache(self, query: str, language: str = "vi") -> Optional[Dict[str, Any]]:
+    async def get_ai_cache(
+        self, query: str, language: str = "vi", *, knowledge_revision: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         """Lấy câu trả lời AI đã cache từ Redis (< 5ms)."""
         client = self.get_client()
         if not client:
+            return None
+        revision = knowledge_revision or get_knowledge_revision()
+        if not revision or revision != get_knowledge_revision():
             return None
 
         # Không cache nếu câu có trích dẫn số phòng cụ thể (mang tính cá nhân)
@@ -118,9 +125,9 @@ class RedisService:
             return None
 
         try:
-            key = self._get_query_cache_key(query, language)
+            key = self._get_query_cache_key(query, language, revision)
             raw = await client.get(key)
-            if raw:
+            if raw and revision == get_knowledge_revision():
                 data = json.loads(raw.decode("utf-8"))
                 logger.info(f"[RedisCache HIT] AI query: '{query[:35]}...' -> Trả lời tức thì từ Redis")
                 return data
@@ -134,10 +141,16 @@ class RedisService:
         language: str,
         response_data: Dict[str, Any],
         ttl: Optional[int] = None,
+        *,
+        knowledge_revision: Optional[str] = None,
     ) -> bool:
         """Lưu câu trả lời của AI vào Redis."""
         client = self.get_client()
         if not client or not response_data:
+            return False
+        # The caller captures this BEFORE generating the answer. A request that
+        # started before an admin edit must never populate the new cache namespace.
+        if not knowledge_revision or knowledge_revision != get_knowledge_revision():
             return False
 
         # Không cache câu lệnh gắn liền với số phòng cụ thể
@@ -145,7 +158,7 @@ class RedisService:
             return False
 
         try:
-            key = self._get_query_cache_key(query, language)
+            key = self._get_query_cache_key(query, language, knowledge_revision)
             payload = json.dumps(response_data, ensure_ascii=False)
             expire_secs = ttl or self.default_ttl
             await client.setex(key, expire_secs, payload.encode("utf-8"))

@@ -15,11 +15,15 @@ import {
   RotateCw,
   UserCheck,
   Compass,
+  Cpu,
+  Laptop,
 } from 'lucide-react';
-import { getCallSignalingWsUrl } from '../../../services/conciergeApi';
-import { WEBRTC_ICE_SERVERS } from '../../../hooks/useKioskStreamBroadcaster';
-
-const DEFAULT_SESSION_ID = 'kiosk-live-feed';
+import {
+  getLaptopWebcamConstraints,
+  buildWebRTCOfferPayload,
+  resolveFeedBadgeText,
+  estimateFacialDemographics,
+} from './adminCameraHelpers';
 
 // Cac chi so diem moc then chot nhat tao nen bieu cam (Sieu toi gian: 2 khoe mieng, 2 dau long may, dinh va day moi)
 const MINIMAL_EXPRESSION_ANCHORS = [
@@ -33,21 +37,23 @@ const MINIMAL_EXPRESSION_ANCHORS = [
 
 export const AdminPhoneCameraTab = ({ currentUser }) => {
   // Connection States
-  const [feedSource, setFeedSource] = useState('webrtc'); // 'webrtc' | 'local_webcam'
-  const [sessionId, setSessionId] = useState(DEFAULT_SESSION_ID);
+  const [feedSource, setFeedSource] = useState('pi5_tailscale'); // 'pi5_tailscale' | 'local_webcam'
+  const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.99.72.51');
+  const [pi5Port, setPi5Port] = useState(8554);
+  const [activeResolution, setActiveResolution] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'connected'
   const [iceConnectionState, setIceConnectionState] = useState('idle');
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [snapshotUrl, setSnapshotUrl] = useState(null);
 
-  // Huong xoay video: Doc tu localStorage hoac mac dinh 90 do cho dien thoai nam ngang
+  // Huong xoay video: Doc tu localStorage hoac mac dinh 0 do cho Camera USB Pi 5 va Webcam Laptop
   const [videoRotation, setVideoRotationState] = useState(() => {
     try {
       const saved = localStorage.getItem('kiosk_video_rotation');
       if (saved !== null) return parseInt(saved, 10);
     } catch {}
-    return 90;
+    return 0;
   });
 
   const setVideoRotation = useCallback((valOrFn) => {
@@ -77,6 +83,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   const [smileScore, setSmileScore] = useState(0);
   const [frownScore, setFrownScore] = useState(0);
   const [overrideEmotion, setOverrideEmotion] = useState(null);
+  const overrideEmotionRef = useRef(null);
   const [showMeshDiagnostics, setShowMeshDiagnostics] = useState(false);
 
   // AI Demographics States (Age & Gender Detection)
@@ -96,9 +103,6 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     eyeSquint: 0,
     jawOpen: 0,
   });
-
-  // Teleop robot control target IP
-  const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.99.72.51');
 
   // Refs
   const videoRef = useRef(null);
@@ -159,7 +163,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     };
   }, []);
 
-  // 2. Ket noi WebRTC vao phong Kiosk Video Stream tu Phone
+  // 2. Don dep ket noi WebRTC va Local Streams
   const cleanupWebRTC = useCallback(() => {
     if (wsRef.current) {
       try {
@@ -179,11 +183,15 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       } catch {}
       localStreamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     remoteStreamRef.current = null;
     iceCandidateQueueRef.current = [];
     setHasRemoteVideo(false);
     setConnectionStatus('disconnected');
     setIceConnectionState('disconnected');
+    setActiveResolution(null);
 
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
@@ -191,18 +199,22 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     }
   }, []);
 
-  const connectWebRTC = useCallback(() => {
+  // 3. Ket noi WebRTC toi Camera USB Pi 5 qua Tailscale (Port 8554 / webrtc-offer)
+  const connectPi5WebRTC = useCallback(async () => {
     cleanupWebRTC();
     setConnectionStatus('connecting');
 
     try {
-      const pc = new RTCPeerConnection(WEBRTC_ICE_SERVERS);
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+        ],
+      });
       pcRef.current = pc;
 
-      // Nhan media stream tu robot phone kiosk
       pc.ontrack = (event) => {
         event.track.enabled = true;
-
         let incomingStream = event.streams && event.streams[0];
         if (!incomingStream) {
           if (!remoteStreamRef.current) {
@@ -230,31 +242,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           }
 
           videoEl.onloadedmetadata = () => {
+            setActiveResolution({ width: videoEl.videoWidth, height: videoEl.videoHeight });
             videoEl.play().catch(() => {});
           };
         }
 
-        event.track.onunmute = () => {
-          if (videoRef.current) {
-            videoRef.current.play().catch(() => {});
-          }
-          setHasRemoteVideo(true);
-          setConnectionStatus('connected');
-        };
-
         setHasRemoteVideo(true);
         setConnectionStatus('connected');
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(
-            JSON.stringify({
-              type: 'candidate',
-              candidate: event.candidate,
-            })
-          );
-        }
       };
 
       pc.onconnectionstatechange = () => {
@@ -283,97 +277,149 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
         }
       };
 
-      const wsUrl = getCallSignalingWsUrl(sessionId, 'staff', currentUser?.name || 'AdminStaff');
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+      pc.addTransceiver('video', { direction: 'recvonly' });
 
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'ready_for_offer' }));
-      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
 
-      ws.onmessage = async (msgEvent) => {
-        try {
-          const data = JSON.parse(msgEvent.data);
-
-          if (data.type === 'peer_joined' && data.role === 'guest') {
-            ws.send(JSON.stringify({ type: 'ready_for_offer' }));
-          } else if (data.type === 'kiosk_ready') {
-            ws.send(JSON.stringify({ type: 'ready_for_offer' }));
-          } else if (data.type === 'offer') {
-            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-
-            while (iceCandidateQueueRef.current.length > 0) {
-              const cand = iceCandidateQueueRef.current.shift();
-              try {
-                await pc.addIceCandidate(new RTCIceCandidate(cand));
-              } catch (e) {}
+      if (pc.iceGatheringState !== 'complete') {
+        await new Promise((resolve) => {
+          const checkState = () => {
+            if (pc.iceGatheringState === 'complete') {
+              pc.removeEventListener('icegatheringstatechange', checkState);
+              resolve();
             }
+          };
+          pc.addEventListener('icegatheringstatechange', checkState);
+          setTimeout(() => {
+            pc.removeEventListener('icegatheringstatechange', checkState);
+            resolve();
+          }, 2500);
+        });
+      }
 
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            ws.send(JSON.stringify({ type: 'answer', answer }));
-          } else if (data.type === 'candidate') {
-            if (data.candidate) {
-              if (pc.remoteDescription) {
-                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-              } else {
-                iceCandidateQueueRef.current.push(data.candidate);
-              }
-            }
-          } else if (data.type === 'peer_disconnected') {
-            setConnectionStatus('disconnected');
-            setHasRemoteVideo(false);
-          }
-        } catch {
-          // ignore
-        }
-      };
+      const res = await fetch('/api/v1/operations/robot/camera/webrtc-offer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildWebRTCOfferPayload(pc.localDescription, controlIp, pi5Port)),
+        signal: AbortSignal.timeout(12000),
+      });
 
-      ws.onerror = () => {
-        setConnectionStatus('disconnected');
-      };
+      if (!res.ok) {
+        throw new Error(`Pi 5 WebRTC server returned status ${res.status}`);
+      }
 
-      ws.onclose = () => {
-        setConnectionStatus('disconnected');
-      };
-    } catch {
+      const answer = await res.json();
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    } catch (err) {
+      console.warn('[AdminPhoneCameraTab] Kết nối Pi 5 WebRTC qua Tailscale thất bại:', err);
       setConnectionStatus('disconnected');
+      setHasRemoteVideo(false);
     }
-  }, [cleanupWebRTC, sessionId, currentUser]);
+  }, [cleanupWebRTC, controlIp, pi5Port]);
 
-  // 3. Che do Camera cuc bo (Local Webcam Test)
+  // 4. Che do Camera Laptop Test (Cau hinh do phan giai chuan Pi 5 USB: 640x480 @ 15fps, ti le 4:3)
   const connectLocalWebcam = useCallback(async () => {
     cleanupWebRTC();
     setConnectionStatus('connecting');
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-        audio: false,
-      });
+      let mediaStream;
+      try {
+        // Uu tien ep dung do phan giai goc 640x480 @ 15fps giong Camera USB Pi 5
+        mediaStream = await navigator.mediaDevices.getUserMedia(getLaptopWebcamConstraints(true));
+      } catch (errExact) {
+        // Fallback ideal neu webcam laptop khong ho tro exact constraint
+        mediaStream = await navigator.mediaDevices.getUserMedia(getLaptopWebcamConstraints(false));
+      }
+
       localStreamRef.current = mediaStream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        videoRef.current.muted = true;
-        videoRef.current.playsInline = true;
-        videoRef.current.play().catch(() => {});
+      const videoEl = videoRef.current;
+      if (videoEl) {
+        videoEl.srcObject = mediaStream;
+        videoEl.muted = true;
+        videoEl.playsInline = true;
+        const playPromise = videoEl.play();
+        if (playPromise !== undefined) {
+          playPromise.catch(() => {});
+        }
+        videoEl.onloadedmetadata = () => {
+          setActiveResolution({ width: videoEl.videoWidth, height: videoEl.videoHeight });
+          videoEl.play().catch(() => {});
+        };
       }
       setHasRemoteVideo(true);
       setConnectionStatus('connected');
-    } catch {
+    } catch (err) {
+      console.warn('[AdminPhoneCameraTab] Không thể khởi động Camera Laptop Test:', err);
       setConnectionStatus('disconnected');
+      setHasRemoteVideo(false);
     }
   }, [cleanupWebRTC]);
 
+  // 5. Dong bo trang thai Nhan dien Khach (Bieu cam, Gioi tinh, Do tuoi) ve Server -> Ban qua Robot Screen
+  const lastSyncStateRef = useRef({
+    emotion: '',
+    gender: '',
+    ageGroup: '',
+    isFaceDetected: false,
+    timestamp: 0,
+  });
+
+  const syncPerceptionToRobot = useCallback(
+    async ({ emotion, gender, ageGroup, confidence, isFaceDetected }) => {
+      const now = Date.now();
+      const prev = lastSyncStateRef.current;
+      const stateChanged =
+        prev.emotion !== emotion ||
+        prev.gender !== gender ||
+        prev.ageGroup !== ageGroup ||
+        prev.isFaceDetected !== isFaceDetected;
+
+      // Rate limit: sync ngay khi state thay doi, hoac dinh ky 3s neu khach van o truoc camera
+      if (!stateChanged && now - prev.timestamp < 3000) {
+        return;
+      }
+      if (now - prev.timestamp < 400) {
+        return;
+      }
+
+      lastSyncStateRef.current = {
+        emotion,
+        gender,
+        ageGroup,
+        isFaceDetected,
+        timestamp: now,
+      };
+
+      try {
+        await fetch('/api/v1/operations/robot/guest-perception', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            emotion,
+            gender,
+            age_group: ageGroup,
+            confidence,
+            is_face_detected: isFaceDetected,
+          }),
+        });
+      } catch {
+        // Tranh anh huong UI khi backend tam thoi khong phan hoi
+      }
+    },
+    []
+  );
+
   useEffect(() => {
-    if (feedSource === 'webrtc') {
-      connectWebRTC();
-    } else {
+    if (feedSource === 'pi5_tailscale') {
+      connectPi5WebRTC();
+    } else if (feedSource === 'local_webcam') {
       connectLocalWebcam();
     }
     return () => {
       cleanupWebRTC();
     };
-  }, [feedSource, connectWebRTC, connectLocalWebcam, cleanupWebRTC]);
+  }, [feedSource, connectPi5WebRTC, connectLocalWebcam, cleanupWebRTC]);
 
   // Dam bao video thuc su play khi remote video duoc bat
   useEffect(() => {
@@ -459,14 +505,14 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             if (smile >= 0.35) {
               candidate = 'happy';
             } else if (
-              (browDown >= 0.30 || mouthFrown >= 0.22 || compoundDistress >= 0.26 || (browDown >= 0.25 && mouthFrown >= 0.12)) &&
-              smile < 0.18
+              (browDown >= 0.28 || mouthFrown >= 0.25 || compoundDistress >= 0.26 || (browDown >= 0.22 && mouthFrown >= 0.18)) &&
+              smile < 0.20
             ) {
               candidate = 'unhappy';
             }
 
             // 2. Bo loc xac nhan theo thoi gian (Temporal Confirmation Filter):
-            // O toc do 200ms/frame, duy tri lien tuc >= 3 frames (~600ms) giup phan hoi nhanh ma van loai bo chop mat
+            // O toc do 200ms/frame, can duy tri >= 3 frames (~600ms) nhan mat thuc su de tranh nhan nham khi noi/chop mat
             if (candidate === 'unhappy') {
               consecutiveUnhappyFramesRef.current += 1;
               if (consecutiveUnhappyFramesRef.current >= 3) {
@@ -481,68 +527,31 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
             setDetectedEmotion(currentDetected);
 
-            // 3. Demographics Estimation (Gender & Age Group via 3D Facial Anthropometry)
-            if (landmarks && landmarks[10] && landmarks[152] && landmarks[234] && landmarks[454]) {
-              const aspect = videoEl.videoWidth && videoEl.videoHeight
-                ? videoEl.videoWidth / videoEl.videoHeight
-                : 1.0;
-              // Chuan hoa khoang cach sang he toa do dong nhat (theo chieu doc) de loai bo bien dang do camera doc / ngang
-              const dist = (p1, p2) => Math.hypot((p1.x - p2.x) * aspect, p1.y - p2.y);
-              const faceH = dist(landmarks[10], landmarks[152]);
-              const faceW = dist(landmarks[234], landmarks[454]);
-              const jawRatio = faceW > 0 ? faceH / faceW : 1.35;
-
-              const lipH = landmarks[13] && landmarks[14] ? dist(landmarks[13], landmarks[14]) : 0.02 * faceH;
-              const browEyeDist =
-                landmarks[70] && landmarks[159] && landmarks[300] && landmarks[386]
-                  ? (dist(landmarks[70], landmarks[159]) + dist(landmarks[300], landmarks[386])) / 2
-                  : 0.04 * faceH;
-
-              // Ti le phi thuoc ty le khoang cach so voi chieu dai mat (Scale-Invariant Biometrics)
-              const relBrowEye = browEyeDist / Math.max(faceH, 0.001);
-              const relLipH = lipH / Math.max(faceH, 0.001);
-
-              // Gender score: Nam gioi xuong ham rong hon (jawRatio thap hon), go may thap hon, viền môi gọn hơn
-              const genderScore = (1.40 - jawRatio) * 1.5 - (relBrowEye - 0.13) * 4.0 - (relLipH - 0.07) * 3.0;
-              const rawGender = genderScore >= 0 ? 'male' : 'female';
-
-              // Age group estimation
-              let rawAge = 'young_adult';
-              if (jawRatio < 1.16 && relBrowEye > 0.18) {
-                // Tre em: Khuon mat rat tron, khoang cach may - mat rat cao, xuong ham chua phat trien
-                rawAge = 'child';
-              } else if (relBrowEye < 0.095 || relLipH < 0.045) {
-                // Nguoi lon tuoi: Sup mi, cung may thap, mo moi thu hep
-                rawAge = 'senior';
-              } else if (jawRatio <= 1.45 && relLipH >= 0.052) {
-                // Thanh nien (18 - 35 tuoi): Co mat san chac, duong net tre trung day dan
-                rawAge = 'young_adult';
-              } else {
-                // Truong thanh (36 - 55 tuoi)
-                rawAge = 'adult';
-              }
-
-              demographicsHistoryRef.current.push({ gender: rawGender, age: rawAge });
-              if (demographicsHistoryRef.current.length > 10) {
-                demographicsHistoryRef.current.shift();
-              }
-
-              const maleVotes = demographicsHistoryRef.current.filter((d) => d.gender === 'male').length;
-              const smoothedGender = maleVotes >= 6 ? 'male' : 'female';
-
-              const ageCounts = {};
-              demographicsHistoryRef.current.forEach((d) => {
-                ageCounts[d.age] = (ageCounts[d.age] || 0) + 1;
+            let demoResult = null;
+            // 3. Demographics Estimation (Gender & Age Group via 3D Facial Anthropometry & Hysteresis Filter)
+            if (landmarks && landmarks[10] && landmarks[152]) {
+              const demo = estimateFacialDemographics({
+                landmarks,
+                videoWidth: videoEl.videoWidth,
+                videoHeight: videoEl.videoHeight,
+                trackerRef: demographicsHistoryRef,
+                smileScore: smile,
               });
-              const smoothedAge = Object.keys(ageCounts).reduce(
-                (a, b) => (ageCounts[a] > ageCounts[b] ? a : b),
-                'young_adult'
-              );
 
-              setDetectedGender(smoothedGender);
-              setDetectedAgeGroup(smoothedAge);
-              setDemographicsConfidence(Math.min(95, Math.max(82, Math.round(82 + Math.random() * 10))));
+              demoResult = demo;
+              setDetectedGender(demo.gender);
+              setDetectedAgeGroup(demo.ageGroup);
+              setDemographicsConfidence(demo.confidence);
             }
+
+            const effectiveEmotion = overrideEmotionRef.current || currentDetected;
+            syncPerceptionToRobot({
+              emotion: effectiveEmotion,
+              gender: demoResult?.gender || 'unknown',
+              ageGroup: demoResult?.ageGroup || 'young_adult',
+              confidence: demoResult?.confidence ?? 0,
+              isFaceDetected: true,
+            });
           }
 
           // 4.2. Ve Chi 6 Diem Neo Bieu Cam Then Chot (It diem nhat co the, khong ve luoi da giac)
@@ -650,6 +659,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             if (canvas && ctx) {
               ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
+            syncPerceptionToRobot({
+              emotion: 'neutral',
+              gender: 'unknown',
+              ageGroup: 'young_adult',
+              confidence: 0,
+              isFaceDetected: false,
+            });
           }
         }
       } catch {
@@ -658,12 +674,20 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     }, 200);
 
     return () => clearInterval(intervalId);
-  }, [isAiEmotionActive, connectionStatus]);
+  }, [isAiEmotionActive, connectionStatus, syncPerceptionToRobot]);
 
   // 5. Override bieu cam thu cong va gui len Robot
   const handleOverrideEmotion = useCallback(
     async (emo) => {
       setOverrideEmotion(emo);
+      overrideEmotionRef.current = emo;
+      syncPerceptionToRobot({
+        emotion: emo || 'neutral',
+        gender: detectedGender,
+        ageGroup: detectedAgeGroup,
+        confidence: demographicsConfidence,
+        isFaceDetected: true,
+      });
       if (emo) {
         try {
           await fetch('/api/v1/operations/robot/control', {
@@ -680,7 +704,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
         }
       }
     },
-    [controlIp]
+    [controlIp, syncPerceptionToRobot, detectedGender, detectedAgeGroup, demographicsConfidence]
   );
 
   // 6. Chup anh Snapshot tu Video (ho tro tinh ca huong xoay video)
@@ -914,7 +938,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 className="text-xs sm:text-sm font-bold tracking-wide uppercase font-mono"
                 style={{ color: '#262626' }}
               >
-                Phone Kiosk Camera & Emotion AI
+                Camera AI & Phân Tích Biểu Cảm (Pi 5 Tailscale)
               </h1>
               <span
                 className={`w-2 h-2 rounded-full shrink-0 ${
@@ -927,7 +951,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               />
             </div>
             <p className="text-[10px] font-mono hidden sm:block" style={{ color: '#8C8C8C' }}>
-              Live feed tu dien thoai Robot (Kiosk) voi cac diem bieu cam then chot (Key Expression Anchors)
+              {feedSource === 'pi5_tailscale'
+                ? `Nhận diện khuôn mặt & cảm xúc từ Camera USB Pi 5 (Tailscale: ${controlIp}:${pi5Port})`
+                : 'Chế độ Laptop Test (Độ phân giải 640x480 @ 15fps mô phỏng chuẩn Camera Pi 5)'}
             </p>
           </div>
         </div>
@@ -941,27 +967,29 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           >
             <button
               type="button"
-              onClick={() => setFeedSource('webrtc')}
-              className="px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer text-[11px]"
+              onClick={() => setFeedSource('pi5_tailscale')}
+              className="px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer text-[11px] flex items-center gap-1.5"
               style={
-                feedSource === 'webrtc'
+                feedSource === 'pi5_tailscale'
                   ? { background: '#262626', color: '#FFFFFF' }
                   : { background: 'transparent', color: '#555555' }
               }
             >
-              Robot Phone (WebRTC)
+              <Cpu className="w-3 h-3" />
+              Pi 5 (Tailscale)
             </button>
             <button
               type="button"
               onClick={() => setFeedSource('local_webcam')}
-              className="px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer text-[11px]"
+              className="px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer text-[11px] flex items-center gap-1.5"
               style={
                 feedSource === 'local_webcam'
                   ? { background: '#262626', color: '#FFFFFF' }
                   : { background: 'transparent', color: '#555555' }
               }
             >
-              Local Test Webcam
+              <Laptop className="w-3 h-3" />
+              Laptop Test (640x480)
             </button>
           </div>
 
@@ -1038,7 +1066,10 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           {/* Nút Reconnect (Đen hệ thống) */}
           <button
             type="button"
-            onClick={feedSource === 'webrtc' ? connectWebRTC : connectLocalWebcam}
+            onClick={() => {
+              if (feedSource === 'pi5_tailscale') connectPi5WebRTC();
+              else if (feedSource === 'local_webcam') connectLocalWebcam();
+            }}
             className="p-1.5 rounded-lg transition-all cursor-pointer shadow-xs active:scale-95 hover:opacity-90"
             style={{ background: '#262626', color: '#FFFFFF' }}
             title="Reconnect Stream"
@@ -1115,14 +1146,14 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 <VideoOff className="w-12 h-12 text-stone-600" />
                 <div>
                   <h3 className="text-sm font-bold text-stone-200 font-mono uppercase">
-                    {feedSource === 'webrtc'
-                      ? 'Waiting for Robot Phone Video Stream...'
-                      : 'Local Camera Standby'}
+                    {feedSource === 'pi5_tailscale'
+                      ? 'Waiting for Pi 5 Camera Stream (Tailscale)...'
+                      : 'Laptop Webcam Test Standby (640x480)'}
                   </h3>
                   <p className="text-xs text-stone-400 font-mono mt-1">
-                    {feedSource === 'webrtc'
-                      ? `Dang cho tin hieu WebRTC tu dien thoai Robot (Session: ${sessionId})`
-                      : 'Nhan nut Reconnect de cap quyen truy cap camera may tinh'}
+                    {feedSource === 'pi5_tailscale'
+                      ? `Đang kết nối WebRTC tới Pi 5 tại http://${controlIp}:${pi5Port} qua Tailscale`
+                      : 'Nhấn nút Reconnect để cấp quyền Camera Laptop (chuẩn Pi 5: 640x480 @ 15fps)'}
                   </p>
                 </div>
               </div>
@@ -1134,7 +1165,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border shadow-xs"
                 style={{ background: 'rgba(250, 248, 245, 0.95)', borderColor: '#BFBFBD', color: '#262626' }}
               >
-                {feedSource === 'webrtc' ? 'PHONE KIOSK FEED' : 'LOCAL WEBCAM'}
+                {resolveFeedBadgeText(feedSource, controlIp)}
               </span>
               <span
                 className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold border backdrop-blur-md ${
@@ -1145,6 +1176,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
               >
                 {isFaceDetected ? 'EXPRESSION ANCHORS' : 'SEARCHING FACE'}
               </span>
+              {activeResolution && (
+                <span
+                  className="px-2 py-1 rounded-lg text-[10px] font-mono border backdrop-blur-md bg-black/60 border-white/20 text-stone-300"
+                >
+                  {activeResolution.width}x{activeResolution.height}
+                </span>
+              )}
             </div>
 
             {/* Overlaid Active Emotion Badge */}
@@ -1181,9 +1219,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             <div className="flex items-center gap-2.5 flex-wrap">
               <span>
                 Status: <strong style={{ color: '#262626' }}>{connectionStatus.toUpperCase()}</strong>
-                {feedSource === 'webrtc' && iceConnectionState !== 'idle' && (
+                {feedSource === 'pi5_tailscale' && (
                   <span className="text-[9px] text-stone-500 ml-1">
-                    (ICE: {iceConnectionState.toUpperCase()})
+                    (Tailscale: {controlIp}:{pi5Port})
                   </span>
                 )}
               </span>
@@ -1193,19 +1231,30 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 </strong>
               </span>
               <span>
+                Độ phân giải: <strong style={{ color: '#262626' }}>
+                  {activeResolution ? `${activeResolution.width}x${activeResolution.height}` : '640x480'}
+                </strong>
+              </span>
+              <span>
                 Góc: <strong style={{ color: '#262626' }}>{videoRotation}°</strong>
               </span>
             </div>
-            {feedSource === 'webrtc' && (
+            {feedSource === 'pi5_tailscale' && (
               <div className="flex items-center gap-1.5">
-                <span style={{ color: '#555555' }}>Room:</span>
+                <span style={{ color: '#555555' }}>Pi 5 IP (Tailscale):</span>
                 <input
                   type="text"
-                  value={sessionId}
-                  onChange={(e) => setSessionId(e.target.value)}
+                  value={controlIp}
+                  onChange={(e) => setControlIp(e.target.value)}
+                  placeholder="100.99.72.51"
                   className="border rounded px-1.5 py-0.5 text-[10px] font-mono w-28 outline-none"
                   style={{ background: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
                 />
+              </div>
+            )}
+            {feedSource === 'local_webcam' && (
+              <div className="text-[10px] font-mono text-stone-500">
+                Độ phân giải ép chuẩn: <strong>640x480 @ 15fps (4:3)</strong>
               </div>
             )}
           </div>

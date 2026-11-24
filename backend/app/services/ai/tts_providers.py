@@ -4,14 +4,25 @@ import asyncio
 import base64
 import logging
 import re
-import urllib.parse
-from typing import Any, Dict, Optional, Tuple
-
-import httpx
+import socket
+from typing import Any, Optional, Tuple
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Ép buộc sử dụng IPv4 cho các endpoint của Microsoft EdgeTTS để triệt tiêu độ trễ 10s - 20s
+# do Windows/Tailscale thử kết nối địa chỉ IPv6 không phản hồi trước khi fallback IPv4.
+_orig_getaddrinfo = socket.getaddrinfo
+
+
+def _edge_ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if host and ("speech.platform.bing.com" in str(host) or "msedge.net" in str(host)):
+        family = socket.AF_INET
+    return _orig_getaddrinfo(host, port, family, type, proto, flags)
+
+
+socket.getaddrinfo = _edge_ipv4_getaddrinfo
 
 
 def clean_text_for_tts(text: str) -> str:
@@ -80,10 +91,12 @@ async def synthesize_edge_tts_detailed(
         selected_rate = "+0%"
     # Luôn dùng +0% khi gọi EdgeTTS để tránh lỗi NoAudioReceived; khuếch đại âm lượng được xử lý qua GainNode ở frontend.
     selected_volume = "+0%"
-    per_attempt_timeout = max(0.02, float(attempt_timeout)) if attempt_timeout is not None else 3.2
+    per_attempt_timeout = max(0.02, float(attempt_timeout)) if attempt_timeout is not None else 16.0
 
     try:
         import edge_tts as _edge_tts
+        import aiohttp as _aiohttp
+        import socket as _socket
     except ImportError:
         logger.info("[TTSService] edge_tts library not installed.")
         return None, "TTS_PROVIDER_ERROR", "edge_tts library not installed"
@@ -91,14 +104,20 @@ async def synthesize_edge_tts_detailed(
     last_err_code = "TTS_AUDIO_EMPTY"
     last_err_detail = f"EdgeTTS returned 0 bytes for voice={voice}"
 
-    for attempt in range(2):
+    max_attempts = 2
+    per_attempt_timeout = max(0.02, float(attempt_timeout)) if attempt_timeout is not None else 16.0
+
+    for attempt in range(max_attempts):
         current_voice = voice
-        if attempt == 1:
-            logger.info(f"[TTSService] EdgeTTS attempt 2: Retrying same voice {current_voice}")
+        if attempt > 0:
+            logger.info(f"[TTSService] EdgeTTS attempt {attempt + 1}: Retrying same voice {current_voice}")
 
         try:
             communicate = _edge_tts.Communicate(
-                clean_text, current_voice, rate=selected_rate, volume=selected_volume
+                clean_text,
+                current_voice,
+                rate=selected_rate,
+                volume=selected_volume,
             )
             audio_bytes = await asyncio.wait_for(
                 _collect_edge_audio(communicate),
@@ -113,99 +132,98 @@ async def synthesize_edge_tts_detailed(
         except asyncio.TimeoutError:
             last_err_code = "TTS_TIMEOUT"
             last_err_detail = f"EdgeTTS attempt {attempt + 1} timed out after {per_attempt_timeout:.1f}s (voice={current_voice})"
-            log_fn = logger.warning if attempt == 1 else logger.info
-            log_fn(f"[TTSService] {last_err_detail}")
+            logger.warning(f"[TTSService] {last_err_detail}")
         except Exception as e:
             last_err_code = "TTS_PROVIDER_ERROR"
             last_err_detail = f"{type(e).__name__}: {e} (voice={current_voice}, attempt={attempt + 1})"
-            log_fn = logger.warning if attempt == 1 else logger.info
-            log_fn(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
-        if attempt == 0:
-            await asyncio.sleep(0.05)
+            logger.warning(f"[TTSService] EdgeTTS attempt {attempt + 1} error: {last_err_detail}")
+        if attempt < max_attempts - 1:
+            await asyncio.sleep(0.3 * (attempt + 1))
 
     return None, last_err_code, last_err_detail
 
 
-async def synthesize_google_tts(text: str, lang_short: str = "vi") -> Optional[str]:
-    """Synthesize MP3 fallback audio via Google Translate TTS HTTP endpoint."""
-    clean = clean_text_for_tts(text)
-    if not clean:
-        return None
-    tl = "en" if lang_short.startswith("en") else "vi"
-    words = clean.split(" ")
-    segments = []
-    current = ""
-    for w in words:
-        if len(current) + len(w) + 1 <= 180:
-            current = f"{current} {w}".strip()
-        else:
-            if current:
-                segments.append(current)
-            current = w[:180]
-    if current:
-        segments.append(current)
-
-    combined_bytes = b""
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-    async with httpx.AsyncClient(timeout=2.0, headers=headers) as client:
-        for seg in segments[:2]:
-            q = urllib.parse.quote(seg)
-            url = f"https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl={tl}&q={q}"
-            resp = await client.get(url)
-            if resp.status_code == 200 and resp.content and len(resp.content) > 100:
-                combined_bytes += resp.content
-            else:
-                return None
-    if combined_bytes and len(combined_bytes) > 100:
-        return base64.b64encode(combined_bytes).decode("utf-8")
-    return None
+def escape_ssml_text(text: str) -> str:
+    """Escape special XML characters for SSML payload."""
+    if not text:
+        return ""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&apos;")
+    )
 
 
-async def _post_tts_audio(
-    url: str,
-    headers: Dict[str, str],
-    payload: Dict[str, Any],
-    provider_label: str,
-) -> Optional[str]:
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(url, json=payload, headers=headers)
-        if resp.status_code == 200:
-            return base64.b64encode(resp.content).decode("utf-8")
-        logger.error(f"[TTSService] {provider_label} API error {resp.status_code}: {resp.text}")
-    return None
+async def synthesize_azure_speech_detailed(
+    text: str,
+    voice: str,
+    *,
+    rate: Optional[str] = None,
+    api_key: Optional[str] = None,
+    region: Optional[str] = None,
+    timeout: float = 6.0,
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Synthesize speech via Microsoft Azure Speech Services REST API.
+    Uses the exact same neural voice (vi-VN-HoaiMyNeural / en-US-JennyNeural)
+    hosted on Microsoft's paid infrastructure in Singapore (southeastasia) for 300ms - 800ms latency.
+    """
+    key = api_key or getattr(settings, "AZURE_SPEECH_KEY", None)
+    if not key or not str(key).strip():
+        return None, "AZURE_NOT_CONFIGURED", "AZURE_SPEECH_KEY is not configured"
 
+    clean_text = clean_text_for_tts(text)
+    if not clean_text:
+        return None, "TTS_INPUT_EMPTY", "Cleaned text is empty"
 
-async def synthesize_elevenlabs(text: str, voice: Optional[str]) -> Optional[str]:
-    api_key = settings.ELEVENLABS_API_KEY
-    if not api_key:
-        return None
-    voice_id = voice or settings.ELEVENLABS_VOICE_ID or "21m00Tcm4TlvDq8ikWAM"
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    reg = region or getattr(settings, "AZURE_SPEECH_REGION", "southeastasia") or "southeastasia"
+    selected_rate = rate or getattr(settings, "TTS_RATE", "+0%")
+    if not re.match(r"^[+-]\d+%$", str(selected_rate)):
+        selected_rate = "+0%"
+
+    parts = voice.split("-")
+    lang = f"{parts[0]}-{parts[1]}" if len(parts) >= 2 else "vi-VN"
+
+    escaped_text = escape_ssml_text(clean_text)
+    ssml = (
+        f"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{lang}'>"
+        f"<voice name='{voice}'>"
+        f"<prosody rate='{selected_rate}'>{escaped_text}</prosody>"
+        f"</voice></speak>"
+    )
+
+    url = f"https://{reg}.tts.speech.microsoft.com/cognitiveservices/v1"
     headers = {
-        "Accept": "audio/mpeg",
-        "Content-Type": "application/json",
-        "xi-api-key": api_key,
+        "Ocp-Apim-Subscription-Key": str(key).strip(),
+        "Content-Type": "application/ssml+xml",
+        "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3",
+        "User-Agent": "HC-Robot-Concierge",
     }
-    payload = {
-        "text": text,
-        "model_id": "eleven_multilingual_v2",
-        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-    }
-    return await _post_tts_audio(url, headers, payload, "ElevenLabs")
 
-
-async def synthesize_openai_tts(text: str, voice: Optional[str]) -> Optional[str]:
-    url = "https://api.openai.com/v1/audio/speech"
-    headers = {
-        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": "tts-1",
-        "input": text,
-        "voice": voice or settings.OPENAI_TTS_VOICE or "alloy",
-    }
-    return await _post_tts_audio(url, headers, payload, "OpenAI TTS")
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=float(timeout)) as client:
+            resp = await client.post(url, headers=headers, content=ssml.encode("utf-8"))
+            if resp.status_code == 200:
+                audio_bytes = resp.content
+                if audio_bytes and len(audio_bytes) > 100:
+                    return base64.b64encode(audio_bytes).decode("utf-8"), None, None
+                return None, "TTS_AUDIO_EMPTY", f"Azure Speech returned {len(audio_bytes)} bytes"
+            error_detail = f"Azure Speech HTTP {resp.status_code}: {resp.text[:200]}"
+            logger.warning(f"[TTSService] {error_detail}")
+            return None, "AZURE_PROVIDER_ERROR", error_detail
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        if type(e).__name__ in ("TimeoutException", "ReadTimeout", "ConnectTimeout"):
+            err_msg = f"Azure Speech timed out after {timeout:.1f}s (region={reg}, voice={voice})"
+            logger.warning(f"[TTSService] {err_msg}")
+            return None, "TTS_TIMEOUT", err_msg
+        err_msg = f"Azure Speech exception: {type(e).__name__}: {e}"
+        logger.warning(f"[TTSService] {err_msg}")
+        return None, "TTS_PROVIDER_ERROR", err_msg
 
 
 def common_warmup_phrases(target_vi: str, target_en: str):

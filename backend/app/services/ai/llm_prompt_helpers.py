@@ -93,48 +93,19 @@ def resolve_request_language(
     language: Optional[str],
     detect_fn,
 ) -> Tuple[str, str]:
-    if not language or language.lower() in ["auto", ""]:
-        return detect_fn(prompt)
-    lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
-    return language, lang_code
+    from .speech_language import select_turn_language
+    return select_turn_language(prompt, language)
 
 
 def resolve_reply_language(reply: str, lang_code: str, detect_fn) -> Tuple[str, str]:
-    if lang_code == "en-US" and not has_vietnamese_diacritics(reply):
-        return "English", "en-US"
-    return detect_fn(reply)
+    from .speech_language import language_pair
+    # A proper name or borrowed word in a reply must not select another speaker.
+    return language_pair(lang_code)
 
 
-def detect_bilingual_language(text: str, *, mode: str = "ollama") -> Tuple[str, str]:
-    """Detect whether user/reply text is Vietnamese (vi-VN) or English (en-US)."""
-    if not text or not text.strip():
-        return "Tiếng Việt", "vi-VN"
-
-    if has_vietnamese_diacritics(text):
-        return "Tiếng Việt", "vi-VN"
-
-    lower_text = text.lower().strip()
-    if mode == "gemini":
-        if any(re.search(p, lower_text) for p in _GEMINI_VI_PHRASES):
-            return "Tiếng Việt", "vi-VN"
-    else:
-        words = re.findall(r"[a-zA-Z]+", lower_text)
-        if not words:
-            return "Tiếng Việt", "vi-VN"
-        en_score = sum(1 for w in words if w in COMMON_EN_WORDS)
-        vi_score = sum(1 for w in words if w in COMMON_VI_WORDS)
-        if en_score > vi_score:
-            return "English", "en-US"
-        if vi_score > en_score:
-            return "Tiếng Việt", "vi-VN"
-        if en_score > 0:
-            return "English", "en-US"
-        if any(re.search(p, lower_text) for p in EN_SUBSTRING_PATTERNS):
-            return "English", "en-US"
-
-    if any(re.search(pattern, lower_text) for pattern in _ENGLISH_PHRASE_PATTERNS):
-        return "English", "en-US"
-    return "Tiếng Việt", "vi-VN"
+def detect_bilingual_language(text: str, *, mode: str = "ollama", preferred_language: Optional[str] = None) -> Tuple[str, str]:
+    from .speech_language import detect_turn_language
+    return detect_turn_language(text, preferred_language)
 
 
 def build_concierge_system_prompt(
@@ -223,6 +194,13 @@ def build_concierge_system_prompt(
     if rag_context:
         prompt += format_safe_rag_context(rag_context, lang_code)
     prompt += get_immutability_directives(lang_code)
+    prompt += (
+        "\nLANGUAGE POLICY: Understand the guest's complete request even when Vietnamese and English "
+        "are mixed in one sentence. Respond entirely in "
+        + ("English" if lang_code == "en-US" else "Vietnamese")
+        + ". Keep proper names and necessary service names unchanged. Do not alternate languages "
+        "or translate the answer into both languages.\n"
+    )
     return prompt
 
 

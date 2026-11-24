@@ -190,6 +190,10 @@ export function useNotificationWebSocket({
             if (onNotificationReceivedRef.current) {
               onNotificationReceivedRef.current(payload);
             }
+          } else if (payload.type === 'GUEST_PERCEPTION_UPDATE') {
+            if (onNotificationReceivedRef.current) {
+              onNotificationReceivedRef.current(payload);
+            }
           } else if (payload.type === 'WORKFLOW_DISPATCH') {
             if (onWorkflowDispatchRef.current) {
               onWorkflowDispatchRef.current(payload);

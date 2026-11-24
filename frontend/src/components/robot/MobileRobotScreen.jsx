@@ -22,7 +22,6 @@ import {
   UserCheck,
   Wrench,
   Luggage,
-  Camera,
 } from 'lucide-react';
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {
@@ -185,9 +184,6 @@ export const MobileRobotScreen = ({
   showQrModalExternal = false,
   qrCountdown = null,
   onCloseQrModal = null,
-  isKioskCameraActive = true,
-  onStartKioskCamera = null,
-  kioskCameraStream = null,
 }) => {
   const isEn = language === 'English';
   const [isMapManualOpen, setIsMapManualOpen] = useState(false);
@@ -298,21 +294,6 @@ export const MobileRobotScreen = ({
               </span>
             )}
 
-            {/* Chi bao / Nut bat Camera Kiosk tren Mobile neu chua cap quyen */}
-            {!isKioskCameraActive && onStartKioskCamera && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStartKioskCamera(true);
-                }}
-                className="h-7 px-2.5 rounded-full border border-amber-600/60 bg-amber-500/20 hover:bg-amber-500/30 text-amber-900 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95 animate-pulse"
-                title={isEn ? "Tap to enable Kiosk Camera" : "Chạm để bật Camera Kiosk"}
-              >
-                <Camera className="w-3.5 h-3.5 text-amber-800" />
-                <span className="text-[11px] font-bold">{isEn ? "Camera Off" : "Bật Camera AI"}</span>
-              </button>
-            )}
             {activeRoomNumber && (
               <button
                 type="button"
@@ -368,27 +349,6 @@ export const MobileRobotScreen = ({
             </button>
           </div>
         </header>
-
-        {/* Banner nhac nho bat Camera Kiosk AI neu chua duoc cap quyen tren Mobile */}
-        {!isKioskCameraActive && onStartKioskCamera && (
-          <div
-            onClick={(e) => {
-              e.stopPropagation();
-              onStartKioskCamera(true);
-            }}
-            className="mx-3 my-1 px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-900 flex items-center justify-between text-xs cursor-pointer active:scale-[0.99] transition-all shadow-xs shrink-0 select-none"
-          >
-            <div className="flex items-center gap-2">
-              <Camera className="w-4 h-4 text-amber-800 shrink-0 animate-pulse" />
-              <span className="font-semibold text-stone-900 text-[11px] sm:text-xs">
-                {isEn ? 'Tap here to enable Kiosk Camera AI' : 'Chạm vào đây để cấp quyền Camera AI Kiosk'}
-              </span>
-            </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-600 text-white uppercase shadow-2xs">
-              {isEn ? 'Allow' : 'Bật ngay'}
-            </span>
-          </div>
-        )}
 
         {/* Modal Chọn Ngôn Ngữ Cỡ Lớn Chuẩn Kiosk & Touch Display (Theme Xám Sáng Tinh Tế) */}
         {isLangMenuOpen && (
@@ -895,9 +855,6 @@ export const MobileRobotScreen = ({
         ) : (
           <main
             onClick={() => {
-              if (typeof onStartKioskCamera === 'function' && !isKioskCameraActive) {
-                onStartKioskCamera(true);
-              }
               if (isSpeaking || isSpeechActive) {
                 // Không dập tắt giọng đọc robot khi chạm vào khoảng trống màn hình
                 return;
@@ -948,12 +905,12 @@ export const MobileRobotScreen = ({
                         onStartTalk();
                       }
                     }}
-                    className="px-4 py-2 bg-stone-900/90 hover:bg-stone-850 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-auto min-w-[200px] max-w-sm cursor-pointer active:scale-[0.99] transition-all touch-manipulation"
+                    className="px-4 py-2 bg-stone-900/90 hover:bg-stone-850 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-auto min-w-[220px] max-w-md cursor-pointer active:scale-[0.99] transition-all touch-manipulation"
                     title={transcript ? (isEn ? 'Tap to send immediately' : 'Chạm để gửi ngay') : (isEn ? 'Tap to restart mic' : 'Chạm để kích hoạt lại Micro')}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <AudioWave isActive={isListening || currentState === "RT-03"} volumeLevel={volumeLevel} />
-                      <span className="text-xs font-semibold text-stone-200 truncate">
+                      <span className="text-xs sm:text-[13px] font-semibold text-stone-100 line-clamp-2 select-text leading-snug">
                         {transcript ? `"${transcript}"` : (isEn ? 'Listening...' : 'Đang lắng nghe...')}
                       </span>
                     </div>
@@ -965,7 +922,7 @@ export const MobileRobotScreen = ({
                           e.stopPropagation();
                           onSubmitTalk();
                         }}
-                        className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
+                        className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer ml-1"
                         title={isEn ? 'Send question' : 'Gửi câu hỏi'}
                       >
                         <span>{isEn ? 'Send' : 'Gửi'}</span>
@@ -1006,34 +963,6 @@ export const MobileRobotScreen = ({
               )}
             </div>
           </main>
-        )}
-
-        {/* Video stream chay ngam de duy tri sensor camera WebKit tren iOS Safari (Khach khong nhin thay hinh anh) */}
-        {kioskCameraStream && (
-          <video
-            ref={(el) => {
-              if (el && el.srcObject !== kioskCameraStream) {
-                el.srcObject = kioskCameraStream;
-                el.muted = true;
-                el.playsInline = true;
-                el.play().catch(() => {});
-              }
-            }}
-            autoPlay
-            playsInline
-            muted
-            aria-hidden="true"
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              width: '4px',
-              height: '4px',
-              opacity: 0.001,
-              pointerEvents: 'none',
-              zIndex: -1,
-            }}
-          />
         )}
 
         {/* Vùng chạm bí mật góc dưới bên phải cho Mobile (Chạm 5 lần trong 2s để đăng xuất) */}

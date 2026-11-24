@@ -1,7 +1,7 @@
 #!/bin/bash
 # Đồng bộ code an toàn + ngưỡng sonar từ LAPTOP lên Raspberry Pi 5 (chạy bằng Git Bash/WSL):
 #
-#   bash robot/scripts/deploy_pi.sh                        # Pi mặc định phuc@100.99.72.51
+#   bash robot/scripts/deploy_pi.sh                        # Pi mặc định phuc@100.93.152.7
 #   PI=phuc@192.168.1.50 bash robot/scripts/deploy_pi.sh   # Pi khác
 #
 # - Chỉ chép file KHÁC bản trên Pi (so md5, bỏ qua khác biệt CRLF/LF của Windows).
@@ -10,7 +10,7 @@
 # Xong PHẢI khởi động lại main.py trên Pi (Ctrl+C rồi: sudo python3 main.py) thì mới có hiệu lực.
 set -euo pipefail
 
-PI="${PI:-phuc@100.99.72.51}"
+PI="${PI:-phuc@100.93.152.7}"
 REMOTE_DIR="${REMOTE_DIR:-HCROBOT/robot}"   # tính từ thư mục home trên Pi
 ROBOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FILES=(main.py obstacle_safety.py udp_command_watchdog.py motor_controller.py ultrasonic_serial.py settings.yaml

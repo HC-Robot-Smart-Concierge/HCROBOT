@@ -291,7 +291,7 @@ class LidarWsToRos2Bridge(Node):
         self.scan_period_sec = 0.125  # cập nhật từ khoảng cách scan_id thật
 
         # Cấu hình UDP gửi lệnh sang Pi 5
-        self.pi5_ip = os.getenv("PI5_IP", "100.99.72.51")
+        self.pi5_ip = os.getenv("PI5_IP", "100.93.152.7")
         self.pi5_port = int(os.getenv("PI5_PORT", "9999"))
         self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # Bind cong tam ngay de luong nhan pi_status (Pi tra loi ve dung cong nguon cua lenh).
@@ -1408,7 +1408,7 @@ class LidarWsToRos2Bridge(Node):
             self.localization_warmup.sent(now, self.last_published_scan_time)
 
 
-async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.99.72.51:8000/api/v1/map/ws?consumer=ros2"):
+async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.93.152.7:8000/api/v1/map/ws?consumer=ros2"):
     while rclpy.ok():
         try:
             async with websockets.connect(ws_url, ping_interval=10, ping_timeout=5) as ws:

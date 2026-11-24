@@ -24,7 +24,7 @@ fi
 RSP_PID=""; BRIDGE_PID=""; FOXGLOVE_PID=""; LIDAR_PID=""; NAV2_PID=""; ZONE_PID=""; LOC_PID=""
 stop_robot() {
     for _ in 1 2 3; do
-        echo -n stop > "/dev/udp/${PI5_IP:-100.99.72.51}/9999" 2>/dev/null || true
+        echo -n stop > "/dev/udp/${PI5_IP:-100.93.152.7}/9999" 2>/dev/null || true
         sleep 0.1
     done
 }

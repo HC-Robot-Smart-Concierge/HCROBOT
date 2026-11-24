@@ -55,7 +55,7 @@ import {
   Unlock,
 } from 'lucide-react';
 
-const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
+const PI5_IP = import.meta.env.VITE_PI5_IP || '100.93.152.7';
 const PI5_API =
   typeof window !== 'undefined' && window.location.protocol === 'https:'
     ? '/api/v1/operations/robot/pi5'

@@ -38,7 +38,7 @@ const MINIMAL_EXPRESSION_ANCHORS = [
 export const AdminPhoneCameraTab = ({ currentUser }) => {
   // Connection States
   const [feedSource, setFeedSource] = useState('pi5_tailscale'); // 'pi5_tailscale' | 'local_webcam'
-  const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.99.72.51');
+  const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.93.152.7');
   const [pi5Port, setPi5Port] = useState(8554);
   const [activeResolution, setActiveResolution] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState('disconnected'); // 'disconnected' | 'connecting' | 'connected'
@@ -1246,7 +1246,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                   type="text"
                   value={controlIp}
                   onChange={(e) => setControlIp(e.target.value)}
-                  placeholder="100.99.72.51"
+                  placeholder="100.93.152.7"
                   className="border rounded px-1.5 py-0.5 text-[10px] font-mono w-28 outline-none"
                   style={{ background: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
                 />

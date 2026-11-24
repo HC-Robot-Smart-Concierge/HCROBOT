@@ -11,7 +11,7 @@ echo  4. Khi hoan tat, tu dong luu map (.json, .yaml, .pgm)
 echo ===================================================================
 echo.
 
-set PI5_IP=100.99.72.51
+set PI5_IP=100.93.152.7
 if not "%~1"=="" set PI5_IP=%~1
 
 set MAP_NAME=ban_do_khach_san_tu_dong

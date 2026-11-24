@@ -4,7 +4,7 @@
 #   bash robot/ros2_configs/start_wsl_slam.sh                       # lai tay (WASD / Web / Foxglove)
 #   EXPLORE=1 bash robot/ros2_configs/start_wsl_slam.sh             # XE TU DI quet het map (Nav2 + frontier)
 #   EXPLORE=1 EXPLORE_SAVE=phong_khach bash ...                     # ten map tu luu khi quet xong
-#   PI5_IP=192.168.1.50 bash ...                                    # IP Pi (mac dinh Tailscale 100.99.72.51)
+#   PI5_IP=192.168.1.50 bash ...                                    # IP Pi (mac dinh Tailscale 100.93.152.7)
 #
 # EXPLORE=1: XE THAT SE TU CHAY. Ctrl+C trong terminal nay de dung; Pi tu ngat motor
 # sau 0.5 s mat lenh (watchdog) va cam bien sieu am tren Pi van chan va cham.
@@ -193,7 +193,7 @@ fi
 # co the bi tat truoc -> Pi giu lenh "drive" cuoi.
 stop_robot() {
   for _ in 1 2 3 4 5; do
-    echo -n stop > "/dev/udp/${PI5_IP:-100.99.72.51}/9999" 2>/dev/null || true
+    echo -n stop > "/dev/udp/${PI5_IP:-100.93.152.7}/9999" 2>/dev/null || true
     sleep 0.1
   done
 }

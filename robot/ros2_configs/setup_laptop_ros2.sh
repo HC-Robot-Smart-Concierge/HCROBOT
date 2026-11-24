@@ -28,7 +28,7 @@ cat << 'EOF' > "$CONFIG_DIR/cyclonedds.xml"
         </General>
         <Discovery>
             <Peers>
-                <Peer address="100.99.72.51"/>
+                <Peer address="100.93.152.7"/>
                 <Peer address="100.92.82.61"/>
             </Peers>
         </Discovery>

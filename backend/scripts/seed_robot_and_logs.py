@@ -40,7 +40,7 @@ async def seed_robot_unit(session):
             battery_level=94,
             current_location="Main Lobby",
             is_online=True,
-            ip_address="100.99.72.51",
+            ip_address="100.93.152.7",
             last_heartbeat=now,
             notes="Robot lễ tân & giao vận tự hành đơn vị chính tại sảnh Aurora Grand.",
         )

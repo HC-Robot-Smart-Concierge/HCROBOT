@@ -115,7 +115,7 @@ const PANEL_ICONS = {
   TELEOP: Gamepad2,
 };
 
-const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
+const PI5_IP = import.meta.env.VITE_PI5_IP || '100.93.152.7';
 const PI5_API = `http://${PI5_IP}:8000/api/v1`;
 const PI5_WS = `ws://${PI5_IP}:8000/api/v1/map/ws`;
 const ROSBRIDGE_DEFAULT_URL = import.meta.env.VITE_ROSBRIDGE_URL || 'ws://127.0.0.1:9090';
@@ -565,7 +565,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     return () => clearTimeout(timer);
   }, [zones, isRosConnected]);
 
-  // 1. KET NOI XE THAT (Pi 5 WebSocket: ws://100.99.72.51:8000/api/v1/map/ws)
+  // 1. KET NOI XE THAT (Pi 5 WebSocket: ws://100.93.152.7:8000/api/v1/map/ws)
   useEffect(() => {
     if (connectionMode !== 'pi5') return;
 

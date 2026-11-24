@@ -30,7 +30,7 @@ echo - Backend API Docs: http://localhost:8000/docs
 echo - ROS 2 Rosbridge: ws://127.0.0.1:9090
 echo - Static map: %MAP_NAME% ^(LaserScan khong sua map goc^)
 echo - Quet map moi: dung quet_map_mot_lan.bat
-echo - Raspberry Pi 5 SSH: phuc@100.99.72.51
+echo - Raspberry Pi 5 SSH: phuc@100.93.152.7
 echo ============================================================
 echo.
 timeout /t 3 >nul

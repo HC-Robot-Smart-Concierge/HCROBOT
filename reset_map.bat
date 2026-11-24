@@ -9,7 +9,7 @@ wsl -d Ubuntu-24.04 bash -c "source /opt/ros/jazzy/setup.bash && python3 /mnt/f/
 
 echo.
 echo [2/2] Dang xoa OccupancyGrid noi tai tren Raspberry Pi 5...
-curl.exe -s -X POST http://100.99.72.51:8000/api/v1/map/reset_map
+curl.exe -s -X POST http://100.93.152.7:8000/api/v1/map/reset_map
 
 echo.
 echo ========================================================

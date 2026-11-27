@@ -268,21 +268,21 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 ## 13. Featured Facility Promotions & Detailed Offerings (Synced from Admin)
 
 - **Sky Lounge Bar (6th Floor (16:30 - 01:00 AM)) — Sky Lounge Bar — Chilled Beers, Wines & Horizon Sunset Cocktail:**
-  - Details: Serving chilled beers & wines from menu (from 40,000 VND), Horizon Sunset Cocktail (145,000 VND) with Crispy Fried Breadfruit (65,000 VND) and Seafood Spring Rolls (89,000 VND) on the 6th Floor (16:30 - 01:00 AM).
+  - Details: Serving chilled beers & wines from our menu, Horizon Sunset Cocktail with Crispy Fried Breadfruit and Seafood Spring Rolls on the 6th Floor (16:30 - 01:00 AM).
   - Target Audience: gender=male, age_group=young_adult
-- **Thao Moc Herbal Spa & Massage (5th Floor (09:00 - 22:00)) — Thao Moc Herbal Spa — Hot Stone Massage & Salt Sauna:**
-  - Details: 90-minute hot volcanic stone massage and Himalayan salt sauna on the 5th Floor (09:00 - 22:00). Treatments from 500,000 VND with 15% in-house guest discount.
-  - Target Audience: gender=female, age_group=ALL
 - **Sky Lounge Bar (6th Floor (16:30 - 01:00 AM)) — Sky Lounge Bar — Fine Imported Wines & Signature Cocktails:**
   - Details: Curated Chilean Montes Alpha Cabernet Sauvignon red wine, French Chablis white wine, and Aurora Sunset signature cocktails on the 6th Floor (16:30 - 01:00 AM).
   - Target Audience: gender=ALL, age_group=adult
+- **Thao Moc Herbal Spa & Massage (5th Floor (09:00 - 22:00)) — Thao Moc Herbal Spa — Hot Stone Massage & Salt Sauna:**
+  - Details: 90-minute hot volcanic stone massage and Himalayan salt sauna on the 5th Floor (09:00 - 22:00), with a 15% discount for staying guests.
+  - Target Audience: gender=female, age_group=ALL
 - **Rooftop Coffee with City View (6th Floor (07:00 - 23:00)) — Rooftop Coffee — Hue Salted Coffee, Saigon Iced Coffee & Tiramisu:**
-  - Details: Enjoy Hue Salted Coffee (65,000 VND), Saigon Iced Milk Coffee (55,000 VND), Fresh Orange Juice (65,000 VND) with Classic Italian Tiramisu (95,000 VND) and Berry Panna Cotta (85,000 VND) on the 6th Floor (07:00 - 23:00).
+  - Details: Enjoy Hue Salted Coffee, Saigon Iced Milk Coffee, Fresh Orange Juice with Classic Italian Tiramisu and Berry Panna Cotta on the 6th Floor (07:00 - 23:00).
   - Target Audience: gender=ALL, age_group=young_adult
 - **Infinity Swimming Pool (5th Floor (06:00 - 22:00)) — 5th Floor Infinity Pool — Panoramic Views & Free Towels:**
   - Details: Unwind at our 5th Floor outdoor Infinity Pool (06:00 - 22:00). 100% complimentary for staying guests with fresh towels, chilled water, and lockers.
 - **24/7 In-Room Dining (24/7 In-Room Service) — 24/7 In-Room Dining — Wagyu Beef Pho & Peppercorn Grilled Beef:**
-  - Details: Order 24/7 from our Central Kitchen: Wagyu Beef Pho (175,000 VND), Mushroom/Peppercorn Grilled Beef (189,000 VND), Grilled Lamb Chops (239,000 VND), Wagyu Cheese Burger (260,000 VND), and Seasonal Fresh Fruit (65,000 VND).
+  - Details: Order 24/7 from our Central Kitchen: Wagyu Beef Pho, Mushroom/Peppercorn Grilled Beef, Grilled Lamb Chops, Wagyu Cheese Burger, and Seasonal Fresh Fruit.
 - **Thao Moc Herbal Spa & Massage (5th Floor (09:00 - 22:00)) — Thao Moc Herbal Spa — Herbal Facial & Lemongrass Bath:**
   - Details: Deep relaxation package with lemongrass essential oil bath and organic herbal facial on the 5th Floor (09:00 - 22:00). 15% off when booked via Robot.
   - Target Audience: gender=female, age_group=adult

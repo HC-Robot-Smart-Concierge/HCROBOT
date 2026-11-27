@@ -366,31 +366,47 @@ async def auto_create_ticket(
         elif action == "wake_up":
             ticket_code = f"WU-{random.randint(1000, 99999)}"
             if db:
+                from sqlalchemy import select
+                from app.models.hotel import Room
+
+                guest_name = f"Guest (Room {rm})"
+                guest_phone = None
+                room_res = await db.execute(select(Room).where(Room.room_number == rm))
+                room_obj = room_res.scalars().first()
+                if room_obj:
+                    if room_obj.current_guest_name:
+                        guest_name = room_obj.current_guest_name
+                    if room_obj.current_guest_phone:
+                        guest_phone = room_obj.current_guest_phone
+
                 req = SupportRequest(
                     ticket_code=ticket_code,
                     source="HCRobot Concierge AI Chat",
                     title=f"Yêu cầu Báo thức (Phòng {rm}): {items}",
                     room_number=rm,
                     description=items,
-                    guest_name=f"Guest (Room {rm})",
+                    guest_name=guest_name,
+                    guest_phone=guest_phone,
                     department_id="DEP-RECEPTION",
                     service_type_id="ST-RECEPTION",
+                    request_type="wake_up",
                     status="Pending",
                 )
                 db.add(req)
+                phone_note = f" • SĐT: {guest_phone}" if guest_phone else ""
                 await create_department_notification(
                     db=db,
                     department="Reception",
                     title=f"Robot AI: Yêu cầu Báo thức mới #{ticket_code}",
-                    description=f"Phòng {rm}: {items}",
+                    description=f"Phòng {rm}{phone_note}: {items}",
                     request_id=req.id,
                     request_type="wake_up",
                     type="Request",
                 )
                 await db.commit()
             return ticket_code
-        else:
-            # Default Reception & General Service Request
+        elif action == "reception":
+            # Chỉ tạo ticket Reception khi thực sự là yêu cầu lễ tân hợp lệ
             ticket_code = f"REC-{random.randint(1000, 99999)}"
             if db:
                 req = SupportRequest(
@@ -416,12 +432,36 @@ async def auto_create_ticket(
                 )
                 await db.commit()
             return ticket_code
+        else:
+            logger.info(f"[AITicketService] Skipping auto_create_ticket for non-ticket action '{action}'.")
+            return ""
 
     except Exception as e:
         logger.error(f"[AITicketService] Error auto-creating service ticket: {e}")
         await db.rollback()
 
     return code
+
+
+TICKETABLE_ACTIONS = {
+    "housekeeping",
+    "room_service",
+    "maintenance",
+    "bellman",
+    "restaurant",
+    "laundry",
+    "wake_up",
+    "reception",
+    "cancel_service",
+    "emotion_alert",
+    "concierge",
+    "live_support",
+    "video_call",
+    "emergency",
+    "taxi",
+    "book_taxi",
+    "taxi_booking",
+}
 
 
 async def background_extract_and_create_ticket(
@@ -438,8 +478,9 @@ async def background_extract_and_create_ticket(
         logger.info(f"[AITicketService] Skipping background ticket creation for '{action}' because guest has not yet provided room number.")
         return
 
-    # Không tạo ticket nếu là chào hỏi, giới thiệu phòng hoặc câu hỏi thông tin chung
-    if action in ["provide_room_number", "chitchat", "conversation", "faq", "fast_path", "unknown", "query_order_status", "open_food_menu", "open_room_service_menu", "open_maintenance_menu", "open_bellman_menu"]:
+    # Chỉ cho phép tạo ticket đối với các action dịch vụ hợp lệ (tuyệt đối không fallback tạo REC- cho show_map/none/chitchat/faq...)
+    if not action or action not in TICKETABLE_ACTIONS:
+        logger.info(f"[AITicketService] Skipping background ticket creation for non-ticket action '{action}'.")
         return
 
     items_desc_check = (items or prompt or "").lower()
@@ -448,15 +489,17 @@ async def background_extract_and_create_ticket(
         "kiểm tra", "kiem tra", "trạng thái", "trang thai", "tiến độ", "tien do",
         "xong chưa", "xong chua", "khi nào", "bao giờ", "tại sao", "tai sao",
         "vì sao", "vi sao", "lý do", "ly do", "món đồ đặc", "mon do dac", "món đồ đạc",
-        "đã đặt", "da dat", "đã gọi", "da goi"
+        "đã đặt", "da dat", "đã gọi", "da goi",
+        "chỉ đường", "chi duong", "dẫn đường", "dan duong", "ở đâu", "o dau", "tầng mấy", "tang may",
+        "có gì chơi", "co gi choi", "chương trình", "chuong trinh", "đi bơi", "di boi",
     ]
-    if any(k in items_desc_check for k in non_orderable_kw):
+    if action != "emotion_alert" and any(k in items_desc_check for k in non_orderable_kw):
         logger.warning(f"[AITicketService] Skipping background ticket creation for non-orderable inquiry: '{items or prompt}'")
         return
 
     try:
         from app.core.database import AsyncSessionLocal
-        target_action = action or "reception"
+        target_action = action
         items_desc = items or prompt
 
         async with AsyncSessionLocal() as bg_db:

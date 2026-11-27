@@ -3,10 +3,11 @@
 import random
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.models import SupportRequest
+from app.models import Room, SupportRequest
 from app.repositories import SupportRequestRepository, get_support_request_repository
 from app.schemas.operations import (
     ReceptionDashboardResponse,
@@ -84,27 +85,50 @@ async def create_reception_request(
 
     Hệ thống tự động gắn mã dịch vụ `ST-RECEPTION` và phòng ban `DEP-RECEPTION`.
     """
-    ticket_code = f"REC-{random.randint(1000, 99999)}"
+    req_type = (request_in.request_type or "reception").strip().lower()
+    prefix = "WU" if req_type == "wake_up" else "REC"
+    ticket_code = f"{prefix}-{random.randint(1000, 99999)}"
+    room_num = (request_in.room_number or request_in.location or "Lobby Desk").strip()
+
+    resolved_guest_name = request_in.guest_name or "Hotel Guest"
+    resolved_guest_phone = request_in.guest_phone
+    if room_num and room_num not in ("Lobby Desk", "Lobby"):
+        room_res = await db.execute(select(Room).where(Room.room_number == room_num))
+        room_obj = room_res.scalars().first()
+        if room_obj:
+            if room_obj.current_guest_phone and not resolved_guest_phone:
+                resolved_guest_phone = room_obj.current_guest_phone
+            if room_obj.current_guest_name and (not request_in.guest_name or request_in.guest_name in ("Hotel Guest", f"Guest (Room {room_num})", f"Khách Phòng {room_num}")):
+                resolved_guest_name = room_obj.current_guest_name
+
     new_request = SupportRequest(
         ticket_code=ticket_code,
         title=request_in.title,
         description=request_in.description,
         department_id="DEP-RECEPTION",
         service_type_id="ST-RECEPTION",
-        room_number=request_in.room_number or request_in.location or "Lobby Desk",
-        guest_name=request_in.guest_name or "Hotel Guest",
+        request_type=req_type,
+        room_number=room_num,
+        guest_name=resolved_guest_name,
+        guest_phone=resolved_guest_phone,
         source=request_in.source or "Front Desk / Robot Kiosk",
         status="Pending",
     )
     await repo.create(new_request)
 
+    phone_note = f" • SĐT: {resolved_guest_phone}" if resolved_guest_phone else ""
+    notif_title = (
+        f"Robot AI: Yêu cầu Báo thức mới #{ticket_code}"
+        if req_type == "wake_up"
+        else f"Yêu cầu lễ tân mới: {ticket_code}"
+    )
     await create_department_notification(
         db,
         department="Reception",
-        title=f"Yêu cầu lễ tân mới: {ticket_code}",
-        description=f"Khách {new_request.guest_name} tại {new_request.room_number}: {new_request.title}",
+        title=notif_title,
+        description=f"Khách {new_request.guest_name} (Phòng {new_request.room_number}{phone_note}): {new_request.title}",
         request_id=new_request.id,
-        request_type="reception",
+        request_type=req_type,
     )
 
     await repo.commit()

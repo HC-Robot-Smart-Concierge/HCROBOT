@@ -122,6 +122,8 @@ class ReceptionRequestCreate(BaseModel):
     room_number: Optional[str] = Field("Lobby Desk", description="Số phòng hoặc vị trí tiếp nhận", json_schema_extra={"example": "Lobby Desk"})
     location: Optional[str] = Field(None, description="Vị trí thay thế cho room_number nếu dùng legacy client", json_schema_extra={"example": "Lobby"})
     guest_name: Optional[str] = Field("Hotel Guest", description="Tên khách hàng", json_schema_extra={"example": "Nguyễn Văn An"})
+    guest_phone: Optional[str] = Field(None, description="Số điện thoại khách hàng", json_schema_extra={"example": "0901234567"})
+    request_type: Optional[str] = Field("reception", description="Loại yêu cầu lễ tân ('reception', 'wake_up', ...)", json_schema_extra={"example": "wake_up"})
     description: Optional[str] = Field(None, description="Chi tiết yêu cầu lễ tân / đặt phòng", json_schema_extra={"example": "Khách muốn đặt thêm 1 phòng hướng biển 2 đêm từ ngày mai"})
     source: Optional[str] = Field("Front Desk", description="Nguồn phát sinh yêu cầu", json_schema_extra={"example": "Front Desk"})
 
@@ -143,8 +145,10 @@ class ReceptionRequestResponse(BaseModel):
     location: str
     location_details: Dict[str, Any]
     guest_name: str
+    guest_phone: Optional[str] = None
     guest_tier: str
     guest_stay_details: str
+    request_type: Optional[str] = None
     status: str
     description: Optional[str] = ""
     attached_media: List[Dict[str, Any]]
@@ -197,8 +201,10 @@ class ConciergeLiveRequestResponse(BaseModel):
     location: str
     location_details: Dict[str, Any]
     guest_name: str
+    guest_phone: Optional[str] = None
     guest_tier: str
     guest_stay_details: str
+    request_type: Optional[str] = None
     status: str
     description: Optional[str] = ""
     attached_media: List[Dict[str, Any]]

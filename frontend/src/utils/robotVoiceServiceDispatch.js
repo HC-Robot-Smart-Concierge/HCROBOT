@@ -189,6 +189,26 @@ export async function dispatchVerifiedServiceRequest({
     };
   }
 
+  if (action === 'wake_up') {
+    const res = await postReceptionRequestStrict({
+      title: text ? `Yêu cầu Báo thức (Phòng ${room}): ${text.slice(0, 80)}` : `Yêu cầu Báo thức (Phòng ${room})`,
+      room_number: room || 'Lobby Desk',
+      guest_name: room ? `Khách Phòng ${room}` : 'Hotel Guest',
+      description: text || 'Khách yêu cầu đặt lịch gọi báo thức qua Robot Kiosk',
+      request_type: 'wake_up',
+      source,
+    });
+    const code = res?.ticket_code || res?.id || '';
+    return {
+      ticketCode: code,
+      department: 'Reception',
+      spokenMessage: isEn
+        ? `Your wake-up call for Room ${room} has been scheduled and sent to Reception${code ? ` (#${code})` : ''}.`
+        : `Dạ Rora đã đặt lịch gọi báo thức cho Phòng ${room} và chuyển tới bộ phận Lễ tân${code ? ` (mã #${code})` : ''} ạ.`,
+      rawResult: res,
+    };
+  }
+
   const res = await postReceptionRequestStrict({
     title: text ? `Yêu cầu Phòng ${room}: ${text.slice(0, 80)}` : `Yêu cầu hỗ trợ Phòng ${room}`,
     room_number: room || 'Lobby Desk',

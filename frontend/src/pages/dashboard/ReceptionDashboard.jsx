@@ -45,6 +45,7 @@ const normalizeRequest = (request = {}) => ({
   location: request.room_number || request.location || 'Lobby Desk',
   locationDetails: request.location_details || request.locationDetails || { floor: 'Lobby', category: 'Standard Room' },
   guestName: request.guest_name || request.guestName,
+  guestPhone: request.guest_phone || request.guestPhone || '',
   guestTier: request.guest_tier || request.guestTier || 'Standard',
   guestStayDetails: request.guest_stay_details || request.guestStayDetails,
   description: request.description,
@@ -448,6 +449,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                     </div>
                     <p className="mt-0.5 text-[11px] text-[#6F6A65]">
                       {activeRequest.guestStayDetails || st('Guest staying at the hotel')}
+                      {activeRequest.guestPhone ? ` • SĐT: ${activeRequest.guestPhone}` : ''}
                     </p>
                   </article>
                 </div>
@@ -568,6 +570,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                             </p>
                             <p className="text-[11px] text-stone-500">
                               {r.room_number || r.location || st("Lobby")} • {r.guest_name || st("Hotel guest")}
+                              {(r.guest_phone || r.guestPhone) ? ` • SĐT: ${r.guest_phone || r.guestPhone}` : ''}
                             </p>
                           </div>
                         </div>

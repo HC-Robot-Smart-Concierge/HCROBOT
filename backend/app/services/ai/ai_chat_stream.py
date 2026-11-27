@@ -152,10 +152,14 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
         # Bỏ qua Fast-Path tĩnh nếu câu hỏi mang tính yêu cầu dịch vụ / đồ dùng buồng phòng
         prompt_l = request.prompt.lower()
         is_action_svc = bool(re.search(
-            r'(cho (tôi|mình|em)|xin|lấy|mang|đem|gửi|thêm|mượn|cần|muốn|đặt|yêu cầu|order|bring|send|give me|need)\b',
+            r'(cho (tôi|mình|em)|xin|lấy|mang|đem|gửi|thêm|mượn|cần|muốn|đặt|cài|hẹn|gọi|yêu cầu|order|bring|send|give me|need|set|schedule)\b',
             prompt_l,
             re.IGNORECASE
-        )) and any(k in prompt_l for k in ["khăn", "khan", "gối", "chăn", "nệm", "dép", "bàn chải", "dầu gội", "sữa tắm", "massage", "giặt ủi", "dọn phòng", "món", "cơm", "nước", "đồ ăn"])
+        )) and any(k in prompt_l for k in [
+            "khăn", "khan", "gối", "chăn", "nệm", "dép", "bàn chải", "dầu gội", "sữa tắm",
+            "massage", "giặt ủi", "dọn phòng", "món", "cơm", "nước", "đồ ăn",
+            "báo thức", "bao thuc", "gọi dậy", "goi day", "wake up", "wake-up", "wakeup",
+        ])
         fast_hit = None if is_action_svc else ollama_service.check_fast_path_full(request.prompt, request.language)
         if fast_hit:
             reply, _lang_name, lang_code, act_type, act_payload = fast_hit
@@ -245,7 +249,10 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             # CHỈ TẠO TICKET KHI ĐÃ CÓ ĐẦY ĐỦ SỐ PHÒNG
             ticket_code = None
             fsm_action = fsm_state.get("action") or action  # e.g. the FSM opened a menu instead
-            if not is_call and not missing_room and not fsm_state.get("require_room_pin") and effective_room and fsm_action not in ["provide_room_number", "unknown", "chitchat", "conversation", "faq", "fast_path", "query_order_status", "taxi", "book_taxi", "taxi_booking", "open_food_menu", "open_room_service_menu", "open_maintenance_menu", "open_bellman_menu"]:
+            if not is_call and not missing_room and not fsm_state.get("require_room_pin") and effective_room and fsm_action in {
+                "housekeeping", "room_service", "maintenance", "bellman",
+                "restaurant", "laundry", "wake_up", "reception", "cancel_service",
+            }:
                 if action == "maintenance":
                     from app.core.database import AsyncSessionLocal
                     async with AsyncSessionLocal() as ticket_db:

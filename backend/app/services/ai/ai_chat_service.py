@@ -267,7 +267,10 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     elif require_pin:
         # Tạm dừng tạo ticket tự động - chờ khách bấm xác thực PIN trên màn hình Kiosk
         logger.info(f"[AIChatService] Service request '{act}' for Room {target_room} requires Touch PIN verification.")
-    elif act and act not in ["chitchat", "conversation", "faq", "fast_path", "provide_room_number", "query_order_status", "unknown", "taxi", "book_taxi", "taxi_booking", "open_food_menu", "open_room_service_menu", "open_maintenance_menu", "open_bellman_menu"]:
+    elif act in {
+        "housekeeping", "room_service", "maintenance", "bellman",
+        "restaurant", "laundry", "wake_up", "reception", "cancel_service",
+    }:
         # Chỉ tạo ticket khi đã có số phòng và không cần PIN
         if not missing_room and current_room:
             if act == "maintenance":

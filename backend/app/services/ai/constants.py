@@ -16,8 +16,10 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "laundry", "dry cleaning", "giặt áo", "giặt quần", "là quần áo"
     ],
     "wake_up": [
-        "báo thức", "bao thuc", "gọi dậy", "goi day", "đánh thức", "danh thuc",
-        "wake up", "wake-up", "wake up call"
+        "báo thức", "bao thuc", "gọi báo thức", "goi bao thuc", "đặt báo thức", "dat bao thuc",
+        "cài báo thức", "cai bao thuc", "hẹn báo thức", "hen bao thuc",
+        "gọi dậy", "goi day", "đánh thức", "danh thuc", "nhắc dậy", "nhac day",
+        "wake up", "wake-up", "wakeup", "wake up call", "wake-up call", "wakeup call"
     ],
     "housekeeping": [
         "khăn", "khan", "dọn phòng", "don phong", "gối", "goi", "chăn", "chan",

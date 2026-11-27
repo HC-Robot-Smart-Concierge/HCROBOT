@@ -186,6 +186,8 @@ export const MobileRobotScreen = ({
   qrCountdown = null,
   onCloseQrModal = null,
   onOpenQrModal = null,
+  activeFacilityAd = null,
+  onCloseFacilityAd = null,
 }) => {
   const isEn = language === 'English';
   const [isMapManualOpen, setIsMapManualOpen] = useState(false);
@@ -884,6 +886,36 @@ export const MobileRobotScreen = ({
                   size="mobile"
                 />
               </div>
+
+              {activeFacilityAd?.media_url && displayText && (
+                <div className="mb-2 w-full max-w-xs overflow-hidden rounded-xl border border-stone-700/80 bg-stone-900/90 shadow-xl animate-fadeIn">
+                  <div className="relative h-28 w-full bg-black">
+                    <img
+                      src={activeFacilityAd.media_url}
+                      alt={isEn ? (activeFacilityAd.title_en || activeFacilityAd.title) : activeFacilityAd.title}
+                      className="h-full w-full object-cover"
+                    />
+                    {onCloseFacilityAd && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onCloseFacilityAd();
+                        }}
+                        className="absolute top-1.5 right-1.5 rounded-full bg-black/65 p-1 text-white hover:bg-black cursor-pointer"
+                        aria-label="Close facility image"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="px-2.5 py-1.5 text-left">
+                    <p className="text-[11px] font-bold text-amber-300 truncate">
+                      {isEn ? (activeFacilityAd.title_en || activeFacilityAd.title) : activeFacilityAd.title}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* 1. Khi đang nói hoặc có phụ đề trả lời: Subtitle điện ảnh nổi tinh tế (Tích hợp nút mic bên phải) */}
               {displayText ? (

@@ -144,6 +144,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
             destination_key=dest_key,
             trigger_video_call=False,
             ticket_created=False,
+            advertisement=cached_ai.get("advertisement"),
             speech_audio=speech_audio,
             audio_base64=audio_b64,
             mime_type=mime_type or "audio/mp3",
@@ -196,6 +197,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
             destination_key=None,
             trigger_video_call=False,
             ticket_created=False,
+            advertisement=cached_ai.get("advertisement"),
             speech_audio=speech_audio,
             audio_base64=audio_b64,
             mime_type=mime_type or "audio/mp3",
@@ -333,6 +335,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
                     "action": act,
                     "destination_key": destination_key,
                     "trigger_video_call": is_video_call,
+                    "advertisement": graph_result.get("advertisement"),
                 },
                 knowledge_revision=knowledge_revision,
             )
@@ -365,6 +368,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         pending_service_items=pending_items,
         status_query_type=status_q_type,
         trigger_menu=graph_result.get("trigger_menu"),
+        advertisement=graph_result.get("advertisement"),
         suggested_prompts=suggested,
     )
 

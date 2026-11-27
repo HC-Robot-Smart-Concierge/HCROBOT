@@ -38,6 +38,7 @@ class ChatResponse(BaseModel):
     action: Optional[str] = Field(default=None, description="Tên action/intent dịch vụ được phân loại: query_order_status, room_service, ...")
     status_query_type: Optional[str] = Field(default=None, description="Loại tra cứu trạng thái: service | food")
     trigger_menu: Optional[str] = Field(default=None, description="Tên menu tự động kích hoạt trên Kiosk: food_menu | room_service")
+    advertisement: Optional[Dict[str, Any]] = Field(default=None, description="Quảng cáo cơ sở vật chất kèm hình ảnh hiển thị cùng câu trả lời")
     suggested_prompts: Optional[List[str]] = Field(default_factory=list, description="Danh sách 2-3 câu hỏi gợi ý tiếp theo dạng Quick-Reply Chips")
 
 

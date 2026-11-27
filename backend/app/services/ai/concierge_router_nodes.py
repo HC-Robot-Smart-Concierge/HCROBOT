@@ -57,6 +57,7 @@ class ConciergeState(TypedDict, total=False):
     query_type: Optional[str]
     is_room_authenticated: Optional[bool]
     trigger_menu: Optional[str]
+    advertisement: Optional[Dict[str, Any]]
 
 
 _BARE_NO_MORE_HELP_RE = re.compile(
@@ -349,6 +350,7 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
                 "trigger_menu": None,
             }
         eye_expr = action_payload.get("eye_expression") if isinstance(action_payload, dict) else None
+        matched_ad = action_payload.get("advertisement") if isinstance(action_payload, dict) else None
         is_vc = action_type in ["trigger_video_call", "call_reception"]
         trigger_menu = None
         if action_type == "open_food_menu":
@@ -375,6 +377,7 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
             "eye_expression": eye_expr,
             "trigger_video_call": is_vc,
             "trigger_menu": trigger_menu,
+            "advertisement": matched_ad,
             "missing_room_number": False,
             "room_number": (action_payload.get("target_room_number") if isinstance(action_payload, dict) else None) or state.get("room_number"),
             "target_room_number": (action_payload.get("target_room_number") if isinstance(action_payload, dict) else None) or state.get("room_number"),

@@ -105,6 +105,9 @@ def set_facility_ads_cache(ads: List[Any]) -> None:
             "description": getattr(ad, "description", None) or "",
             "description_en": getattr(ad, "description_en", None) or "",
             "facility_key": getattr(ad, "facility_key", None) or "",
+            "media_type": getattr(ad, "media_type", None) or "IMAGE",
+            "media_url": getattr(ad, "media_url", None) or "",
+            "thumbnail_url": getattr(ad, "thumbnail_url", None) or "",
         })
     _ACTIVE_FACILITY_ADS_CACHE = cached
 
@@ -154,7 +157,27 @@ def match_facility_ads_fast_path(
     else:
         reply = f"Dạ tại {fac_name} ({floor_info}) hiện đang có: {details_text}"
 
-    return reply, lang_name, lang_code, "conversation", {"eye_expression": "happy", "facility_key": matched_fac_key}
+    primary_ad = matching_ads[0]
+    ad_payload = (
+        {
+            "id": primary_ad["id"],
+            "title": primary_ad["title"],
+            "title_en": primary_ad["title_en"],
+            "description": primary_ad["description"],
+            "description_en": primary_ad["description_en"],
+            "facility_key": matched_fac_key,
+            "media_type": primary_ad.get("media_type") or "IMAGE",
+            "media_url": primary_ad.get("media_url") or "",
+            "thumbnail_url": primary_ad.get("thumbnail_url") or "",
+        }
+        if primary_ad.get("media_url")
+        else None
+    )
+    return reply, lang_name, lang_code, "conversation", {
+        "eye_expression": "happy",
+        "facility_key": matched_fac_key,
+        "advertisement": ad_payload,
+    }
 
 
 def _upsert_marked_section(file_path: str, section_body: str) -> bool:

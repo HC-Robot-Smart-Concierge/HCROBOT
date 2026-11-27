@@ -560,6 +560,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const guestEmotionRef = useRef('neutral');
   const [guestAgeGroup, setGuestAgeGroup] = useState('young_adult');
   const [guestGender, setGuestGender] = useState('unknown');
+  const [activeFacilityAd, setActiveFacilityAd] = useState(null);
   const lastUnhappyAlertTimeRef = useRef(0);
   const [isUnhappyAssistanceOpen, setIsUnhappyAssistanceOpen] = useState(false);
   const unhappyTimerRef = useRef(null);
@@ -2108,6 +2109,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           clearTimeout(processingSafetyTimerRef.current);
           processingSafetyTimerRef.current = null;
         }
+        setActiveFacilityAd(chatRes?.advertisement?.media_url ? chatRes.advertisement : null);
 
         const detectedLang = chatRes.detected_language || 'Tiếng Việt';
         const langCode = chatRes.lang_code || (detectedLang === 'English' ? 'en-US' : 'vi-VN');
@@ -3386,6 +3388,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
       <MobileRobotScreen
         activeRoomNumber={activeRoomNumber}
+        activeFacilityAd={activeFacilityAd}
+        onCloseFacilityAd={() => setActiveFacilityAd(null)}
         guestEmotion={guestEmotion}
         eyeExpression={activeEyeExpression}
         aiResponseText={aiResponseText}
@@ -4199,6 +4203,34 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 />
               </div>
 
+              {activeFacilityAd?.media_url && aiResponseText && (
+                <div className="mb-3 w-full max-w-md overflow-hidden rounded-2xl border border-stone-700/80 bg-stone-900/90 shadow-2xl animate-fadeIn">
+                  <div className="relative h-44 w-full bg-black">
+                    <img
+                      src={activeFacilityAd.media_url}
+                      alt={language === 'English' ? (activeFacilityAd.title_en || activeFacilityAd.title) : activeFacilityAd.title}
+                      className="h-full w-full object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveFacilityAd(null);
+                      }}
+                      className="absolute top-2 right-2 rounded-full bg-black/65 p-1.5 text-white hover:bg-black cursor-pointer"
+                      aria-label="Close facility image"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="px-3.5 py-2 text-left">
+                    <p className="text-xs font-bold text-amber-300 truncate">
+                      {language === 'English' ? (activeFacilityAd.title_en || activeFacilityAd.title) : activeFacilityAd.title}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* 1. Khi đang nói (Speaking) hoặc có câu trả lời: Phụ đề động tinh giản (Floating Cinema Captions) */}
               {(aiResponseText || (isWorkflowRunning && (activeStep?.type === 'GREET' || activeStep?.type === 'SPEAK') && (activeStep.params?.speech_text || activeStep.params?.greeting_text || activeStep.params?.text))) && (
                 <FloatingCinemaSubtitle
@@ -4207,6 +4239,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   onClose={() => {
                     clearFollowUpTimer();
                     setAiResponseText('');
+                    setActiveFacilityAd(null);
                   }}
                 />
               )}

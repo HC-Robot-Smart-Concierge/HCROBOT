@@ -72,6 +72,9 @@ class ObstacleSafetyController:
         resume_valid_packets=3,
         turn_clearance_cm=25.0,
         ignored_sensors=(),
+        turn_check_opposite_side=True,
+        lidar_clearances=None,
+        lidar_turn_clearance_cm=2.0,
     ):
         self.motor = motor
         self.sensor_reader = sensor_reader
@@ -88,6 +91,12 @@ class ObstacleSafetyController:
         self.resume_valid_packets = max(1, int(resume_valid_packets))
         self.turn_clearance_cm = float(turn_clearance_cm)
         self.ignored_sensors = set(ignored_sensors or ())
+        self.turn_check_opposite_side = bool(turn_check_opposite_side)
+        # Callable -> {front, rear, left, right, turn: cm | None} while the LiDAR
+        # is live, else None. Each side uses the closer of sonar and LiDAR; a null
+        # sonar falls back to LiDAR instead of locking the robot.
+        self.lidar_clearances = lidar_clearances
+        self.lidar_turn_clearance_cm = max(0.0, float(lidar_turn_clearance_cm))
 
         self.motion = "stop"
         # Lan chan gan nhat (monotonic, huong, ly do) de gui ve laptop hien len terminal.
@@ -117,9 +126,10 @@ class ObstacleSafetyController:
         elif motion in ("left", "right"):
             side = "left" if motion == "left" else "right"
             opposite = "right" if side == "left" else "left"
-            return (
-                (side, self.thresholds_cm[side]),
-                (opposite, self.thresholds_cm[opposite]),
+            sides = ((side, self.thresholds_cm[side]),)
+            if self.turn_check_opposite_side:
+                sides += ((opposite, self.thresholds_cm[opposite]),)
+            return sides + (
                 ("front", self.turn_clearance_cm),
                 ("rear", self.turn_clearance_cm),
             )
@@ -153,15 +163,40 @@ class ObstacleSafetyController:
             return tuple(r for r in base if r[0] not in self.ignored_sensors)
         return base
 
-    def _packet_is_clear_for_resume(self, snapshot, motion):
+    def _lidar(self):
+        if self.lidar_clearances is None:
+            return None
+        try:
+            return self.lidar_clearances()
+        except Exception as exc:  # a LiDAR glitch must not crash the brake
+            logger.debug("LiDAR clearances unavailable: %s", exc)
+            return None
+
+    def _turn_blocked_by_lidar(self, motion, lidar):
+        if motion not in ("left", "right") or lidar is None:
+            return None
+        gap = lidar.get("turn")
+        if gap is not None and gap <= self.lidar_turn_clearance_cm:
+            return gap
+        return None
+
+    def _packet_is_clear_for_resume(self, snapshot, motion, lidar=None):
         """Resume chỉ dùng số đo hiện tại, tuyệt đối không dùng giá trị giữ tạm."""
+        if self._turn_blocked_by_lidar(motion, lidar) is not None:
+            return False
         for sensor_name, stop_threshold in self._requirements(motion):
             if sensor_name in self.ignored_sensors:
                 continue
+            limit = stop_threshold + self.resume_margin_cm
+            lidar_gap = lidar.get(sensor_name) if lidar is not None else None
+            if lidar_gap is not None and lidar_gap <= limit:
+                return False
             distance = snapshot.distance(sensor_name)
             if distance is None:
+                if lidar is not None:
+                    continue  # sonar null: LiDAR above already judged this side
                 return False
-            if distance <= stop_threshold + self.resume_margin_cm:
+            if distance <= limit:
                 return False
         return True
 
@@ -182,8 +217,9 @@ class ObstacleSafetyController:
                 state.last_valid_at = snapshot.received_at
                 state.consecutive_invalid = 0
 
+        lidar = self._lidar()
         for motion in self._clear_streak:
-            if self._packet_is_clear_for_resume(snapshot, motion):
+            if self._packet_is_clear_for_resume(snapshot, motion, lidar):
                 self._clear_streak[motion] += 1
             else:
                 self._clear_streak[motion] = 0
@@ -270,29 +306,51 @@ class ObstacleSafetyController:
                     threshold_cm=primary_threshold + self.resume_margin_cm,
                 )
 
+        lidar = self._lidar()
+        turn_gap = self._turn_blocked_by_lidar(motion, lidar)
+        if turn_gap is not None:
+            return SafetyDecision(
+                False,
+                f"LiDAR: góc xe quét khi xoay chỉ còn {turn_gap:.1f}cm "
+                f"<= {self.lidar_turn_clearance_cm:.1f}cm",
+                sensor="lidar",
+                distance_cm=turn_gap,
+                threshold_cm=self.lidar_turn_clearance_cm,
+            )
+
         readings = []
         for sensor_name, threshold in self._requirements(motion):
             distance, held, error = self._distance_for_safety(
                 snapshot, sensor_name, now
             )
+            source = "sonar"
             if error is not None:
-                return SafetyDecision(
-                    False,
-                    error,
-                    sensor=sensor_name,
-                    threshold_cm=threshold,
-                )
+                if lidar is None:
+                    return SafetyDecision(
+                        False,
+                        error,
+                        sensor=sensor_name,
+                        threshold_cm=threshold,
+                    )
+                # Sonar unusable on this side but the LiDAR is live: let it decide.
+                distance, held, source = lidar.get(sensor_name), False, "LiDAR (sonar null)"
+            elif lidar is not None and sensor_name not in self.ignored_sensors:
+                lidar_gap = lidar.get(sensor_name)
+                if lidar_gap is not None and (distance is None or lidar_gap < distance):
+                    distance, held, source = lidar_gap, False, "LiDAR"
             if distance is not None:
                 if distance <= threshold:
                     return SafetyDecision(
                         False,
-                        f"vật cản {sensor_name}={distance:.1f}cm <= {threshold:.1f}cm",
+                        f"vật cản {sensor_name}={distance:.1f}cm ({source}) <= {threshold:.1f}cm",
                         sensor=sensor_name,
                         distance_cm=distance,
                         threshold_cm=threshold,
                     )
                 suffix = " (giữ tạm)" if held else ""
-                readings.append(f"{sensor_name}={distance:.1f}cm{suffix}")
+                readings.append(f"{sensor_name}={distance:.1f}cm {source}{suffix}")
+            elif source.startswith("LiDAR"):
+                readings.append(f"{sensor_name}=trống ({source})")
             else:
                 readings.append(f"{sensor_name}=bỏ qua (chưa kết nối)")
 

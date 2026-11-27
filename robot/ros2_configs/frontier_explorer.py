@@ -45,15 +45,16 @@ from tf2_ros import Buffer, TransformListener
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from frontier_logic import (  # noqa: E402
-    FrontierMemory, MotionWatchdog, choose_frontier, choose_unstick_direction, exploration_result,
+    Frontier, FrontierMemory, MotionWatchdog, choose_frontier, choose_unstick_direction, exploration_result,
     find_frontiers, frontier_still_open, safe_goal, scan_to_points,
 )
 
 # Phat ket qua roi cho them chut cho rosbridge/Web nhan truoc khi thoat tien trinh.
 EXIT_DELAY_SEC = 3.0
+from map_closure import map_closure  # noqa: E402
 from robot_status import lidar_clearances  # noqa: E402
 from retreat_logic import (  # noqa: E402
-    RetreatTrail, ReverseFollower, body_scan, turn_clear,
+    RetreatTrail, ReverseFollower, body_scan, travel_coverage, turn_clear,
 )
 from recovery_costmap import CostmapGrid, grid_sweep_clear, scan_sweep_clear  # noqa: E402
 from robot_geometry import TURN_CLEARANCE_RADIUS_M  # noqa: E402
@@ -62,6 +63,10 @@ from sonar_escape import SONAR_FRESH_SEC, null_sonars, plan_sonar_escape  # noqa
 SONAR_VI = {"front": "trước", "rear": "sau", "left": "trái", "right": "phải"}
 # Thu thoat ket vi sonar null toi da N lan lien tiep (chua toi duoc dich nao) roi dung, bao Web.
 MAX_SONAR_ESCAPES = 4
+
+
+def _points_text(points):
+    return ", ".join(f"({x:.2f}, {y:.2f})" for x, y in points)
 
 
 def _yaw_from_quat(q):
@@ -83,6 +88,16 @@ class FrontierExplorer(Node):
         self.retry_rounds = 0
         self.blocked_retry_sec = max(5.0, float(p("blocked_retry_sec", 30.0).value))
         self.blocked_retry_at = None
+        # Frontiers left but none reachable: after N retry rounds with no new spot
+        # visited, end as INCOMPLETE so the Web offers to save instead of waiting forever.
+        self.max_blocked_rounds = max(1, int(p("max_blocked_rounds", 3).value))
+        self.blocked_rounds = 0
+        self.blocked_progress_mark = -1
+        # "Scan finished" = the walls around the robot form a closed contour (map_closure.py).
+        # Openings become targets; interior blind pockets no longer block DONE.
+        self.require_closed_map = bool(p("require_closed_map", True).value)
+        self.closure_max_gap_m = float(p("closure_max_gap_m", 0.10).value)
+        self.goal_is_leak = False
         # Measured 33 x 17 cm body + 4 cm padding (~24.1 cm turning radius).
         # Nav2 and recovery check the actual swept body before changing heading.
         self.goal_clearance_m = float(p("goal_clearance_m", TURN_CLEARANCE_RADIUS_M).value)
@@ -258,15 +273,26 @@ class FrontierExplorer(Node):
         if isinstance(snap, dict):
             self.pi_sonar, self.pi_sonar_at = snap, self._now()
 
-    def _retreat_scan(self, now):
+    def _fresh_scan(self, now):
         s = self.scan_msg
         if s is None or self.scan_received_at is None:
-            return [], False
+            return None
         stamp = s.header.stamp.sec + s.header.stamp.nanosec * 1e-9
         if not (0 <= now - self.scan_received_at <= self.scan_timeout_sec
                 and 0 <= now - stamp <= self.scan_timeout_sec):
+            return None
+        return s
+
+    def _retreat_scan(self, now):
+        s = self._fresh_scan(now)
+        if s is None:
             return [], False
         return body_scan(s.angle_min, s.angle_increment, s.ranges, s.range_min, s.range_max)
+
+    def _travel_coverage(self, now, direction):
+        s = self._fresh_scan(now)
+        return s is not None and travel_coverage(
+            s.angle_min, s.angle_increment, s.ranges, s.range_min, s.range_max, direction)
 
     def _needs_retreat(self):
         if self._now() < self.retreat_retry_after:
@@ -309,6 +335,45 @@ class FrontierExplorer(Node):
             self.map_msg.data, info.width, info.height, info.resolution,
             (info.origin.position.x, info.origin.position.y), self.min_cluster_cells,
         )
+
+    def _closure(self, robot):
+        if self.map_msg is None or robot is None:
+            return None
+        info = self.map_msg.info
+        return map_closure(
+            self.map_msg.data, info.width, info.height, info.resolution,
+            (info.origin.position.x, info.origin.position.y), robot,
+            max_gap_m=self.closure_max_gap_m,
+        )
+
+    def _target_still_open(self, spot):
+        """The frontier cluster, or (for an opening target) the wall gap, is still there."""
+        if frontier_still_open(self._frontiers(), spot):
+            return True
+        if not self.goal_is_leak:
+            return False
+        closure = self._closure(self._robot_xy())
+        return bool(closure and any(math.hypot(x - spot[0], y - spot[1]) <= 0.8 for x, y in closure.leaks))
+
+    def _pick_target(self, candidates, robot):
+        """Nearest reachable candidate with a clear standing spot -> (target, goal)."""
+        while True:
+            target = choose_frontier(candidates, robot, self.memory.blacklist())
+            if target is None:
+                return None, None
+            goal = self._safe_goal(target.goal, robot)
+            if goal is None:
+                # Không có chỗ đứng thoáng gần frontier này (khe hẹp, góc chật): tạm bỏ.
+                self.get_logger().warn(
+                    f"Bỏ frontier ({target.goal[0]:.2f}, {target.goal[1]:.2f}): không có chỗ đứng cách "
+                    f"vật cản ≥ {self.goal_clearance_m:.2f} m trong {self.goal_search_radius_m:.1f} m"
+                )
+                self.memory.give_up(target.goal)
+                continue
+            if math.hypot(goal[0] - robot[0], goal[1] - robot[1]) < self.min_travel_m:
+                self._mark_blind(target.goal)
+                continue
+            return target, goal
 
     def _safe_goal(self, frontier_goal, robot):
         info = self.map_msg.info
@@ -368,25 +433,27 @@ class FrontierExplorer(Node):
             return
 
         frontiers = self._frontiers()
-        goal = None
-        while True:
-            target = choose_frontier(frontiers, robot, self.memory.blacklist())
+        target, goal = self._pick_target(frontiers, robot)
+        is_leak = False
+        closure = self._closure(robot) if target is None and self.require_closed_map else None
+        if closure is not None and closure.closed:
+            # User definition of "finished": the walls form a closed contour. Pockets
+            # left inside (under furniture, black objects) do not keep the robot busy.
+            self.empty_checks += 1
+            if self.empty_checks >= self.done_checks:
+                self._finish_closed(frontiers)
+            return
+        if closure is not None:
+            leaks = [Frontier(goal=p, size=1, centroid=p) for p in closure.leaks]
+            target, goal = self._pick_target(leaks, robot)
             if target is None:
-                break
-            goal = self._safe_goal(target.goal, robot)
-            if goal is None:
-                # Không có chỗ đứng thoáng gần frontier này (khe hẹp, góc chật): tạm bỏ.
-                self.get_logger().warn(
-                    f"Bỏ frontier ({target.goal[0]:.2f}, {target.goal[1]:.2f}): không có chỗ đứng cách "
-                    f"vật cản ≥ {self.goal_clearance_m:.2f} m trong {self.goal_search_radius_m:.1f} m"
-                )
-                self.memory.give_up(target.goal)
-                continue
-            if math.hypot(goal[0] - robot[0], goal[1] - robot[1]) < self.min_travel_m:
-                self._mark_blind(target.goal)
-                goal = None
-                continue
-            break
+                self._wait_for_frontiers(frontiers or leaks, now, leaks=closure.leaks)
+                return
+            is_leak = True
+            self.get_logger().info(
+                f"🧱 Map chưa khép kín ({len(leaks)} chỗ hở): tới gần chỗ hở "
+                f"({target.goal[0]:.2f}, {target.goal[1]:.2f}) để quét kín tường"
+            )
         if target is None:
             if frontiers and self.blocked_retry_at is not None:
                 self._wait_for_frontiers(frontiers, now)
@@ -412,16 +479,63 @@ class FrontierExplorer(Node):
         if self.blocked_retry_at is not None:
             self.blocked_retry_at = None
             self._publish_status({"state": "EXPLORING", "message": "Robot tiếp tục khám phá vùng chưa quét."})
+        self.goal_is_leak = is_leak
         self._send_goal(goal, target.goal, robot, len(frontiers))
 
-    def _wait_for_frontiers(self, frontiers, now):
+    def _finish_closed(self, frontiers):
+        """DONE by the user's definition: the room's walls form a closed contour."""
+        self.finished = True
+        inner = (f" Còn {len(frontiers)} chỗ khuất bên trong (gầm bàn, đồ màu đen) nhưng tường bao đã kín."
+                 if frontiers else "")
+        result = {
+            "state": "DONE", "closed": True, "visited": self.visited, "stuck": self.stuck_count,
+            "frontiers_left": len(frontiers),
+            "message": (f"Đã quét xong: map khép kín, thăm {self.visited} chỗ, "
+                        f"thoát kẹt {self.stuck_count} lần.{inner}"),
+        }
+        self.get_logger().info(f"🎉 {result['message']}")
+        if self.save_map_name:
+            self._save_map(result)
+        else:
+            self._report_and_exit(result)
+
+    def _end_session(self, note):
+        """End exploration keeping the SLAM map; the explorer exits so the Web opens Save."""
+        frontiers = self._frontiers() if self.map_msg is not None else []
+        result = exploration_result(self.visited, self.stuck_count, frontiers)
+        closure = self._closure(self._robot_xy()) if self.require_closed_map else None
+        if closure is not None and closure.closed:
+            result.update(state="DONE", closed=True,
+                          message=f"{note} Tường bao đã khép kín nên coi như quét xong (thăm {self.visited} chỗ).")
+        elif closure is not None:
+            result.update(closed=False, leaks=[list(p) for p in closure.leaks],
+                          message=f"{note} {result['message']} Map chưa khép kín, còn hở ở "
+                                  f"{_points_text(closure.leaks)}.")
+        else:
+            result["message"] = f"{note} {result['message']}"
+        self.finished = True
+        self.pending_unstick = False
+        self.maneuver = None
+        if self.goal_handle is not None:
+            self.goal_handle.cancel_goal_async()
+        self._publish_vx(0.0)
+        self.get_logger().warn(f"🏁 Kết thúc tự quét ({result['state']}): {result['message']}")
+        self._report_and_exit(result)
+
+    def _wait_for_frontiers(self, frontiers, now, leaks=None):
         """Keep SLAM and the exploration session alive while unresolved regions remain."""
         self.empty_checks = 0
         if self.blocked_retry_at is None:
+            if self.visited != self.blocked_progress_mark:
+                self.blocked_progress_mark = self.visited
+                self.blocked_rounds = 0
             self.blocked_retry_at = now + self.blocked_retry_sec
+            what = (f"Map chưa khép kín, còn hở ở {_points_text(leaks)}"
+                    if leaks else f"Còn {len(frontiers)} vùng chưa khám phá")
             message = (
-                f"Còn {len(frontiers)} vùng chưa khám phá; chưa tìm được đích an toàn để đi tiếp. "
-                f"Giữ phiên quét, kiểm tra lại sau {self.blocked_retry_sec:.0f} giây. "
+                f"{what}; chưa tìm được đích an toàn để đi tiếp. "
+                f"Giữ phiên quét, kiểm tra lại sau {self.blocked_retry_sec:.0f} giây "
+                f"(lần {self.blocked_rounds + 1}/{self.max_blocked_rounds}, hết lượt sẽ kết thúc để lưu map). "
                 "Kiểm tra encoder, LiDAR và vật cản nếu xe vẫn đứng yên."
             )
             self.get_logger().warn(message)
@@ -429,6 +543,12 @@ class FrontierExplorer(Node):
                                   "visited": self.visited, "stuck": self.stuck_count,
                                   "message": message})
         elif now >= self.blocked_retry_at:
+            self.blocked_rounds += 1
+            if self.blocked_rounds >= self.max_blocked_rounds and self.visited > 0:
+                self._end_session(
+                    f"Đã thử lại {self.blocked_rounds} lần mà không tới thêm được chỗ nào "
+                    "(điểm mù LiDAR / khe hẹp / cửa mở).")
+                return
             # Reopen temporary navigation failures, keeping blind spots and all
             # collision/scan checks. Never turn remaining frontiers into DONE.
             self.memory.retry_round()
@@ -468,7 +588,7 @@ class FrontierExplorer(Node):
                 or now - self.last_replan_check < self.replan_check_sec):
             return
         self.last_replan_check = now
-        if frontier_still_open(self._frontiers(), self.goal_frontier):
+        if self._target_still_open(self.goal_frontier):
             return
         self.get_logger().info("👀 Frontier đích đã quét xong từ xa, chuyển sang frontier kế tiếp")
         self._cancel_current(now)
@@ -567,7 +687,7 @@ class FrontierExplorer(Node):
             self.get_logger().warn("Chưa tới được chỗ quét, sẽ thử lại sau")
 
     def _judge_reached(self, spot):
-        if self.map_msg is not None and frontier_still_open(self._frontiers(), spot):
+        if self.map_msg is not None and self._target_still_open(spot):
             self._mark_blind(spot)
         else:
             self.memory.mark_done(spot)
@@ -666,6 +786,9 @@ class FrontierExplorer(Node):
         start = self._odom_pose()
         snapshot = self._costmap_snapshot(now)
         missing = self._recovery_missing(now, start, coverage, snapshot)
+        if (missing and not coverage and start is not None and snapshot is not None
+                and self._start_partial_unstick(now, start, points, snapshot)):
+            return True
         if missing:
             # Just after canceling a turn, the bridge may still be suppressing
             # distorted scans. Hold still and let fresh scans/TF arrive first.
@@ -703,6 +826,28 @@ class FrontierExplorer(Node):
         )
         return True
 
+    def _start_partial_unstick(self, now, start, points, snapshot):
+        """A sparse RPLiDAR scan can leave one 15 deg sector empty for good (black,
+        glass, doorway), so full 360 deg coverage never arrives and the robot froze
+        with clear space behind it. Creep straight out when the half it drives into
+        is fully observed and the swept path is clear on LiDAR points + costmap."""
+        c = self._clearances()
+        direction = choose_unstick_direction(c.get("front"), c.get("rear"),
+                                             min_front_cm=30.0, min_rear_cm=25.0)
+        if direction is None or not self._travel_coverage(now, direction):
+            return False
+        vx = self.unstick_speed if direction == "forward" else -self.unstick_speed
+        if not self._motion_allowed(vx, 0.0, points, True, snapshot):
+            return False
+        self.maneuver = {"dir": direction, "start": start, "until": now + 4.0, "partial_scan": True}
+        side = "trước" if direction == "forward" else "sau"
+        self.get_logger().info(
+            f"↩️ LiDAR thiếu tia ở vài hướng nhưng phía {side} nhìn đủ: "
+            f"{'tiến' if direction == 'forward' else 'lùi'} thẳng {self.unstick_dist_m:.2f} m "
+            f"(trước {self._cm(c.get('front'))} cm, sau {self._cm(c.get('rear'))} cm)"
+        )
+        return True
+
     def _publish_vx(self, vx):
         self._publish_motion(vx, 0.0)
 
@@ -717,6 +862,11 @@ class FrontierExplorer(Node):
         self.maneuver = None
         self.recovery_blocked = True
         self.get_logger().error(f"⛔ Tạm dừng tự hành: {reason}. Kiểm tra/lái tay ra chỗ rộng rồi khởi động lại tự quét.")
+        if self.visited > 0:
+            # Nothing resumes a blocked session by itself; hand the map scanned so far to
+            # the Web (explorer exits -> MAPPING -> Save dialog) instead of idling forever.
+            self._end_session(f"Xe bị kẹt nên dừng tự quét ({reason}).")
+            return
         # Web (trang LiDAR) hiện message của BLOCKED: báo rõ thay vì xe đứng im không nói gì.
         self._publish_status({
             "state": "BLOCKED", "visited": self.visited, "stuck": self.stuck_count,
@@ -749,6 +899,8 @@ class FrontierExplorer(Node):
         now = self._now()
         pose = self._odom_pose()
         points, coverage = self._retreat_scan(now)
+        if m is not None and m.get("partial_scan") and not coverage:
+            coverage = self._travel_coverage(now, m["dir"])
         if m is None:
             if not self.recovery_blocked and coverage and pose is not None:
                 # Preserve valid anchors through a brief scan/TF gap. record()
@@ -762,6 +914,9 @@ class FrontierExplorer(Node):
         if m.get("awaiting_sensors"):
             self._publish_vx(0.0)
             missing = self._recovery_missing(now, pose, coverage, snapshot)
+            if (missing and not coverage and pose is not None and snapshot is not None
+                    and self._start_partial_unstick(now, pose, points, snapshot)):
+                return
             if missing:
                 m.pop("ready_since", None)
                 self._wait_recovery(now, f"Chờ dữ liệu mới trước khi thoát kẹt: {missing}", fatal=True)

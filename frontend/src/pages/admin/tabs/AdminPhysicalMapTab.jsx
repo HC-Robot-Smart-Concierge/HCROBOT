@@ -404,7 +404,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
 
   // Ve vung bang chuot: chon loai vung roi keo hinh chu nhat tren map
   const [zoneDrawType, setZoneDrawType] = useState(null); // null | 'KEEP_OUT' | 'SPEED_ZONE' | 'NO_STOP'
-  const [zoneDrawShape, setZoneDrawShape] = useState('rectangle');
+  const [zoneDrawShape, setZoneDrawShape] = useState('polygon');
   const [zoneDraft, setZoneDraft] = useState(null); // { type, a: {x,y}, b: {x,y} } toa do the gioi
 
   // Ban do dang chon (thong so tu .yaml) va anh map (.pgm giai ma thanh canvas)
@@ -2558,6 +2558,25 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
     { key: 'costmap', Icon: Layers, title: 'Costmap Nav2', label: `Costmap Nav2${costmapVersion === 0 ? ' (chưa có dữ liệu)' : ''}: ${showCostmap ? 'BẬT' : 'TẮT'}`, description: costmapVersion === 0 ? 'Chưa nhận được costmap từ Nav2. Khi có dữ liệu, đỏ là vật cản hoặc vùng cấm; cam là khoảng nới an toàn.' : 'Đỏ là vật cản hoặc vùng cấm; cam là khoảng nới an toàn quanh vật cản.', active: showCostmap, onClick: () => setShowCostmap((value) => !value) },
     { key: 'heading', Icon: Compass, title: 'Hướng hiển thị robot', label: invertHeading ? 'Đảo đầu: 180°' : 'Đầu chuẩn: 0°', description: 'Đảo hướng hiển thị đầu xe và góc quét LiDAR 180° khi bị ngược với thực tế.', active: invertHeading, onClick: () => setInvertHeading((value) => !value) },
   ];
+  // Shared by the Zones panel, the "Thêm vào bản đồ" menu and the drawing hint. In the
+  // hint (zone type already chosen) switching shape keeps the type and only drops the draft.
+  const renderZoneShapePicker = ({ keepDrawing = false } = {}) => (
+    <div className="flex items-center gap-2 text-[11px] text-slate-300">
+      <span>Hình vẽ:</span>
+      {[['polygon', 'Đa giác (Polygon)'], ['rectangle', 'Chữ nhật']].map(([shape, label]) => (
+        <button key={shape} type="button" aria-pressed={zoneDrawShape === shape}
+          onClick={() => {
+            setZoneDrawShape(shape);
+            setZoneDraft(null);
+            if (!keepDrawing) setZoneDrawType(null);
+          }}
+          className={`rounded border px-2 py-1 cursor-pointer ${zoneDrawShape === shape ? 'border-cyan-500 bg-cyan-950 text-cyan-200' : 'border-slate-700 bg-slate-800'}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+  const zoneShapePicker = renderZoneShapePicker();
   const popupAction = mapActions.find((action) => action.key === panel.section);
   const popupTitle = PANEL_SECTIONS.find((section) => section.key === panel.section)?.label
     || popupAction?.title
@@ -2722,6 +2741,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
 
           {zoneDrawType && (
             <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-2 rounded-lg bg-amber-950/95 border border-amber-700 text-[11px] font-semibold text-amber-200 shadow-xl max-w-[90%]">
+              <div className="mb-2">{renderZoneShapePicker({ keepDrawing: true })}</div>
               {zoneDrawShape === 'polygon' ? (
                 <>
                   <p>Vẽ {ZONE_TEMPLATES.find((t) => t.type === zoneDrawType)?.badge}: chấm từng đỉnh theo thứ tự quanh vùng. Bấm đỉnh đầu hoặc Hoàn tất để đóng hình.</p>
@@ -3081,6 +3101,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
                 </div>
                 <div className="space-y-2 border-t border-slate-800 pt-3">
                   <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Vùng / Zone</h3>
+                  {zoneShapePicker}
                   {ZONE_TEMPLATES.map((template) => (
                     <button key={template.type} type="button" onClick={() => toggleZoneDraw(template.type)} className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-slate-700 bg-slate-800/60 p-3 text-left transition-colors hover:border-slate-500 hover:bg-slate-800">
                       <ShieldBan className="h-5 w-5 shrink-0" style={{ color: template.color }} />
@@ -3090,7 +3111,11 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
                       </span>
                     </button>
                   ))}
-                  <p className="text-[11px] text-slate-500">Nhấn giữ và kéo trên map để vẽ vùng. Nhấn Esc để hủy.</p>
+                  <p className="text-[11px] text-slate-500">
+                    {zoneDrawShape === 'polygon'
+                      ? 'Chấm từng đỉnh trên map, bấm đỉnh đầu hoặc Hoàn tất để đóng hình. Nhấn Esc để hủy.'
+                      : 'Nhấn giữ và kéo trên map để vẽ vùng. Nhấn Esc để hủy.'}
+                  </p>
                 </div>
               </div>
             )}
@@ -3498,16 +3523,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
             {/* NOI DUNG TAB 2: DANH SACH VUNG CHUC NANG (ZONES) */}
             {panel.section === 'ZONES' && (
               <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2.5">
-                <div className="flex items-center gap-2 text-[11px] text-slate-300">
-                  <span>Hình vẽ:</span>
-                  {[['rectangle', 'Chữ nhật'], ['polygon', 'Đa giác (Polygon)']].map(([shape, label]) => (
-                    <button key={shape} type="button" aria-pressed={zoneDrawShape === shape}
-                      onClick={() => { setZoneDrawShape(shape); setZoneDraft(null); setZoneDrawType(null); }}
-                      className={`rounded border px-2 py-1 cursor-pointer ${zoneDrawShape === shape ? 'border-cyan-500 bg-cyan-950 text-cyan-200' : 'border-slate-700 bg-slate-800'}`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                {zoneShapePicker}
                 {/* Toolbar them & luu zone */}
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1">

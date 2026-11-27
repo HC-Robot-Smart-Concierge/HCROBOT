@@ -217,8 +217,12 @@ async def proxy_pi5_hardware_api(request: Request, path: str):
 
     body = await request.body() if request.method in ["POST", "PUT", "PATCH"] else None
 
+    # GET telemetry is polled often, so it fails fast. Commands such as
+    # map/connect_lidar wait on the Pi for a full LiDAR scan (~2-7 s), so a
+    # 4 s read timeout turned a working LiDAR into a 503 for the browser.
+    read_timeout = 4.0 if request.method == "GET" else 20.0
     try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(read_timeout, connect=4.0)) as client:
             resp = await client.request(
                 method=request.method,
                 url=target_url,

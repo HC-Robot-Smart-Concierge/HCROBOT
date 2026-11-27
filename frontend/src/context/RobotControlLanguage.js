@@ -132,6 +132,8 @@ const vietnamese = {
   "locations": "vị trí",
   "Stop all autonomous navigation and motors immediately": "Dừng khẩn cấp toàn bộ tự hành và động cơ",
   "Emergency Stop": "Dừng Khẩn Cấp",
+  "Stop & save map": "Dừng & lưu map",
+  "Stop scanning and save the map scanned so far": "Dừng tự quét và lưu phần map đã quét được",
   "Obstacle distance (LiDAR)": "KHOẢNG CÁCH VẬT CẢN (LiDAR)",
   "DANGER (<35cm)": "NGUY HIỂM (<35cm)",
   "Safe": "AN TOÀN",

@@ -6,6 +6,7 @@ lost localization, stale sensors, rejection, or timeout stops this run.
 """
 import json
 import math
+import os
 from pathlib import Path
 import signal
 import sys
@@ -16,16 +17,27 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy, qos_profile_sensor_data
 from action_msgs.msg import GoalStatus, GoalStatusArray
-from nav2_msgs.action import NavigateToPose, NavigateThroughPoses
+from nav2_msgs.action import FollowPath, NavigateToPose, NavigateThroughPoses
 from geometry_msgs.msg import PoseStamped
-from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import OccupancyGrid, Path as RosPath
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Empty, String
 from tf2_ros import Buffer, TransformListener
+from drawn_route import advance, densify, reached_end, samples_ahead
 from workflow_guest_hold import GuestHoldMixin
 from workflow_navigation_logic import (
     ReadinessDebouncer, readiness_reason, goal_cell_allowed, route_segment_end, route_pose_targets, route_window_end,
 )
+
+# 'drawn' (default): track exactly the polyline the admin drew, controller only, wait on
+# obstacles. 'planner': the previous NavigateThroughPoses behaviour (Nav2 picks the path).
+ROUTE_MODE = os.getenv('HCROBOT_ROUTE_MODE', 'drawn').strip().lower()
+BLOCKED_WAIT_SEC = float(os.getenv('HCROBOT_ROUTE_BLOCKED_WAIT_SEC', '20'))
+LEAD_IN_MAX_M = 1.5          # straight, collision-checked hop onto the route; else Nav2 plans it
+# Regulated Pure Pursuit, defined in nav2_params.yaml for drawn routes only.
+DRAWN_ROUTE_CONTROLLER = os.getenv('HCROBOT_DRAWN_ROUTE_CONTROLLER', 'FollowDrawnPath')
+INVALID_CONTROLLER = 101     # nav2_msgs/action/FollowPath result error_code
+MAX_ABORTS_WITHOUT_PROGRESS = 3
 
 
 class RunCancelled(Exception):
@@ -68,6 +80,7 @@ class Executor(GuestHoldMixin, Node):
         self.stop_pub = self.create_publisher(Empty, '/robot/nav_cancel', 10)
         self.client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.route_client = ActionClient(self, NavigateThroughPoses, '/navigate_through_poses')
+        self.follow_client = ActionClient(self, FollowPath, '/follow_path')
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         signal.signal(signal.SIGTERM, lambda *_: setattr(self, 'interrupted', True))
@@ -169,7 +182,10 @@ class Executor(GuestHoldMixin, Node):
             if step['type'] != 'MOVE':
                 continue
             params = step.get('params') or {}
-            if params.get('source_route_step_id') or params.get('source_route_id'):
+            if (params.get('source_route_step_id') or params.get('source_route_id')) and ROUTE_MODE == 'drawn':
+                clients['/follow_path'] = self.follow_client
+                clients['/navigate_to_pose'] = self.client  # only for a long hop onto the route
+            elif params.get('source_route_step_id') or params.get('source_route_id'):
                 clients['/navigate_through_poses'] = self.route_client
             else:
                 clients['/navigate_to_pose'] = self.client
@@ -188,7 +204,7 @@ class Executor(GuestHoldMixin, Node):
                 reason = f"Chưa kết nối được Nav2 {', '.join(unavailable)}."
             if not reason and (self.costmap is None or time.monotonic() - self.costmap_at > 3):
                 reason = 'Chưa có costmap Nav2 mới.'
-            if not reason and '/navigate_through_poses' in clients:
+            if not reason and ('/navigate_through_poses' in clients or '/follow_path' in clients):
                 try:
                     self._route_robot_xy()
                 except RuntimeError as exc:
@@ -291,6 +307,123 @@ class Executor(GuestHoldMixin, Node):
         return self.goal.get_result_async()
 
     def follow_route(self, steps):
+        """Drive a FOLLOW_ROUTE stretch. GuestHoldMixin.run_route resumes it with the steps
+        not yet passed, so both modes report progress through _advance_route_progress."""
+        if ROUTE_MODE == 'planner':
+            return self._follow_route_planner(steps)
+        return self._follow_drawn_route(steps)
+
+    def _follow_drawn_route(self, steps):
+        """Track the admin-drawn polyline with the controller only (no global planner).
+
+        An obstacle on the line stops the robot: it waits up to BLOCKED_WAIT_SEC for the
+        line ahead to clear, then continues on the same line. It never detours.
+        """
+        if self.active_goals:
+            raise RuntimeError('Nav2 đang có goal khác; không ghi đè nhiệm vụ đang chạy.')
+        self._wait_action_server(self.follow_client, '/follow_path')
+        if self.costmap is None or time.monotonic() - self.costmap_at > 3:
+            raise RuntimeError('Chưa có costmap Nav2 mới.')
+        targets = route_pose_targets(steps)
+        for target in targets:
+            if not goal_cell_allowed(self.costmap, target['target_x'], target['target_y']):
+                raise RuntimeError('Điểm tuyến ngoài map, chưa biết hoặc nằm trong vật cản/vùng cấm.')
+        context = dict(start=self.index, steps=steps, targets=targets, completed=0)
+        self.route_context = context
+        deadline = time.monotonic() + sum(target.get('timeout_sec', 120) for target in targets)
+        try:
+            start = self._route_robot_xy()
+            hop = densify(targets[:1], start=start)
+            if (math.hypot(targets[0]['target_x'] - start[0], targets[0]['target_y'] - start[1]) > LEAD_IN_MAX_M
+                    or not all(goal_cell_allowed(self.costmap, x, y) for x, y, _, _ in hop)):
+                # Getting onto the drawn route is the only leg Nav2 may plan.
+                self.get_logger().info('Robot xa điểm đầu tuyến: để Nav2 đưa tới điểm đầu, rồi bám đúng đường vẽ')
+                first = targets[0]
+                self.move(dict(target_x=first['target_x'], target_y=first['target_y'],
+                               target_yaw=first.get('target_yaw', 0), timeout_sec=first.get('timeout_sec', 120)))
+                start = None
+            samples = densify(targets, start=start)
+            progress, aborts, abort_progress = 0, 0, -1
+            while True:
+                future = self._send_follow_path(samples[min(progress, len(samples) - 2):], deadline)
+                while not future.done():
+                    self.spin_checked()
+                    progress = advance(samples, self._route_robot_xy(), progress)
+                    if samples[progress][3] >= 0:
+                        self._advance_route_progress(samples[progress][3])
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError('Quá thời gian chờ hoàn thành tuyến.')
+                result = future.result()
+                if self.goal is not None:
+                    self.finished_goal_ids.add(bytes(self.goal.goal_id.uuid))
+                self.goal = self.goal_future = None
+                self._refresh_active_goals()
+                if result.status == GoalStatus.STATUS_SUCCEEDED and reached_end(samples, self._route_robot_xy()):
+                    break
+                if getattr(result.result, 'error_code', 0) == INVALID_CONTROLLER:
+                    raise RuntimeError(f'Navigation chưa nạp bộ điều khiển {DRAWN_ROUTE_CONTROLLER} '
+                                       '(bám đường vẽ). Tắt rồi bật lại Navigation trên web.')
+                if result.status == GoalStatus.STATUS_CANCELED:
+                    # Web E-stop / bridge encoder fault / cancel-all: never drive on by ourselves.
+                    raise RuntimeError('Tuyến bị dừng từ bên ngoài (dừng khẩn cấp, lỗi encoder hoặc lệnh dừng).')
+                aborts = aborts + 1 if progress == abort_progress else 1
+                abort_progress = progress
+                if aborts > MAX_ABORTS_WITHOUT_PROGRESS:
+                    raise RuntimeError('Không đi tiếp được trên đường vẽ sau nhiều lần thử '
+                                       '(vật cản sát xe, Pi chặn lệnh hoặc encoder).')
+                self._wait_drawn_path_clear(samples, progress, deadline)
+            self._advance_route_progress(len(steps) - 1)
+        finally:
+            self.route_context = None
+
+    def _wait_action_server(self, client, name):
+        deadline = time.monotonic() + 5.0
+        while not client.server_is_ready():
+            self.spin_checked()
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f'Không kết nối được Nav2 {name} sau 5 giây. Kiểm tra Navigation.')
+
+    def _send_follow_path(self, samples, deadline):
+        goal = FollowPath.Goal()
+        goal.controller_id = DRAWN_ROUTE_CONTROLLER
+        path = RosPath()
+        path.header.frame_id = 'map'
+        path.header.stamp = self.get_clock().now().to_msg()
+        for x, y, yaw, _ in samples:
+            pose = PoseStamped()
+            pose.header = path.header
+            pose.pose.position.x, pose.pose.position.y = float(x), float(y)
+            pose.pose.orientation.z, pose.pose.orientation.w = math.sin(yaw / 2), math.cos(yaw / 2)
+            path.poses.append(pose)
+        goal.path = path
+        self.goal_future = self.follow_client.send_goal_async(goal)
+        handle = self.future_result(self.goal_future, deadline)
+        if not handle.accepted:
+            self.goal = self.goal_future = None
+            raise RuntimeError('Nav2 từ chối đường vẽ (controller /follow_path).')
+        self.goal = handle
+        return handle.get_result_async()
+
+    def _wait_drawn_path_clear(self, samples, progress, deadline):
+        """Stopped on the drawn line: hold until the next stretch is free, then resume on it."""
+        since = time.monotonic()
+        self.emit('STEP_RETRY', f'Đường vẽ phía trước bị chắn hoặc xe chưa đi được: dừng chờ tối đa '
+                                f'{BLOCKED_WAIT_SEC:.0f} giây rồi đi tiếp đúng đường vẽ.')
+        while True:
+            self.spin_checked()
+            now = time.monotonic()
+            ahead = samples_ahead(samples, progress)
+            clear = (self.costmap is not None and now - self.costmap_at <= 3
+                     and all(goal_cell_allowed(self.costmap, x, y) for x, y, _, _ in ahead))
+            if clear and now - since >= 1.0:
+                return
+            if now - since >= BLOCKED_WAIT_SEC:
+                raise RuntimeError(f'Đường vẽ bị chắn quá {BLOCKED_WAIT_SEC:.0f} giây; '
+                                   'robot không tự đi vòng. Dọn đường rồi chạy lại.')
+            if now >= deadline:
+                raise TimeoutError('Quá thời gian chờ hoàn thành tuyến.')
+
+    def _follow_route_planner(self, steps):
         if self.active_goals:
             raise RuntimeError('Nav2 đang có goal khác; không ghi đè nhiệm vụ đang chạy.')
         if not self.route_client.server_is_ready():

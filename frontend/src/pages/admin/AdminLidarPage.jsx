@@ -574,7 +574,7 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
       const lidarResponse = await fetch(`${PI5_API}/map/connect_lidar`, { method: 'POST' });
       const lidarResult = await lidarResponse.json().catch(() => null);
       if (!lidarResponse.ok || lidarResult?.status !== 'SUCCESS') {
-        throw new Error(lidarResult?.message || rc("Pi opened the port but RPLiDAR is not producing scan data."));
+        throw new Error(lidarResult?.message || lidarResult?.detail || rc("Pi opened the port but RPLiDAR is not producing scan data."));
       }
       await startRos2Mapping();
       await waitForRos2Runtime('MAPPING');
@@ -947,20 +947,34 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
       }
     };
 
+    // Release must stop even when focus moved into an input mid-press.
     const handleKeyUp = (e) => {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
       const key = e.key.toLowerCase();
       if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
         stopTeleop();
       }
     };
 
+    // Alt+Tab or switching tabs while holding a key never delivers keyup, and the
+    // 100 ms interval kept the real robot spinning with nobody at the keyboard.
+    const handleFocusLost = () => {
+      if (activeTeleopCmdRef.current) stopTeleop();
+    };
+    const handleVisibility = () => {
+      if (document.hidden) handleFocusLost();
+    };
+
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleFocusLost);
+    document.addEventListener('visibilitychange', handleVisibility);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleFocusLost);
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (teleopIntervalRef.current) clearInterval(teleopIntervalRef.current);
+      if (activeTeleopCmdRef.current) sendMotion('stop');
     };
   }, [activeView]);
 
@@ -1067,13 +1081,15 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
       await fetch(`${PI5_API}/map/explore/stop`, { method: 'POST', signal: AbortSignal.timeout(4000) })
         .catch(() => null);
       const lidarResponse = await fetch(`${PI5_API}/map/connect_lidar`, {
-        method: 'POST', signal: AbortSignal.timeout(15000),
+        // connect_lidar reconnects serial then waits for a full scan; through
+        // the backend proxy it was measured at ~14 s, so 15 s was too tight.
+        method: 'POST', signal: AbortSignal.timeout(25000),
       }).catch((err) => {
         throw new Error(piRequestErrorMessage(err, PI5_IP));
       });
       const lidarResult = await lidarResponse.json().catch(() => null);
       if (!lidarResponse.ok || lidarResult?.status !== 'SUCCESS') {
-        throw new Error(lidarResult?.message || 'Pi đã mở cổng nhưng RPLiDAR không phát dữ liệu scan.');
+        throw new Error(lidarResult?.message || lidarResult?.detail || 'Pi đã mở cổng nhưng RPLiDAR không phát dữ liệu scan.');
       }
       setGridData(new Array(200 * 200).fill(-1));
       setScanPoints([]);
@@ -1119,6 +1135,18 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
       setNavNotification(rc("Could not stop exploration: {0}. Press E-STOP if the robot is still moving!", [err.message]));
     }
     setTimeout(() => setNavNotification(''), 6000);
+  };
+
+  // Explorer paused (BLOCKED: stuck / frontiers it cannot reach) keeps running, so the
+  // auto "scan finished -> save" dialog never opens. Let the operator keep what was scanned.
+  const handleStopAndSaveExplore = async () => {
+    await handleStopExplore();
+    exploreSeenRef.current = false; // the poll must not open the dialog a second time
+    setMapMode('MAPPING');
+    setIsMapLocked(false);
+    setSaveMapName(defaultMapName());
+    setSaveFromExplore(true);
+    setIsSaveMapModalOpen(true);
   };
 
   // ─── Workflow Manager ────────────────────────────────────────────────
@@ -1640,6 +1668,15 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
                 {exploredCount > 0 && (
                   <span className="px-2 py-0.5 rounded-full bg-emerald-900/80 border border-emerald-500/40 text-[10px] text-emerald-200 font-mono">
                     {exploredCount} {rc("locations")} </span>
+                )}
+                {exploreResult?.state === 'BLOCKED' && (
+                  <button
+                    onClick={handleStopAndSaveExplore}
+                    className="ml-1.5 px-3 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] cursor-pointer transition-colors shadow-md"
+                    title={rc("Stop scanning and save the map scanned so far")}
+                  >
+                    {rc("Stop & save map")}
+                  </button>
                 )}
                 <button
                   onClick={handleEmergencyStop}

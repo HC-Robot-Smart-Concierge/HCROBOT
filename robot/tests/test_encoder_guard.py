@@ -125,3 +125,21 @@ def test_partner_of_excluded_wheel_is_never_excluded():
     for _ in range(3):
         guard._track_phantom({'m1': 0.0, 'm2': -0.6, 'm3': 0.0, 'm4': 0.0})
     assert guard.excluded == {'m1'}
+
+
+def test_known_bad_m1_excluded_from_start_does_not_cancel_a_moving_route():
+    # 27/11: M1 noise while driving (M1=-0.61, M2=+0.04 m/s) cancelled Nav2 mid-route
+    # before phantom detection (parked robot only) could exclude it.
+    guard = EncoderSampleGuard(excluded=['m1'])
+    moving = counts(-97, 6, 6, 6)
+    assert check(guard, moving)
+    assert guard.valid and guard.excluded == {'m1'}
+
+
+def test_exclusion_never_removes_both_wheels_of_one_side():
+    guard = EncoderSampleGuard(excluded=['m1', 'm2', 'bogus'])
+    assert guard.excluded == {'m1'}
+    # Left side is now M2 alone: left wheels driving, right still = a valid pivot.
+    assert check(guard, counts(0, 100, 0, 0))
+    # ...but an impossible speed on the remaining channel is still rejected.
+    assert not check(guard, counts(0, 400, 0, 0)) and 'IMPOSSIBLE' in guard.fault

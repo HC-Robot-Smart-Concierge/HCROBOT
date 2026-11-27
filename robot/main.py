@@ -224,6 +224,20 @@ class DirectMotorSafetyWrapper:
         return True
 
 
+def _lidar_clearance_source(args, safety_cfg):
+    """LiDAR clearances for the brake layer, or None (sonar-only) if disabled/unavailable."""
+    if args.no_lidar or not safety_cfg.get("lidar_safety", True):
+        logger.info("🛡️ Khóa an toàn chỉ dùng sonar (LiDAR tắt hoặc lidar_safety: false)")
+        return None
+    try:
+        from scripts.lidar_service import slam_core
+    except Exception as exc:
+        logger.warning("Khóa an toàn không dùng được LiDAR (%s): chỉ dùng sonar", exc)
+        return None
+    logger.info("🛡️ Khóa an toàn dùng sonar + LiDAR (lấy số gần hơn; sonar null thì dùng LiDAR)")
+    return slam_core.safety_clearances_cm
+
+
 def _value(cli_value, config, key, default):
     return cli_value if cli_value is not None else config.get(key, default)
 
@@ -636,6 +650,9 @@ def main(argv=None):
             resume_valid_packets=resume_packets,
             turn_clearance_cm=turn_clearance,
             ignored_sensors=ignored,
+            turn_check_opposite_side=bool(safety_cfg.get("turn_check_opposite_side", True)),
+            lidar_clearances=_lidar_clearance_source(args, safety_cfg),
+            lidar_turn_clearance_cm=float(safety_cfg.get("lidar_turn_clearance_cm", 2.0)),
         )
 
         if reader.wait_for_packet(timeout=4.5):
@@ -735,6 +752,12 @@ def main(argv=None):
                             "LIDAR cm: front=%s rear=%s left=%s right=%s (360°)",
                             lf, lr, ll, lrg,
                         )
+                        gaps = slam_core.safety_clearances_cm()
+                        if gaps:
+                            logger.info(
+                                "LIDAR mép xe cm (khóa an toàn dùng): %s",
+                                " ".join(f"{k}={'trống' if v is None else f'{v:.0f}'}" for k, v in gaps.items()),
+                            )
                 except Exception:
                     pass
 

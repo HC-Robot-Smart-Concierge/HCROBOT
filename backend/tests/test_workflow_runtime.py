@@ -42,6 +42,12 @@ def workflow():
                              'map_id': 'room', 'target_x': 1, 'target_y': 2}}])
 
 
+@pytest.fixture(autouse=True)
+def this_backend_drives_the_robot(monkeypatch):
+    # Without it the claim gate probes the real WSL Nav2 stack of the test machine.
+    monkeypatch.setenv('WORKFLOW_WORKER', '1')
+
+
 @pytest.fixture
 def runtime(tmp_path):
     engine = create_engine(f'sqlite:///{tmp_path / "runs.sqlite"}')
@@ -334,3 +340,42 @@ def test_run_migration_is_additive_and_matches_model(tmp_path):
         constraints = inspect(connection).get_unique_constraints('workflow_runs')
         assert {'active_robot_id', 'schedule_slot'} <= {c['column_names'][0] for c in constraints}
     engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_backend_without_navigation_does_not_claim(runtime, monkeypatch):
+    # Teammates' backends share the database; only the one running Nav2 may take the run.
+    monkeypatch.setenv('WORKFLOW_WORKER', '0')
+    view = await enqueue(runtime)
+    runtime.launch = AsyncMock()
+    await runtime.tick()
+    runtime.launch.assert_not_awaited()
+    assert (await runtime.list_runs())[0]['status'] == 'PENDING'
+    monkeypatch.setenv('WORKFLOW_WORKER', '1')
+    await runtime.tick()
+    runtime.launch.assert_awaited_once()
+    assert (await runtime.list_runs())[0]['id'] == view['id']
+
+
+@pytest.mark.asyncio
+async def test_unclaimed_run_fails_with_reason_and_frees_robot(runtime, monkeypatch):
+    from datetime import timedelta
+    from app.services.workflow_runtime import NO_WORKER_ERROR, PENDING_TIMEOUT_SECONDS
+    monkeypatch.setenv('WORKFLOW_WORKER', '0')
+    view = await enqueue(runtime)
+    async with runtime.sessions() as db:
+        run = await db.get(WorkflowRun, view['id'])
+        run.created_at = datetime.utcnow() - timedelta(seconds=PENDING_TIMEOUT_SECONDS + 5)
+        await db.commit()
+    await runtime.tick()
+    state = (await runtime.list_runs())[0]
+    assert state['status'] == 'FAILED' and state['error'] == NO_WORKER_ERROR
+    await enqueue(runtime)  # reservation released: a new run can be queued
+
+
+@pytest.mark.asyncio
+async def test_recent_pending_run_is_kept_for_the_robot_backend(runtime, monkeypatch):
+    monkeypatch.setenv('WORKFLOW_WORKER', '0')
+    await enqueue(runtime)
+    await runtime.tick()
+    assert (await runtime.list_runs())[0]['status'] == 'PENDING'

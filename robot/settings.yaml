@@ -29,23 +29,32 @@ robot:
     # Sonar là lớp PHANH KHẨN CẤP cuối cùng; tránh vật cản thường ngày do Nav2 + LiDAR lo.
     # Xe đo thực tế dài 33 x rộng 17 cm (cả bánh), xoay quanh tâm: góc xe
     # quét bán kính ~18.6 cm = lố ~10.1 cm ra ngoài hông, ~2.1 cm ngoài đầu/đuôi) + dư.
-    # Dừng sớm hơn; khi sát tường, explorer kiểm tra đường lùi rồi thoát ra,
-    # thay vì giảm ngưỡng sonar để ép xe tiến/quay trong chỗ chật.
-    front_stop_cm: 25
-    rear_stop_cm: 20
-    # Quay tại chỗ kiểm tra cả hai hông vì đầu và đuôi quét ngược phía nhau.
-    left_stop_cm: 16
-    right_stop_cm: 16
+    # Khôi phục ngưỡng cũ (trước git pull 27/11) để xe xuất phát cách góc
+    # tường ~10 cm vẫn quay/thoát được. Bản chặt hơn từng dùng: 25/20/16/16,
+    # turn_clearance 10, null 1, grace 0.2, stale 0.4, resume 3.
+    front_stop_cm: 15
+    rear_stop_cm: 12
+    left_stop_cm: 11
+    right_stop_cm: 11
     # Khi quay tại chỗ: ngoài bên quay, đầu/đuôi xe phải trống hơn mức này.
-    turn_clearance_cm: 10
+    turn_clearance_cm: 6
 
-    # Không tự bỏ qua sensor khi null; chỉ giữ tạm một mẫu còn mới.
-    allowed_null_packets: 1
-    invalid_grace_seconds: 0.2
-    stale_timeout_seconds: 0.4
+    # Cho phép tối đa 4 packet null nếu số đo hợp lệ gần nhất chưa quá 0.6 giây.
+    allowed_null_packets: 4
+    invalid_grace_seconds: 0.6
+    stale_timeout_seconds: 0.8
 
-    # Sau khi bị chặn, cần 2 packet sạch cao hơn ngưỡng dừng 3 cm.
-    resume_margin_cm: 3
+    # Khóa an toàn dùng cả LiDAR: mỗi phía lấy số GẦN HƠN giữa sonar và LiDAR
+    # (LiDAR đo trong hành lang rộng bằng thân xe 33x17 cm, bắt được vật chéo mà
+    # sonar đo sai). Sonar null thì dùng LiDAR thay vì khóa xe. LiDAR mất -> chỉ sonar.
+    lidar_safety: true
+    # Xoay tại chỗ: vòng tròn góc xe quét (bán kính 18.6 cm) phải trống hơn mức này.
+    lidar_turn_clearance_cm: 2
+    # false = sonar hông chỉ kiểm tra bên quay (như trước); LiDAR vẫn kiểm tra vòng quét.
+    turn_check_opposite_side: false
+
+    # Sau khi bị chặn, chỉ cần 2 packet sạch cao hơn ngưỡng dừng 2 cm.
+    resume_margin_cm: 2
     resume_valid_packets: 2
 
 topics:

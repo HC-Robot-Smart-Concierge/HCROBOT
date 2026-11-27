@@ -32,6 +32,30 @@ def body_scan(angle_min, angle_increment, ranges, range_min, range_max):
     return points, len(sectors) == 24
 
 
+# 24 sectors of 15 deg, CCW from the nose. A straight move only sweeps the half
+# it drives into (flanks at +-90 deg included).
+FRONT_SECTORS = frozenset(list(range(18, 24)) + list(range(0, 6)))
+REAR_SECTORS = frozenset(range(6, 18))
+
+
+def travel_coverage(angle_min, angle_increment, ranges, range_min, range_max, direction):
+    """True when every sector on the side the robot drives into has an observation.
+
+    A sparse RPLiDAR scan often leaves one 15 deg sector empty (black/glass/doorway);
+    that sector behind the robot must not forbid creeping forward, and vice versa.
+    """
+    sectors = set()
+    for i, distance in enumerate(ranges):
+        if math.isnan(distance) or distance < range_min:
+            continue
+        if not math.isinf(distance) and distance > range_max:
+            continue
+        angle = angle_min + i * angle_increment
+        sectors.add(int((angle % (2 * math.pi)) / (2 * math.pi) * 24) % 24)
+    needed = FRONT_SECTORS if direction == "forward" else REAR_SECTORS
+    return needed <= sectors
+
+
 def turn_clear(points, coverage, radius=TURN_CLEARANCE_RADIUS_M):
     return coverage and all(math.hypot(x, y) > radius for x, y in points)
 

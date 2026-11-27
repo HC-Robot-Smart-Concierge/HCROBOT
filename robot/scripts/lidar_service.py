@@ -1281,6 +1281,14 @@ free_thresh: 0.196
                     min_d = d
         return min_d
 
+    def safety_clearances_cm(self, max_age: float = 0.6):
+        """Body-edge clearances for obstacle_safety; None when the LiDAR is not live."""
+        now = time.time()
+        if not self.is_running or not self.last_scan_time or now - self.last_scan_time > 1.0:
+            return None
+        from lidar_safety import body_clearances_cm
+        return body_clearances_cm(self.angle_distances, self.angle_timestamps, now, max_age)
+
     def get_front_distance(self) -> float:
         """Khoảng cách vật cản phía trước mặt (góc mở ±45°: từ 315° qua 0° tới 45°)."""
         return self.get_obstacle_distance(315, 45)
@@ -3061,6 +3069,13 @@ async def map_ws_endpoint(websocket: WebSocket):
 
 
 def run_lidar_server(host="0.0.0.0", port=8000):
+    if not HAS_FASTAPI:
+        # Without this guard the LiDAR still connects and spins, then
+        # uvicorn.run() dies on None and port 8000 silently never opens.
+        raise RuntimeError(
+            "Thiếu fastapi/uvicorn nên API cổng 8000 không chạy được. Cài trên Pi: "
+            "sudo apt install -y python3-fastapi python3-uvicorn python3-websockets python3-pydantic"
+        )
     if slam_core.pi_motor is None:
         slam_core.init_direct_motor()
     slam_core.connect()

@@ -100,7 +100,12 @@ class LidarWsToRos2Bridge(Node):
         self.imu_seen = False
         self.last_encoder_sample_time = None
         self.encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
-        self.encoder_guard = EncoderSampleGuard()
+        known_bad = [w.strip().lower() for w in os.getenv("HCROBOT_ENCODER_EXCLUDE", "").split(",") if w.strip()]
+        self.encoder_guard = EncoderSampleGuard(excluded=known_bad)
+        if self.encoder_guard.excluded:
+            self.get_logger().warn(
+                "🔧 Bỏ encoder " + ", ".join(sorted(w.upper() for w in self.encoder_guard.excluded))
+                + " ngay từ đầu (HCROBOT_ENCODER_EXCLUDE): odometry dùng bánh cùng bên. Sửa dây xong thì bỏ biến này.")
         self.encoder_fault_cancelled = False
         self.manual_active_until = 0.0
         # Firmware hiện tại đã chuẩn hóa tick: khi tiến, M1/M2 và M3/M4 đều

@@ -28,6 +28,15 @@ CONTROL_INTERVAL_SECONDS = 1.0
 # Stop before the database's 25 s stale-owner recovery can release the robot.
 DATABASE_AUTHORIZATION_SECONDS = 20.0
 STATUS_REFRESH_SECONDS = 10.0
+# Every teammate's backend shares the Supabase database and used to race for PENDING
+# runs. A backend without the robot's Nav2 stack won the race, started a ROS worker
+# that could not drive the robot, and the run died when its 10 s lease ran out.
+WORKER_CHECK_SECONDS = 5.0
+# Nobody running Navigation claimed it: fail with a clear reason and free the robot.
+# Generous because created_at comes from the creating machine's clock (~20 s skew seen).
+PENDING_TIMEOUT_SECONDS = 60.0
+NO_WORKER_ERROR = ('Không có backend nào đang chạy Navigation (ROS 2/Nav2) cho robot để nhận lượt chạy. '
+                   'Bật Navigation trên máy điều khiển robot rồi chạy lại.')
 
 
 def due_slot(workflow, now):
@@ -76,6 +85,8 @@ class WorkflowRuntime:
         self.directory = self.root / 'output/runtime/workflow-runs'
         self.owner = uuid.uuid4().hex
         self.running = {}
+        self._can_execute = False
+        self._can_execute_at = float('-inf')
         self.task = None
         self.control_task = None
 
@@ -228,6 +239,27 @@ class WorkflowRuntime:
                     logger.exception('Cannot renew workflow control %s', run_id)
             await asyncio.sleep(CONTROL_INTERVAL_SECONDS)
 
+    async def can_execute(self):
+        """Claim runs only where the robot's Navigation stack runs (or WORKFLOW_WORKER=1/0 forces it)."""
+        forced = os.getenv('WORKFLOW_WORKER')
+        if forced is not None and forced.strip():
+            return forced.strip().lower() in {'1', 'true', 'yes', 'on'}
+        if os.name != 'nt':
+            return True  # Linux host: ROS runs alongside the backend (no WSL probe).
+        now = time.monotonic()
+        if now - self._can_execute_at < WORKER_CHECK_SECONDS:
+            return self._can_execute
+        from app.services.hardware.ros2_runtime_service import ros2_runtime_service
+        try:
+            # get_status shells out to wsl.exe (up to ~3 s): keep the lease loop running.
+            status = await asyncio.to_thread(ros2_runtime_service.get_status)
+            self._can_execute = status.get('mode') == 'NAVIGATION'
+        except Exception:
+            logger.exception('Cannot check ROS 2 runtime before claiming workflow runs')
+            self._can_execute = False
+        self._can_execute_at = now
+        return self._can_execute
+
     async def loop(self):
         while True:
             try:
@@ -255,7 +287,14 @@ class WorkflowRuntime:
                         await self.enqueue(workflow, repo, slot=slot)
                 except ValueError as exc:
                     logger.warning('Invalid scheduled workflow %s: %s', workflow.id, exc)
+            await db.execute(update(WorkflowRun).where(
+                WorkflowRun.status == 'PENDING',
+                WorkflowRun.created_at < now - timedelta(seconds=PENDING_TIMEOUT_SECONDS),
+            ).values(status='FAILED', active_robot_id=None, completed_at=now, error=NO_WORKER_ERROR))
+            await db.commit()
             pending = (await db.scalars(select(WorkflowRun).where(WorkflowRun.status == 'PENDING'))).all()
+            if pending and not await self.can_execute():
+                pending = []  # leave them to the backend that drives the robot
             for run in pending:
                 claimed = await db.execute(update(WorkflowRun).where(
                     WorkflowRun.id == run.id, WorkflowRun.status == 'PENDING'

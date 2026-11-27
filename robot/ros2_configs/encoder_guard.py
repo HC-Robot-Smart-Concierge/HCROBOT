@@ -15,7 +15,7 @@ def side_tick_deltas(current, previous, signs, excluded=()):
 
 class EncoderSampleGuard:
     def __init__(self, max_wheel_mps=1.0, max_pair_difference_mps=0.25, recovery_samples=5,
-                 still_mps=0.03, phantom_samples=3):
+                 still_mps=0.03, phantom_samples=3, excluded=()):
         self.max_wheel_mps = max_wheel_mps
         self.max_pair_difference_mps = max_pair_difference_mps
         self.recovery_samples = recovery_samples
@@ -27,7 +27,13 @@ class EncoderSampleGuard:
         # (noise / loose wire). It is excluded for the rest of the session and its
         # partner on the same side is used instead, so one bad encoder does not
         # stop the whole robot.
+        # A wheel known to be broken can be excluded from the start: phantom detection
+        # only works while the robot stands still, so a noisy channel used to cancel
+        # Nav2 mid-route (pair disagreement) before it was ever excluded.
         self.excluded = set()
+        for wheel in excluded:
+            if wheel in WHEELS and PARTNER[wheel] not in self.excluded:
+                self.excluded.add(wheel)
         self.newly_excluded = None
         self._phantom_hits = dict.fromkeys(WHEELS, 0)
 

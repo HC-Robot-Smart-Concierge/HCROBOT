@@ -89,6 +89,12 @@ async def init_db() -> None:
                 await conn.execute(text("ALTER TABLE zones ADD COLUMN vertices JSON"))
         try:
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS chat_session_id VARCHAR(64);"))
+            await conn.execute(text("ALTER TABLE advertisements ADD COLUMN IF NOT EXISTS title_en VARCHAR(200);"))
+            await conn.execute(text("ALTER TABLE advertisements ADD COLUMN IF NOT EXISTS description_en TEXT;"))
+            await conn.execute(text("ALTER TABLE advertisements ADD COLUMN IF NOT EXISTS facility_key VARCHAR(80);"))
+            await conn.execute(text("ALTER TABLE advertisements ADD COLUMN IF NOT EXISTS target_gender VARCHAR(20) DEFAULT 'ALL';"))
+            await conn.execute(text("ALTER TABLE advertisements ADD COLUMN IF NOT EXISTS target_age_group VARCHAR(30) DEFAULT 'ALL';"))
+            await conn.execute(text("ALTER TABLE advertisements ADD COLUMN IF NOT EXISTS auto_play BOOLEAN DEFAULT FALSE;"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS account_id VARCHAR(50);"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_url TEXT;"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_public_id VARCHAR(150);"))

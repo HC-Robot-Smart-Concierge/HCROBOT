@@ -39,11 +39,17 @@ async def lifespan(app: FastAPI):
         from app.services.ai.scenario_service import scenario_service
         from app.services.ai.tts_service import tts_service
         from app.services.rag.room_sync_service import sync_rooms_with_rag
+        from app.services.rag.facility_ads_sync import (
+            seed_default_facility_ads_if_empty,
+            sync_facility_ads_to_rag,
+        )
         async with AsyncSessionLocal() as db_session:
             await ensure_taxi_catalog_entities(db_session, backfill_orphans=True)
             await db_session.commit()
             await scenario_service.initialize_cache(db_session)
             await sync_rooms_with_rag(db_session)
+            await seed_default_facility_ads_if_empty(db_session)
+            await sync_facility_ads_to_rag(db_session)
         asyncio.create_task(tts_service.warm_up_common_phrases())
     except Exception as e:
         logger.warning(f"[WARN] Could not auto-initialize DB on startup (is PostgreSQL running?): {e}")

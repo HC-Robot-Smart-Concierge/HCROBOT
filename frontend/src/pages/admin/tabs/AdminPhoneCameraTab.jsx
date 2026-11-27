@@ -38,6 +38,8 @@ const MINIMAL_EXPRESSION_ANCHORS = [
 export const AdminPhoneCameraTab = ({ currentUser }) => {
   // Connection States
   const [feedSource, setFeedSource] = useState('pi5_tailscale'); // 'pi5_tailscale' | 'local_webcam'
+  const [streamMode, setStreamMode] = useState('webrtc'); // 'webrtc' | 'mjpeg'
+  const [mjpegStreamKey, setMjpegStreamKey] = useState(() => Date.now());
   const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.93.152.7');
   const [pi5Port, setPi5Port] = useState(8554);
   const [activeResolution, setActiveResolution] = useState(null);
@@ -106,12 +108,16 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
   // Refs
   const videoRef = useRef(null);
+  const imgRef = useRef(null);
   const canvasRef = useRef(null);
   const pcRef = useRef(null);
   const wsRef = useRef(null);
   const landmarkerRef = useRef(null);
   const noFaceCountRef = useRef(0);
   const consecutiveUnhappyFramesRef = useRef(0);
+  const lastDemographicsAtRef = useRef(0);
+  const demographicsInFlightRef = useRef(false);
+  const lastBackendDemoRef = useRef(null);
   const localStreamRef = useRef(null);
   const remoteStreamRef = useRef(null);
   const iceCandidateQueueRef = useRef([]);
@@ -200,8 +206,17 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
   }, []);
 
   // 3. Ket noi WebRTC toi Camera USB Pi 5 qua Tailscale (Port 8554 / webrtc-offer)
+  const fallbackToMjpeg = useCallback(() => {
+    cleanupWebRTC();
+    setStreamMode('mjpeg');
+    setMjpegStreamKey(Date.now());
+    setConnectionStatus('connecting');
+    setHasRemoteVideo(false);
+  }, [cleanupWebRTC]);
+
   const connectPi5WebRTC = useCallback(async () => {
     cleanupWebRTC();
+    setStreamMode('webrtc');
     setConnectionStatus('connecting');
 
     try {
@@ -256,8 +271,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
           setConnectionStatus('connected');
           setHasRemoteVideo(true);
         } else if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
-          setConnectionStatus('disconnected');
-          setHasRemoteVideo(false);
+          fallbackToMjpeg();
         }
       };
 
@@ -272,8 +286,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             videoRef.current.play().catch(() => {});
           }
         } else if (pc.iceConnectionState === 'failed') {
-          setConnectionStatus('disconnected');
-          setHasRemoteVideo(false);
+          fallbackToMjpeg();
         }
       };
 
@@ -302,7 +315,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildWebRTCOfferPayload(pc.localDescription, controlIp, pi5Port)),
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(20000),
       });
 
       if (!res.ok) {
@@ -312,15 +325,15 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
       const answer = await res.json();
       await pc.setRemoteDescription(new RTCSessionDescription(answer));
     } catch (err) {
-      console.warn('[AdminPhoneCameraTab] Kết nối Pi 5 WebRTC qua Tailscale thất bại:', err);
-      setConnectionStatus('disconnected');
-      setHasRemoteVideo(false);
+      console.warn('[AdminPhoneCameraTab] Kết nối Pi 5 WebRTC thất bại, chuyển sang MJPEG fallback:', err);
+      fallbackToMjpeg();
     }
-  }, [cleanupWebRTC, controlIp, pi5Port]);
+  }, [cleanupWebRTC, controlIp, pi5Port, fallbackToMjpeg]);
 
   // 4. Che do Camera Laptop Test (Cau hinh do phan giai chuan Pi 5 USB: 640x480 @ 15fps, ti le 4:3)
   const connectLocalWebcam = useCallback(async () => {
     cleanupWebRTC();
+    setStreamMode('webrtc');
     setConnectionStatus('connecting');
     try {
       let mediaStream;
@@ -440,15 +453,22 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     }
 
     const intervalId = setInterval(() => {
-      if (!landmarkerRef.current || !videoRef.current) return;
-      const videoEl = videoRef.current;
-      if (videoEl.readyState < 2 || videoEl.videoWidth === 0) return;
+      const isMjpeg = feedSource === 'pi5_tailscale' && streamMode === 'mjpeg';
+      const mediaEl = isMjpeg ? imgRef.current : videoRef.current;
+      if (!landmarkerRef.current || !mediaEl) return;
+      if (isMjpeg) {
+        if (!mediaEl.complete || mediaEl.naturalWidth === 0) return;
+      } else if (mediaEl.readyState < 2 || mediaEl.videoWidth === 0) {
+        return;
+      }
 
       const canvas = canvasRef.current;
       const ctx = canvas ? canvas.getContext('2d') : null;
+      const mediaW = (isMjpeg ? mediaEl.naturalWidth : mediaEl.videoWidth) || 640;
+      const mediaH = (isMjpeg ? mediaEl.naturalHeight : mediaEl.videoHeight) || 480;
 
       try {
-        const results = landmarkerRef.current.detect(videoEl);
+        const results = landmarkerRef.current.detect(mediaEl);
 
         if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
           setIsFaceDetected(true);
@@ -527,17 +547,75 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
             setDetectedEmotion(currentDetected);
 
-            let demoResult = null;
-            // 3. Demographics Estimation (Gender & Age Group via 3D Facial Anthropometry & Hysteresis Filter)
-            if (landmarks && landmarks[10] && landmarks[152]) {
+            let demoResult = lastBackendDemoRef.current;
+            const nowMs = Date.now();
+            if (!demographicsInFlightRef.current && nowMs - lastDemographicsAtRef.current >= 1500) {
+              lastDemographicsAtRef.current = nowMs;
+              demographicsInFlightRef.current = true;
+              try {
+                let minX = 1, minY = 1, maxX = 0, maxY = 0;
+                for (let i = 0; i < landmarks.length; i += 1) {
+                  const pt = landmarks[i];
+                  if (pt.x < minX) minX = pt.x;
+                  if (pt.y < minY) minY = pt.y;
+                  if (pt.x > maxX) maxX = pt.x;
+                  if (pt.y > maxY) maxY = pt.y;
+                }
+                const snapCanvas = document.createElement('canvas');
+                const scale = Math.min(1, 480 / Math.max(mediaW, mediaH));
+                snapCanvas.width = Math.max(160, Math.round(mediaW * scale));
+                snapCanvas.height = Math.max(120, Math.round(mediaH * scale));
+                const snapCtx = snapCanvas.getContext('2d');
+                if (snapCtx) {
+                  snapCtx.drawImage(mediaEl, 0, 0, snapCanvas.width, snapCanvas.height);
+                  const imageBase64 = snapCanvas.toDataURL('image/jpeg', 0.8);
+                  fetch('/api/v1/operations/robot/analyze-demographics', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      image_base64: imageBase64,
+                      bbox: [minX, minY, maxX, maxY],
+                    }),
+                  })
+                    .then((r) => (r.ok ? r.json() : null))
+                    .then((data) => {
+                      if (data && data.face_detected && data.gender && data.gender !== 'unknown') {
+                        const nextDemo = {
+                          gender: data.gender,
+                          ageGroup: data.age_group || 'young_adult',
+                          confidence: data.confidence ?? 85,
+                        };
+                        lastBackendDemoRef.current = nextDemo;
+                        setDetectedGender(nextDemo.gender);
+                        setDetectedAgeGroup(nextDemo.ageGroup);
+                        setDemographicsConfidence(nextDemo.confidence);
+                        syncPerceptionToRobot({
+                          emotion: overrideEmotionRef.current || currentDetected,
+                          gender: nextDemo.gender,
+                          ageGroup: nextDemo.ageGroup,
+                          confidence: nextDemo.confidence,
+                          isFaceDetected: true,
+                        });
+                      }
+                    })
+                    .catch(() => {})
+                    .finally(() => {
+                      demographicsInFlightRef.current = false;
+                    });
+                } else {
+                  demographicsInFlightRef.current = false;
+                }
+              } catch {
+                demographicsInFlightRef.current = false;
+              }
+            } else if (!demoResult && landmarks && landmarks[10] && landmarks[152]) {
               const demo = estimateFacialDemographics({
                 landmarks,
-                videoWidth: videoEl.videoWidth,
-                videoHeight: videoEl.videoHeight,
+                videoWidth: mediaW,
+                videoHeight: mediaH,
                 trackerRef: demographicsHistoryRef,
                 smileScore: smile,
               });
-
               demoResult = demo;
               setDetectedGender(demo.gender);
               setDetectedAgeGroup(demo.ageGroup);
@@ -556,9 +634,9 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
           // 4.2. Ve Chi 6 Diem Neo Bieu Cam Then Chot (It diem nhat co the, khong ve luoi da giac)
           if (canvas && ctx) {
-            if (canvas.width !== videoEl.videoWidth || canvas.height !== videoEl.videoHeight) {
-              canvas.width = videoEl.videoWidth;
-              canvas.height = videoEl.videoHeight;
+            if (canvas.width !== mediaW || canvas.height !== mediaH) {
+              canvas.width = mediaW;
+              canvas.height = mediaH;
             }
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -656,6 +734,8 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
             setFrownScore(0);
             consecutiveUnhappyFramesRef.current = 0;
             demographicsHistoryRef.current = [];
+            lastBackendDemoRef.current = null;
+            lastDemographicsAtRef.current = 0;
             if (canvas && ctx) {
               ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
@@ -674,7 +754,7 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     }, 200);
 
     return () => clearInterval(intervalId);
-  }, [isAiEmotionActive, connectionStatus, syncPerceptionToRobot]);
+  }, [isAiEmotionActive, connectionStatus, syncPerceptionToRobot, feedSource, streamMode]);
 
   // 5. Override bieu cam thu cong va gui len Robot
   const handleOverrideEmotion = useCallback(
@@ -709,12 +789,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
 
   // 6. Chup anh Snapshot tu Video (ho tro tinh ca huong xoay video)
   const handleTakeSnapshot = useCallback(() => {
-    if (!videoRef.current) return;
-    const video = videoRef.current;
+    const isMjpeg = feedSource === 'pi5_tailscale' && streamMode === 'mjpeg';
+    const mediaEl = isMjpeg ? imgRef.current : videoRef.current;
+    if (!mediaEl) return;
     const canvas = document.createElement('canvas');
     const isSideways = videoRotation === 90 || videoRotation === 270;
-    const vw = video.videoWidth || 640;
-    const vh = video.videoHeight || 480;
+    const vw = isMjpeg ? (mediaEl.naturalWidth || 640) : (mediaEl.videoWidth || 640);
+    const vh = isMjpeg ? (mediaEl.naturalHeight || 480) : (mediaEl.videoHeight || 480);
 
     canvas.width = isSideways ? vh : vw;
     canvas.height = isSideways ? vw : vh;
@@ -723,13 +804,13 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
     if (ctx) {
       ctx.translate(canvas.width / 2, canvas.height / 2);
       ctx.rotate((videoRotation * Math.PI) / 180);
-      ctx.drawImage(video, -vw / 2, -vh / 2, vw, vh);
+      ctx.drawImage(mediaEl, -vw / 2, -vh / 2, vw, vh);
       if (canvasRef.current) {
         ctx.drawImage(canvasRef.current, -vw / 2, -vh / 2, vw, vh);
       }
       setSnapshotUrl(canvas.toDataURL('image/jpeg'));
     }
-  }, [videoRotation]);
+  }, [videoRotation, feedSource, streamMode]);
 
   const toggleFullscreen = useCallback(() => {
     if (!containerRef.current) return;
@@ -1119,19 +1200,41 @@ export const AdminPhoneCameraTab = ({ currentUser }) => {
                 maxHeight: '100%',
               }}
             >
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                onLoadedMetadata={(e) => {
-                  e.target.play().catch(() => {});
-                }}
-                onCanPlay={(e) => {
-                  e.target.play().catch(() => {});
-                }}
-                className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'} ${!hasRemoteVideo && 'hidden'}`}
-              />
+              {feedSource === 'pi5_tailscale' && streamMode === 'mjpeg' ? (
+                <img
+                  key={mjpegStreamKey}
+                  ref={imgRef}
+                  src={`/api/v1/operations/robot/camera/stream?target_ip=${encodeURIComponent(controlIp)}&port=${encodeURIComponent(pi5Port)}&t=${mjpegStreamKey}`}
+                  alt="Pi 5 MJPEG Stream"
+                  crossOrigin="anonymous"
+                  onLoad={(e) => {
+                    setHasRemoteVideo(true);
+                    setConnectionStatus('connected');
+                    if (e.target.naturalWidth && e.target.naturalHeight) {
+                      setActiveResolution({ width: e.target.naturalWidth, height: e.target.naturalHeight });
+                    }
+                  }}
+                  onError={() => {
+                    setHasRemoteVideo(false);
+                    setConnectionStatus('disconnected');
+                  }}
+                  className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'} ${!hasRemoteVideo && 'hidden'}`}
+                />
+              ) : (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  onLoadedMetadata={(e) => {
+                    e.target.play().catch(() => {});
+                  }}
+                  onCanPlay={(e) => {
+                    e.target.play().catch(() => {});
+                  }}
+                  className={`w-full h-full ${fitMode === 'cover' ? 'object-cover' : 'object-contain'} ${!hasRemoteVideo && 'hidden'}`}
+                />
+              )}
 
               <canvas
                 ref={canvasRef}

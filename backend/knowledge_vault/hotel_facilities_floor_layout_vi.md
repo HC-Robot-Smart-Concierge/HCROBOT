@@ -224,3 +224,45 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 ### Hỏi về Kỹ thuật, Bảo trì & Sửa chữa thiết bị phòng (Maintenance & Room Repair):
 - **Câu hỏi của khách:** *"Phòng bị hỏng điều hòa thì báo ai?", "Điều hòa không mát", "Đèn trong phòng không sáng", "Vòi nước bị rỉ", "Tắc cống", "Tivi không lên nguồn", "Khóa phòng bị kẹt", "Khách sạn có thợ sửa chữa không?", "Sửa đồ trong phòng có mất phí không?", "Bao lâu thì kỹ thuật viên lên sửa?", "Kiểm tra tiến độ sửa chữa", "Bảo trì tới đâu rồi?"*
 - **Robot trả lời:** *"Dạ khách sạn Aurora Grand có Đội ngũ Kỹ thuật & Bảo trì trực 24/7. Mọi sự cố kỹ thuật phòng (điều hòa, bóng đèn, điện nước, khóa phòng, tivi, wifi) đều được hỗ trợ khắc phục hoàn toàn miễn phí trong vòng 15 đến 30 phút. Quý khách có thể chạm vào mục 'Báo hỏng & Sửa chữa' ngay trên màn hình robot để chọn sự cố hoặc tra cứu tiến độ, nói trực tiếp với em, hoặc bấm phím số 0 trên điện thoại bàn phòng để kỹ thuật viên lên hỗ trợ ngay ạ!"*
+
+---
+
+<!-- FACILITY_ADS_SYNC_START -->
+## 13. Quảng Cáo & Chi Tiết Dịch Vụ Cơ Sở Vật Chất Nổi Bật (Đồng Bộ Từ Admin)
+
+- **Sky Lounge Bar (Tầng 6 (16:30 - 01:00)) — Sky Lounge Bar — Bia, Rượu & Cocktail Horizon Sunset:**
+  - Chi tiết: Phục vụ Bia, rượu theo menu (từ 40.000đ), Cocktail Horizon Sunset (145.000đ) kèm khai vị Sake chiên giòn (65.000đ), Chả giò hải sản (89.000đ) tại Tầng 6 (16:30 - 01:00).
+  - Đối tượng gợi ý: gender=male, age_group=young_adult
+- **Thảo Mộc Spa & Massage (Tầng 5 (09:00 - 22:00)) — Thảo Mộc Spa — Massage Đá Nóng & Xông Hơi Đá Muối:**
+  - Chi tiết: Liệu trình massage body đá nóng 90 phút kết hợp xông hơi đá muối Himalaya tại Tầng 5 (09:00 - 22:00). Giá từ 500.000 VNĐ, giảm 15% cho khách lưu trú.
+  - Đối tượng gợi ý: gender=female, age_group=ALL
+- **Sky Lounge Bar (Tầng 6 (16:30 - 01:00)) — Sky Lounge Bar — Rượu Vang Nhập Khẩu & Signature Cocktails:**
+  - Chi tiết: Bộ sưu tập rượu vang đỏ Chile Montes Alpha Cabernet Sauvignon, vang trắng Pháp Chablis cùng cocktail Aurora Sunset tại Tầng 6 (16:30 - 01:00).
+  - Đối tượng gợi ý: gender=ALL, age_group=adult
+- **Rooftop Coffee & View (Tầng 6 (07:00 - 23:00)) — Rooftop Coffee — Cà Phê Muối Cố Đô, Cà Phê Sữa Đá & Tiramisu:**
+  - Chi tiết: Thưởng thức Cà Phê Muối Cố Đô (65.000đ), Cà Phê Sữa Đá Sài Gòn (55.000đ), Nước Ép Cam Tươi Nguyên Chất (65.000đ) cùng Bánh Tiramisu Ý Cổ Điển (95.000đ) và Panna Cotta Sốt Dâu Rừng (85.000đ) tại Tầng 6 (07:00 - 23:00).
+  - Đối tượng gợi ý: gender=ALL, age_group=young_adult
+- **Hồ Bơi Vô Cực (Tầng 5 (06:00 - 22:00)) — Hồ Bơi Vô Cực Tầng 5 — Ngắm Toàn Cảnh & Khăn Tắm Miễn Phí:**
+  - Chi tiết: Thư giãn tại Hồ Bơi Vô Cực ngoài trời Tầng 5 (06:00 - 22:00). Miễn phí 100% cho khách lưu trú kèm khăn tắm, nước suối và tủ khóa Locker.
+- **Ẩm Thực Tận Phòng 24/7 (Phục vụ 24/7 tại phòng) — Ẩm Thực Tận Phòng 24/7 — Phở Bò Tái Nạm Wagyu & Bò Nướng Sốt Tiêu:**
+  - Chi tiết: Đặt món trực tiếp từ Bếp Chính 24/7: Phở Bò Tái Nạm Wagyu (175.000đ), Bò nướng sốt nấm / tiêu (189.000đ), Sườn cừu nướng (239.000đ), Burger Bò Wagyu Nướng Phô Mai (260.000đ) và Trái cây tươi theo mùa (65.000đ).
+- **Thảo Mộc Spa & Massage (Tầng 5 (09:00 - 22:00)) — Thảo Mộc Spa — Chăm Sóc Da Mặt & Tắm Tinh Dầu Sả Chanh:**
+  - Chi tiết: Gói thư giãn chuyên sâu gồm ngâm bồn tinh dầu sả chanh, đắp mặt nạ thảo mộc thiên nhiên tại Tầng 5 (09:00 - 22:00). Giảm 15% khi đặt trước qua Robot.
+  - Đối tượng gợi ý: gender=female, age_group=adult
+- **Phòng Tập Gym 24/7 (Tầng 5 (24/7)) — Phòng Tập Gym 24/7 — Trang Thiết Bị Technogym Cao Cấp:**
+  - Chi tiết: Tập luyện không giới hạn 24/7 tại Tầng 5 với máy chạy bộ Technogym, giàn tạ đa năng, khăn tập và nước mát miễn phí cho khách phòng.
+  - Đối tượng gợi ý: gender=male, age_group=young_adult
+- **Phòng VIP Karaoke (Tầng 6 (14:00 - 00:00)) — Phòng VIP Karaoke Tầng 6 — Âm Thanh Chuẩn Quốc Tế:**
+  - Chi tiết: Phòng hát VIP cách âm sang trọng tại Tầng 6 (14:00 - 00:00) với màn hình UHD, dàn âm thanh quốc tế, phục vụ đĩa trái cây và đồ uống tận phòng.
+  - Đối tượng gợi ý: gender=ALL, age_group=young_adult
+- **Cửa Hàng Lưu Niệm (Tầng 6 (08:00 - 22:00)) — Aurora Gift Shop — Cà Phê Đặc Sản & Quà Thủ Công Mỹ Nghệ:**
+  - Chi tiết: Khám phá hộp quà cà phê rang xay đặc sản Việt Nam, khăn lụa tơ tằm và gốm sứ thủ công tinh xảo tại Tầng 6 (08:00 - 22:00).
+  - Đối tượng gợi ý: gender=ALL, age_group=senior
+- **Sky Lounge Bar (Tầng 6 (16:30 - 01:00)) — Beer heeneken:**
+  - Chi tiết: Beer mát thích hợp cho tâm trạng buồn
+  - Đối tượng gợi ý: gender=ALL, age_group=young_adult
+- **Dịch vụ chung khách sạn — Dallas Milk:**
+- **Dịch vụ chung khách sạn — Lucky coffee:**
+- **Dịch vụ chung khách sạn — Burger King:**
+- **Dịch vụ chung khách sạn — Villa Milk:**
+<!-- FACILITY_ADS_SYNC_END -->

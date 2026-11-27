@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl, detectDestinationPoi } from '../../components/robot/FloorMap';
-import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck, Wrench, Luggage } from 'lucide-react';
+import { PhoneCall, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck, Wrench, Luggage } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
@@ -560,7 +560,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const guestEmotionRef = useRef('neutral');
   const [guestAgeGroup, setGuestAgeGroup] = useState('young_adult');
   const [guestGender, setGuestGender] = useState('unknown');
-  const [suggestedPrompts, setSuggestedPrompts] = useState([]);
   const lastUnhappyAlertTimeRef = useRef(0);
   const [isUnhappyAssistanceOpen, setIsUnhappyAssistanceOpen] = useState(false);
   const unhappyTimerRef = useRef(null);
@@ -2110,12 +2109,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           processingSafetyTimerRef.current = null;
         }
 
-        if (Array.isArray(chatRes?.suggested_prompts) && chatRes.suggested_prompts.length > 0) {
-          setSuggestedPrompts(chatRes.suggested_prompts);
-        } else {
-          setSuggestedPrompts([]);
-        }
-
         const detectedLang = chatRes.detected_language || 'Tiếng Việt';
         const langCode = chatRes.lang_code || (detectedLang === 'English' ? 'en-US' : 'vi-VN');
         const isEnResp = langCode === 'en-US' || detectedLang === 'English';
@@ -3381,6 +3374,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }}
         ads={showParallelAds ? parallelRun.ads : activeAds}
         pushedAd={showParallelAds ? null : pushedAd}
+        language={language}
+        guestGender={guestGender}
+        guestAgeGroup={guestAgeGroup}
         onUserInteract={() => {
           if (showParallelAds) return;
           setIsStandby(false);
@@ -4211,30 +4207,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   onClose={() => {
                     clearFollowUpTimer();
                     setAiResponseText('');
-                    setSuggestedPrompts([]);
                   }}
                 />
-              )}
-
-              {/* Interactive Quick-Reply Chips for Dynamic Conversation Continuation */}
-              {suggestedPrompts && suggestedPrompts.length > 0 && !isSpeaking && (
-                <div className="mt-3 flex flex-wrap items-center justify-center gap-2 animate-fadeIn z-20 max-w-xl">
-                  {suggestedPrompts.map((promptText, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSuggestedPrompts([]);
-                        handleStopTalkAndProcess(promptText, { force: true });
-                      }}
-                      className="px-3.5 py-1.5 rounded-full bg-stone-900/90 hover:bg-stone-800 text-stone-200 hover:text-white border border-stone-700/80 hover:border-amber-500/80 text-xs font-medium transition-all shadow-lg cursor-pointer flex items-center gap-1.5 active:scale-95"
-                    >
-                      <Sparkles className="w-3 h-3 text-amber-400" />
-                      <span>{promptText}</span>
-                    </button>
-                  ))}
-                </div>
               )}
 
               {/* 2. Khi đang nghe (Listening): Hiển thị AudioWave và trạng thái thu âm thực tế */}

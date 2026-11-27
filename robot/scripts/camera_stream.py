@@ -665,7 +665,7 @@ async def handle_offer(request):
         await pc.setLocalDescription(answer)
 
         # Cho ICE gathering hoan tat (Vanilla ICE pattern cho WebRTC HTTP signaling)
-        gather_timeout = 2.0
+        gather_timeout = 1.0
         start_t = time.time()
         while pc.iceGatheringState != "complete" and (time.time() - start_t) < gather_timeout:
             await asyncio.sleep(0.05)

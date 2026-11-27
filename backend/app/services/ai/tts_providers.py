@@ -73,6 +73,59 @@ async def _collect_edge_audio(communicate: Any) -> bytes:
     return audio_bytes
 
 
+def split_text_for_edge_tts(text: str, max_chars: int = 140) -> list[str]:
+    """Split long TTS text into short sentence-aligned chunks to avoid EdgeTTS NoAudioReceived."""
+    clean = (text or "").strip()
+    if not clean:
+        return []
+    if len(clean) <= max_chars:
+        return [clean]
+
+    raw_parts = re.split(r"(?<=[.!?])\s+", clean)
+    pieces: list[str] = []
+    for part in raw_parts:
+        part = part.strip()
+        if not part:
+            continue
+        if len(part) <= max_chars:
+            pieces.append(part)
+            continue
+        sub_parts = re.split(r"(?<=[,;:])\s+", part)
+        for sub in sub_parts:
+            sub = sub.strip()
+            if not sub:
+                continue
+            if len(sub) <= max_chars:
+                pieces.append(sub)
+                continue
+            words = sub.split(" ")
+            current = ""
+            for w in words:
+                candidate = f"{current} {w}".strip() if current else w
+                if len(candidate) <= max_chars:
+                    current = candidate
+                else:
+                    if current:
+                        pieces.append(current)
+                    current = w
+            if current:
+                pieces.append(current)
+
+    chunks: list[str] = []
+    current_chunk = ""
+    for piece in pieces:
+        candidate = f"{current_chunk} {piece}".strip() if current_chunk else piece
+        if len(candidate) <= max_chars:
+            current_chunk = candidate
+        else:
+            if current_chunk:
+                chunks.append(current_chunk)
+            current_chunk = piece
+    if current_chunk:
+        chunks.append(current_chunk)
+    return chunks or [clean]
+
+
 async def synthesize_edge_tts_detailed(
     text: str,
     voice: str,
@@ -107,22 +160,45 @@ async def synthesize_edge_tts_detailed(
     max_attempts = 2
     per_attempt_timeout = max(0.02, float(attempt_timeout)) if attempt_timeout is not None else 16.0
 
+    chunks = split_text_for_edge_tts(clean_text, max_chars=140)
+
     for attempt in range(max_attempts):
         current_voice = voice
         if attempt > 0:
             logger.info(f"[TTSService] EdgeTTS attempt {attempt + 1}: Retrying same voice {current_voice}")
 
         try:
-            communicate = _edge_tts.Communicate(
-                clean_text,
-                current_voice,
-                rate=selected_rate,
-                volume=selected_volume,
-            )
-            audio_bytes = await asyncio.wait_for(
-                _collect_edge_audio(communicate),
-                timeout=per_attempt_timeout,
-            )
+            if len(chunks) == 1:
+                communicate = _edge_tts.Communicate(
+                    chunks[0],
+                    current_voice,
+                    rate=selected_rate,
+                    volume=selected_volume,
+                )
+                audio_bytes = await asyncio.wait_for(
+                    _collect_edge_audio(communicate),
+                    timeout=per_attempt_timeout,
+                )
+            else:
+                async def _synth_all_chunks() -> bytes:
+                    tasks = [
+                        _collect_edge_audio(
+                            _edge_tts.Communicate(
+                                chunk,
+                                current_voice,
+                                rate=selected_rate,
+                                volume=selected_volume,
+                            )
+                        )
+                        for chunk in chunks
+                    ]
+                    results = await asyncio.gather(*tasks)
+                    return b"".join(results)
+
+                audio_bytes = await asyncio.wait_for(
+                    _synth_all_chunks(),
+                    timeout=per_attempt_timeout,
+                )
             if audio_bytes and len(audio_bytes) > 100:
                 return base64.b64encode(audio_bytes).decode("utf-8"), None, None
             last_err_code = "TTS_AUDIO_EMPTY"

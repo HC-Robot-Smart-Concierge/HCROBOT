@@ -16,6 +16,7 @@ from app.schemas.advertisement import (
 )
 from app.services.cloudinary_service import cloudinary_service
 from app.services.notification_manager import NotificationConnectionManager
+from app.services.rag.facility_ads_sync import sync_facility_ads_to_rag
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -40,13 +41,15 @@ async def get_all_advertisements(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/active", response_model=List[AdvertisementResponse], summary="Lấy danh sách quảng cáo đang hoạt động (Robot)")
-async def get_active_advertisements(db: AsyncSession = Depends(get_db)):
+async def get_active_advertisements(
+    auto_only: bool = False,
+    db: AsyncSession = Depends(get_db),
+):
     try:
-        stmt = (
-            select(Advertisement)
-            .where(Advertisement.is_active == True)
-            .order_by(desc(Advertisement.priority), desc(Advertisement.created_at))
-        )
+        stmt = select(Advertisement).where(Advertisement.is_active == True)
+        if auto_only:
+            stmt = stmt.where(Advertisement.auto_play == True)
+        stmt = stmt.order_by(desc(Advertisement.priority), desc(Advertisement.created_at))
         result = await db.execute(stmt)
         ads = result.scalars().all()
         return ads
@@ -62,11 +65,17 @@ async def get_active_advertisements(db: AsyncSession = Depends(get_db)):
 async def upload_advertisement(
     file: UploadFile = File(...),
     title: str = Form(...),
+    title_en: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
+    description_en: Optional[str] = Form(None),
+    facility_key: Optional[str] = Form(None),
+    target_gender: str = Form("ALL"),
+    target_age_group: str = Form("ALL"),
     media_type: str = Form("IMAGE"), # 'IMAGE' hoặc 'VIDEO'
     duration_seconds: int = Form(10),
     priority: int = Form(1),
     is_active: bool = Form(True),
+    auto_play: bool = Form(False),
     display_location: str = Form("ALL"),
     db: AsyncSession = Depends(get_db),
 ):
@@ -96,7 +105,12 @@ async def upload_advertisement(
         new_ad = Advertisement(
             id=ad_id,
             title=title.strip(),
+            title_en=title_en.strip() if title_en else None,
             description=description.strip() if description else None,
+            description_en=description_en.strip() if description_en else None,
+            facility_key=facility_key.strip() if facility_key else None,
+            target_gender=(target_gender or "ALL").strip(),
+            target_age_group=(target_age_group or "ALL").strip(),
             media_type=media_type.upper(),
             media_url=media_url,
             thumbnail_url=thumbnail_url,
@@ -105,6 +119,7 @@ async def upload_advertisement(
             duration_seconds=detected_duration,
             priority=priority,
             is_active=is_active,
+            auto_play=auto_play,
             display_location=display_location,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
@@ -113,6 +128,7 @@ async def upload_advertisement(
         db.add(new_ad)
         await db.commit()
         await db.refresh(new_ad)
+        await sync_facility_ads_to_rag(db)
         logger.info(f"Created new advertisement: {new_ad.id} - {new_ad.title}")
         return new_ad
     except HTTPException:
@@ -136,7 +152,12 @@ async def create_advertisement(
         new_ad = Advertisement(
             id=ad_id,
             title=payload.title.strip(),
+            title_en=payload.title_en.strip() if payload.title_en else None,
             description=payload.description.strip() if payload.description else None,
+            description_en=payload.description_en.strip() if payload.description_en else None,
+            facility_key=payload.facility_key.strip() if payload.facility_key else None,
+            target_gender=(payload.target_gender or "ALL").strip(),
+            target_age_group=(payload.target_age_group or "ALL").strip(),
             media_type=payload.media_type.upper(),
             media_url=payload.media_url,
             thumbnail_url=payload.thumbnail_url or payload.media_url,
@@ -145,6 +166,7 @@ async def create_advertisement(
             duration_seconds=payload.duration_seconds,
             priority=payload.priority,
             is_active=payload.is_active,
+            auto_play=payload.auto_play,
             display_location=payload.display_location,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
@@ -153,6 +175,7 @@ async def create_advertisement(
         db.add(new_ad)
         await db.commit()
         await db.refresh(new_ad)
+        await sync_facility_ads_to_rag(db)
         return new_ad
     except Exception as e:
         logger.error(f"Error creating advertisement: {e}")
@@ -196,6 +219,7 @@ async def update_advertisement(
         ad.updated_at = datetime.utcnow()
         await db.commit()
         await db.refresh(ad)
+        await sync_facility_ads_to_rag(db)
         logger.info(f"Updated advertisement: {ad.id}")
         return ad
     except HTTPException:
@@ -225,6 +249,7 @@ async def delete_advertisement(ad_id: str, db: AsyncSession = Depends(get_db)):
 
         await db.delete(ad)
         await db.commit()
+        await sync_facility_ads_to_rag(db)
         logger.info(f"Deleted advertisement: {ad_id}")
         return {"success": True, "message": f"Đã xóa thành công quảng cáo {ad_id}"}
     except HTTPException:
@@ -256,7 +281,12 @@ async def push_advertisement_to_robot(
             "advertisement": {
                 "id": ad.id,
                 "title": ad.title,
+                "title_en": ad.title_en,
                 "description": ad.description,
+                "description_en": ad.description_en,
+                "facility_key": ad.facility_key,
+                "target_gender": ad.target_gender,
+                "target_age_group": ad.target_age_group,
                 "media_type": ad.media_type,
                 "media_url": ad.media_url,
                 "thumbnail_url": ad.thumbnail_url,

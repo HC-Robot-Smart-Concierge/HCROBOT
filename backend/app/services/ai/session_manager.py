@@ -1,9 +1,41 @@
-import time
 import logging
+import os
 import re
+import time
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def is_ai_dialog_logging_enabled() -> bool:
+    """Kiểm tra biến môi trường LOG_AI_DIALOG để bật/tắt log hội thoại AI."""
+    return os.getenv("LOG_AI_DIALOG", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def log_ai_dialog_turn(
+    session_id: str,
+    role: str,
+    content: str,
+    room_number: Optional[str] = None,
+    language: str = "vi-VN",
+    intent_action: Optional[str] = None,
+    max_chars: int = 80,
+) -> None:
+    """Ghi log một dòng tóm tắt lượt hội thoại AI ra terminal khi bật LOG_AI_DIALOG."""
+    if not is_ai_dialog_logging_enabled():
+        return
+    clean_text = " ".join((content or "").split())
+    if len(clean_text) > max_chars:
+        clean_text = f"{clean_text[:max_chars]}..."
+    logger.info(
+        "[AIDialog] session=%s room=%s role=%s action=%s lang=%s text=%r",
+        session_id,
+        room_number or "-",
+        role,
+        intent_action or "-",
+        language,
+        clean_text,
+    )
 
 WORD_TO_DIGIT = {
     'không': '0', 'khong': '0', 'linh': '0', 'lẻ': '0', 'le': '0',
@@ -196,6 +228,14 @@ class SessionMemoryManager:
             "language": language,
             "intent_action": intent_action,
         })
+        log_ai_dialog_turn(
+            session_id=session_id,
+            role=role,
+            content=content,
+            room_number=session.get("room_number"),
+            language=language,
+            intent_action=intent_action,
+        )
 
         # Giữ tối đa 20 lượt nói gần nhất (10 cặp câu hỏi-đáp)
         if len(session["chat_history"]) > 20:

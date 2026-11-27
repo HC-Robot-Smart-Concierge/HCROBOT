@@ -31,6 +31,130 @@ import {
 } from '../../../services/advertisementApi';
 import { useLanguage } from '../../../context/LanguageContext';
 
+const FACILITY_OPTIONS = [
+  { value: '', labelVi: 'Chung (Không gắn khu vực)', labelEn: 'General (No specific facility)' },
+  { value: 'sky_bar', labelVi: 'Sky Lounge Bar (Tầng 6 - Bia, Rượu, Cocktail)', labelEn: 'Sky Lounge Bar (6th Floor - Beer, Wine, Cocktails)' },
+  { value: 'rooftop_coffee', labelVi: 'Rooftop Coffee & View (Tầng 6)', labelEn: 'Rooftop Coffee & View (6th Floor)' },
+  { value: 'spa', labelVi: 'Thảo Mộc Spa & Massage (Tầng 5)', labelEn: 'Thao Moc Herbal Spa & Massage (5th Floor)' },
+  { value: 'infinity_pool', labelVi: 'Hồ Bơi Vô Cực (Tầng 5)', labelEn: 'Infinity Pool (5th Floor)' },
+  { value: 'gym', labelVi: 'Phòng Tập Gym 24/7 (Tầng 5)', labelEn: '24/7 Fitness & Gym (5th Floor)' },
+  { value: 'karaoke', labelVi: 'Phòng VIP Karaoke (Tầng 6)', labelEn: 'VIP Karaoke Rooms (6th Floor)' },
+  { value: 'gift_shop', labelVi: 'Cửa Hàng Lưu Niệm (Tầng 6)', labelEn: 'Aurora Gift Shop (6th Floor)' },
+  { value: 'room_service', labelVi: 'Ẩm Thực Tận Phòng 24/7', labelEn: '24/7 In-Room Dining' },
+];
+
+const FacilityBilingualFields = ({
+  isEn,
+  titleEn,
+  onTitleEnChange,
+  descriptionEn,
+  onDescriptionEnChange,
+  facilityKey,
+  onFacilityKeyChange,
+  targetGender,
+  onTargetGenderChange,
+  targetAgeGroup,
+  onTargetAgeGroupChange,
+  autoPlay,
+  onAutoPlayChange,
+}) => (
+  <div className="space-y-2.5 rounded-lg border p-2.5" style={{ borderColor: '#D6D3CD', backgroundColor: '#FAF8F5' }}>
+    <div className="text-[11px] font-bold uppercase tracking-wide" style={{ color: '#555555' }}>
+      {isEn ? 'English Content (EN) & Facility RAG Sync' : 'Nội dung Tiếng Anh (EN) & Đồng bộ RAG'}
+    </div>
+    <div className="space-y-1">
+      <label className="text-xs font-bold" style={{ color: '#262626' }}>
+        {isEn ? 'Title (English / EN)' : 'Tiêu đề (Tiếng Anh / EN)'}
+      </label>
+      <input
+        type="text"
+        value={titleEn || ''}
+        onChange={(e) => onTitleEnChange(e.target.value)}
+        placeholder="e.g. Sky Lounge Bar — Craft Beers & Fine Wines"
+        className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
+        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
+      />
+    </div>
+    <div className="space-y-1">
+      <label className="text-xs font-bold" style={{ color: '#262626' }}>
+        {isEn ? 'Description (English / EN)' : 'Mô tả chi tiết (Tiếng Anh / EN)'}
+      </label>
+      <textarea
+        rows={2}
+        value={descriptionEn || ''}
+        onChange={(e) => onDescriptionEnChange(e.target.value)}
+        placeholder="e.g. 7 Bridges IPA, Montes Alpha wine, 20% off Happy Hour 17:00-19:00"
+        className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
+        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
+      />
+    </div>
+    <div className="space-y-1">
+      <label className="text-xs font-bold" style={{ color: '#262626' }}>
+        {isEn ? 'Linked Hotel Facility (Syncs to RAG)' : 'Cơ sở vật chất liên kết (Đồng bộ RAG)'}
+      </label>
+      <select
+        value={facilityKey || ''}
+        onChange={(e) => onFacilityKeyChange(e.target.value)}
+        className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
+        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
+      >
+        {FACILITY_OPTIONS.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {isEn ? opt.labelEn : opt.labelVi}
+          </option>
+        ))}
+      </select>
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-1">
+        <label className="text-xs font-bold" style={{ color: '#262626' }}>
+          {isEn ? 'Target Gender' : 'Giới tính mục tiêu'}
+        </label>
+        <select
+          value={targetGender || 'ALL'}
+          onChange={(e) => onTargetGenderChange(e.target.value)}
+          className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
+          style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
+        >
+          <option value="ALL">{isEn ? 'All Genders' : 'Tất cả'}</option>
+          <option value="male">{isEn ? 'Male' : 'Nam (Male)'}</option>
+          <option value="female">{isEn ? 'Female' : 'Nữ (Female)'}</option>
+        </select>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs font-bold" style={{ color: '#262626' }}>
+          {isEn ? 'Target Age Group' : 'Độ tuổi mục tiêu'}
+        </label>
+        <select
+          value={targetAgeGroup || 'ALL'}
+          onChange={(e) => onTargetAgeGroupChange(e.target.value)}
+          className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
+          style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
+        >
+          <option value="ALL">{isEn ? 'All Ages' : 'Tất cả độ tuổi'}</option>
+          <option value="child">{isEn ? 'Child (<15)' : 'Trẻ em (<15)'}</option>
+          <option value="young_adult">{isEn ? 'Young Adult (18-35)' : 'Thanh niên (18-35)'}</option>
+          <option value="adult">{isEn ? 'Adult (36-59)' : 'Trung niên (36-59)'}</option>
+          <option value="senior">{isEn ? 'Senior (60+)' : 'Cao tuổi (60+)'}</option>
+        </select>
+      </div>
+    </div>
+    <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
+      <input
+        type="checkbox"
+        checked={Boolean(autoPlay)}
+        onChange={(e) => onAutoPlayChange(e.target.checked)}
+        className="w-4 h-4 accent-black rounded"
+      />
+      <span className="text-xs font-semibold" style={{ color: '#262626' }}>
+        {isEn
+          ? 'Auto-play on Robot Standby (otherwise only used for manual Push & AI Q&A)'
+          : 'Tự động phát khi Robot rảnh (nếu tắt chỉ dùng để Push thủ công & AI trả lời)'}
+      </span>
+    </label>
+  </div>
+);
+
 export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => {
   const { t, language } = useLanguage();
   const [ads, setAds] = useState([]);
@@ -50,11 +174,17 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState(null);
   const [formTitle, setFormTitle] = useState('');
+  const [formTitleEn, setFormTitleEn] = useState('');
   const [formDescription, setFormDescription] = useState('');
+  const [formDescriptionEn, setFormDescriptionEn] = useState('');
+  const [formFacilityKey, setFormFacilityKey] = useState('');
+  const [formTargetGender, setFormTargetGender] = useState('ALL');
+  const [formTargetAgeGroup, setFormTargetAgeGroup] = useState('ALL');
   const [formMediaType, setFormMediaType] = useState('IMAGE');
   const [formDuration, setFormDuration] = useState(10);
   const [formPriority, setFormPriority] = useState(5);
   const [formIsActive, setFormIsActive] = useState(true);
+  const [formAutoPlay, setFormAutoPlay] = useState(false);
   const [formDisplayLocation, setFormDisplayLocation] = useState('ALL');
   const [formMediaUrl, setFormMediaUrl] = useState('');
 
@@ -96,7 +226,13 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
       setUploadPreviewUrl(null);
     }
     setFormTitle('');
+    setFormTitleEn('');
     setFormDescription('');
+    setFormDescriptionEn('');
+    setFormFacilityKey('');
+    setFormTargetGender('ALL');
+    setFormTargetAgeGroup('ALL');
+    setFormAutoPlay(false);
     setFormMediaType('IMAGE');
     setFormDuration(10);
     setFormPriority(5);
@@ -146,11 +282,17 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
       const formData = new FormData();
       formData.append('file', uploadFile);
       formData.append('title', formTitle.trim());
+      if (formTitleEn.trim()) formData.append('title_en', formTitleEn.trim());
       if (formDescription) formData.append('description', formDescription.trim());
+      if (formDescriptionEn.trim()) formData.append('description_en', formDescriptionEn.trim());
+      if (formFacilityKey) formData.append('facility_key', formFacilityKey);
+      formData.append('target_gender', formTargetGender);
+      formData.append('target_age_group', formTargetAgeGroup);
       formData.append('media_type', formMediaType);
       formData.append('duration_seconds', String(formDuration));
       formData.append('priority', String(formPriority));
       formData.append('is_active', String(formIsActive));
+      formData.append('auto_play', String(formAutoPlay));
       formData.append('display_location', formDisplayLocation);
 
       const created = await uploadAdvertisement(formData);
@@ -180,13 +322,19 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
     try {
       const payload = {
         title: formTitle.trim(),
+        title_en: formTitleEn.trim() || null,
         description: formDescription.trim() || null,
+        description_en: formDescriptionEn.trim() || null,
+        facility_key: formFacilityKey || null,
+        target_gender: formTargetGender,
+        target_age_group: formTargetAgeGroup,
         media_type: formMediaType,
         media_url: formMediaUrl.trim(),
         thumbnail_url: formMediaType === 'IMAGE' ? formMediaUrl.trim() : null,
         duration_seconds: Number(formDuration),
         priority: Number(formPriority),
         is_active: formIsActive,
+        auto_play: formAutoPlay,
         display_location: formDisplayLocation,
       };
 
@@ -254,11 +402,17 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
     try {
       const payload = {
         title: editingAd.title,
+        title_en: editingAd.title_en || null,
         description: editingAd.description,
+        description_en: editingAd.description_en || null,
+        facility_key: editingAd.facility_key || null,
+        target_gender: editingAd.target_gender || 'ALL',
+        target_age_group: editingAd.target_age_group || 'ALL',
         media_type: editingAd.media_type,
         duration_seconds: Number(editingAd.duration_seconds),
         priority: Number(editingAd.priority),
         is_active: editingAd.is_active,
+        auto_play: Boolean(editingAd.auto_play),
         display_location: editingAd.display_location,
       };
       const updated = await updateAdvertisement(editingAd.id, payload);
@@ -682,10 +836,10 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                 )}
               </div>
 
-              {/* Title */}
+              {/* Title (Vietnamese) */}
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  {t('adsLabelTitle')} <span className="text-red-500">*</span>
+                  {language !== 'VI' ? 'Title (Vietnamese / VI)' : 'Tiêu đề (Tiếng Việt / VI)'} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -698,10 +852,10 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                 />
               </div>
 
-              {/* Description */}
+              {/* Description (Vietnamese) */}
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  {t('adsLabelDesc')}
+                  {language !== 'VI' ? 'Description (Vietnamese / VI)' : 'Mô tả chi tiết (Tiếng Việt / VI)'}
                 </label>
                 <textarea
                   rows={2}
@@ -712,6 +866,22 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                 />
               </div>
+
+              <FacilityBilingualFields
+                isEn={language !== 'VI'}
+                titleEn={formTitleEn}
+                onTitleEnChange={setFormTitleEn}
+                descriptionEn={formDescriptionEn}
+                onDescriptionEnChange={setFormDescriptionEn}
+                facilityKey={formFacilityKey}
+                onFacilityKeyChange={setFormFacilityKey}
+                targetGender={formTargetGender}
+                onTargetGenderChange={setFormTargetGender}
+                targetAgeGroup={formTargetAgeGroup}
+                onTargetAgeGroupChange={setFormTargetAgeGroup}
+                autoPlay={formAutoPlay}
+                onAutoPlayChange={setFormAutoPlay}
+              />
 
               {/* Duration and Priority row */}
               <div className="grid grid-cols-2 gap-3">
@@ -901,10 +1071,10 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                 </div>
               </div>
 
-              {/* Title */}
+              {/* Title (Vietnamese) */}
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  {t('adsLabelTitle')} <span className="text-red-500">*</span>
+                  {language !== 'VI' ? 'Title (Vietnamese / VI)' : 'Tiêu đề (Tiếng Việt / VI)'} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -917,10 +1087,10 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                 />
               </div>
 
-              {/* Description */}
+              {/* Description (Vietnamese) */}
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  {t('adsLabelDesc')}
+                  {language !== 'VI' ? 'Description (Vietnamese / VI)' : 'Mô tả chi tiết (Tiếng Việt / VI)'}
                 </label>
                 <textarea
                   rows={2}
@@ -931,6 +1101,22 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                 />
               </div>
+
+              <FacilityBilingualFields
+                isEn={language !== 'VI'}
+                titleEn={formTitleEn}
+                onTitleEnChange={setFormTitleEn}
+                descriptionEn={formDescriptionEn}
+                onDescriptionEnChange={setFormDescriptionEn}
+                facilityKey={formFacilityKey}
+                onFacilityKeyChange={setFormFacilityKey}
+                targetGender={formTargetGender}
+                onTargetGenderChange={setFormTargetGender}
+                targetAgeGroup={formTargetAgeGroup}
+                onTargetAgeGroupChange={setFormTargetAgeGroup}
+                autoPlay={formAutoPlay}
+                onAutoPlayChange={setFormAutoPlay}
+              />
 
               {/* Priority & Location */}
               <div className="grid grid-cols-2 gap-3">
@@ -1100,7 +1286,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
             <form onSubmit={handleSaveEdit} className="p-5 space-y-4 overflow-y-auto custom-scrollbar flex-1">
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  {t('adsLabelTitle')}
+                  {language !== 'VI' ? 'Title (Vietnamese / VI)' : 'Tiêu đề (Tiếng Việt / VI)'} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -1114,7 +1300,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
 
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  {t('adsLabelDesc')}
+                  {language !== 'VI' ? 'Description (Vietnamese / VI)' : 'Mô tả chi tiết (Tiếng Việt / VI)'}
                 </label>
                 <textarea
                   rows={2}
@@ -1124,6 +1310,22 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                 />
               </div>
+
+              <FacilityBilingualFields
+                isEn={language !== 'VI'}
+                titleEn={editingAd.title_en || ''}
+                onTitleEnChange={(val) => setEditingAd({ ...editingAd, title_en: val })}
+                descriptionEn={editingAd.description_en || ''}
+                onDescriptionEnChange={(val) => setEditingAd({ ...editingAd, description_en: val })}
+                facilityKey={editingAd.facility_key || ''}
+                onFacilityKeyChange={(val) => setEditingAd({ ...editingAd, facility_key: val })}
+                targetGender={editingAd.target_gender || 'ALL'}
+                onTargetGenderChange={(val) => setEditingAd({ ...editingAd, target_gender: val })}
+                targetAgeGroup={editingAd.target_age_group || 'ALL'}
+                onTargetAgeGroupChange={(val) => setEditingAd({ ...editingAd, target_age_group: val })}
+                autoPlay={Boolean(editingAd.auto_play)}
+                onAutoPlayChange={(val) => setEditingAd({ ...editingAd, auto_play: val })}
+              />
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">

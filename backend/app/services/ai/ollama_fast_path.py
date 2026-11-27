@@ -9,6 +9,7 @@ from app.services.ai.constants import BELLMAN_MENU_TRIGGER_KEYWORDS, FOOD_MENU_T
 from app.services.ai.scenario_service import scenario_service
 from app.services.bell_request_service import classify_bell_request
 from app.services.maintenance_request_service import is_fault_report
+from app.services.rag.facility_ads_sync import match_facility_ads_fast_path
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,10 @@ def check_fast_path_full(
     if any(kw in prompt_lower for kw in _NEARBY_EXPLORATION_KEYWORDS):
         logger.info(f"[OllamaService Fast-Path Bypass] Nearby exploration query detected, delegating to RAG: '{prompt[:40]}'")
         return None
+
+    facility_ad_hit = match_facility_ads_fast_path(prompt, lang_code)
+    if facility_ad_hit:
+        return facility_ad_hit
 
     dynamic_hit = scenario_service.match_fast_path(prompt, lang_code)
     if dynamic_hit:

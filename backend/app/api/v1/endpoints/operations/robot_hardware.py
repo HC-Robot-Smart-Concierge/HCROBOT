@@ -49,6 +49,35 @@ class GuestPerceptionSync(BaseModel):
     is_face_detected: Optional[bool] = None
 
 
+class AnalyzeDemographicsRequest(BaseModel):
+    image_base64: str
+    bbox: Optional[list[float]] = None
+
+
+@router.post(
+    "/robot/analyze-demographics",
+    tags=TAG_OPS,
+    summary="Phân tích giới tính và độ tuổi từ ảnh camera bằng InsightFace ONNX",
+)
+async def analyze_robot_demographics(payload: AnalyzeDemographicsRequest):
+    """Nhận frame JPEG/PNG (kèm bbox tùy chọn) và trả về giới tính, độ tuổi ước lượng."""
+    import asyncio
+    from app.services.vision.demographics_service import demographics_service
+
+    try:
+        return await asyncio.to_thread(
+            demographics_service.analyze_image_base64,
+            payload.image_base64,
+            payload.bbox,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Lỗi phân tích nhân trắc học: {exc}")
+
+
 @router.post(
     "/robot/guest-perception",
     tags=TAG_OPS,
@@ -160,7 +189,7 @@ async def check_camera_health(
     """Kiểm tra xem service camera_stream.py trên Pi 5 có đang online không."""
     pi_health_url = f"http://{target_ip}:{port}/health"
     try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
+        async with httpx.AsyncClient(timeout=4.0) as client:
             resp = await client.get(pi_health_url)
             if resp.status_code == 200:
                 return {"online": True, "details": resp.json()}
@@ -183,7 +212,7 @@ async def exchange_camera_webrtc_offer(payload: WebRTCOfferRequest):
     target_port = payload.port or 8554
     pi_offer_url = f"http://{target_host}:{target_port}/offer"
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=12.0, write=5.0, pool=5.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0)) as client:
             resp = await client.post(
                 pi_offer_url,
                 json={"sdp": payload.sdp, "type": payload.type},
@@ -218,7 +247,7 @@ async def proxy_pi5_hardware_api(request: Request, path: str):
     body = await request.body() if request.method in ["POST", "PUT", "PATCH"] else None
 
     try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
+        async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.request(
                 method=request.method,
                 url=target_url,

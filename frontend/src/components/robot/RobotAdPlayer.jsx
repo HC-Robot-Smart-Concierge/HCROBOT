@@ -1,11 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Volume2, VolumeX } from 'lucide-react';
 
+const FACILITY_LABELS = {
+  sky_bar: { vi: 'Sky Lounge Bar · Tầng 6', en: 'Sky Lounge Bar · 6th Floor' },
+  rooftop_coffee: { vi: 'Rooftop Coffee · Tầng 6', en: 'Rooftop Coffee · 6th Floor' },
+  spa: { vi: 'Thảo Mộc Spa · Tầng 5', en: 'Thao Moc Spa · 5th Floor' },
+  infinity_pool: { vi: 'Hồ Bơi Vô Cực · Tầng 5', en: 'Infinity Pool · 5th Floor' },
+  gym: { vi: 'Phòng Tập Gym 24/7 · Tầng 5', en: '24/7 Fitness Center · 5th Floor' },
+  karaoke: { vi: 'VIP Karaoke · Tầng 6', en: 'VIP Karaoke · 6th Floor' },
+  gift_shop: { vi: 'Cửa Hàng Lưu Niệm · Tầng 6', en: 'Aurora Gift Shop · 6th Floor' },
+  room_service: { vi: 'Ẩm Thực Tận Phòng 24/7', en: '24/7 In-Room Dining' },
+};
+
 export const RobotAdPlayer = ({
   isOpen = false,
   onClose = () => {},
   ads = [],
   pushedAd = null,
+  language = 'Tiếng Việt',
+  guestGender = 'unknown',
+  guestAgeGroup = 'young_adult',
   onUserInteract = () => {},
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -15,17 +29,31 @@ export const RobotAdPlayer = ({
   const slideTimerRef = useRef(null);
   const progressIntervalRef = useRef(null);
 
-  // Nếu có pushedAd, ưu tiên hiển thị ad đó lên đầu
+  const isEn = language === 'English';
+
+  // Lọc chỉ các quảng cáo được bật Tự động phát (auto_play === true), trừ trẻ em khỏi quầy bar, và ưu tiên theo khuôn mặt khách
   const playlist = React.useMemo(() => {
+    const safeAds = ads.filter((a) => {
+      if (a.auto_play !== true) return false;
+      if (guestAgeGroup === 'child' && a.facility_key === 'sky_bar') return false;
+      return true;
+    });
+    const scoreAd = (ad) => {
+      let score = Number(ad.priority || 0);
+      if (guestGender && guestGender !== 'unknown' && ad.target_gender === guestGender) score += 20;
+      if (guestAgeGroup && ad.target_age_group === guestAgeGroup) score += 15;
+      return score;
+    };
+    const sortedAds = [...safeAds].sort((a, b) => scoreAd(b) - scoreAd(a));
     if (pushedAd) {
-      const exists = ads.find((a) => a.id === pushedAd.id);
+      const exists = sortedAds.find((a) => a.id === pushedAd.id);
       if (exists) {
-        return [exists, ...ads.filter((a) => a.id !== pushedAd.id)];
+        return [exists, ...sortedAds.filter((a) => a.id !== pushedAd.id)];
       }
-      return [pushedAd, ...ads];
+      return [pushedAd, ...sortedAds];
     }
-    return ads;
-  }, [ads, pushedAd]);
+    return sortedAds;
+  }, [ads, pushedAd, guestGender, guestAgeGroup]);
 
   const currentAd = playlist[currentIndex] || null;
   const isVideo = currentAd?.media_type === 'VIDEO';
@@ -142,6 +170,26 @@ export const RobotAdPlayer = ({
               alt={currentAd.title || 'Quảng cáo'}
               className="h-full max-h-screen w-auto max-w-full object-contain shadow-2xl"
             />
+          </div>
+        )}
+
+        {currentAd && (currentAd.title || currentAd.description || currentAd.facility_key) && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/90 via-black/65 to-transparent px-6 pb-6 pt-16 text-white">
+            <div className="mx-auto max-w-3xl">
+              {currentAd.facility_key && FACILITY_LABELS[currentAd.facility_key] && (
+                <span className="mb-2 inline-block rounded-full border border-amber-400/50 bg-amber-500/20 px-3 py-0.5 text-xs font-semibold uppercase tracking-wider text-amber-200">
+                  {isEn ? FACILITY_LABELS[currentAd.facility_key].en : FACILITY_LABELS[currentAd.facility_key].vi}
+                </span>
+              )}
+              <h2 className="text-xl font-bold leading-snug sm:text-2xl">
+                {isEn ? (currentAd.title_en || currentAd.title) : currentAd.title}
+              </h2>
+              {(isEn ? (currentAd.description_en || currentAd.description) : currentAd.description) && (
+                <p className="mt-1.5 text-sm leading-relaxed text-stone-200 sm:text-base">
+                  {isEn ? (currentAd.description_en || currentAd.description) : currentAd.description}
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>

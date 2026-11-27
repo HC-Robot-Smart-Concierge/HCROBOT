@@ -226,6 +226,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const [taxiModalInitialMode, setTaxiModalInitialMode] = useState('self_booking');
   const [taxiVoiceInput, setTaxiVoiceInput] = useState('');
+  const taxiRequestContextRef = useRef('');
+  const [taxiInitialRequest, setTaxiInitialRequest] = useState('');
   const [menuVoiceInput, setMenuVoiceInput] = useState(null);
   const [menuVoiceReply, setMenuVoiceReply] = useState('');
   const activeMenuType = isFoodMenuOpen
@@ -1576,7 +1578,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     });
   }, [speak, setTaxiFlowStage, stopListening, resetTranscript, language]);
 
-  const handleSelectTaxiConciergeBooking = useCallback(() => {
+  const handleSelectTaxiConciergeBooking = useCallback((reply = '') => {
+    setTaxiInitialRequest([taxiRequestContextRef.current, typeof reply === 'string' ? reply : ''].filter(Boolean).join('\n'));
     taxiCompletedRef.current = false;
     setTaxiFlowStage(null);
     setTaxiVoiceInput('');
@@ -1633,7 +1636,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [language, speak, setTaxiFlowStage]);
 
   // Kích hoạt luồng đặt xe taxi: kiểm tra session phòng, nếu chưa có thì hỏi số phòng qua giọng nói (KHÔNG hiện popup chọn phòng), nếu có rồi thì nói 2 option
-  const handleTriggerTaxiBooking = useCallback((specifiedRoom = null) => {
+  const handleTriggerTaxiBooking = useCallback((specifiedRoom = null, requestText = '') => {
+    taxiRequestContextRef.current = requestText;
     clearEmotionAssistance();
     const requested = typeof specifiedRoom === 'string' ? specifiedRoom.trim() : '';
     const cleanAuthRoom = authenticatedRoom ? String(authenticatedRoom).trim() : '';
@@ -1847,7 +1851,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         return;
       }
       if (isConciergeVoiceIntent(lowerQuery)) {
-        handleSelectTaxiConciergeBooking();
+        handleSelectTaxiConciergeBooking(query);
         isProcessingRef.current = false;
         setIsProcessing(false);
         return;
@@ -2193,7 +2197,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           }
           stopListening();
           resetTranscript();
-          handleTriggerTaxiBooking(roomArg);
+          handleTriggerTaxiBooking(roomArg, query);
         };
 
         // Tự động mở modal xác thực mã PIN phòng nếu yêu cầu từ AI Backend
@@ -4597,8 +4601,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         isOpen={isTaxiModalOpen}
         onClose={handleCloseTaxiModal}
         initialMode={taxiModalInitialMode}
+        initialRequest={taxiInitialRequest}
         language={language}
-        activeRoomNumber={authenticatedRoom || activeRoomNumber}
+        activeRoomNumber={authenticatedRoom}
         lastVoiceTranscript={taxiVoiceInput}
         speak={speak}
         onStartTalk={handleStartTalk}

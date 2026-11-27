@@ -1,11 +1,12 @@
 import random
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.database import get_db
-from app.models import Staff, SupportRequest
+from app.models import Staff, SupportRequest, Room
 from app.schemas.operations import (
     TaxiRequestCreate,
     TaxiRequestStatusUpdate,
@@ -28,14 +29,14 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
     desc_str = req.description or ""
     extra = req.extra_data if isinstance(req.extra_data, dict) else {}
 
-    destination = extra.get("destination") or "Da Nang International Airport (DAD)"
-    pickup_time = extra.get("pickup_time") or "Immediate"
-    party_size = int(extra.get("party_size") or 2)
-    vehicle_type = extra.get("vehicle_type") or "4-Seater Sedan"
-    pickup_location = extra.get("pickup_location") or req.room_number or "Main Lobby & Front Entrance"
+    destination = extra.get("destination")
+    pickup_time = extra.get("pickup_time")
+    party_size = extra.get("party_size")
+    vehicle_type = extra.get("vehicle_type")
+    pickup_location = extra.get("pickup_location")
 
     desc_lower = desc_str.lower()
-    if not extra.get("destination") and ("điểm đến:" in desc_lower or "diem den:" in desc_lower):
+    if extra.get("booking_mode") != "assistance" and not extra.get("destination") and ("điểm đến:" in desc_lower or "diem den:" in desc_lower):
         try:
             parts = desc_str.split("|")
             for part in parts:
@@ -55,7 +56,10 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
     return TaxiRequestResponse(
         id=req.id,
         ticket_code=req.ticket_code,
+        booking_mode=extra.get("booking_mode") or ("trip" if destination else "assistance"),
         guest_name=req.guest_name or "Hotel Guest",
+        guest_phone=req.guest_phone,
+        room_phone=req.room_phone,
         pickup_location=pickup_location,
         room_number=req.room_number,
         destination=destination,
@@ -64,7 +68,7 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
         vehicle_type=vehicle_type,
         status=req.status or "Pending",
         assigned_driver=req.assigned_staff_name,
-        license_plate="43A-888.99" if req.assigned_staff_name else None,
+        license_plate=extra.get("license_plate"),
         notes=desc_str,
         created_at=req.created_at or datetime.now(timezone.utc).replace(tzinfo=None),
     )
@@ -181,21 +185,38 @@ async def create_taxi_request(
     Tiếp nhận yêu cầu gọi xe từ Khách hàng hoặc Concierge Robot.
     Tự động gắn mã dịch vụ `ST-TAXI` và phòng ban `DEP-TAXI` vào bảng `support_requests`.
     """
-    resolved_room = req_in.room_number or (req_in.pickup_location if any(c.isdigit() for c in req_in.pickup_location) else None)
+    assistance = req_in.booking_mode == "assistance"
+    resolved_room = req_in.room_number
+    if not resolved_room and (req_in.pickup_location or "").strip().isdigit():
+        resolved_room = req_in.pickup_location.strip()
+    room = None
+    if resolved_room:
+        room = (await db.execute(select(Room).where(Room.room_number == resolved_room))).scalar_one_or_none()
+    if assistance and (room is None or (room.status or "").upper() != "OCCUPIED"):
+        raise HTTPException(status_code=400, detail="Room must be checked in before requesting taxi assistance")
     ticket_code = f"TX-{random.randint(10000, 99999)}"
-    title = f"Taxi: Phòng {resolved_room} -> {req_in.destination}" if resolved_room else f"Taxi: {req_in.pickup_location} -> {req_in.destination}"
-    description = (
-        f"Điểm đến: {req_in.destination} | Thời gian đón: {req_in.pickup_time or 'Immediate'} | "
-        f"Số lượng khách: {req_in.party_size} | Loại xe: {req_in.vehicle_type}. "
-        f"{req_in.description or ''}"
-    ).strip()
+    title = (f"Nhờ đặt xe: Phòng {resolved_room}" if assistance else
+             f"Taxi: {resolved_room or req_in.pickup_location or 'Guest'} -> {req_in.destination}")
+    description = (req_in.description or "").strip()
+    if not assistance:
+        trip_details = [f"Điểm đến: {req_in.destination}"]
+        if req_in.pickup_time:
+            trip_details.append(f"Thời gian đón: {req_in.pickup_time}")
+        if req_in.party_size:
+            trip_details.append(f"Số lượng khách: {req_in.party_size}")
+        if req_in.vehicle_type:
+            trip_details.append(f"Loại xe: {req_in.vehicle_type}")
+        description = " | ".join(trip_details + ([description] if description else []))
+    guest_name = (room.current_guest_name if room else None) or req_in.guest_name
 
     dep_id, svc_id = await sr_repo.ensure_taxi_catalog()
     new_req = SupportRequest(
         ticket_code=ticket_code,
         title=title,
         room_number=(resolved_room or req_in.pickup_location or "Main Lobby")[:50],
-        guest_name=req_in.guest_name,
+        guest_name=guest_name,
+        guest_phone=room.current_guest_phone if room else None,
+        room_phone=room.room_phone if room else None,
         source="From HCRobot",
         description=description,
         department_id=dep_id,
@@ -203,9 +224,10 @@ async def create_taxi_request(
         status="Pending",
         extra_data={
             "request_type": "taxi",
-            "pickup_location": req_in.pickup_location,
-            "destination": req_in.destination,
-            "pickup_time": req_in.pickup_time,
+            "booking_mode": req_in.booking_mode,
+            "pickup_location": None if assistance else req_in.pickup_location,
+            "destination": None if assistance else req_in.destination,
+            "pickup_time": None if assistance else req_in.pickup_time,
             "party_size": req_in.party_size,
             "vehicle_type": req_in.vehicle_type,
         },
@@ -213,9 +235,9 @@ async def create_taxi_request(
     await sr_repo.create(new_req)
     await create_department_notification(
         db=db,
-        department="Taxi",
+        department="Concierge" if assistance else "Taxi",
         title=f"Yêu cầu Đặt xe mới #{ticket_code}",
-        description=f"Phòng {resolved_room or req_in.pickup_location}: {req_in.destination} ({req_in.vehicle_type})",
+        description=f"Phòng {resolved_room or req_in.pickup_location}: {description or title}",
         request_id=new_req.id,
         request_type="taxi",
         type="Request",
@@ -333,6 +355,8 @@ async def update_taxi_request_status(
 
     if update_in.assigned_driver:
         req.assigned_staff_name = update_in.assigned_driver
+    if update_in.license_plate:
+        req.extra_data = {**(req.extra_data or {}), "license_plate": update_in.license_plate}
     if update_in.note:
         clean_note = update_in.note.strip()
         req.description = f"{req.description or ''} | Ghi chú: {clean_note}".strip(" |")

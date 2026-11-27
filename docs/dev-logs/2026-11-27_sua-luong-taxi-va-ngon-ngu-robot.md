@@ -1,4 +1,65 @@
-# Bàn giao: sửa luồng đặt taxi và ngôn ngữ hội thoại robot
+# Bàn giao: yêu cầu nhờ Concierge đặt xe và ngôn ngữ hội thoại robot
+
+## Cập nhật mới nhất — 2026-11-27
+
+**Phần này thay thế luồng hỏi điểm đến và xác nhận chuyến đi trong bản ghi cũ bên dưới.**
+
+- Nhánh đang làm: `main`. HEAD lúc bắt đầu lần cập nhật này: `985651d`.
+- Đã sửa code, build và kiểm tra bằng dữ liệu giả lập; chưa commit/push thay đổi của lần cập nhật này.
+- Yêu cầu: khách chỉ nhờ Concierge đặt xe, cung cấp số người hoặc số chỗ và ghi chú. Không bắt chọn điểm đón, điểm đến, không tự đặt giá trị mặc định, không hỏi lại số điện thoại.
+
+### Luồng hiện tại
+
+1. Robot giữ bước xác thực số phòng/PIN đang có. Phòng đã xác thực không phải nhập lại cho cùng phiên.
+2. Khách vẫn có thể chọn tự gọi taxi hoặc nhờ nhân viên đặt xe.
+3. Khi nhờ nhân viên, robot hỏi: “Quý khách cần đặt xe cho bao nhiêu người hoặc cần xe mấy chỗ ạ?”. Nếu khách đã nói thông tin này trong yêu cầu ban đầu thì không hỏi lại.
+4. Robot hỏi thêm về hành lý/yêu cầu khác. Khách có thể nói ghi chú, nói không có gì thêm hoặc bấm gửi. Không còn màn hình chọn địa điểm và kiểm tra chuyến đi.
+5. Khi khách nói “đừng gửi”, “chưa gửi”, “do not send”, yêu cầu chưa được gửi. Khi nói hủy thì đóng luồng. Nếu chỉ trả lời “có” ở bước ghi chú, robot hỏi nội dung ghi chú trước.
+6. Backend tạo yêu cầu `booking_mode=assistance`, lấy tên và điện thoại khách/máy nhánh từ phòng đang có khách. Chỉ lưu số khách, xe và ghi chú đã cung cấp; không suy ra số khách từ số chỗ.
+7. Concierge xem phòng, thông tin liên hệ, số khách/xe, ghi chú rồi **Nhận yêu cầu → Thành công**. Form tạo yêu cầu thủ công cũng dùng các trường này.
+
+Ví dụ: “xe 7 chỗ” chỉ lưu xe 7 chỗ, số khách để chưa xác định; “2 người lớn và 3 trẻ em” là 5 khách; “4 people including 2 children” là 4 khách. Nếu khách chỉ cần nhân viên tư vấn, có thể nói chưa biết số khách/loại xe. Điểm đến hoặc giờ đón khách tự nói vẫn có thể nằm trong ghi chú, không phải trường bắt buộc.
+
+### File thay đổi trong lần này
+
+| File | Nội dung |
+| --- | --- |
+| `frontend/src/utils/taxiAssistance.js` | Nhận diện số người/số chỗ Việt–Anh, phản hồi gửi/hủy/chờ, tạo payload hỗ trợ đặt xe. |
+| `frontend/src/components/robot/RobotTaxiModal.jsx` | Bỏ biểu mẫu điểm đến và bước kiểm tra; hội thoại hỏi nhu cầu/ghi chú, có nhập chữ dự phòng. |
+| `frontend/src/pages/robot/RobotScreenPage.jsx` | Giữ câu yêu cầu ban đầu qua bước xác thực và chọn cách đặt xe; dùng phòng đã xác thực khi gửi. |
+| `frontend/src/components/dashboard/concierge/ConciergeTaxiBookingModal.jsx` | Form tạo yêu cầu theo phòng, số khách, xe và ghi chú; không mặc định số khách/xe. |
+| `frontend/src/pages/dashboard/ConciergeDashboard.jsx` | Hiển thị nhu cầu và liên hệ phòng, gửi đúng ghi chú; nhãn taxi Việt–Anh. |
+| `backend/app/schemas/operations_admin_guest.py` | Schema hỗ trợ assistance không cần thông tin chuyến đi; số khách/xe có thể để trống. |
+| `backend/app/api/v1/endpoints/operations/taxi.py` | Đọc thông tin phòng, lưu nhu cầu vào yêu cầu taxi hiện có, gửi thông báo Concierge; bỏ dữ liệu chuyến đi tự điền. |
+
+Không cần migration. Yêu cầu taxi cũ vẫn giữ dữ liệu/ghi chú đã lưu trước đây; không tự sửa lịch sử hoặc tạo yêu cầu thật để kiểm tra.
+
+### Kiểm tra đã thực hiện
+
+- `npm run build --prefix frontend`: thành công sau chỉnh sửa cuối.
+- `git diff --check`: thành công.
+- Node inline: số người/số chỗ, người lớn/trẻ em/em bé, câu nói lẫn Việt–Anh, không lấy số phòng/hành lý/giờ thành số khách, không nhầm “một người” thành lựa chọn một.
+- Giả lập React hooks và API: hỏi nhu cầu → ghi chú → gửi, câu không liên quan không bị dùng làm điểm đến, giữ ngôn ngữ Việt/Anh, chờ/hủy, lỗi API và gửi lại. Không tạo ticket thật.
+- Python inline với repository/room/notification được mock: lưu nhu cầu, lấy liên hệ phòng, từ chối phòng chưa nhận khách, không điền dữ liệu giả. Schema backend đang chạy đã nhận cập nhật.
+- Không tạo file test. Chưa kiểm tra microphone/TTS và toàn bộ vòng tương tác trên Safari/iPhone thật.
+
+### Cách test UI trên iPhone
+
+1. Tải lại trang robot. Nói “Tôi muốn nhờ đặt xe”, xác thực phòng nếu được hỏi, rồi chọn “nhờ nhân viên đặt xe”.
+2. Nói “xe 7 chỗ”, sau đó “có 2 vali lớn, cần xe lúc 7 giờ”. Mong đợi gửi một yêu cầu; không xuất hiện danh sách điểm đến hoặc video call.
+3. Mở Concierge → Taxi Dispatch. Kiểm tra đúng phòng, xe 7 chỗ, số khách chưa xác định, ghi chú 2 vali/7 giờ và số liên hệ phòng. Nhận yêu cầu, sau đó đánh dấu thành công khi nhân viên đã gọi xe.
+4. Thử yêu cầu mới “đặt xe cho 2 người lớn và 3 trẻ em”. Robot phải nhận 5 khách, hỏi ghi chú. Nói “không có gì thêm” để gửi.
+5. Thử “đừng gửi”/“hủy” trước khi gửi: không được tạo yêu cầu. Thử “nhờ nhân viên đặt xe cho một người”: không được mở danh bạ tự gọi chỉ vì có từ “một”.
+6. Bắt đầu hội thoại tiếng Anh: “Please arrange a seven-seater taxi”, rồi “two large bags”. Lời nhắc/nhãn phải theo tiếng Anh; thử “do not send” trước khi gửi.
+7. Nếu cần dùng bàn phím, mở “Nhập thay vì nói”. Thử cả form tạo yêu cầu của Concierge với số khách/xe để trống và ghi chú tự do.
+
+Các bước gửi yêu cầu trong hướng dẫn này sẽ tạo dữ liệu thật khi bạn tự thực hiện. Hai file `knowledge_vault/hotel_facilities_floor_layout_*.md` có thay đổi ngoài phạm vi trong lúc làm việc; đã giữ nguyên, không đưa vào phần sửa taxi.
+
+---
+
+## Bản ghi trước: sửa video call chen ngang và ngôn ngữ (lịch sử)
+
+Thông tin commit, trạng thái công việc và hướng dẫn hỏi điểm đến dưới đây là bản ghi của lần sửa trước, không phải luồng hiện tại.
 
 - Ngày thực hiện: 2026-11-27 (Asia/Bangkok).
 - Người thực hiện: Codex, theo yêu cầu của chủ dự án.

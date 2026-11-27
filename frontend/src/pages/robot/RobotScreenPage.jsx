@@ -226,6 +226,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const [taxiModalInitialMode, setTaxiModalInitialMode] = useState('self_booking');
   const [taxiVoiceInput, setTaxiVoiceInput] = useState('');
+  const taxiRequestContextRef = useRef('');
+  const [taxiInitialRequest, setTaxiInitialRequest] = useState('');
   const [menuVoiceInput, setMenuVoiceInput] = useState(null);
   const [menuVoiceReply, setMenuVoiceReply] = useState('');
   const activeMenuType = isFoodMenuOpen
@@ -283,6 +285,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const [pinModalRoomNumber, setPinModalRoomNumber] = useState('');
   const [pinModalAction, setPinModalAction] = useState('room_service');
   const [pinModalItems, setPinModalItems] = useState('');
+  const [pinModalSuppressInitialSpeech, setPinModalSuppressInitialSpeech] = useState(false);
 
   // Room Picker Modal States (Tra cứu trạng thái đơn hàng & dịch vụ cảm ứng không cần mã PIN)
   const [isRoomPickerOpen, setIsRoomPickerOpen] = useState(false);
@@ -821,7 +824,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isPinModalOpenRef.current = false;
     setShowQuickMenu(false);
     setShowLangMenu(false);
-    flushSession(sessionId).catch(() => {});
+    flushSession(sessionId).catch(() => { });
     setSessionId('session_kiosk_' + Math.random().toString(36).substring(2, 9));
     setCurrentState('RT-01');
     lastInteractionTimeRef.current = Date.now();
@@ -1216,10 +1219,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, [isStandby, transcript, currentState, isIdlePromo, clearFollowUpTimer]);
 
-  // Dừng nhận diện giọng nói nền và giọng đọc AI khi đang mở Video Call hoặc Modal Quẹt Thẻ / PIN
+  // Dừng micro nền khi mở Video Call, Modal PIN hoặc Workflow; chỉ dừng giọng đọc khi vào Video Call / Workflow
+  // (không được gọi stopSpeaking khi mở PIN vì sẽ cắt mất câu "Vui lòng nhập mã PIN..." robot vừa phát)
   useEffect(() => {
-    if (isVideoCallOpen || isPinModalOpen || requestPhase) {
+    if (isVideoCallOpen || requestPhase) {
       stopSpeaking();
+      stopListening();
+    } else if (isPinModalOpen) {
       stopListening();
     }
   }, [isVideoCallOpen, isPinModalOpen, requestPhase, stopSpeaking, stopListening]);
@@ -1288,7 +1294,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Đang nói chuyện trong workflow song song: mic tắt giữa chừng thì bật lại, không tính là khách tương tác
   useEffect(() => {
     if (!parallelRun.isTalking || isListening || isSpeaking || isSpeechActive || isProcessing || isVideoCallOpen ||
-        isPinModalOpen || isFeedbackModalOpen) return undefined;
+      isPinModalOpen || isFeedbackModalOpen) return undefined;
     const timer = setTimeout(() => {
       if (!parallelFarewellRef.current && !isSpeakingRef.current && !isSpeechActiveRef.current && !isProcessingRef.current && !isListeningRef.current) {
         handleStartTalkRef.current?.({ silent: true, keepIdleTimer: true });
@@ -1578,7 +1584,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     });
   }, [speak, setTaxiFlowStage, stopListening, resetTranscript, language]);
 
-  const handleSelectTaxiConciergeBooking = useCallback(() => {
+  const handleSelectTaxiConciergeBooking = useCallback((reply = '') => {
+    setTaxiInitialRequest([taxiRequestContextRef.current, typeof reply === 'string' ? reply : ''].filter(Boolean).join('\n'));
     taxiCompletedRef.current = false;
     setTaxiFlowStage(null);
     setTaxiVoiceInput('');
@@ -1613,6 +1620,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setPinModalRoomNumber(cleanRoom);
       setPinModalAction('book_taxi');
       setPinModalItems(languageRef.current === 'English' ? 'Taxi booking request' : 'Yêu cầu đặt xe taxi');
+      setPinModalSuppressInitialSpeech(true);
       setIsPinModalOpen(true);
       isPinModalOpenRef.current = true;
       const isEn = languageRef.current === 'English';
@@ -1635,7 +1643,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [language, speak, setTaxiFlowStage]);
 
   // Kích hoạt luồng đặt xe taxi: kiểm tra session phòng, nếu chưa có thì hỏi số phòng qua giọng nói (KHÔNG hiện popup chọn phòng), nếu có rồi thì nói 2 option
-  const handleTriggerTaxiBooking = useCallback((specifiedRoom = null) => {
+  const handleTriggerTaxiBooking = useCallback((specifiedRoom = null, requestText = '') => {
+    taxiRequestContextRef.current = requestText;
     clearEmotionAssistance();
     const requested = typeof specifiedRoom === 'string' ? specifiedRoom.trim() : '';
     const cleanAuthRoom = authenticatedRoom ? String(authenticatedRoom).trim() : '';
@@ -1688,6 +1697,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     setPinModalRoomNumber(currentRoom);
     setPinModalAction('book_taxi');
     setPinModalItems(languageRef.current === 'English' ? 'Taxi booking request' : 'Yêu cầu đặt xe taxi');
+    setPinModalSuppressInitialSpeech(true);
     setIsPinModalOpen(true);
     isPinModalOpenRef.current = true;
     const isEn = languageRef.current === 'English';
@@ -1849,7 +1859,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         return;
       }
       if (isConciergeVoiceIntent(lowerQuery)) {
-        handleSelectTaxiConciergeBooking();
+        handleSelectTaxiConciergeBooking(query);
         isProcessingRef.current = false;
         setIsProcessing(false);
         return;
@@ -2195,7 +2205,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           }
           stopListening();
           resetTranscript();
-          handleTriggerTaxiBooking(roomArg);
+          handleTriggerTaxiBooking(roomArg, query);
         };
 
         // Tự động mở modal xác thực mã PIN phòng nếu yêu cầu từ AI Backend
@@ -2221,6 +2231,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             setPinModalRoomNumber(targetRoom);
             setPinModalAction(actionToExecute);
             setPinModalItems(chatRes.pending_service_items || query);
+            setPinModalSuppressInitialSpeech(true);
             isPinModalOpenRef.current = true;
             setIsPinModalOpen(true);
           }
@@ -2760,7 +2771,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   scheduleAutoFeedbackTimeout();
                 }
                 setAiResponseText('');
-                setCurrentState('RT-03');
+                if (!isPinModalOpenRef.current) {
+                  setCurrentState('RT-03');
+                }
                 if (isAutoListen || shouldAwaitFollowUp) {
                   setTimeout(() => {
                     resetTranscript();
@@ -3305,6 +3318,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   if (isRoomServiceMenuOpen) {
     return (
       <RobotRoomServiceScreen
+        language={language}
         activeRoomNumber={activeRoomNumber || ''}
         authenticatedRoom={authenticatedRoom}
         {...menuVoiceProps}
@@ -3466,6 +3480,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             setPinModalRoomNumber('');
             setPinModalAction('query_order_status');
             setPinModalItems('Kiểm tra trạng thái món ăn');
+            setPinModalSuppressInitialSpeech(false);
             isPinModalOpenRef.current = true;
             setIsPinModalOpen(true);
           }
@@ -3478,6 +3493,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             setPinModalRoomNumber('');
             setPinModalAction('query_service_status');
             setPinModalItems('Kiểm tra tiến độ dọn phòng và dịch vụ');
+            setPinModalSuppressInitialSpeech(false);
             isPinModalOpenRef.current = true;
             setIsPinModalOpen(true);
           }
@@ -3490,6 +3506,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             setPinModalRoomNumber('');
             setPinModalAction('query_maintenance_status');
             setPinModalItems('Kiểm tra tiến độ sửa chữa kỹ thuật');
+            setPinModalSuppressInitialSpeech(false);
             isPinModalOpenRef.current = true;
             setIsPinModalOpen(true);
           }
@@ -4113,8 +4130,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   <div
                     onClick={() => setNavigationStep(1)}
                     className={`p-3.5 rounded-xl border flex items-center gap-3 transition-all duration-300 shadow-sm cursor-pointer ${navigationStep === 1
-                        ? 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-300/40 text-amber-950 font-bold'
-                        : 'bg-white border-zinc-200 text-zinc-800 hover:border-zinc-300'
+                      ? 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-300/40 text-amber-950 font-bold'
+                      : 'bg-white border-zinc-200 text-zinc-800 hover:border-zinc-300'
                       }`}
                   >
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${navigationStep === 1 ? 'bg-amber-600 text-white' : 'bg-zinc-800 text-white'
@@ -4129,8 +4146,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                       <div
                         onClick={() => setNavigationStep(2)}
                         className={`p-3.5 rounded-xl border flex items-center gap-3 transition-all duration-300 shadow-sm cursor-pointer ${navigationStep === 2
-                            ? 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-300/40 text-amber-950 font-bold'
-                            : 'bg-white border-zinc-200 text-zinc-800 hover:border-zinc-300'
+                          ? 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-300/40 text-amber-950 font-bold'
+                          : 'bg-white border-zinc-200 text-zinc-800 hover:border-zinc-300'
                           }`}
                       >
                         <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${navigationStep === 2 ? 'bg-amber-600 text-white' : 'bg-zinc-800 text-white'
@@ -4572,10 +4589,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       {/* ROOM PIN VERIFICATION MODAL (KIOSK TOUCH NUMPAD) */}
       <RoomPinModal
         language={language}
+        speak={speak}
+        suppressInitialSpeech={pinModalSuppressInitialSpeech}
         isOpen={isPinModalOpen}
-        onClose={() => {
+        onClose={(reason) => {
+          if (reason === 'manual') {
+            stopSpeaking();
+          }
           isPinModalOpenRef.current = false;
           setIsPinModalOpen(false);
+          setPinModalSuppressInitialSpeech(false);
         }}
         roomNumber={pinModalRoomNumber}
         onRoomSelect={(room) => setPinModalRoomNumber(room)}
@@ -4596,11 +4619,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         isOpen={isTaxiModalOpen}
         onClose={handleCloseTaxiModal}
         initialMode={taxiModalInitialMode}
+        initialRequest={taxiInitialRequest}
         language={language}
-        activeRoomNumber={authenticatedRoom || activeRoomNumber}
+        activeRoomNumber={authenticatedRoom}
         lastVoiceTranscript={taxiVoiceInput}
         speak={speak}
         onStartTalk={handleStartTalk}
+        onStopListening={stopListening}
+        isListening={isListening}
+        isRobotSpeaking={Boolean(isSpeaking || isSpeechPending || isSpeechActive)}
+        liveTranscript={transcript}
         onSuccess={() => {
           taxiCompletedRef.current = true;
         }}

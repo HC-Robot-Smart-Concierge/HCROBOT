@@ -813,7 +813,13 @@ export const RobotBellmanMenuScreen = ({
       {isPinModalOpen && (
         <RoomPinModal
           isOpen={isPinModalOpen}
-          onClose={() => {
+          language={language}
+          speak={speak}
+          suppressInitialSpeech={Boolean(pendingLostFoundText)}
+          onClose={(reason) => {
+            if (reason === 'manual' && typeof onStopSpeaking === 'function') {
+              onStopSpeaking();
+            }
             setIsPinModalOpen(false);
             setPendingLostFoundText(null);
           }}

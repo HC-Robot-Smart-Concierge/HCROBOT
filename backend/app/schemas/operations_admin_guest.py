@@ -1,6 +1,6 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 
 # ---------------------------------------------------------
@@ -100,14 +100,25 @@ class NotificationResponse(BaseModel):
 # Taxi & Transportation Schemas
 # ---------------------------------------------------------
 class TaxiRequestCreate(BaseModel):
-    room_number: Optional[str] = Field(None, description="Số phòng của khách yêu cầu", json_schema_extra={"example": "301"})
-    guest_name: str = Field("Hotel Guest", description="Tên khách hàng yêu cầu xe", json_schema_extra={"example": "Mr. David Miller"})
-    pickup_location: str = Field("Main Lobby", description="Điểm đón khách (vd: 'Main Lobby', 'Cổng trước', 'Room 502')", json_schema_extra={"example": "Main Lobby & Front Entrance"})
-    destination: str = Field(..., description="Điểm đến (vd: 'Sân bay Quốc tế Đà Nẵng', 'Bà Nà Hills')", json_schema_extra={"example": "Sân bay Quốc tế Đà Nẵng (DAD)"})
-    pickup_time: Optional[str] = Field("Immediate", description="Thời gian đón (vd: 'Immediate', '14:30 Today')", json_schema_extra={"example": "Immediate (Càng sớm càng tốt)"})
-    party_size: int = Field(2, description="Số lượng hành khách", json_schema_extra={"example": 2})
-    vehicle_type: str = Field("4-Seater Sedan", description="Loại phương tiện mong muốn: '4-Seater Sedan', '7-Seater SUV', 'Luxury Van'", json_schema_extra={"example": "4-Seater Sedan"})
-    description: Optional[str] = Field(None, description="Ghi chú thêm về hành lý hoặc yêu cầu đặc biệt", json_schema_extra={"example": "Có 2 vali lớn, cần cốp xe rộng"})
+    booking_mode: Literal["assistance", "trip"] = "trip"
+    room_number: Optional[str] = Field(None, max_length=50)
+    guest_name: str = Field("Hotel Guest", max_length=100)
+    # Assistance requests contain only details supplied by the guest.
+    pickup_location: Optional[str] = None
+    destination: Optional[str] = None
+    pickup_time: Optional[str] = None
+    party_size: Optional[int] = Field(None, ge=1, le=100)
+    vehicle_type: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = Field(None, max_length=4000)
+
+    @model_validator(mode="after")
+    def validate_booking(self):
+        self.room_number = (self.room_number or "").strip() or None
+        if self.booking_mode == "assistance" and not self.room_number:
+            raise ValueError("A room number is required for taxi assistance")
+        if self.booking_mode == "trip" and not (self.destination or "").strip():
+            raise ValueError("A destination is required for a trip booking")
+        return self
 
 
 class TaxiRequestStatusUpdate(BaseModel):
@@ -115,23 +126,40 @@ class TaxiRequestStatusUpdate(BaseModel):
     assigned_driver: Optional[str] = Field(None, description="Tên tài xế phụ trách", json_schema_extra={"example": "Nguyễn Văn Hùng"})
     license_plate: Optional[str] = Field(None, description="Biển số xe taxi", json_schema_extra={"example": "43A-888.99"})
     note: Optional[str] = Field(None, description="Ghi chú cập nhật", json_schema_extra={"example": "Xe đã đến sảnh chính đón khách"})
+    # Thông tin xe do Concierge nhập khi đã đặt xe giúp khách.
+    taxi_company: Optional[str] = Field(None, max_length=100, description="Hãng taxi / đơn vị xe đã đặt")
+    driver_phone: Optional[str] = Field(None, max_length=30, description="Số điện thoại tài xế hoặc tổng đài")
+    pickup_time: Optional[str] = Field(None, max_length=100, description="Giờ xe đón / thời gian xe tới")
+    vehicle_type: Optional[str] = Field(None, max_length=100, description="Loại xe đã đặt")
+    arrangement_note: Optional[str] = Field(None, max_length=1000, description="Ghi chú khi đặt xe")
+    arranged_by: Optional[str] = Field(None, max_length=100, description="Nhân viên đặt xe")
 
 
 class TaxiRequestResponse(BaseModel):
-    id: str = Field(..., description="Mã ID duy nhất của yêu cầu")
-    ticket_code: str = Field(..., description="Mã vé / Mã chuyến xe (vd: 'TX-102')")
-    guest_name: str = Field(..., description="Tên khách hàng")
-    pickup_location: str = Field(..., description="Điểm đón khách")
-    room_number: Optional[str] = Field(None, description="Số phòng của khách yêu cầu")
-    destination: str = Field(..., description="Điểm đến")
-    pickup_time: str = Field(..., description="Thời gian đón")
-    party_size: int = Field(..., description="Số lượng khách")
-    vehicle_type: str = Field(..., description="Loại xe")
-    status: str = Field(..., description="Trạng thái chuyến xe")
-    assigned_driver: Optional[str] = Field(None, description="Tài xế phân công")
-    license_plate: Optional[str] = Field(None, description="Biển số xe")
-    notes: Optional[str] = Field(None, description="Ghi chú chuyến đi")
-    created_at: datetime = Field(..., description="Thời gian tạo yêu cầu")
+    id: str
+    ticket_code: str
+    booking_mode: Literal["assistance", "trip"] = "trip"
+    guest_name: str
+    guest_phone: Optional[str] = None
+    room_phone: Optional[str] = None
+    room_number: Optional[str] = None
+    pickup_location: Optional[str] = None
+    destination: Optional[str] = None
+    pickup_time: Optional[str] = None
+    party_size: Optional[int] = None
+    vehicle_type: Optional[str] = None
+    status: str
+    assigned_driver: Optional[str] = None
+    license_plate: Optional[str] = None
+    notes: Optional[str] = None
+    taxi_company: Optional[str] = None
+    driver_phone: Optional[str] = None
+    arranged_pickup_time: Optional[str] = None
+    arranged_vehicle_type: Optional[str] = None
+    arrangement_note: Optional[str] = None
+    arranged_by: Optional[str] = None
+    arranged_at: Optional[str] = None
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 

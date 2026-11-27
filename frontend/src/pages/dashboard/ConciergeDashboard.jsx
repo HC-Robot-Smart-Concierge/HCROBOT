@@ -36,7 +36,10 @@ import {
 } from '../../services/conciergeApi';
 import { fetchFeedbacks, fetchSessionMessages } from '../../services/aiApi';
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
+import { useLanguage } from '../../context/LanguageContext';
+import { taxiVehicleLabel } from '../../utils/taxiAssistance';
 import { ConciergeTaxiBookingModal } from '../../components/dashboard/concierge/ConciergeTaxiBookingModal';
+import { ConciergeTaxiArrangeModal } from '../../components/dashboard/concierge/ConciergeTaxiArrangeModal';
 import { ConciergeTestCallModal } from '../../components/dashboard/concierge/ConciergeTestCallModal';
 import { handleNumericKeyDown, handleNumberInputBlockExponent, sanitizeDigitsOnly } from '../../utils/numberInputHelper';
 import { Pagination } from '../../components/common/Pagination';
@@ -46,6 +49,7 @@ import {
   fetchTaxiRequests,
   createTaxiRequest,
   updateTaxiRequestStatus,
+  arrangeTaxiRequest,
 } from '../../services/taxiApi';
 
 export const ConciergeDashboard = ({
@@ -53,6 +57,9 @@ export const ConciergeDashboard = ({
   onNotify = () => {},
   activeSubTab: propActiveSubTab,
 }) => {
+  const { language } = useLanguage();
+  const taxiIsEn = language === 'EN';
+  const taxiText = (vi, en) => taxiIsEn ? en : vi;
   const [internalSubTab, setInternalSubTab] = useState('live_call');
   const activeSubTab = propActiveSubTab || internalSubTab;
   const isManagedFromSidebar = Boolean(propActiveSubTab);
@@ -88,16 +95,11 @@ export const ConciergeDashboard = ({
   });
   const [taxiRequests, setTaxiRequests] = useState([]);
   const [isTaxiModalOpen, setIsTaxiModalOpen] = useState(false);
-  const [taxiForm, setTaxiForm] = useState({
-    guest_name: '',
-    room_number: '',
-    pickup_location: 'Main Lobby & Front Entrance',
-    destination: 'Da Nang International Airport (DAD)',
-    pickup_time: 'Ngay bây giờ (Immediate)',
-    party_size: 2,
-    vehicle_type: '4-Seater Sedan',
-    notes: '',
-  });
+  const emptyTaxiForm = { room_number: '', party_size: '', vehicle_type: '', description: '' };
+  const [taxiForm, setTaxiForm] = useState(emptyTaxiForm);
+  const [isTaxiSubmitting, setIsTaxiSubmitting] = useState(false);
+  const [arrangeTrip, setArrangeTrip] = useState(null);
+  const [isArrangeSubmitting, setIsArrangeSubmitting] = useState(false);
 
   // Emotion Alerts (Xử lý khách có biểu cảm khó chịu) states
   const [emotionAlerts, setEmotionAlerts] = useState([]);
@@ -338,25 +340,28 @@ export const ConciergeDashboard = ({
   // --- TAXI HANDLERS ---
   const handleCreateTaxi = async (e) => {
     e.preventDefault();
-    if (!taxiForm.guest_name.trim()) {
-      onNotify('Vui lòng nhập tên khách hàng');
+    if (isTaxiSubmitting) return;
+    if (!taxiForm.room_number.trim()) {
+      onNotify(taxiText('Vui lòng nhập số phòng', 'Please enter the room number'));
       return;
     }
-    const result = await createTaxiRequest(taxiForm);
-    if (result) {
-      onNotify(`Tạo yêu cầu gọi xe thành công: ${result.ticket_code || result.id}`);
-      setIsTaxiModalOpen(false);
-      setTaxiForm({
-        guest_name: '',
-        room_number: '',
-        pickup_location: 'Main Lobby & Front Entrance',
-        destination: 'Da Nang International Airport (DAD)',
-        pickup_time: 'Ngay bây giờ (Immediate)',
-        party_size: 2,
-        vehicle_type: '4-Seater Sedan',
-        notes: '',
+    setIsTaxiSubmitting(true);
+    try {
+      const result = await createTaxiRequest({
+        booking_mode: 'assistance',
+        room_number: taxiForm.room_number.trim(),
+        party_size: taxiForm.party_size ? Number(taxiForm.party_size) : null,
+        vehicle_type: taxiForm.vehicle_type || null,
+        description: taxiForm.description.trim() || null,
       });
+      onNotify(taxiText('Đã tạo yêu cầu nhờ đặt xe: ', 'Taxi assistance request created: ') + (result.ticket_code || result.id));
+      setIsTaxiModalOpen(false);
+      setTaxiForm(emptyTaxiForm);
       loadData();
+    } catch {
+      onNotify(taxiText('Chưa tạo được yêu cầu. Vui lòng kiểm tra phòng đã nhận khách và thử lại.', 'Could not create the request. Check that the room is occupied and try again.'));
+    } finally {
+      setIsTaxiSubmitting(false);
     }
   };
 
@@ -365,14 +370,35 @@ export const ConciergeDashboard = ({
     if (res) {
       const statusMsg =
         newStatus === 'Calling'
-          ? 'Concierge đã nhận yêu cầu và đang gọi xe taxi cho khách'
+          ? taxiText('Đã nhận yêu cầu và đang gọi xe taxi cho khách', 'Request accepted. Staff are arranging the taxi.')
           : newStatus === 'Completed'
-          ? 'Đã hoàn tất cuộc gọi xe taxi thành công'
-          : `Cập nhật trạng thái yêu cầu taxi: ${newStatus}`;
+          ? taxiText('Đã gọi xe taxi thành công', 'Taxi arranged successfully.')
+          : taxiText(`Cập nhật trạng thái yêu cầu taxi: ${newStatus}`, `Taxi request status updated: ${newStatus}`);
       onNotify(statusMsg);
       setTaxiRequests((prev) =>
         prev.map((r) => (r.id === reqId ? { ...r, status: newStatus } : r))
       );
+    }
+  };
+
+  // Concierge nhập thông tin xe đã đặt giúp khách -> lưu và chuyển yêu cầu sang Thành công
+  const handleArrangeTaxi = async (details) => {
+    if (!arrangeTrip || isArrangeSubmitting) return false;
+    setIsArrangeSubmitting(true);
+    try {
+      const updated = await arrangeTaxiRequest(arrangeTrip.id, {
+        ...details,
+        arranged_by: currentUser?.full_name || currentUser?.name || null,
+      });
+      setTaxiRequests((prev) => prev.map((r) => (r.id === arrangeTrip.id ? { ...r, ...updated } : r)));
+      onNotify(taxiText('Đã lưu thông tin xe và hoàn tất yêu cầu ', 'Taxi details saved and request completed ') + (arrangeTrip.ticket_code || arrangeTrip.id));
+      setArrangeTrip(null);
+      return true;
+    } catch (err) {
+      console.warn('[ConciergeDashboard] arrange taxi failed:', err);
+      return false;
+    } finally {
+      setIsArrangeSubmitting(false);
     }
   };
 
@@ -458,7 +484,7 @@ export const ConciergeDashboard = ({
                 : activeSubTab === 'recordings'
                 ? 'Lịch Sử Cuộc Gọi & Bản Ghi Video'
                 : activeSubTab === 'taxi'
-                ? 'Tiếp Nhận & Gọi Xe Taxi Cho Khách'
+                ? taxiText('Tiếp nhận yêu cầu nhờ đặt xe', 'Taxi Assistance Requests')
                 : activeSubTab === 'feedback'
                 ? 'Đánh Giá Dịch Vụ'
                 : 'Tổng Đài Can Thiệp Trực Tuyến Live Call'}
@@ -469,7 +495,7 @@ export const ConciergeDashboard = ({
                 : activeSubTab === 'recordings'
                 ? 'Danh sách video ghi hình tự động các phiên hỗ trợ trực tiếp giữa Robot Kiosk và Nhân viên'
                 : activeSubTab === 'taxi'
-                ? 'Tiếp nhận yêu cầu xe, điều phối tài xế và theo dõi lộ trình di chuyển của khách'
+                ? taxiText('Nhận nhu cầu của khách và hỗ trợ đặt xe theo thông tin phòng.', 'Receive guest requirements and arrange taxis using room contact details.')
                 : activeSubTab === 'feedback'
                 ? 'Theo dõi mức độ hài lòng của khách hàng và hỗ trợ dịch vụ kịp thời'
                 : 'Tiếp nhận cuộc gọi video hỗ trợ tức thì từ màn hình Robot Kiosk của khách hàng'}
@@ -484,7 +510,7 @@ export const ConciergeDashboard = ({
               className="inline-flex items-center gap-1.5 rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#403D39] hover:bg-[#F0EFEC] cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>Làm mới</span>
+              <span>{taxiText('Làm mới', 'Refresh')}</span>
             </button>
             {activeSubTab === 'live_call' && (
               <button
@@ -513,7 +539,7 @@ export const ConciergeDashboard = ({
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#262626] hover:bg-[#404040] px-3 py-1.5 text-[11px] font-bold text-white cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Đặt xe mới</span>
+                <span>{taxiText('Tạo yêu cầu', 'New request')}</span>
               </button>
             )}
           </div>
@@ -1140,13 +1166,13 @@ export const ConciergeDashboard = ({
             {/* Metric KPI Cards */}
             <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <article className="bg-white rounded-xl border border-[#E8E5E0] px-5 py-4">
-                <p className="text-[11px] font-semibold uppercase text-[#8C8C8C]">Tổng yêu cầu</p>
+                <p className="text-[11px] font-semibold uppercase text-[#8C8C8C]">{taxiText('Tổng yêu cầu', 'Total requests')}</p>
                 <p className="text-[22px] font-bold text-[#262626] mt-2">
                   {taxiRequests.length || taxiKpis.totalRequests}
                 </p>
               </article>
               <article className="bg-white rounded-xl border border-[#E8E5E0] px-5 py-4">
-                <p className="text-[11px] font-semibold uppercase text-amber-700">Chờ tiếp nhận</p>
+                <p className="text-[11px] font-semibold uppercase text-amber-700">{taxiText('Chờ tiếp nhận', 'Pending')}</p>
                 <p className="text-[22px] font-bold text-[#262626] mt-2">
                   {taxiRequests.filter((r) => {
                     const st = (r.status || '').toLowerCase();
@@ -1155,7 +1181,7 @@ export const ConciergeDashboard = ({
                 </p>
               </article>
               <article className="bg-white rounded-xl border border-[#E8E5E0] px-5 py-4">
-                <p className="text-[11px] font-semibold uppercase text-sky-700">Đang gọi xe</p>
+                <p className="text-[11px] font-semibold uppercase text-sky-700">{taxiText('Đang gọi xe', 'Arranging taxi')}</p>
                 <p className="text-[22px] font-bold text-sky-600 mt-2">
                   {taxiRequests.filter((r) => {
                     const st = (r.status || '').toLowerCase();
@@ -1170,7 +1196,7 @@ export const ConciergeDashboard = ({
                 </p>
               </article>
               <article className="bg-white rounded-xl border border-[#E8E5E0] px-5 py-4">
-                <p className="text-[11px] font-semibold uppercase text-emerald-700">Gọi thành công</p>
+                <p className="text-[11px] font-semibold uppercase text-emerald-700">{taxiText('Gọi thành công', 'Arranged')}</p>
                 <p className="text-[22px] font-bold text-emerald-600 mt-2">
                   {taxiRequests.filter((r) => {
                     const st = (r.status || '').toLowerCase();
@@ -1183,13 +1209,13 @@ export const ConciergeDashboard = ({
             {/* Taxi Request List */}
             <div className="bg-white rounded-xl border border-[#BFBFBD] overflow-hidden">
               <div className="px-5 py-4 border-b border-[#E9E5DC] flex items-center justify-between gap-3">
-                <span className="text-[13px] font-semibold text-[#403D39]">Danh Sách Yêu Cầu Gọi Xe Taxi</span>
-                <span className="text-[11px] text-[#77736E]">Hiển thị {taxiRequests.length} yêu cầu</span>
+                <span className="text-[13px] font-semibold text-[#403D39]">{taxiText('Danh Sách Yêu Cầu Gọi Xe Taxi', 'Taxi assistance requests')}</span>
+                <span className="text-[11px] text-[#77736E]">{taxiText('Hiển thị', 'Showing')} {taxiRequests.length} {taxiText('yêu cầu', 'requests')}</span>
               </div>
 
               {taxiRequests.length === 0 ? (
                 <div className="p-10 text-center text-[12px] text-[#777]">
-                  Hiện chưa có yêu cầu gọi taxi nào trong hệ thống.
+                  {taxiText('Hiện chưa có yêu cầu gọi taxi nào trong hệ thống.', 'No taxi assistance requests yet.')}
                 </div>
               ) : (
                 <div className="divide-y divide-[#EFECE6]">
@@ -1227,32 +1253,30 @@ export const ConciergeDashboard = ({
                             </span>
                             <span className="text-[13px] font-bold text-[#262626]">{trip.guest_name}</span>
                             {trip.room_number && (
-                              <span className="text-[11px] text-[#777]">(Phòng {trip.room_number})</span>
+                              <span className="text-[11px] text-[#777]">({taxiText('Phòng', 'Room')} {trip.room_number})</span>
                             )}
                           </div>
 
                           <div className="flex flex-wrap items-center gap-4 text-[12px] text-[#666] mt-2">
-                            <span className="flex items-center gap-1 text-[#262626]">
-                              <MapPin className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                              Đón: <strong className="font-semibold">{trip.pickup_location}</strong>
+                            <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />
+                              {trip.party_size ? `${trip.party_size} ${taxiText('khách', 'passengers')}` : taxiText('Số khách chưa xác định', 'Passenger count not specified')}
                             </span>
-                            <span className="flex items-center gap-1 text-[#262626]">
-                              <Navigation className="w-3.5 h-3.5 text-sky-600 shrink-0" />
-                              Đến: <strong className="font-semibold">{trip.destination}</strong>
-                            </span>
-                            <span className="flex items-center gap-1 text-[#777]">
-                              <Clock className="w-3.5 h-3.5 shrink-0" />
-                              {trip.pickup_time || 'Ngay bây giờ'}
-                            </span>
-                            <span className="flex items-center gap-1 text-[#777]">
-                              <Car className="w-3.5 h-3.5 shrink-0" />
-                              {trip.vehicle_type || '4 chỗ'} ({trip.party_size || 2} khách)
-                            </span>
+                            <span className="flex items-center gap-1"><Car className="w-3.5 h-3.5" />{taxiVehicleLabel(trip.vehicle_type, taxiIsEn)}</span>
+                            {trip.guest_phone && <a href={`tel:${trip.guest_phone}`} className="flex items-center gap-1 text-emerald-700"><PhoneCall className="w-3.5 h-3.5" />{taxiText('Điện thoại khách:', 'Guest phone:')} {trip.guest_phone}</a>}
+                            {trip.room_phone && <span className="flex items-center gap-1"><PhoneCall className="w-3.5 h-3.5" />{taxiText('Máy nhánh:', 'Room extension:')} {trip.room_phone}</span>}
                           </div>
-
-                          {trip.notes && (
-                            <div className="mt-2 text-[11px] text-[#666] italic">
-                              Ghi chú: {trip.notes}
+                          <div className="mt-2 text-[12px] text-[#555] whitespace-pre-line break-words">
+                            <strong>{taxiText('Nhu cầu / ghi chú: ', 'Guest requirements / notes: ')}</strong>
+                            {trip.notes || taxiText('Không có ghi chú thêm.', 'No additional notes.')}
+                          </div>
+                          {(trip.taxi_company || trip.arranged_vehicle_type || trip.arrangement_note) && (
+                            <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-[12px] text-emerald-900 space-y-1">
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                                {trip.taxi_company && <span className="flex items-center gap-1 font-semibold"><Car className="w-3.5 h-3.5" />{trip.taxi_company}</span>}
+                                {trip.arranged_vehicle_type && <span>• {taxiVehicleLabel(trip.arranged_vehicle_type, taxiIsEn)}</span>}
+                              </div>
+                              {trip.arrangement_note && <p className="whitespace-pre-line break-words">{trip.arrangement_note}</p>}
+                              {trip.arranged_by && <p className="text-[11px] text-emerald-700">{taxiText('Nhân viên đặt:', 'Booked by:')} {trip.arranged_by}</p>}
                             </div>
                           )}
                         </div>
@@ -1273,14 +1297,14 @@ export const ConciergeDashboard = ({
                             }`}
                           >
                             {isCompleted
-                              ? (stLower === 'closed' ? 'Đã đóng' : 'Thành công')
+                              ? (stLower === 'closed' ? taxiText('Đã đóng', 'Closed') : taxiText('Thành công', 'Arranged'))
                               : isCalling
-                              ? 'Đang gọi'
+                              ? taxiText('Đang gọi', 'Arranging')
                               : isCancelled
-                              ? 'Đã hủy'
+                              ? taxiText('Đã hủy', 'Cancelled')
                               : stLower === 'missed'
-                              ? 'Chờ tiếp nhận'
-                              : 'Chờ tiếp nhận'}
+                              ? taxiText('Chờ tiếp nhận', 'Pending')
+                              : taxiText('Chờ tiếp nhận', 'Pending')}
                           </span>
 
                           {/* Action Button 1: Khi còn Pending hoặc Missed -> Concierge nhận yêu cầu và chuyển sang Đang gọi */}
@@ -1289,31 +1313,41 @@ export const ConciergeDashboard = ({
                               type="button"
                               onClick={() => handleUpdateTaxiStatus(trip.id, 'Calling')}
                               className="px-3.5 py-2 text-[11px] font-bold rounded-lg bg-sky-600 hover:bg-sky-700 text-white transition-all flex items-center gap-1.5 cursor-pointer"
-                              title="Concierge tiếp nhận và gọi xe cho khách"
+                              title={taxiText('Concierge tiếp nhận và gọi xe cho khách', 'Accept the request and arrange a taxi')}
                             >
                               <PhoneCall className="w-3.5 h-3.5" />
-                              Nhận yêu cầu
+                              {taxiText('Nhận yêu cầu', 'Accept request')}
                             </button>
                           )}
 
-                          {/* Action Button 2: Khi đang Gọi -> Concierge gọi xong bấm Thành công */}
+                          {/* Action Button 2: Khi đang Gọi -> mở bảng nhập thông tin xe đã đặt, lưu xong mới Thành công */}
                           {isCalling && (
                             <button
                               type="button"
-                              onClick={() => handleUpdateTaxiStatus(trip.id, 'Completed')}
+                              onClick={() => setArrangeTrip(trip)}
                               className="px-3.5 py-2 text-[11px] font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-1.5 cursor-pointer"
-                              title="Xác nhận đã gọi taxi thành công cho khách"
+                              title={taxiText('Nhập thông tin xe đã đặt cho khách', 'Enter the booked taxi details')}
                             >
-                              <Check className="w-3.5 h-3.5" />
-                              Thành công
+                              <Car className="w-3.5 h-3.5" />
+                              {taxiText('Nhập thông tin xe', 'Arrange taxi')}
                             </button>
                           )}
 
                           {isCompleted && (
                             <span className="text-[11px] font-semibold text-emerald-700 flex items-center gap-1">
                               <Check className="w-3.5 h-3.5" />
-                              Đã gọi xong
+                              {taxiText('Đã gọi xong', 'Taxi arranged')}
                             </span>
+                          )}
+                          {isCompleted && stLower !== 'closed' && (
+                            <button
+                              type="button"
+                              onClick={() => setArrangeTrip(trip)}
+                              className="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-[#E2DFD9] text-[#403D39] hover:bg-[#F4F3F0] cursor-pointer"
+                              title={taxiText('Xem / sửa thông tin xe đã đặt', 'View or edit the booked taxi details')}
+                            >
+                              {trip.taxi_company ? taxiText('Sửa thông tin xe', 'Edit details') : taxiText('Nhập thông tin xe', 'Add details')}
+                            </button>
                           )}
                         </div>
                       </div>
@@ -1329,7 +1363,7 @@ export const ConciergeDashboard = ({
                   totalItems={taxiRequests.length}
                   pageSize={pageSize}
                   onPageChange={setTaxiPage}
-                  itemName="yêu cầu"
+                  itemName={taxiText('yêu cầu', 'requests')}
                 />
               )}
             </div>
@@ -1604,6 +1638,16 @@ export const ConciergeDashboard = ({
         onSubmit={handleCreateTaxi}
         taxiForm={taxiForm}
         setTaxiForm={setTaxiForm}
+        isEn={taxiIsEn}
+        isSubmitting={isTaxiSubmitting}
+      />
+
+      <ConciergeTaxiArrangeModal
+        trip={arrangeTrip}
+        onClose={() => { if (!isArrangeSubmitting) setArrangeTrip(null); }}
+        onSubmit={handleArrangeTaxi}
+        isSubmitting={isArrangeSubmitting}
+        isEn={taxiIsEn}
       />
 
       {/* MODAL XEM LẠI VIDEO GHI HÌNH TỪ CLOUDINARY */}

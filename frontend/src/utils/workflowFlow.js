@@ -12,6 +12,15 @@
 
 export const FLOW_END = 'END';
 export const DEFAULT_CHOICE_TIMEOUT_SEC = 30;
+const GUEST_AD_MODES = new Set(['ACTIVE_ADS', 'PROMO_VIDEO', 'PROMO_IMAGE']);
+
+export const isGuestAdMode = (mode) => GUEST_AD_MODES.has(mode);
+
+export function isGuestWaitingAd(step) {
+  const params = step?.params;
+  return step?.type === 'SHOW' && params?.wait_for_guest === true &&
+    isGuestAdMode(params.screen_mode || params.content_id);
+}
 
 export const OUTCOME = {
   DONE: 'DONE',
@@ -77,6 +86,13 @@ export function resolveNextStepIndex(steps, currentIndex, outcome) {
   if (type === OUTCOME.CANCEL) return followLink(list, cancelTarget, sequential);
   // Timeout, an operator skip or an unknown option: the guest made no decision.
   return followLink(list, params.timeout_next_step_id ?? cancelTarget, sequential);
+}
+
+export function isAdGuestTalkStep(workflow, step) {
+  if (step?.type !== 'COMMUNICATE') return false;
+  const steps = workflow?.steps || [];
+  return steps.some((ad, index) => isGuestWaitingAd(ad) &&
+    steps[resolveNextStepIndex(steps, index)]?.step_id === step.step_id);
 }
 
 /** The option a guest named, or null when nothing or more than one option matched. */

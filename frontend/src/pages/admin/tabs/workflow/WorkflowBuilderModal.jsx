@@ -3,7 +3,7 @@ import { BatteryLow, CalendarClock, Layers, Settings2, Trash2, Workflow, X } fro
 import { OTTO_STEP_TYPES } from './workflowConstants';
 import { WorkflowStepBlock } from './WorkflowStepBlock';
 import { WorkflowExecutionSettings } from './WorkflowExecutionSettings';
-import { WorkflowMetaPanel } from './WorkflowMetaPanel';
+import { WorkflowMetaPanel, WorkflowTriggerSelect } from './WorkflowMetaPanel';
 import { WorkflowCanvas } from './canvas/WorkflowCanvas';
 import { ParallelLanePanel } from './ParallelLanePanel';
 import { AdminPhysicalMapTab } from '../AdminPhysicalMapTab';
@@ -134,6 +134,7 @@ export const WorkflowBuilderModal = ({
                   allSteps={steps}
                   waypoints={waypoints}
                   routes={routes}
+                  allowGuestWait={workflow.execution_config?.execution_mode !== 'ROBOT'}
                   onConfigureRoute={() => setRouteStepId(active.step_id)}
                   onParamChange={onStepParamChange}
                   onMoveUp={noop}
@@ -149,7 +150,7 @@ export const WorkflowBuilderModal = ({
           {panel !== 'steps' && <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4">
             {panel === 'workflow' && <WorkflowMetaPanel workflow={workflow} onWorkflowMetaChange={onWorkflowMetaChange} />}
             {panel === 'schedule' && <>
-              <label className="block text-xs font-bold text-stone-700 space-y-2"><span>Cách kích hoạt</span><select value={workflow.trigger_type || 'MANUAL'} onChange={(e) => onWorkflowMetaChange('trigger_type', e.target.value)} className="w-full px-3 py-2 rounded-lg border border-stone-300 bg-white"><option value="MANUAL">Thủ công</option><option value="SCHEDULE">Theo lịch</option>{!['MANUAL', 'SCHEDULE'].includes(workflow.trigger_type) && <option value={workflow.trigger_type}>Giữ: {workflow.trigger_type}</option>}</select></label>
+              <WorkflowTriggerSelect workflow={workflow} onWorkflowMetaChange={onWorkflowMetaChange} />
               <WorkflowExecutionSettings workflow={workflow} onChange={onWorkflowMetaChange} />
             </>}
           </div>}

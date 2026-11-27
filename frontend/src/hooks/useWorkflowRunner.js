@@ -26,6 +26,7 @@ export function useWorkflowRunner({
   roomNumber = null,
   // Bước COMMUNICATE do luồng hội thoại AI của màn hình xử lý; bộ chạy chỉ đợi nextStep()
   isExternalTalkStep = () => false,
+  isWaitingForGuest = () => false,
 }) {
   const [activeWorkflow, setActiveWorkflow] = useState(null);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
@@ -231,6 +232,7 @@ export function useWorkflowRunner({
 
     if (guestRequestPhase(activeWorkflow.id, activeStep)) return;
     if (isExternalTalkStep(activeWorkflow, activeStep)) return;
+    if (isWaitingForGuest(activeWorkflow, activeStep)) return;
 
     let durationMs = 5000;
     const isCommunicate = activeStep.type === 'COMMUNICATE';

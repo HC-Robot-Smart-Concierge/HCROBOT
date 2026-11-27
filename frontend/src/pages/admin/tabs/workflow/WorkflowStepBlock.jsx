@@ -3,7 +3,7 @@ import { ChevronUp, ChevronDown, Trash2, Megaphone, Film, Image as ImageIcon, Qr
 import { STEP_SCRATCH_THEMES, WAYFINDING_DESTINATIONS } from './workflowConstants';
 import { STANDARD_LOBBY_WAYPOINTS } from './workflowSimulatorUtils';
 import { fetchActiveAdvertisements } from '../../../../services/advertisementApi';
-import { FLOW_END, getChoiceOptions } from '../../../../utils/workflowFlow';
+import { FLOW_END, getChoiceOptions, isGuestAdMode } from '../../../../utils/workflowFlow';
 
 const FLOW_SELECT_CLASS =
   'bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-bold border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white cursor-pointer shadow-2xs max-w-[260px]';
@@ -34,6 +34,7 @@ export const WorkflowStepBlock = ({
   allSteps = [],
   waypoints = [],
   routes = [],
+  allowGuestWait = false,
   onConfigureRoute,
   onParamChange,
   onMoveUp,
@@ -425,6 +426,14 @@ export const WorkflowStepBlock = ({
                 <option value="UI_WAITING_STAFF">Kết nối Lễ tân khẩn cấp</option>
                 <option value="FEEDBACK">Đánh giá mức độ hài lòng</option>
               </select>
+
+              {allowGuestWait && isGuestAdMode(params.screen_mode || params.content_id) && (
+                <label className="basis-full flex items-center gap-2 text-xs font-semibold text-stone-700">
+                  <input type="checkbox" checked={params.wait_for_guest === true}
+                    onChange={(e) => handleFieldChange('wait_for_guest', e.target.checked)} />
+                  Phát quảng cáo đến khi có khách
+                </label>
+              )}
 
               {(params.screen_mode === 'MAP_WAYFINDING' || params.content_id === 'MAP_WAYFINDING') && (
                 <>

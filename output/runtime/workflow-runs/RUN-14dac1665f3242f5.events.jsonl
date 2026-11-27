@@ -1,0 +1,11 @@
+{"type": "STARTED", "message": null, "step_index": 0, "round_index": 0, "at": 1795769101.6427436}
+{"type": "STEP_STARTED", "message": "Tuyến di chuyển mới · vòng 1 · Điểm trung gian", "step_index": 0, "round_index": 0, "at": 1795769101.6474555}
+{"type": "STEP_COMPLETED", "message": null, "step_index": 0, "round_index": 0, "at": 1795769103.7778935}
+{"type": "STEP_STARTED", "message": "Tuyến di chuyển mới · vòng 1 · Điểm trung gian", "step_index": 1, "round_index": 0, "at": 1795769103.780324}
+{"type": "STEP_COMPLETED", "message": null, "step_index": 1, "round_index": 0, "at": 1795769103.7817907}
+{"type": "STEP_STARTED", "message": "Tuyến di chuyển mới · vòng 1 · Điểm trung gian", "step_index": 2, "round_index": 0, "at": 1795769103.7840767}
+{"type": "STEP_COMPLETED", "message": null, "step_index": 2, "round_index": 0, "at": 1795769103.787914}
+{"type": "STEP_STARTED", "message": "Tuyến di chuyển mới · vòng 1 · Điểm trung gian", "step_index": 3, "round_index": 0, "at": 1795769103.7896807}
+{"type": "STEP_COMPLETED", "message": null, "step_index": 3, "round_index": 0, "at": 1795769103.7910554}
+{"type": "STEP_STARTED", "message": "Tuyến di chuyển mới · vòng 1 · Điểm trung gian", "step_index": 4, "round_index": 0, "at": 1795769103.7924898}
+{"type": "FAILED", "message": "Nav2 không hoàn thành tuyến (status=5).", "step_index": 4, "round_index": 0, "at": 1795769155.6255987}

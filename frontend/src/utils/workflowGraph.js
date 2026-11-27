@@ -8,7 +8,7 @@
  * Source handles: 'ok' (next step), 'err' (on_error ERROR_BRANCH), 'opt:<optionId>',
  * 'timeout', 'cancel' (CHOICE). Fixed nodes: START, END and BATTERY (low-battery event).
  */
-import { FLOW_END, OUTCOME, getChoiceOptions, resolveNextStepIndex } from './workflowFlow';
+import { FLOW_END, OUTCOME, getChoiceOptions, isGuestWaitingAd, resolveNextStepIndex } from './workflowFlow';
 import { laneMap, parallelOf } from './workflowLanes';
 
 export const START = '__start';
@@ -79,7 +79,7 @@ function stepOutputs(step) {
       { handle: 'cancel', link: step.params.cancel_next_step_id, label: 'Hủy' },
     ];
   }
-  const outputs = [{ handle: 'ok', link: step.params.next_step_id }];
+  const outputs = [{ handle: 'ok', link: step.params.next_step_id, label: isGuestWaitingAd(step) ? 'Có khách' : undefined }];
   const onError = step.params.on_error;
   if (onError?.action === 'ERROR_BRANCH') outputs.push({ handle: 'err', link: onError.next_step_id, error: true });
   return outputs;

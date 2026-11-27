@@ -1,6 +1,21 @@
 import React from 'react';
 
-/** Name, description, on/off switch and trigger of a workflow (unchanged from the list editor). */
+export function WorkflowTriggerSelect({ workflow, onWorkflowMetaChange }) {
+  const savedType = workflow.trigger_type;
+  const value = !savedType || savedType === 'AUTO_DETECT' ? 'MANUAL' : savedType;
+  return (
+    <label className="block text-xs font-bold text-stone-700 space-y-1">
+      <span>Kích hoạt bởi</span>
+      <select value={value} onChange={(e) => onWorkflowMetaChange('trigger_type', e.target.value)}
+        className="w-full px-3 py-2 rounded-lg border border-stone-300 bg-white">
+        <option value="MANUAL">Thủ công</option>
+        <option value="SCHEDULE">Theo lịch</option>
+        {!['MANUAL', 'SCHEDULE'].includes(value) && <option value={value}>Giữ thiết lập cũ ({value})</option>}
+      </select>
+    </label>
+  );
+}
+
 export function WorkflowMetaPanel({ workflow, onWorkflowMetaChange }) {
   return (
     <div className="p-4 rounded-xl bg-white border border-stone-300 shadow-2xs space-y-3">
@@ -45,25 +60,7 @@ export function WorkflowMetaPanel({ workflow, onWorkflowMetaChange }) {
         />
       </div>
 
-      {/* Dòng 3: Kích Hoạt Bởi */}
-      <div>
-        <label className="block text-[11px] font-bold text-stone-700 mb-1">
-          Kích Hoạt Bởi:
-        </label>
-        <select
-          value={workflow.trigger_type || 'AUTO_DETECT'}
-          onChange={(e) => onWorkflowMetaChange('trigger_type', e.target.value)}
-          className="w-full px-3 py-2 rounded-lg border border-stone-300 text-xs font-bold bg-white focus:outline-none focus:border-stone-800 cursor-pointer"
-        >
-          <option value="MANUAL">Thủ công</option>
-          <option value="AUTO_DETECT">AI Phát Hiện Người (Auto)</option>
-          <option value="MANUAL_DISPATCH">Lễ Tân Kích Hoạt (Manual)</option>
-          <option value="KIOSK_TOUCH">Khách Chạm Màn Hình Kiosk</option>
-          <option value="GUEST_TAP">Khách Chạm Màn Hình (Tap)</option>
-          <option value="SCHEDULE">Theo Lịch Trình (Schedule)</option>
-          <option value="PATROL_LOOP">Tuần Tra Lặp Lại & Phát Loa Quảng Bá (Patrol Loop)</option>
-        </select>
-      </div>
+      <WorkflowTriggerSelect workflow={workflow} onWorkflowMetaChange={onWorkflowMetaChange} />
     </div>
   );
 }

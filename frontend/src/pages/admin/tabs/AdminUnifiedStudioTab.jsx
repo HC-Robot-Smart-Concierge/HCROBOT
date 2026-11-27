@@ -724,7 +724,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
       id: `wf-${Date.now().toString(36)}`,
       name: `Kịch bản mới ${workflows.length + 1}`,
       description: 'Mô tả chu trình hoạt động của robot...',
-      trigger_type: 'AUTO_DETECT',
+      trigger_type: 'MANUAL',
       is_active: true,
       steps: [],
     };

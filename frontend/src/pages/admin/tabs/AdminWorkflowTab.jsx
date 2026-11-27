@@ -58,8 +58,6 @@ export const AdminWorkflowTab = () => {
 
   const getTriggerLabel = (type) => {
     switch (type) {
-      case 'AUTO_DETECT':
-        return 'Tự Động Nhận Diện';
       case 'GUEST_TAP':
         return 'Chạm Màn Hình';
       case 'KIOSK_TOUCH':

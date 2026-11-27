@@ -3,7 +3,8 @@ import { Volume2, VolumeX } from 'lucide-react';
 
 export const RobotAdPlayer = ({
   isOpen = false,
-  onClose = () => {},
+  onClose,
+  onStop,
   ads = [],
   pushedAd = null,
   onUserInteract = () => {},
@@ -88,13 +89,17 @@ export const RobotAdPlayer = ({
 
   return (
     <div
-      onClick={() => {
+      onClick={onClose ? () => {
         onUserInteract();
         onClose();
-      }}
-      className="fixed inset-0 z-50 bg-[#0F0E0E] flex items-center justify-center cursor-pointer select-none animate-in fade-in duration-300"
-      title="Chạm vào màn hình để bắt đầu tương tác"
+      } : undefined}
+      className={`fixed inset-0 z-50 bg-[#0F0E0E] flex items-center justify-center select-none animate-in fade-in duration-300 ${onClose ? 'cursor-pointer' : ''}`}
+      title={onClose ? 'Chạm vào màn hình để bắt đầu tương tác' : undefined}
     >
+      {onStop && <button type="button" onClick={onStop}
+        className="absolute top-4 left-4 z-30 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-xs text-white">
+        Dừng workflow
+      </button>}
       {/* Khung nội dung quảng cáo toàn màn hình tối giản */}
       <div className="relative w-full h-full max-h-screen flex items-center justify-center p-0">
         {playlist.length === 0 ? (

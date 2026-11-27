@@ -70,7 +70,7 @@ HOTEL_FACILITIES_CATALOG: Dict[str, Dict[str, str]] = {
 }
 
 _FACILITY_QUERY_KEYWORDS: Dict[str, List[str]] = {
-    "sky_bar": ["sky bar", "sky lounge", "quầy bar", "quay bar", "bar", "bia", "rượu", "ruou", "cocktail", "mocktail", "beer", "wine", "happy hour", "đồ uống có cồn"],
+    "sky_bar": ["sky bar", "sky lounge", "quầy bar", "quay bar", "quán bar", "quan bar", "quầy ba", "quay ba", "quán ba", "quan ba", "bar", "bia", "rượu", "ruou", "cocktail", "mocktail", "beer", "wine", "happy hour", "đồ uống có cồn"],
     "rooftop_coffee": ["rooftop coffee", "cà phê", "ca phe", "cafe", "coffee", "trà", "bánh ngọt", "pastry"],
     "spa": ["spa", "thảo mộc", "thao moc", "massage", "mát xa", "xông hơi", "xong hoi", "trị liệu", "tri lieu"],
     "infinity_pool": ["hồ bơi", "ho boi", "bể bơi", "be boi", "pool", "swimming"],
@@ -81,11 +81,22 @@ _FACILITY_QUERY_KEYWORDS: Dict[str, List[str]] = {
 
 _DETAIL_INTENT_KEYWORDS = [
     "có gì", "co gi", "gồm gì", "gom gi", "những gì", "nhung gi", "món gì", "mon gi",
+    "chương trình", "chuong trinh", "sự kiện", "su kien", "hoạt động", "hoat dong",
+    "gì không", "gi khong", "nổi bật", "noi bat", "đặc biệt", "dac biet",
+    "giới thiệu", "gioi thieu", "thông tin", "thong tin", "dịch vụ", "dich vu",
+    "bán gì", "ban gi", "phục vụ gì", "phuc vu gi", "có bán", "co ban", "có phục vụ", "co phuc vu",
+    "miễn phí", "mien phi", "tốn phí", "ton phi", "mất phí", "mat phi",
+    "bao nhiêu tiền", "bao nhieu tien", "bảng giá", "bang gia", "giá cả", "gia ca",
+    "giờ mở", "gio mo", "giờ đóng", "gio dong", "mở cửa", "mo cua", "đóng cửa", "dong cua", "mấy giờ", "may gio",
+    "làm đẹp", "lam dep", "trị liệu", "tri lieu", "máy tập", "may tap", "tập gì", "tap gi", "bài hát", "bai hat", "quà gì", "qua gi",
     "bia", "rượu", "ruou", "cocktail", "đồ uống", "do uong", "uống gì", "uong gi",
     "khuyến mãi", "khuyen mai", "ưu đãi", "uu dai", "giảm giá", "giam gia",
     "quảng cáo", "quang cao", "dịch vụ gì", "dich vu gi", "chi tiết", "chi tiet",
     "menu", "giá", "gia", "happy hour", "what", "drink", "drinks", "beer", "wine",
     "offer", "offers", "promo", "promotion", "discount", "serve", "special",
+    "event", "events", "program", "programs", "introduce", "tell me about",
+    "info", "information", "detail", "details", "service", "services", "price", "pricing",
+    "opening hours", "hours", "free",
 ]
 
 _ACTIVE_FACILITY_ADS_CACHE: List[Dict[str, Any]] = []
@@ -122,9 +133,15 @@ def match_facility_ads_fast_path(
     is_direction_query = any(
         kw in p_lower
         for kw in [
-            "ở đâu", "o dau", "chỉ đường", "chi duong", "dẫn đường", "dan duong",
-            "đường đi", "duong di", "đường đến", "duong den", "lối đi", "loi di",
-            "tầng mấy", "tang may", "where is", "where's", "directions", "way to",
+            "ở đâu", "o dau", "chỗ nào", "cho nao", "nơi nào", "noi nao",
+            "hướng nào", "huong nao", "chỉ đường", "chi duong", "dẫn đường", "dan duong",
+            "đường đi", "duong di", "đường đến", "duong den", "đường lên", "duong len",
+            "lối đi", "loi di", "lối lên", "loi len", "lối xuống", "loi xuong",
+            "cách đi", "cach di", "cách đến", "cach den", "làm sao để đến", "lam sao de den",
+            "đi đến", "di den", "đi tới", "di toi", "đi lên", "di len",
+            "dẫn tôi", "dan toi", "đưa tôi", "dua toi", "tìm đường", "tim duong", "vị trí", "vi tri",
+            "tầng mấy", "tang may", "where is", "where's", "which floor",
+            "how to get", "how do i get", "directions", "way to", "take me to", "lead me to", "navigate",
         ]
     )
     if is_direction_query:

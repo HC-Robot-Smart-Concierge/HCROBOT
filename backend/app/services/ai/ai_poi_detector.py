@@ -60,8 +60,7 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
         "tôi muốn đến", "toi muon den", "tôi muốn đi", "toi muon di",
         "đưa tôi", "dua toi", "tìm đường", "tim duong", "vị trí", "vi tri", "chỉ tôi", "chi toi",
         "where is", "where are", "where's", "which floor", "how to get", "how do i get",
-        "way to", "directions to", "show me the way", "take me to", "lead me to", "navigate to",
-        "giới thiệu", "gioi thieu", "thông tin về", "introduce", "tell me about"
+        "way to", "directions to", "show me the way", "take me to", "lead me to", "navigate to"
     ]
 
     # Danh mục cụm từ đi tới địa điểm trực tiếp (dù không có chữ 'ở đâu')
@@ -118,14 +117,17 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     ]
     explicit_nav_phrases = [
         "ở đâu", "o dau", "chỗ nào", "cho nao", "nơi nào", "noi nao",
+        "tầng mấy", "tang may", "ở tầng", "o tang", "vị trí", "vi tri",
         "hướng nào", "huong nao", "lối nào", "loi nao", "đường nào", "duong nao",
         "đi hướng nào", "đi lối nào", "đi đường nào",
         "chỉ đường", "chi duong", "dẫn đường", "dan duong", "hướng dẫn đường",
         "lối đi", "loi di", "lối lên", "loi len", "lối xuống", "loi xuong",
         "đường đến", "duong den", "đường đi", "duong di", "đường lên", "duong len", "đường về", "duong ve",
         "cách đi", "cach di", "cách đến", "cach den", "làm sao để đến", "lam sao de den",
+        "đi đến", "di den", "đi tới", "di toi", "đi lên", "di len",
+        "dẫn tôi", "dan toi", "đưa tôi", "dua toi",
         "tìm phòng", "tim phong", "tìm đường", "tim duong",
-        "where is", "where are", "where's", "which way", "which floor", "how do i get", "how to get", "show me the way", "directions to", "lead me to", "take me to"
+        "where is", "where are", "where's", "which way", "which floor", "how do i get", "how to get", "show me the way", "directions to", "lead me to", "take me to", "navigate"
     ]
 
     has_item_order_pattern = bool(re.search(
@@ -137,6 +139,23 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
 
     # Khi có yêu cầu dịch vụ hoặc mang đồ lên phòng mà không có cụm từ hỏi đường tường minh -> Tuyệt đối không coi là Navigation tới phòng
     if (room_4xx_match or room_3xx_match or is_general_room_query) and is_service_order_context and not has_explicit_nav:
+        return None
+
+    # Câu hỏi về thông tin chi tiết dịch vụ (chương trình, khuyến mãi, ưu đãi, giờ mở cửa, menu, giá, giới thiệu...) mà không hỏi đường tường minh -> Không bật bản đồ chỉ đường
+    detail_info_phrases = [
+        "chương trình", "chuong trinh", "sự kiện", "su kien", "hoạt động", "hoat dong",
+        "khuyến mãi", "khuyen mai", "ưu đãi", "uu dai", "giảm giá", "giam gia",
+        "giới thiệu", "gioi thieu", "thông tin", "thong tin", "chi tiết", "chi tiet",
+        "mở cửa", "mo cua", "đóng cửa", "dong cua", "giờ mở", "gio mo", "giờ đóng", "gio dong", "mấy giờ", "may gio",
+        "bán gì", "ban gi", "phục vụ gì", "phuc vu gi", "có bán", "co ban", "có phục vụ", "co phuc vu",
+        "miễn phí", "mien phi", "tốn phí", "ton phi", "mất phí", "mat phi",
+        "menu", "bảng giá", "bang gia", "giá cả", "gia ca", "bao nhiêu tiền", "bao nhieu tien",
+        "có gì", "co gi", "gì không", "gi khong", "đặc biệt", "dac biet", "nổi bật", "noi bat",
+        "promotion", "promo", "event", "events", "offer", "offers", "discount", "program", "programs",
+        "introduce", "tell me about", "info", "information", "detail", "details",
+        "service", "services", "price", "pricing", "opening hours", "hours", "free"
+    ]
+    if any(k in p_lower for k in detail_info_phrases) and not has_explicit_nav:
         return None
 
     room_nav_match = (room_4xx_match is not None or room_3xx_match is not None or is_general_room_query) and (not is_service_order_context or has_explicit_nav)

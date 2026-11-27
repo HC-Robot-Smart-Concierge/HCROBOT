@@ -1537,7 +1537,12 @@ export const RobotFoodMenuScreen = ({
       {/* MODAL MÃ PIN PHÒNG 6 SỐ CẢM ỨNG & CHỌN PHÒNG (100% TOUCH UI NUMPAD) */}
       <RoomPinModal
         isOpen={isPinModalOpen}
-        onClose={() => {
+        language={language}
+        speak={speak}
+        onClose={(reason) => {
+          if (reason === 'manual' && typeof onStopSpeaking === 'function') {
+            onStopSpeaking();
+          }
           setIsPinModalOpen(false);
           setIsPinModalSelectingRoom(false);
           if (totalItemsCount > 0) {

@@ -3,6 +3,42 @@ export function normalizeTaxiSpeech(text) {
     .replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim();
 }
 
+// Danh bạ hãng taxi dùng chung cho robot (khách tự gọi) và Concierge (nhân viên đặt giúp).
+export const TAXI_PARTNERS = [
+  {
+    id: 'mailinh',
+    name: 'Taxi Mai Linh Đà Nẵng',
+    hotline: '0236 3 56 56 56',
+    shortCode: '1055',
+    color: 'emerald',
+    desc: 'Hãng taxi phổ biến nhất, xe có mặt sau 3 đến 5 phút.',
+  },
+  {
+    id: 'vinasun',
+    name: 'Taxi Vinasun Đà Nẵng',
+    hotline: '0236 3 68 68 68',
+    shortCode: null,
+    color: 'red',
+    desc: 'Đội xe sedan 4 chỗ và SUV 7 chỗ đời mới, phục vụ chuyên nghiệp.',
+  },
+  {
+    id: 'tiensa',
+    name: 'Taxi Tiên Sa Đà Nẵng',
+    hotline: '0236 3 79 79 79',
+    shortCode: null,
+    color: 'amber',
+    desc: 'Hãng taxi địa phương uy tín, nhận diện xe vàng, phục vụ 24/7.',
+  },
+  {
+    id: 'airport_taxi',
+    name: 'Taxi Sân Bay Đà Nẵng',
+    hotline: '0236 3 82 82 82',
+    shortCode: null,
+    color: 'blue',
+    desc: 'Chuyên tuyến đưa đón Sân bay Quốc tế Đà Nẵng và tour tham quan.',
+  },
+];
+
 const NUMBER_WORDS = {
   mot: 1, one: 1, hai: 2, two: 2, ba: 3, three: 3, bon: 4, tu: 4, four: 4,
   nam: 5, five: 5, sau: 6, six: 6, bay: 7, seven: 7, tam: 8, eight: 8,
@@ -71,11 +107,10 @@ export function taxiAssistanceReplyKind(text) {
   const clean = normalizeTaxiSpeech(text).replace(/[.!?,]+$/g, '');
   if (/\b(huy yeu cau|huy dat xe|khong dat nua|cancel(?: the)? (?:request|booking)|do not book|don't book)\b/.test(clean)
     || /^(huy|thoi|cancel|close|dong|quay lai)$/.test(clean)) return 'cancel';
-  if (/\b(dung gui|chua gui|khong gui|khong xac nhan|dung xac nhan|chua xac nhan|do not send|don't send|do not confirm|don't confirm|not yet|wait)\b/.test(clean)) return 'hold';
-  if (/\b(khong dung|sai roi|sua lai|thay doi|chinh sua|not correct|wrong|change|edit)\b/.test(clean)) return 'edit';
+  if (/\b(dung gui|chua gui|khong gui|khong xac nhan|dung xac nhan|chua xac nhan|khoan(?: da)?|tu tu|cho chut|doi chut|do not send|don't send|do not confirm|don't confirm|not yet|wait|hold on)\b/.test(clean)) return 'hold';
+  if (/\b(khong dung|sai roi|sua lai|thay doi|chinh sua|chon lai|nhap lai|doi lai|not correct|wrong|change|edit)\b/.test(clean)) return 'edit';
   if (/^(?:da\s+)?(?:khong(?: co| can| them| gi| nua| a| yeu cau| ghi chu)*|no(?: thanks| notes| extra requests| more requests| additional requests)?|nothing else|that['’]?s all|cam on|thank you|thanks)$/.test(clean)) return 'send';
-  if (/\b(gui yeu cau|gui di|gui luon|dat luon|send (?:it|the request)|submit|book it)\b/.test(clean)) return 'send';
-  if (/^(co|co a|yes|yes please|da co)$/.test(clean)) return 'more_notes';
+  if (/\b(gui yeu cau|gui di|gui luon|dat luon|xac nhan|dong y|chuan roi|dung roi|send (?:it|the request|now)|submit|book it|confirm)\b/.test(clean)) return 'send';
   if (/\b(khong biet|chua ro|nhan vien tu van|not sure|staff can decide)\b/.test(clean)) return 'unsure';
   return 'details';
 }

@@ -852,7 +852,14 @@ export const RobotMaintenanceMenuScreen = ({
       {isPinModalOpen && (
         <RoomPinModal
           isOpen={isPinModalOpen}
-          onClose={() => setIsPinModalOpen(false)}
+          language={language}
+          speak={speak}
+          onClose={(reason) => {
+            if (reason === 'manual' && typeof onStopSpeaking === 'function') {
+              onStopSpeaking();
+            }
+            setIsPinModalOpen(false);
+          }}
           roomNumber={targetRoom}
           isSelectingRoomInitial={!targetRoom}
           sessionId={sessionId}

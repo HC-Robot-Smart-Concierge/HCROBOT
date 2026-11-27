@@ -39,6 +39,7 @@ import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCa
 import { useLanguage } from '../../context/LanguageContext';
 import { taxiVehicleLabel } from '../../utils/taxiAssistance';
 import { ConciergeTaxiBookingModal } from '../../components/dashboard/concierge/ConciergeTaxiBookingModal';
+import { ConciergeTaxiArrangeModal } from '../../components/dashboard/concierge/ConciergeTaxiArrangeModal';
 import { ConciergeTestCallModal } from '../../components/dashboard/concierge/ConciergeTestCallModal';
 import { handleNumericKeyDown, handleNumberInputBlockExponent, sanitizeDigitsOnly } from '../../utils/numberInputHelper';
 import { Pagination } from '../../components/common/Pagination';
@@ -48,6 +49,7 @@ import {
   fetchTaxiRequests,
   createTaxiRequest,
   updateTaxiRequestStatus,
+  arrangeTaxiRequest,
 } from '../../services/taxiApi';
 
 export const ConciergeDashboard = ({
@@ -96,6 +98,8 @@ export const ConciergeDashboard = ({
   const emptyTaxiForm = { room_number: '', party_size: '', vehicle_type: '', description: '' };
   const [taxiForm, setTaxiForm] = useState(emptyTaxiForm);
   const [isTaxiSubmitting, setIsTaxiSubmitting] = useState(false);
+  const [arrangeTrip, setArrangeTrip] = useState(null);
+  const [isArrangeSubmitting, setIsArrangeSubmitting] = useState(false);
 
   // Emotion Alerts (Xử lý khách có biểu cảm khó chịu) states
   const [emotionAlerts, setEmotionAlerts] = useState([]);
@@ -374,6 +378,27 @@ export const ConciergeDashboard = ({
       setTaxiRequests((prev) =>
         prev.map((r) => (r.id === reqId ? { ...r, status: newStatus } : r))
       );
+    }
+  };
+
+  // Concierge nhập thông tin xe đã đặt giúp khách -> lưu và chuyển yêu cầu sang Thành công
+  const handleArrangeTaxi = async (details) => {
+    if (!arrangeTrip || isArrangeSubmitting) return false;
+    setIsArrangeSubmitting(true);
+    try {
+      const updated = await arrangeTaxiRequest(arrangeTrip.id, {
+        ...details,
+        arranged_by: currentUser?.full_name || currentUser?.name || null,
+      });
+      setTaxiRequests((prev) => prev.map((r) => (r.id === arrangeTrip.id ? { ...r, ...updated } : r)));
+      onNotify(taxiText('Đã lưu thông tin xe và hoàn tất yêu cầu ', 'Taxi details saved and request completed ') + (arrangeTrip.ticket_code || arrangeTrip.id));
+      setArrangeTrip(null);
+      return true;
+    } catch (err) {
+      console.warn('[ConciergeDashboard] arrange taxi failed:', err);
+      return false;
+    } finally {
+      setIsArrangeSubmitting(false);
     }
   };
 
@@ -1244,6 +1269,16 @@ export const ConciergeDashboard = ({
                             <strong>{taxiText('Nhu cầu / ghi chú: ', 'Guest requirements / notes: ')}</strong>
                             {trip.notes || taxiText('Không có ghi chú thêm.', 'No additional notes.')}
                           </div>
+                          {(trip.taxi_company || trip.arranged_vehicle_type || trip.arrangement_note) && (
+                            <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-[12px] text-emerald-900 space-y-1">
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                                {trip.taxi_company && <span className="flex items-center gap-1 font-semibold"><Car className="w-3.5 h-3.5" />{trip.taxi_company}</span>}
+                                {trip.arranged_vehicle_type && <span>• {taxiVehicleLabel(trip.arranged_vehicle_type, taxiIsEn)}</span>}
+                              </div>
+                              {trip.arrangement_note && <p className="whitespace-pre-line break-words">{trip.arrangement_note}</p>}
+                              {trip.arranged_by && <p className="text-[11px] text-emerald-700">{taxiText('Nhân viên đặt:', 'Booked by:')} {trip.arranged_by}</p>}
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2 self-start md:self-center shrink-0">
@@ -1285,16 +1320,16 @@ export const ConciergeDashboard = ({
                             </button>
                           )}
 
-                          {/* Action Button 2: Khi đang Gọi -> Concierge gọi xong bấm Thành công */}
+                          {/* Action Button 2: Khi đang Gọi -> mở bảng nhập thông tin xe đã đặt, lưu xong mới Thành công */}
                           {isCalling && (
                             <button
                               type="button"
-                              onClick={() => handleUpdateTaxiStatus(trip.id, 'Completed')}
+                              onClick={() => setArrangeTrip(trip)}
                               className="px-3.5 py-2 text-[11px] font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-1.5 cursor-pointer"
-                              title={taxiText('Xác nhận đã gọi taxi thành công cho khách', 'Mark the taxi as arranged')}
+                              title={taxiText('Nhập thông tin xe đã đặt cho khách', 'Enter the booked taxi details')}
                             >
-                              <Check className="w-3.5 h-3.5" />
-                              {taxiText('Thành công', 'Arranged')}
+                              <Car className="w-3.5 h-3.5" />
+                              {taxiText('Nhập thông tin xe', 'Arrange taxi')}
                             </button>
                           )}
 
@@ -1303,6 +1338,16 @@ export const ConciergeDashboard = ({
                               <Check className="w-3.5 h-3.5" />
                               {taxiText('Đã gọi xong', 'Taxi arranged')}
                             </span>
+                          )}
+                          {isCompleted && stLower !== 'closed' && (
+                            <button
+                              type="button"
+                              onClick={() => setArrangeTrip(trip)}
+                              className="px-2.5 py-1.5 text-[11px] font-semibold rounded-lg border border-[#E2DFD9] text-[#403D39] hover:bg-[#F4F3F0] cursor-pointer"
+                              title={taxiText('Xem / sửa thông tin xe đã đặt', 'View or edit the booked taxi details')}
+                            >
+                              {trip.taxi_company ? taxiText('Sửa thông tin xe', 'Edit details') : taxiText('Nhập thông tin xe', 'Add details')}
+                            </button>
                           )}
                         </div>
                       </div>
@@ -1595,6 +1640,14 @@ export const ConciergeDashboard = ({
         setTaxiForm={setTaxiForm}
         isEn={taxiIsEn}
         isSubmitting={isTaxiSubmitting}
+      />
+
+      <ConciergeTaxiArrangeModal
+        trip={arrangeTrip}
+        onClose={() => { if (!isArrangeSubmitting) setArrangeTrip(null); }}
+        onSubmit={handleArrangeTaxi}
+        isSubmitting={isArrangeSubmitting}
+        isEn={taxiIsEn}
       />
 
       {/* MODAL XEM LẠI VIDEO GHI HÌNH TỪ CLOUDINARY */}

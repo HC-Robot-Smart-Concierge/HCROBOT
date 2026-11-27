@@ -112,6 +112,31 @@ export async function updateTaxiRequestStatus(requestId, status, note = null) {
 }
 
 /**
+ * 4b. Concierge nhap thong tin xe da dat giup khach va chuyen yeu cau sang Thanh cong.
+ * Bao loi ro rang (khong fallback) de nhan vien biet thong tin chua duoc luu.
+ */
+export async function arrangeTaxiRequest(requestId, details = {}) {
+  const clean = (value) => {
+    const text = typeof value === 'string' ? value.trim() : value;
+    return text ? text : null;
+  };
+  return await fetchJsonStrict(`${BASE_URL}/requests/${encodeURIComponent(requestId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      status: 'Completed',
+      taxi_company: clean(details.taxi_company),
+      vehicle_type: clean(details.vehicle_type),
+      license_plate: clean(details.license_plate),
+      assigned_driver: clean(details.driver_name),
+      driver_phone: clean(details.driver_phone),
+      pickup_time: clean(details.pickup_time),
+      arrangement_note: clean(details.note),
+      arranged_by: clean(details.arranged_by),
+    }),
+  });
+}
+
+/**
  * 5. Xem chi tiet mot yeu cau dat xe taxi
  */
 export async function fetchTaxiRequestById(requestId) {

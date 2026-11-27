@@ -206,6 +206,7 @@ export const SERVICE_CATEGORIES = [
 ];
 
 export const RobotRoomServiceScreen = ({
+  language = 'Tiếng Việt',
   activeRoomNumber = '',
   authenticatedRoom = null,
   onClose,
@@ -976,7 +977,12 @@ export const RobotRoomServiceScreen = ({
       {/* MODAL MÃ PIN XÁC THỰC 4 SỐ CUỐI CCCD */}
       <RoomPinModal
         isOpen={isPinModalOpen}
-        onClose={() => {
+        language={language}
+        speak={speak}
+        onClose={(reason) => {
+          if (reason === 'manual' && typeof onStopSpeaking === 'function') {
+            onStopSpeaking();
+          }
           setIsPinModalOpen(false);
           setIsPinModalSelectingRoom(false);
           if (totalItemsCount > 0) {

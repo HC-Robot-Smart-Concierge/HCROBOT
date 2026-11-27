@@ -126,6 +126,13 @@ class TaxiRequestStatusUpdate(BaseModel):
     assigned_driver: Optional[str] = Field(None, description="Tên tài xế phụ trách", json_schema_extra={"example": "Nguyễn Văn Hùng"})
     license_plate: Optional[str] = Field(None, description="Biển số xe taxi", json_schema_extra={"example": "43A-888.99"})
     note: Optional[str] = Field(None, description="Ghi chú cập nhật", json_schema_extra={"example": "Xe đã đến sảnh chính đón khách"})
+    # Thông tin xe do Concierge nhập khi đã đặt xe giúp khách.
+    taxi_company: Optional[str] = Field(None, max_length=100, description="Hãng taxi / đơn vị xe đã đặt")
+    driver_phone: Optional[str] = Field(None, max_length=30, description="Số điện thoại tài xế hoặc tổng đài")
+    pickup_time: Optional[str] = Field(None, max_length=100, description="Giờ xe đón / thời gian xe tới")
+    vehicle_type: Optional[str] = Field(None, max_length=100, description="Loại xe đã đặt")
+    arrangement_note: Optional[str] = Field(None, max_length=1000, description="Ghi chú khi đặt xe")
+    arranged_by: Optional[str] = Field(None, max_length=100, description="Nhân viên đặt xe")
 
 
 class TaxiRequestResponse(BaseModel):
@@ -145,6 +152,13 @@ class TaxiRequestResponse(BaseModel):
     assigned_driver: Optional[str] = None
     license_plate: Optional[str] = None
     notes: Optional[str] = None
+    taxi_company: Optional[str] = None
+    driver_phone: Optional[str] = None
+    arranged_pickup_time: Optional[str] = None
+    arranged_vehicle_type: Optional[str] = None
+    arrangement_note: Optional[str] = None
+    arranged_by: Optional[str] = None
+    arranged_at: Optional[str] = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

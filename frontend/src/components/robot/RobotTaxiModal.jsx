@@ -1,43 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Car, ShieldCheck, CheckCircle2, AlertCircle, Phone, UserCheck, Mic, Send, Users } from 'lucide-react';
 import { createTaxiRequest } from '../../services/taxiApi';
-import { extractTaxiRequirements, taxiAssistanceReplyKind, buildTaxiBookingPayload, taxiVehicleLabel, normalizeTaxiSpeech } from '../../utils/taxiAssistance';
-export { buildTaxiBookingPayload } from '../../utils/taxiAssistance';
-
-export const TAXI_PARTNERS = [
-  {
-    id: 'mailinh',
-    name: 'Taxi Mai Linh Đà Nẵng',
-    hotline: '0236 3 56 56 56',
-    shortCode: '1055',
-    color: 'emerald',
-    desc: 'Hãng taxi phổ biến nhất, xe có mặt sau 3 đến 5 phút.',
-  },
-  {
-    id: 'vinasun',
-    name: 'Taxi Vinasun Đà Nẵng',
-    hotline: '0236 3 68 68 68',
-    shortCode: null,
-    color: 'red',
-    desc: 'Đội xe sedan 4 chỗ và SUV 7 chỗ đời mới, phục vụ chuyên nghiệp.',
-  },
-  {
-    id: 'tiensa',
-    name: 'Taxi Tiên Sa Đà Nẵng',
-    hotline: '0236 3 79 79 79',
-    shortCode: null,
-    color: 'amber',
-    desc: 'Hãng taxi địa phương uy tín, nhận diện xe vàng, phục vụ 24/7.',
-  },
-  {
-    id: 'airport_taxi',
-    name: 'Taxi Sân Bay Đà Nẵng',
-    hotline: '0236 3 82 82 82',
-    shortCode: null,
-    color: 'blue',
-    desc: 'Chuyên tuyến đưa đón Sân bay Quốc tế Đà Nẵng và tour tham quan.',
-  },
-];
+import { extractTaxiRequirements, taxiAssistanceReplyKind, buildTaxiBookingPayload, taxiVehicleLabel, normalizeTaxiSpeech, TAXI_PARTNERS } from '../../utils/taxiAssistance';
+export { buildTaxiBookingPayload, TAXI_PARTNERS } from '../../utils/taxiAssistance';
 
 export function getTaxiOptionsPrompt(room, isEn = false) {
   const intro = room ? (isEn ? `Room ${room} is verified. ` : `Dạ phòng ${room} đã được xác thực. `) : '';
@@ -130,17 +95,30 @@ export function isDismissVoiceIntent(transcript) {
 }
 
 export function isSelfBookingVoiceIntent(transcript) {
-  const clean = normalizeTaxiSpeech(transcript);
-  return /\b(tu dat|tu goi|tu lien he|tu book|cho toi so|cho so|so dien thoai|hotline|first option|call (?:it |a taxi )?myself|book (?:it )?myself|taxi numbers?|thu nhat|dau tien)\b/.test(clean)
-    || /\b(?:option|lua chon|phuong an|chon(?: cach)?|so)\s+(?:1|one|mot)\b/.test(clean)
-    || /^(?:da\s+)?(?:1|one|mot)(?:\s+(?:a|please))?[.!?]?$/.test(clean);
+  const clean = normalizeTaxiSpeech(transcript).replace(/[.!?,]+$/g, '');
+  if (!clean) return false;
+  if (/\bkhong\s+(?:muon\s+|can\s+)?tu\s+(?:goi|dat|lien he|book)\b/.test(clean)) return false;
+
+  const negatesStaff = /\bkhong\s+(?:muon\s+|can\s+)?(?:nho\s+)?(?:nhan vien|le tan|concierge|staff)\b/.test(clean);
+  const mentionsStaff = /\b(nho\s+(?:nhan vien|le tan|dat|goi|book)|nhan vien|le tan|concierge|staff|(?:dat|goi|book)\s+(?:xe\s+|taxi\s+)?(?:gium|dum|giup|ho)|for me)\b/.test(clean);
+  if (mentionsStaff && !negatesStaff) return false;
+
+  return /\b(tu dat|tu goi|tu lien he|tu book|tu alo|goi truc tiep|(?:de|cho)\s+(?:toi|minh|anh|chi|em)\s+(?:tu\s+)?goi|cho\s+(?:toi\s+|minh\s+|anh\s+|chi\s+|em\s+)?(?:xin\s+|xem\s+)?(?:so|danh ba|bang so)|lay so|so dien thoai|so taxi|so hang|danh ba|hotline|first option|first one|first choice|call (?:it |a taxi |the taxi |them )?myself|book (?:it |a taxi )?myself|i(?:'ll| will) call|let me call|self[- ]?(?:book|booking|call)|taxi numbers?|phone numbers?|thu nhat|dau tien)\b/.test(clean)
+    || /\b(?:option|choice|method|way|number|lua chon|phuong an|cach|chon|cai|so|muc)\s+(?:so\s+|thu\s+|cach\s+|cai\s+)?(?:1|one|mot|nhat|dau|dau tien)\b(?!\s*(?:nguoi|khach|cho|vali|kien|chiec|bag|seat|passenger|person|people|pax))/.test(clean)
+    || /^(?:da|vang|u|uh|ok|okay|toi|minh|anh|chi|em|cho toi|cho minh)?\s*(?:chon|lay)?\s*(?:1|one|mot)(?:\s+(?:di|nhe|nha|a|thoi|please))?$/.test(clean);
 }
 
 export function isConciergeVoiceIntent(transcript) {
-  const clean = normalizeTaxiSpeech(transcript);
-  return /\b(nho dat|dat (?:xe )?(?:gium|dum|giup|ho)|concierge|nhan vien dat|le tan dat|ho tro dat|second option|staff (?:to )?(?:book|arrange)|book (?:it |a taxi )?for me|thu hai|thu 2)\b/.test(clean)
-    || /\b(?:option|lua chon|phuong an|chon(?: cach)?|so)\s+(?:2|two|hai)\b/.test(clean)
-    || /^(?:da\s+)?(?:2|two|hai)(?:\s+(?:a|please))?[.!?]?$/.test(clean);
+  const clean = normalizeTaxiSpeech(transcript).replace(/[.!?,]+$/g, '');
+  if (!clean) return false;
+  if (/\bkhong\s+(?:muon\s+|can\s+)?(?:nho\s+)?(?:nhan vien|le tan|concierge|staff)\b/.test(clean)) return false;
+  if (/\btu\s+(?:goi|dat|lien he|book)\b/.test(clean) && !/\bkhong\s+(?:muon\s+|can\s+)?tu\s+(?:goi|dat|lien he|book)\b/.test(clean)) {
+    return false;
+  }
+
+  return /\b(nho\s+(?:nhan vien|le tan|ben khach san|khach san|cac ban|nguoi|em|ban|dat|goi|book)|(?:de|cho)\s+(?:nhan vien|le tan)|nhan vien|le tan|concierge|ho tro\s+(?:dat|goi)|(?:dat|goi|book)\s+(?:xe\s+|taxi\s+)?(?:gium|dum|giup|ho)|second option|second one|second choice|(?:ask\s+|let\s+|have\s+)?staff(?:\s+(?:to\s+)?(?:book|arrange|call|help|please))?|reception|front desk|(?:book|arrange|call)\s+(?:it\s+|a taxi\s+|one\s+)?for me|help me\s+(?:book|arrange|call)|thu hai|thu 2)\b/.test(clean)
+    || /\b(?:option|choice|method|way|number|lua chon|phuong an|cach|chon|cai|so|muc)\s+(?:so\s+|thu\s+|cach\s+|cai\s+)?(?:2|two|hai|sau|cuoi)\b(?!\s*(?:nguoi|khach|cho|vali|kien|chiec|bag|seat|passenger|person|people|pax))/.test(clean)
+    || /^(?:da|vang|u|uh|ok|okay|toi|minh|anh|chi|em|cho toi|cho minh)?\s*(?:chon|lay)?\s*(?:2|two|hai)(?:\s+(?:di|nhe|nha|a|thoi|please))?$/.test(clean);
 }
 
 export function isConfirmVoiceIntent(transcript) {
@@ -155,16 +133,17 @@ export function isEditVoiceIntent(transcript) {
 export const RobotTaxiModal = ({
   isOpen, onClose, activeRoomNumber = null, initialMode = 'self_booking',
   initialRequest = '', language = 'Tiếng Việt', lastVoiceTranscript = '',
-  onSuccess, speak, onStartTalk,
+  onSuccess, speak, onStartTalk, onStopListening, isListening = false, isRobotSpeaking = false, liveTranscript = '',
 }) => {
   const isEn = language === 'English' || language === 'EN';
   const langCode = isEn ? 'en-US' : 'vi-VN';
   const t = (vi, en) => isEn ? en : vi;
   const [mode, setMode] = useState(initialMode);
-  const [stage, setStage] = useState('requirements');
+  const [stage, setStage] = useState('requirements'); // 'requirements' | 'confirm'
   const [requirements, setRequirements] = useState({ partySize: null, vehicleType: null });
-  const [notes, setNotes] = useState([]);
-  const [typedReply, setTypedReply] = useState('');
+  // Ghi chú CHỈ nhận từ bàn phím để tránh STT nghe nhầm câu hội thoại thành yêu cầu của khách
+  const [typedNote, setTypedNote] = useState('');
+  const [typedRequirements, setTypedRequirements] = useState('');
   const [voiceGuidance, setVoiceGuidance] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -178,13 +157,24 @@ export const RobotTaxiModal = ({
   onCloseRef.current = onClose;
   isOpenRef.current = isOpen;
 
+  const describeRequirements = (details = requirements) => {
+    const pax = details.partySize
+      ? (isEn ? `${details.partySize} ${details.partySize === 1 ? 'passenger' : 'passengers'}` : `${details.partySize} khách`)
+      : null;
+    const car = details.vehicleType ? taxiVehicleLabel(details.vehicleType, isEn).toLowerCase() : null;
+    if (pax && car) return `${pax}, ${car}`;
+    if (pax) return pax;
+    if (car) return car;
+    return t('nhờ nhân viên tư vấn loại xe', 'staff will advise a suitable car');
+  };
+
   const askRequirements = () => t(
     'Quý khách cần đặt xe cho bao nhiêu người hoặc cần xe mấy chỗ ạ?',
     'How many passengers will be travelling, or how many seats would you like?'
   );
-  const askNotes = () => t(
-    'Quý khách có hành lý hoặc yêu cầu gì thêm không ạ? Nếu không, em sẽ gửi yêu cầu cho nhân viên đặt xe giúp.',
-    'Do you have any luggage or other requests? If not, I will send the request to our staff to arrange your taxi.'
+  const askConfirm = (details = requirements) => t(
+    `Dạ em ghi nhận đặt xe (${describeRequirements(details)}). Nếu có ghi chú thêm, quý khách vui lòng gõ trên màn hình, hoặc nói Gửi yêu cầu để hoàn tất ạ.`,
+    `Got it (${describeRequirements(details)}). You can type an optional note on the screen, or say Send request to finish.`
   );
   const say = (message, listen = true) => {
     setVoiceGuidance(message);
@@ -200,13 +190,14 @@ export const RobotTaxiModal = ({
   const beginAssistance = (request = initialRequest) => {
     const details = extractTaxiRequirements(request);
     setRequirements(details);
-    setNotes(request.trim() ? [request.trim()] : []);
+    setTypedNote('');
+    setTypedRequirements('');
     setConfirmedTicket(null);
     setErrorMsg('');
     setMode('concierge_booking');
     const hasDetails = Boolean(details.partySize || details.vehicleType);
-    setStage(hasDetails ? 'notes' : 'requirements');
-    say(hasDetails ? askNotes() : askRequirements());
+    setStage(hasDetails ? 'confirm' : 'requirements');
+    say(hasDetails ? askConfirm(details) : askRequirements());
   };
 
   useEffect(() => {
@@ -217,7 +208,8 @@ export const RobotTaxiModal = ({
     setIsSubmitting(false);
     setConfirmedTicket(null);
     setErrorMsg('');
-    setTypedReply('');
+    setTypedNote('');
+    setTypedRequirements('');
     setMode(initialMode);
     if (initialMode === 'concierge_booking') beginAssistance();
   }, [isOpen, initialMode]);
@@ -231,7 +223,7 @@ export const RobotTaxiModal = ({
     });
   }, [isOpen, mode]);
 
-  const submitRequest = async (details = requirements, capturedNotes = notes) => {
+  const submitRequest = async (details = requirements, noteText = typedNote) => {
     if (submitLockRef.current || confirmedTicket) return;
     if (!activeRoomNumber) {
       setErrorMsg(t('Vui lòng xác thực phòng trước khi gửi yêu cầu.', 'Please verify your room before sending the request.'));
@@ -243,7 +235,9 @@ export const RobotTaxiModal = ({
     const version = requestVersionRef.current;
     try {
       const result = await createTaxiRequest(buildTaxiBookingPayload({
-        activeRoomNumber, ...details, note: capturedNotes.join('\n'),
+        activeRoomNumber,
+        ...details,
+        note: String(noteText || '').trim(),
       }));
       if (!result?.ticket_code && !result?.id) throw new Error('Missing request ID');
       if (!isOpenRef.current || version !== requestVersionRef.current) return;
@@ -285,12 +279,16 @@ export const RobotTaxiModal = ({
     const kind = taxiAssistanceReplyKind(reply);
     if (kind === 'cancel') { onClose?.(); return; }
     if (kind === 'hold') {
-      say(t('Em chưa gửi yêu cầu. Quý khách có thể sửa thông tin hoặc nói gửi yêu cầu khi sẵn sàng.', 'I have not sent the request. You can change the details or say send the request when ready.'));
+      say(t(
+        'Em chưa gửi yêu cầu. Quý khách có thể nhập ghi chú trên màn hình rồi bấm Gửi yêu cầu khi sẵn sàng ạ.',
+        'I have not sent the request. You can type a note on the screen and tap Send request when ready.'
+      ), false);
       return;
     }
     const parsed = extractTaxiRequirements(reply, { allowBareCount: stage === 'requirements' });
     const hasDetails = Boolean(parsed.partySize || parsed.vehicleType);
     if (kind === 'edit' && !hasDetails) {
+      setRequirements({ partySize: null, vehicleType: null });
       setStage('requirements');
       say(askRequirements());
       return;
@@ -299,29 +297,34 @@ export const RobotTaxiModal = ({
       partySize: parsed.partySize ?? requirements.partySize,
       vehicleType: parsed.vehicleType ?? requirements.vehicleType,
     };
-    const nextNotes = notes.includes(reply) ? notes : [...notes, reply];
     if (stage === 'requirements') {
       if (hasDetails || kind === 'unsure') {
         setRequirements(nextDetails);
-        setNotes(nextNotes);
-        setStage('notes');
-        say(askNotes());
-      } else say(askRequirements());
+        setStage('confirm');
+        say(askConfirm(nextDetails));
+      } else {
+        say(askRequirements());
+      }
       return;
     }
+    // stage === 'confirm': chỉ nhận sửa số khách/xe hoặc xác nhận gửi; KHÔNG ghi âm thành ghi chú
     if (hasDetails) {
       setRequirements(nextDetails);
-      setNotes(nextNotes);
-      if (kind === 'send') void submitRequest(nextDetails, nextNotes);
-      else say(askNotes());
-    } else if (kind === 'send') {
-      void submitRequest(requirements, notes);
-    } else if (kind === 'more_notes') {
-      say(t('Quý khách cho em biết yêu cầu thêm nhé ạ.', 'Please tell me your additional requests.'));
-    } else {
-      setNotes(nextNotes);
-      void submitRequest(requirements, nextNotes);
+      if (kind === 'send' || isConfirmVoiceIntent(reply)) {
+        void submitRequest(nextDetails, typedNote);
+      } else {
+        say(askConfirm(nextDetails));
+      }
+      return;
     }
+    if (kind === 'send' || isConfirmVoiceIntent(reply)) {
+      void submitRequest(requirements, typedNote);
+      return;
+    }
+    say(t(
+      'Để tránh ghi sai, phần ghi chú quý khách vui lòng gõ trên màn hình, hoặc nói Gửi yêu cầu để hoàn tất ạ.',
+      'To avoid transcription errors, please type any note on the screen, or say Send request to finish.'
+    ));
   };
 
   useEffect(() => {
@@ -329,7 +332,7 @@ export const RobotTaxiModal = ({
     if (lastProcessedTranscriptRef.current === lastVoiceTranscript) return;
     lastProcessedTranscriptRef.current = lastVoiceTranscript;
     processReply(lastVoiceTranscript);
-  }, [isOpen, lastVoiceTranscript, mode, stage, requirements, notes, isSubmitting]);
+  }, [isOpen, lastVoiceTranscript, mode, stage, requirements, typedNote, isSubmitting]);
 
   if (!isOpen) return null;
   return (
@@ -355,23 +358,95 @@ export const RobotTaxiModal = ({
           </a>)}</div>
           <p className="text-xs text-stone-400">{getTaxiSelfBookingNotice(isEn)}</p>
         </div>}
-        {mode === 'concierge_booking' && <div className="pt-4 space-y-4">
+        {mode === 'concierge_booking' && <div className="pt-4 space-y-3.5">
           <p aria-live="polite" className="flex gap-2 text-sm leading-relaxed bg-amber-500/10 border border-amber-500/25 rounded-xl p-3"><Mic className="text-amber-400 w-4 h-4 mt-0.5 shrink-0" />{isSubmitting ? t('Đang gửi yêu cầu...', 'Sending your request...') : voiceGuidance}</p>
-          {(requirements.partySize || requirements.vehicleType) && <div className="flex flex-wrap gap-2 text-sm">
-            {requirements.partySize && <span className="rounded-lg bg-stone-800 px-3 py-2 flex items-center gap-2"><Users className="w-4 h-4" />{requirements.partySize} {t('khách', 'passengers')}</span>}
-            {requirements.vehicleType && <span className="rounded-lg bg-stone-800 px-3 py-2">{taxiVehicleLabel(requirements.vehicleType, isEn)}</span>}
-          </div>}
+
+          {stage === 'requirements' && (
+            <div className="space-y-2.5">
+              <div className="grid grid-cols-3 gap-2">
+                {['4-Seater Sedan', '7-Seater SUV', '16-Seater Van'].map((vType) => (
+                  <button
+                    key={vType}
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => {
+                      const next = { ...requirements, vehicleType: vType };
+                      setRequirements(next);
+                      setStage('confirm');
+                      say(askConfirm(next));
+                    }}
+                    className="rounded-xl border border-stone-700 bg-stone-800 hover:bg-stone-700 px-3 py-2.5 text-xs font-semibold text-stone-100 transition-colors cursor-pointer"
+                  >
+                    {taxiVehicleLabel(vType, isEn)}
+                  </button>
+                ))}
+              </div>
+              <details className="text-xs text-stone-400">
+                <summary className="cursor-pointer">{t('Nhập số người bằng bàn phím', 'Type passenger count instead')}</summary>
+                <form onSubmit={e => { e.preventDefault(); processReply(typedRequirements); setTypedRequirements(''); }} className="flex gap-2 mt-2">
+                  <input aria-label={t('Số khách hoặc loại xe', 'Passengers or car size')} value={typedRequirements} onChange={e => setTypedRequirements(e.target.value)} onFocus={() => onStopListening?.()} maxLength={200} disabled={isSubmitting} placeholder={t('Ví dụ: 5 người hoặc xe 7 chỗ', 'For example: 5 passengers or 7-seater')} className="min-w-0 flex-1 rounded-lg p-2 bg-stone-800 border border-stone-600 text-white" />
+                  <button disabled={!typedRequirements.trim() || isSubmitting} className="px-3 rounded-lg bg-stone-700 text-white font-semibold disabled:opacity-40">{t('Tiếp tục', 'Continue')}</button>
+                </form>
+              </details>
+            </div>
+          )}
+
+          {stage === 'confirm' && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-2 text-sm">
+                  {requirements.partySize && <span className="rounded-lg bg-stone-800 px-3 py-1.5 flex items-center gap-2"><Users className="w-4 h-4 text-amber-400" />{requirements.partySize} {t('khách', 'passengers')}</span>}
+                  {requirements.vehicleType && <span className="rounded-lg bg-stone-800 px-3 py-1.5 flex items-center gap-2"><Car className="w-4 h-4 text-amber-400" />{taxiVehicleLabel(requirements.vehicleType, isEn)}</span>}
+                  {!requirements.partySize && !requirements.vehicleType && (
+                    <span className="rounded-lg bg-stone-800 px-3 py-1.5 text-xs text-stone-300">{t('Nhân viên tư vấn loại xe', 'Staff will advise a suitable car')}</span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  disabled={isSubmitting}
+                  onClick={() => {
+                    setRequirements({ partySize: null, vehicleType: null });
+                    setStage('requirements');
+                    say(askRequirements());
+                  }}
+                  className="text-xs text-amber-300 hover:text-amber-200 underline underline-offset-4 cursor-pointer"
+                >
+                  {t('Đổi số khách / xe', 'Change')}
+                </button>
+              </div>
+
+              <label className="block text-xs text-stone-300">
+                <span className="font-semibold">{t('Ghi chú thêm cho nhân viên (không bắt buộc — nhập bàn phím)', 'Optional note for staff (type with keyboard)')}</span>
+                <textarea
+                  rows={2}
+                  maxLength={1000}
+                  value={typedNote}
+                  disabled={isSubmitting}
+                  onFocus={() => onStopListening?.()}
+                  onChange={e => setTypedNote(e.target.value)}
+                  placeholder={t('Ví dụ: Có 2 vali lớn, cần xe lúc 7 giờ...', 'For example: 2 large suitcases, needed at 7:00 AM...')}
+                  className="mt-1.5 w-full rounded-xl p-2.5 bg-stone-800 border border-stone-600 focus:border-amber-400 outline-none text-sm text-white placeholder:text-stone-500"
+                />
+              </label>
+            </div>
+          )}
+
           <p className="text-xs text-stone-400">{t('Nhân viên sẽ nhận yêu cầu và liên hệ theo thông tin phòng của quý khách.', 'Staff will receive your request and use your room contact details to follow up.')}</p>
-          <details className="text-xs text-stone-400">
-            <summary className="cursor-pointer">{t('Nhập thay vì nói', 'Type instead of speaking')}</summary>
-            <form onSubmit={e => { e.preventDefault(); processReply(typedReply); setTypedReply(''); }} className="flex gap-2 mt-2">
-              <input aria-label={t('Câu trả lời', 'Your reply')} value={typedReply} onChange={e => setTypedReply(e.target.value)} maxLength={1000} disabled={isSubmitting} placeholder={t('Ví dụ: 5 người, có 2 vali lớn', 'For example: 5 passengers and 2 large bags')} className="min-w-0 flex-1 rounded-lg p-2 bg-stone-800 border border-stone-600 text-white" />
-              <button disabled={!typedReply.trim() || isSubmitting} className="px-3 rounded-lg bg-stone-700 disabled:opacity-40">{t('Trả lời', 'Reply')}</button>
-            </form>
-          </details>
-          <footer className="flex flex-wrap justify-between gap-2 border-t border-stone-700 pt-3">
-            <button type="button" disabled={isSubmitting} onClick={() => onStartTalk?.({ silent: true })} className="flex items-center gap-2 rounded-lg px-3 py-2 bg-stone-800 disabled:opacity-40"><Mic className="w-4 h-4" />{t('Nói với robot', 'Speak to the robot')}</button>
-            {stage === 'notes' && <button type="button" disabled={isSubmitting} onClick={() => { if (typedReply.trim()) { processReply(typedReply); setTypedReply(''); } else void submitRequest(); }} className="flex items-center gap-2 rounded-lg px-4 py-2 bg-amber-500 text-stone-950 font-bold disabled:opacity-40"><Send className="w-4 h-4" />{t('Gửi yêu cầu', 'Send request')}</button>}
+
+          <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-stone-700 pt-3">
+            {/* Bấm tay = lệnh chủ động: ngắt lời robot (nếu đang nói) và mở lại micro trong cử chỉ chạm (yêu cầu của iOS Safari). */}
+            <button type="button" disabled={isSubmitting} onClick={() => onStartTalk?.()}
+              aria-pressed={isListening}
+              className={`flex items-center gap-2 rounded-lg px-3 py-2 disabled:opacity-40 transition-colors ${isListening ? 'bg-emerald-600/25 text-emerald-200 ring-1 ring-emerald-500/60' : 'bg-stone-800 hover:bg-stone-700'}`}>
+              <Mic className={`w-4 h-4 ${isListening ? 'animate-pulse text-emerald-300' : ''}`} />
+              {isListening
+                ? t('Đang nghe... (chạm để nghe lại)', 'Listening... (tap to restart)')
+                : isRobotSpeaking
+                  ? t('Chạm để nói ngay', 'Tap to speak now')
+                  : t('Nói với robot', 'Speak to the robot')}
+            </button>
+            {isListening && liveTranscript && <span className="flex-1 min-w-0 truncate text-xs italic text-stone-300">“{liveTranscript}”</span>}
+            {stage === 'confirm' && <button type="button" disabled={isSubmitting} onClick={() => void submitRequest(requirements, typedNote)} className="flex items-center gap-2 rounded-lg px-4 py-2 bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold disabled:opacity-40 cursor-pointer"><Send className="w-4 h-4" />{t('Gửi yêu cầu', 'Send request')}</button>}
           </footer>
         </div>}
         {mode === 'concierge_confirmed' && confirmedTicket && <div className="pt-5 space-y-3 text-center">

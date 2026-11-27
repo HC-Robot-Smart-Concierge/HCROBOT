@@ -49,6 +49,24 @@ export const OFFICIAL_ROOMS = {
   floor4: ['401', '402', '403', '404', '405', '406', '407', '408', '409', '410'],
 };
 
+export function getRoomPinPrompt(roomNumber, isEn = false) {
+  const room = String(roomNumber || '').trim();
+  if (isEn) {
+    return room
+      ? `Room ${room}. Please enter your 4-digit PIN on the screen to verify.`
+      : 'Please enter your 4-digit room PIN on the screen.';
+  }
+  return room
+    ? `Dạ phòng ${room}. Quý khách vui lòng nhập mã PIN gồm 4 số cuối căn cước công dân trên màn hình ạ.`
+    : 'Quý khách vui lòng nhập mã PIN gồm 4 số cuối căn cước công dân trên màn hình ạ.';
+}
+
+export function getRoomSelectPrompt(isEn = false) {
+  return isEn
+    ? 'Please select your room number on the screen.'
+    : 'Quý khách vui lòng chọn số phòng lưu trú trên màn hình ạ.';
+}
+
 export const RoomPinModal = ({
   isOpen,
   onClose,
@@ -64,8 +82,11 @@ export const RoomPinModal = ({
   skipTicketCreation = true,
   sessionId = null,
   language = 'Tiếng Việt',
+  speak = null,
+  suppressInitialSpeech = false,
 }) => {
   const isEn = language === 'English' || language === 'EN';
+  const langCode = isEn ? 'en-US' : 'vi-VN';
   const t = useCallback((vi, en) => isEn ? en : vi, [isEn]);
   const [selectedRoom, setSelectedRoom] = useState(roomNumber || '');
   const [isSelectingRoom, setIsSelectingRoom] = useState(Boolean(isSelectingRoomInitial || !roomNumber));
@@ -126,6 +147,20 @@ export const RoomPinModal = ({
   const keyBufferRef = useRef('');
   const lastKeyTimeRef = useRef(0);
   const handleVerifyNfcRef = useRef(null);
+  const wasOpenRef = useRef(false);
+
+  // Phát thông báo hướng dẫn chọn phòng / nhập mã PIN khi mở bảng (trừ khi luồng gọi đã chủ động đọc câu dẫn riêng)
+  useEffect(() => {
+    if (!isOpen) {
+      wasOpenRef.current = false;
+      return;
+    }
+    if (wasOpenRef.current) return;
+    wasOpenRef.current = true;
+    if (suppressInitialSpeech || typeof speak !== 'function') return;
+    const willSelectRoom = Boolean(isSelectingRoomInitial || !roomNumber);
+    speak(willSelectRoom ? getRoomSelectPrompt(isEn) : getRoomPinPrompt(roomNumber, isEn), langCode);
+  }, [isOpen, suppressInitialSpeech, isSelectingRoomInitial, roomNumber, isEn, langCode, speak]);
 
   const startWebNfcScan = useCallback(async () => {
     if (typeof window === 'undefined') return;
@@ -421,10 +456,14 @@ export const RoomPinModal = ({
             const lockedUntil = Date.now() + PIN_LOCKOUT_DURATION_SEC * 1000;
             setRoomLockoutState(selectedRoom, { count: nextCount, lockedUntil });
             setLockoutRemaining(PIN_LOCKOUT_DURATION_SEC);
-            setErrorMessage(t(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${PIN_LOCKOUT_DURATION_SEC}s).`, `Too many incorrect PIN attempts. Please try again in ${PIN_LOCKOUT_DURATION_SEC} seconds.`));
+            const lockMsg = t(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${PIN_LOCKOUT_DURATION_SEC}s).`, `Too many incorrect PIN attempts. Please try again in ${PIN_LOCKOUT_DURATION_SEC} seconds.`);
+            setErrorMessage(lockMsg);
+            if (typeof speak === 'function') speak(lockMsg, langCode);
           } else {
             setRoomLockoutState(selectedRoom, { count: nextCount, lockedUntil: 0 });
-            setErrorMessage(t(DEFAULT_WRONG_PIN_ERROR_MSG, 'Incorrect room PIN. Please try again.'));
+            const wrongMsg = t(DEFAULT_WRONG_PIN_ERROR_MSG, 'Incorrect room PIN. Please try again.');
+            setErrorMessage(wrongMsg);
+            if (typeof speak === 'function') speak(wrongMsg, langCode);
           }
           setIsShaking(true);
           setTimeout(() => setIsShaking(false), 500);
@@ -447,7 +486,7 @@ export const RoomPinModal = ({
         {/* Nút đóng */}
         <button
           type="button"
-          onClick={onClose}
+          onClick={() => onClose?.('manual')}
           disabled={isLoading || isSuccess}
           className="absolute top-3.5 right-3.5 z-10 w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 hover:text-stone-800 transition-colors flex items-center justify-center cursor-pointer"
           title={t('Đóng', 'Close')}
@@ -565,6 +604,9 @@ export const RoomPinModal = ({
                       setIsSelectingRoom(false);
                       setPin('');
                       setErrorMessage('');
+                      if (typeof speak === 'function') {
+                        speak(getRoomPinPrompt(rNum, isEn), langCode);
+                      }
                     }}
                     className={`py-2 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer select-none active:scale-95 ${
                       isSelected

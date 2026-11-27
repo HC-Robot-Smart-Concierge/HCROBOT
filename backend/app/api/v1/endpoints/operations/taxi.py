@@ -53,6 +53,8 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
         except Exception:
             pass
 
+    arrangement = extra.get("arrangement") if isinstance(extra.get("arrangement"), dict) else {}
+
     return TaxiRequestResponse(
         id=req.id,
         ticket_code=req.ticket_code,
@@ -70,6 +72,13 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
         assigned_driver=req.assigned_staff_name,
         license_plate=extra.get("license_plate"),
         notes=desc_str,
+        taxi_company=arrangement.get("taxi_company"),
+        driver_phone=arrangement.get("driver_phone"),
+        arranged_pickup_time=arrangement.get("pickup_time"),
+        arranged_vehicle_type=arrangement.get("vehicle_type"),
+        arrangement_note=arrangement.get("note"),
+        arranged_by=arrangement.get("arranged_by"),
+        arranged_at=arrangement.get("arranged_at"),
         created_at=req.created_at or datetime.now(timezone.utc).replace(tzinfo=None),
     )
 
@@ -354,12 +363,34 @@ async def update_taxi_request_status(
         req.status = target_st
 
     if update_in.assigned_driver:
-        req.assigned_staff_name = update_in.assigned_driver
+        req.assigned_staff_name = update_in.assigned_driver.strip()
     if update_in.license_plate:
-        req.extra_data = {**(req.extra_data or {}), "license_plate": update_in.license_plate}
+        req.extra_data = {**(req.extra_data or {}), "license_plate": update_in.license_plate.strip()}
     if update_in.note:
         clean_note = update_in.note.strip()
         req.description = f"{req.description or ''} | Ghi chú: {clean_note}".strip(" |")
+
+    # Thông tin xe Concierge đã đặt giúp khách: lưu riêng, không ghi đè nhu cầu/ghi chú của khách.
+    arrangement_fields = {
+        "taxi_company": update_in.taxi_company,
+        "driver_phone": update_in.driver_phone,
+        "pickup_time": update_in.pickup_time,
+        "vehicle_type": update_in.vehicle_type,
+        "note": update_in.arrangement_note,
+    }
+    arrangement_fields = {k: v.strip() for k, v in arrangement_fields.items() if isinstance(v, str) and v.strip()}
+    if arrangement_fields:
+        extra = dict(req.extra_data or {})
+        arrangement = {
+            **arrangement_fields,
+            "arranged_by": (update_in.arranged_by or "").strip() or None,
+            "arranged_at": datetime.now(timezone.utc).isoformat(),
+        }
+        extra["arrangement"] = arrangement
+        # Bảng đặt xe gửi đầy đủ các trường: trường để trống nghĩa là xóa giá trị cũ khi sửa.
+        extra["license_plate"] = (update_in.license_plate or "").strip() or None
+        req.assigned_staff_name = (update_in.assigned_driver or "").strip() or None
+        req.extra_data = extra
 
     req.updated_at = datetime.utcnow()
     await sr_repo.commit()

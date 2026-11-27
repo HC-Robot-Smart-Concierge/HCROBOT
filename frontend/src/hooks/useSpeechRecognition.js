@@ -637,19 +637,12 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
       recognition.onend = () => {
         liveRef.current = false;
-        // Nếu WebSpeech tạm thời bị chặn cử chỉ tay (iOS/Mobile), tiếp tục lắng nghe bằng Hardware Recorder
-        // và tự động thử kết nối lại WebSpeech sau 1.2s
+        // Nếu WebSpeech tạm thời bị chặn cử chỉ tay (iOS/Mobile), giữ nguyên Hardware Whisper STT
+        // (không loop retry startRecognition() mỗi 1.2s; sẽ tự mở khóa lại khi khách chạm màn hình)
         if (webSpeechBlockedRef.current) {
           if (shouldListenRef.current && !destroyedRef.current) {
             setIsListening(true);
             setMicLive(true);
-            clearRestartTimer();
-            restartTimerRef.current = setTimeout(() => {
-              if (shouldListenRef.current && !liveRef.current && !destroyedRef.current) {
-                webSpeechBlockedRef.current = false;
-                startRecognition();
-              }
-            }, 1200);
           }
           return;
         }
@@ -673,7 +666,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
             if (shouldListenRef.current && !liveRef.current && !destroyedRef.current) {
               startRecognition();
             }
-          }, 150);
+          }, 350);
         } else {
           setIsListening(false);
           setMicLive(false);

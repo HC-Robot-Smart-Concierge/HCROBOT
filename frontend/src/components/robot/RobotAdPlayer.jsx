@@ -172,26 +172,6 @@ export const RobotAdPlayer = ({
             />
           </div>
         )}
-
-        {currentAd && (currentAd.title || currentAd.description || currentAd.facility_key) && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/90 via-black/65 to-transparent px-6 pb-6 pt-16 text-white">
-            <div className="mx-auto max-w-3xl">
-              {currentAd.facility_key && FACILITY_LABELS[currentAd.facility_key] && (
-                <span className="mb-2 inline-block rounded-full border border-amber-400/50 bg-amber-500/20 px-3 py-0.5 text-xs font-semibold uppercase tracking-wider text-amber-200">
-                  {isEn ? FACILITY_LABELS[currentAd.facility_key].en : FACILITY_LABELS[currentAd.facility_key].vi}
-                </span>
-              )}
-              <h2 className="text-xl font-bold leading-snug sm:text-2xl">
-                {isEn ? (currentAd.title_en || currentAd.title) : currentAd.title}
-              </h2>
-              {(isEn ? (currentAd.description_en || currentAd.description) : currentAd.description) && (
-                <p className="mt-1.5 text-sm leading-relaxed text-stone-200 sm:text-base">
-                  {isEn ? (currentAd.description_en || currentAd.description) : currentAd.description}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

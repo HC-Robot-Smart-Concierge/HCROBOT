@@ -372,6 +372,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const handleGuestApproachedRef = useRef(null);
   const handleGuestLeftRef = useRef(null);
   const guestPresentRef = useRef(false);
+  const lastNoSpeechStopAtRef = useRef(0);
 
   // Lắng nghe lệnh đẩy quảng cáo & đồng bộ nhận diện khách (Biểu cảm, Giới tính, Độ tuổi) từ Admin/Pi 5 qua WebSocket
   useNotificationWebSocket({
@@ -1277,6 +1278,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     ) {
       const noSpeechTimer = setTimeout(() => {
         if (!transcript || transcript.trim().length === 0) {
+          lastNoSpeechStopAtRef.current = Date.now();
           stopListening();
           setCurrentState('RT-02');
         }
@@ -1330,7 +1332,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       if (currentState === 'RT-01') {
         setCurrentState('RT-02');
       }
-      if (isAutoListen) {
+      if (isAutoListen && Date.now() - lastNoSpeechStopAtRef.current >= 15000) {
         setTimeout(() => {
           if (
             !isSpeakingRef.current &&
@@ -2323,8 +2325,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           ? ((effectiveRoomNumber && isValidHotelRoom(effectiveRoomNumber)) ? `room_${String(effectiveRoomNumber).trim()}` : null)
           : null;
 
-        // Nếu Backend đã xử lý hành động dịch vụ / tra cứu trạng thái -> Bỏ qua fastDestKey và fallback phòng
-        const effectiveFastDest = isServiceAction ? null : fastDestKey;
+        // Nếu Backend đã xử lý hành động dịch vụ / tra cứu trạng thái / quảng cáo cơ sở vật chất -> Bỏ qua fastDestKey để không tự mở bản đồ
+        const effectiveFastDest = (isServiceAction || (Boolean(chatRes.advertisement) && chatRes.action !== 'show_map')) ? null : fastDestKey;
         const rawNavKey = chatRes.destination_key || effectiveFastDest || roomFallbackKey;
         let navTargetKey = (isInvalidRoomReply || isStatusInquiry || isServiceAction) ? null : rawNavKey;
         if (navTargetKey && navTargetKey.startsWith('room_')) {
@@ -2768,7 +2770,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     resetTranscript();
                     // silent: true giúp mic bật ngay mà không thu lại tiếng bíp của chính nó
                     handleStartTalk({ silent: true });
-                  }, 120);
+                  }, 450);
                 }
               }
             }, waitRemaining);
@@ -3390,10 +3392,35 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }}
       />
 
+      {/* Popup hình ảnh cơ sở vật chất (chỉ hình + nút X, không chữ đè) */}
+      {activeFacilityAd?.media_url && (
+        <div
+          onClick={() => setActiveFacilityAd(null)}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative max-w-[92vw] max-h-[86vh] flex items-center justify-center"
+          >
+            <img
+              src={activeFacilityAd.media_url}
+              alt="Facility promotion"
+              className="max-w-full max-h-[84vh] rounded-2xl object-contain shadow-2xl"
+            />
+            <button
+              type="button"
+              onClick={() => setActiveFacilityAd(null)}
+              className="absolute -top-3 -right-3 rounded-full bg-stone-900 border border-stone-600 p-2 text-white shadow-xl hover:bg-black cursor-pointer"
+              aria-label="Close facility popup"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <MobileRobotScreen
         activeRoomNumber={activeRoomNumber}
-        activeFacilityAd={activeFacilityAd}
-        onCloseFacilityAd={() => setActiveFacilityAd(null)}
         guestEmotion={guestEmotion}
         eyeExpression={activeEyeExpression}
         aiResponseText={aiResponseText}
@@ -4206,34 +4233,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   isSpeakingActive={isSpeaking}
                 />
               </div>
-
-              {activeFacilityAd?.media_url && aiResponseText && (
-                <div className="mb-3 w-full max-w-md overflow-hidden rounded-2xl border border-stone-700/80 bg-stone-900/90 shadow-2xl animate-fadeIn">
-                  <div className="relative h-44 w-full bg-black">
-                    <img
-                      src={activeFacilityAd.media_url}
-                      alt={language === 'English' ? (activeFacilityAd.title_en || activeFacilityAd.title) : activeFacilityAd.title}
-                      className="h-full w-full object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveFacilityAd(null);
-                      }}
-                      className="absolute top-2 right-2 rounded-full bg-black/65 p-1.5 text-white hover:bg-black cursor-pointer"
-                      aria-label="Close facility image"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <div className="px-3.5 py-2 text-left">
-                    <p className="text-xs font-bold text-amber-300 truncate">
-                      {language === 'English' ? (activeFacilityAd.title_en || activeFacilityAd.title) : activeFacilityAd.title}
-                    </p>
-                  </div>
-                </div>
-              )}
 
               {/* 1. Khi đang nói (Speaking) hoặc có câu trả lời: Phụ đề động tinh giản (Floating Cinema Captions) */}
               {(aiResponseText || (isWorkflowRunning && (activeStep?.type === 'GREET' || activeStep?.type === 'SPEAK') && (activeStep.params?.speech_text || activeStep.params?.greeting_text || activeStep.params?.text))) && (

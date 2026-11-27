@@ -119,6 +119,16 @@ def match_facility_ads_fast_path(
     if not prompt or not _ACTIVE_FACILITY_ADS_CACHE:
         return None
     p_lower = prompt.lower().strip()
+    is_direction_query = any(
+        kw in p_lower
+        for kw in [
+            "ở đâu", "o dau", "chỉ đường", "chi duong", "dẫn đường", "dan duong",
+            "đường đi", "duong di", "đường đến", "duong den", "lối đi", "loi di",
+            "tầng mấy", "tang may", "where is", "where's", "directions", "way to",
+        ]
+    )
+    if is_direction_query:
+        return None
     if not any(kw in p_lower for kw in _DETAIL_INTENT_KEYWORDS):
         return None
 

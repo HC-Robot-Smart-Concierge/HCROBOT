@@ -911,6 +911,7 @@ export const FloorMap = ({
   showQrModalExternal = false,
   qrCountdown = null,
   onCloseQrModal = null,
+  onOpenQrModal = null,
   currentStepExternal = null,
   onStepChange = null,
 }) => {
@@ -1010,9 +1011,7 @@ export const FloorMap = ({
   const [activeMode, setActiveMode] = useState(showQrModalExternal ? 'qr' : 'map');
 
   useEffect(() => {
-    if (showQrModalExternal) {
-      setActiveMode('qr');
-    }
+    setActiveMode(showQrModalExternal ? 'qr' : 'map');
   }, [showQrModalExternal]);
 
   // Tầng đang hiển thị ảnh trên màn hình
@@ -1170,7 +1169,12 @@ export const FloorMap = ({
 
             <button
               type="button"
-              onClick={() => setActiveMode('qr')}
+              onClick={() => {
+                setActiveMode('qr');
+                if (onOpenQrModal) {
+                  try { onOpenQrModal(); } catch (e) { }
+                }
+              }}
               className={`px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
                 activeMode === 'qr'
                   ? 'bg-white text-stone-900 shadow-xs'

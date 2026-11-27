@@ -161,6 +161,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       return 'RT-01';
     }
   });
+  const currentStateRef = useRef(currentState);
+  useEffect(() => {
+    currentStateRef.current = currentState;
+  }, [currentState]);
   const [navigationDestinationKey, setNavigationDestinationKey] = useState('infinity_pool');
   const [preferredQrHostIp, setPreferredQrHostIp] = useState(() => {
     try {
@@ -251,13 +255,25 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const chatAbortControllerRef = useRef(null);
   const fillerTimerRef = useRef(null);
 
-  // Auto QR Modal & Multi-stage Wayfinding (Mỗi chặng 10s -> Hiện QR)
+  // Auto QR Modal & Multi-stage Wayfinding (Mỗi chặng 10s -> Hiện QR 15s -> Giữ map 15s sau khi tắt QR)
+  const QR_DISPLAY_DURATION_SEC = 15;
+  const QR_DISPLAY_DURATION_MS = QR_DISPLAY_DURATION_SEC * 1000;
+  const POST_QR_MAP_HOLD_SEC = 15;
+  const POST_QR_MAP_HOLD_MS = POST_QR_MAP_HOLD_SEC * 1000;
   const [navigationStep, setNavigationStep] = useState(1);
   const wayfindingStepTimerRef = useRef(null);
   const [isAutoQrModalOpen, setIsAutoQrModalOpen] = useState(false);
+  const isAutoQrModalOpenRef = useRef(false);
   const [qrCountdown, setQrCountdown] = useState(null);
   const qrStageTimerRef = useRef(null);
   const qrCountdownIntervalRef = useRef(null);
+  const postQrMapCloseTimerRef = useRef(null);
+  const isManualQrHoldRef = useRef(false);
+  const handleCloseDirectionsRef = useRef(null);
+
+  useEffect(() => {
+    isAutoQrModalOpenRef.current = isAutoQrModalOpen;
+  }, [isAutoQrModalOpen]);
 
   // Room PIN Verification Modal States
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
@@ -305,9 +321,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       clearInterval(qrCountdownIntervalRef.current);
       qrCountdownIntervalRef.current = null;
     }
+    if (postQrMapCloseTimerRef.current) {
+      clearTimeout(postQrMapCloseTimerRef.current);
+      postQrMapCloseTimerRef.current = null;
+    }
+    isManualQrHoldRef.current = false;
+    isAutoQrModalOpenRef.current = false;
     setIsAutoQrModalOpen(false);
     setQrCountdown(null);
   }, []);
+
+  useEffect(() => () => clearRouteGuidanceTimers(), [clearRouteGuidanceTimers]);
 
   // Standby Poster Mode (Tự động chiếu quảng cáo khi rảnh rỗi không tương tác)
   const [isStandby, setIsStandby] = useState(false);
@@ -1859,7 +1883,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     const lowerQuery = query.toLowerCase();
 
     // Xử lý đóng bản đồ chỉ đường RT-05 / Modal QR bằng giọng nói khi khách nói "ok tôi đã nhớ" / "cảm ơn"
-    if (currentState === 'RT-05' || isAutoQrModalOpen) {
+    if (currentState === 'RT-05' || isAutoQrModalOpen || isAutoQrModalOpenRef.current) {
       const isDismissDirectionsPhrase = [
         'đã nhớ', 'nhớ rồi', 'tôi nhớ', 'ok tôi', 'hiểu rồi', 'tôi hiểu',
         'cảm ơn', 'cảm ơn em', 'cảm ơn robot', 'cảm ơn nhiều', 'thank', 'thanks', 'thank you',
@@ -1871,8 +1895,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
       if (isDismissDirectionsPhrase) {
         clearRouteGuidanceTimers();
-        setIsAutoQrModalOpen(false);
-        setQrCountdown(null);
+        setNavigationStep(1);
         setNavigationDestinationKey(null);
 
         // Chuyển ngay về khuôn mặt Robot để đóng bản đồ tức thì
@@ -1963,12 +1986,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     const shouldBlockRouteGuidance = isStatusQueryPrompt || isAnsweringRoomForStatus;
 
     const fastDestKey = shouldBlockRouteGuidance ? null : detectDestinationPoi(query, activeRoomNumber);
-    if (fastDestKey) {
-      setNavigationDestinationKey(fastDestKey);
-      setCurrentState('RT-05');
-    } else {
-      setCurrentState('RT-04');
-    }
+    // Chờ backend phản hồi để mở RT-05 đồng thời với câu nói hướng dẫn (không hiện map rỗng im lặng)
+    setCurrentState('RT-04');
 
     // Nhận diện nhanh ngôn ngữ câu hỏi (Bilingual VI/EN)
     const isEnQuery = (
@@ -2298,9 +2317,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         ) {
           navTargetKey = null;
         }
-        const isRouteGuidance = Boolean(navTargetKey);
+        if (navTargetKey && !HOTEL_DESTINATIONS[navTargetKey]) {
+          navTargetKey = null;
+        }
+        const isRouteGuidance = Boolean(navTargetKey && HOTEL_DESTINATIONS[navTargetKey]);
 
         if (isRouteGuidance) {
+          replyText = replyText
+            .replace(/\s*(?:Quý khách có muốn (?:Rora |em )?mở bản đồ[^?.!]*\?|Would you like me to show directions on the map[^?.!]*\?)/gi, '')
+            .trim();
           setNavigationDestinationKey(navTargetKey);
           setCurrentState('RT-05');
         } else {
@@ -2373,7 +2398,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           let preloadedQrAudio = null;
 
           // Preload background EdgeTTS ngay khi Chặng 1 bắt đầu (cửa sổ 10 giây)
-          // Triệt tiêu 100% rủi ro đổi sang giọng Safari Linh trên iPhone XR do mất gesture sau setTimeout
+          // Lưu nguyên payload object từ synthesizeSpeech để khớp voice_policy cache trong useSpeechSynthesis
           if (destObj.isDifferentFloor && cleanStep2) {
             synthesizeSpeech(step2Speech, {
               language: isEn ? 'en-US' : 'vi-VN',
@@ -2381,7 +2406,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             })
               .then((res) => {
                 if (res?.audio_base64 && currentChatId === activeChatRequestIdRef.current) {
-                  preloadedStep2Audio = res.audio_base64;
+                  preloadedStep2Audio = res;
                 }
               })
               .catch(() => { });
@@ -2393,15 +2418,42 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           })
             .then((res) => {
               if (res?.audio_base64 && currentChatId === activeChatRequestIdRef.current) {
-                preloadedQrAudio = res.audio_base64;
+                preloadedQrAudio = res;
               }
             })
             .catch(() => { });
 
+          const resumeMicAfterRouteSpeech = () => {
+            if (isAutoListen && !isPinModalOpenRef.current && !isVideoCallOpenRef.current) {
+              setTimeout(() => {
+                if (isPinModalOpenRef.current || isVideoCallOpenRef.current || isSpeakingRef.current || isSpeechActiveRef.current) return;
+                resetTranscript();
+                startListening(languageRef.current || language, {
+                  onFinal: (finalText) => {
+                    if (finalText && finalText.trim().length > 0) {
+                      setIsStandby(false);
+                      lastInteractionTimeRef.current = Date.now();
+                      handleStopTalkAndProcess(finalText.trim());
+                    }
+                  },
+                });
+              }, 400);
+            }
+          };
+
           const triggerQrStage = () => {
             if (currentChatId !== activeChatRequestIdRef.current) return;
+            if (qrStageTimerRef.current) {
+              clearTimeout(qrStageTimerRef.current);
+              qrStageTimerRef.current = null;
+            }
+            if (qrCountdownIntervalRef.current) {
+              clearInterval(qrCountdownIntervalRef.current);
+              qrCountdownIntervalRef.current = null;
+            }
+            isAutoQrModalOpenRef.current = true;
             setIsAutoQrModalOpen(true);
-            setQrCountdown(20);
+            setQrCountdown(QR_DISPLAY_DURATION_SEC);
 
             stopListening();
             resetTranscript();
@@ -2411,42 +2463,38 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               qrVoicePrompt,
               isEn ? 'en-US' : 'vi-VN',
               () => {
-                if (isAutoListen && !isPinModalOpenRef.current && !isVideoCallOpenRef.current) {
-                  setTimeout(() => {
-                    if (isPinModalOpenRef.current || isVideoCallOpenRef.current || isSpeaking || isSpeakingRef.current) return;
-                    resetTranscript();
-                    startListening(languageRef.current || language, {
-                      onFinal: (finalText) => {
-                        if (finalText && finalText.trim().length > 0) {
-                          setIsStandby(false);
-                          lastInteractionTimeRef.current = Date.now();
-                          handleStopTalkAndProcess(finalText.trim());
-                        }
-                      },
-                    });
-                  }, 400);
-                }
+                resumeMicAfterRouteSpeech();
               },
               () => {
                 stopListening();
                 resetTranscript();
                 setAiResponseText(qrVoicePrompt);
               },
-              preloadedQrAudio || null
+              preloadedQrAudio || null,
+              null,
+              {
+                onError: () => {
+                  setAiResponseText(qrVoicePrompt);
+                  resumeMicAfterRouteSpeech();
+                },
+              }
             );
 
-            let timeLeft = 20;
+            let timeLeft = QR_DISPLAY_DURATION_SEC;
             qrCountdownIntervalRef.current = setInterval(() => {
               timeLeft -= 1;
               setQrCountdown(timeLeft);
               if (timeLeft <= 0) {
-                if (qrCountdownIntervalRef.current) clearInterval(qrCountdownIntervalRef.current);
+                if (qrCountdownIntervalRef.current) {
+                  clearInterval(qrCountdownIntervalRef.current);
+                  qrCountdownIntervalRef.current = null;
+                }
               }
             }, 1000);
 
             qrStageTimerRef.current = setTimeout(() => {
               handleCloseQrModalOnly();
-            }, 20000);
+            }, QR_DISPLAY_DURATION_MS);
           };
 
           // CHẶNG 1: Hiển thị tối thiểu 10 giây VÀ chờ nói hết câu mới chuyển chặng/mở QR (tránh tự ngắt giữa câu)
@@ -2495,7 +2543,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   resetTranscript();
                   setAiResponseText(step2Speech);
                 },
-                preloadedStep2Audio || null
+                preloadedStep2Audio || null,
+                null,
+                {
+                  onError: () => {
+                    setAiResponseText(step2Speech);
+                    step2SpeechDone = true;
+                    tryAdvanceToQr();
+                  },
+                }
               );
               routeGuidanceTimerRef.current = setTimeout(() => {
                 step2DwellDone = true;
@@ -2506,6 +2562,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             }
           };
 
+          const preloadedStep1 = chatRes.speech_audio?.text === step1Speech ? chatRes.speech_audio : null;
           speak(
             step1Speech,
             isEn ? 'en-US' : 'vi-VN',
@@ -2518,7 +2575,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               resetTranscript();
               setAiResponseText(step1Speech);
             },
-            chatRes.audio_base64 || null
+            preloadedStep1,
+            null,
+            {
+              onError: () => {
+                setAiResponseText(step1Speech);
+                step1SpeechDone = true;
+                tryAdvanceFromStep1();
+              },
+            }
           );
 
           wayfindingStepTimerRef.current = setTimeout(() => {
@@ -2587,8 +2652,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 clearRouteGuidanceTimers();
                 routeGuidanceTimerRef.current = setTimeout(() => {
                   // Chỉ hiển thị QR modal nếu Kiosk vẫn đang ở trạng thái chỉ đường RT-05
+                  isAutoQrModalOpenRef.current = true;
                   setIsAutoQrModalOpen(true);
-                  setQrCountdown(15);
+                  setQrCountdown(QR_DISPLAY_DURATION_SEC);
 
                   const qrVoicePrompt = (langCode === 'en-US' || detectedLang === 'English')
                     ? 'You can scan the QR code on the screen to save directions on your mobile phone.'
@@ -2605,7 +2671,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                       // Chỉ bật lại micro sau khi robot đã phát xong câu hướng dẫn QR và có độ trễ giảm âm vang (400ms)
                       if (isAutoListen && !isPinModalOpenRef.current && !isVideoCallOpenRef.current) {
                         setTimeout(() => {
-                          if (isPinModalOpenRef.current || isVideoCallOpenRef.current || isSpeaking || isSpeakingRef.current) return;
+                          if (isPinModalOpenRef.current || isVideoCallOpenRef.current || isSpeakingRef.current || isSpeechActiveRef.current) return;
                           resetTranscript();
                           startListening(languageRef.current || language, {
                             onFinal: (finalText) => {
@@ -2627,25 +2693,28 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   );
 
                   // Đếm ngược 15 giây
-                  let timeLeft = 15;
+                  let timeLeft = QR_DISPLAY_DURATION_SEC;
                   qrCountdownIntervalRef.current = setInterval(() => {
                     timeLeft -= 1;
                     setQrCountdown(timeLeft);
                     if (timeLeft <= 0) {
-                      if (qrCountdownIntervalRef.current) clearInterval(qrCountdownIntervalRef.current);
+                      if (qrCountdownIntervalRef.current) {
+                        clearInterval(qrCountdownIntervalRef.current);
+                        qrCountdownIntervalRef.current = null;
+                      }
                     }
                   }, 1000);
 
-                  // Hết đúng 15 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (giữ nguyên session phòng)
+                  // Hết đúng 15 giây -> Đóng QR và giữ bản đồ thêm 15s trước khi tự đóng
                   qrStageTimerRef.current = setTimeout(() => {
-                    handleCloseDirections();
-                  }, 15000);
+                    handleCloseQrModalOnly();
+                  }, QR_DISPLAY_DURATION_MS);
                 }, 5000);
 
                 // Tự động bật micro lắng nghe ngay trong giao diện bản đồ RT-05 mà không làm mất sơ đồ
                 if (isAutoListen && !isPinModalOpenRef.current && !isVideoCallOpenRef.current) {
                   setTimeout(() => {
-                    if (isPinModalOpenRef.current || isVideoCallOpenRef.current || isSpeaking || isSpeakingRef.current) return;
+                    if (isPinModalOpenRef.current || isVideoCallOpenRef.current || isSpeakingRef.current || isSpeechActiveRef.current) return;
                     resetTranscript();
                     startListening(languageRef.current || language, {
                       onFinal: (finalText) => {
@@ -2964,24 +3033,72 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       handleStopTalkAndProcessRef.current?.(voiceText, { force: true, bypassMenuVoice: true }),
   };
 
+  const schedulePostQrMapClose = useCallback((delayMs = POST_QR_MAP_HOLD_MS) => {
+    if (postQrMapCloseTimerRef.current) {
+      clearTimeout(postQrMapCloseTimerRef.current);
+      postQrMapCloseTimerRef.current = null;
+    }
+    if (currentStateRef.current !== 'RT-05' || isAutoQrModalOpenRef.current || isManualQrHoldRef.current) {
+      return;
+    }
+    postQrMapCloseTimerRef.current = setTimeout(() => {
+      postQrMapCloseTimerRef.current = null;
+      if (currentStateRef.current === 'RT-05' && !isAutoQrModalOpenRef.current && !isManualQrHoldRef.current) {
+        handleCloseDirectionsRef.current?.();
+      }
+    }, delayMs);
+  }, [POST_QR_MAP_HOLD_MS]);
+
   const handleCloseDirections = useCallback(() => {
     clearRouteGuidanceTimers();
+    stopSpeaking();
     setNavigationDestinationKey(null);
     setNavigationStep(1);
-    setIsAutoQrModalOpen(false);
-    setQrCountdown(null);
     lastInteractionTimeRef.current = Date.now();
     const isEn = language === 'English';
     triggerFollowUpPrompt(
       isEn ? 'How may I assist you further?' : 'Dạ em có thể hỗ trợ thêm gì cho quý khách nữa không ạ?',
       isEn
     );
-  }, [clearRouteGuidanceTimers, language, triggerFollowUpPrompt]);
+  }, [clearRouteGuidanceTimers, stopSpeaking, language, triggerFollowUpPrompt]);
+  handleCloseDirectionsRef.current = handleCloseDirections;
 
   const handleCloseQrModalOnly = useCallback(() => {
+    if (qrStageTimerRef.current) {
+      clearTimeout(qrStageTimerRef.current);
+      qrStageTimerRef.current = null;
+    }
+    if (qrCountdownIntervalRef.current) {
+      clearInterval(qrCountdownIntervalRef.current);
+      qrCountdownIntervalRef.current = null;
+    }
+    isManualQrHoldRef.current = false;
+    isAutoQrModalOpenRef.current = false;
     setIsAutoQrModalOpen(false);
     setQrCountdown(null);
+    lastInteractionTimeRef.current = Date.now();
+    if (currentStateRef.current === 'RT-05') {
+      schedulePostQrMapClose();
+    }
+  }, [schedulePostQrMapClose]);
+
+  const handleOpenQrModalManual = useCallback(() => {
+    isManualQrHoldRef.current = true;
+    if (postQrMapCloseTimerRef.current) {
+      clearTimeout(postQrMapCloseTimerRef.current);
+      postQrMapCloseTimerRef.current = null;
+    }
+    lastInteractionTimeRef.current = Date.now();
   }, []);
+
+  const handleSelectMapDestination = useCallback((destKey) => {
+    setNavigationDestinationKey(destKey);
+    setNavigationStep(1);
+    lastInteractionTimeRef.current = Date.now();
+    if (currentStateRef.current === 'RT-05' && !isAutoQrModalOpenRef.current && !isManualQrHoldRef.current) {
+      schedulePostQrMapClose();
+    }
+  }, [schedulePostQrMapClose]);
 
   const resetToIdle = () => {
     activeChatRequestIdRef.current += 1;
@@ -3406,10 +3523,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setLastUserPrompt('');
         }}
         navigationDestinationKey={navigationDestinationKey}
-        onSelectDestination={setNavigationDestinationKey}
+        navigationStep={navigationStep}
+        onSelectDestination={handleSelectMapDestination}
         showQrModalExternal={isAutoQrModalOpen}
         qrCountdown={qrCountdown}
         onCloseQrModal={handleCloseQrModalOnly}
+        onOpenQrModal={handleOpenQrModalManual}
         onCloseDirections={handleCloseDirections}
         onCallStaff={async () => {
           try {
@@ -3902,14 +4021,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               {/* Left: 2D Floor Map with Google Maps style indoor wayfinding */}
               <FloorMap
                 destinationKey={navigationDestinationKey}
-                onSelectDestination={(k) => {
-                  setNavigationDestinationKey(k);
-                  setNavigationStep(1);
-                }}
+                onSelectDestination={handleSelectMapDestination}
                 onClose={handleCloseDirections}
                 showQrModalExternal={isAutoQrModalOpen}
                 qrCountdown={qrCountdown}
                 onCloseQrModal={handleCloseQrModalOnly}
+                onOpenQrModal={handleOpenQrModalManual}
                 currentStepExternal={navigationStep}
                 onStepChange={setNavigationStep}
                 defaultZoom={1.0}
@@ -4019,7 +4136,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   <button
                     onClick={() => {
                       clearRouteGuidanceTimers();
-                      setIsAutoQrModalOpen(false);
+                      stopSpeaking();
+                      setNavigationStep(1);
                       setNavigationDestinationKey(null);
                       handleStartTalk();
                     }}

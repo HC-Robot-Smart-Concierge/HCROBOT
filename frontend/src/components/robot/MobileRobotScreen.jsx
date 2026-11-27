@@ -175,6 +175,7 @@ export const MobileRobotScreen = ({
   onCancelTaxiFlow = null,
   onSubmitTaxiRoomNumber = null,
   navigationDestinationKey = 'infinity_pool',
+  navigationStep = 1,
   onSelectDestination,
   availableWorkflows = [],
   onStartWorkflow,
@@ -184,6 +185,7 @@ export const MobileRobotScreen = ({
   showQrModalExternal = false,
   qrCountdown = null,
   onCloseQrModal = null,
+  onOpenQrModal = null,
 }) => {
   const isEn = language === 'English';
   const [isMapManualOpen, setIsMapManualOpen] = useState(false);
@@ -820,6 +822,8 @@ export const MobileRobotScreen = ({
                 showQrModalExternal={showQrModalExternal}
                 qrCountdown={qrCountdown}
                 onCloseQrModal={onCloseQrModal || (() => {})}
+                onOpenQrModal={onOpenQrModal}
+                currentStepExternal={isMapManualOpen ? undefined : navigationStep}
                 onStepChange={setNavActiveStep}
                 defaultZoom={1.0}
                 className="w-full h-full rounded-none border-none shadow-none"

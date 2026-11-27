@@ -270,28 +270,28 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 - **Sky Lounge Bar (6th Floor (16:30 - 01:00 AM)) — Sky Lounge Bar — Chilled Beers, Wines & Horizon Sunset Cocktail:**
   - Details: Serving chilled beers & wines from our menu, Horizon Sunset Cocktail with Crispy Fried Breadfruit and Seafood Spring Rolls on the 6th Floor (16:30 - 01:00 AM).
   - Target Audience: gender=male, age_group=young_adult
-- **Sky Lounge Bar (6th Floor (16:30 - 01:00 AM)) — Sky Lounge Bar — Fine Imported Wines & Signature Cocktails:**
-  - Details: Curated Chilean Montes Alpha Cabernet Sauvignon red wine, French Chablis white wine, and Aurora Sunset signature cocktails on the 6th Floor (16:30 - 01:00 AM).
-  - Target Audience: gender=ALL, age_group=adult
 - **Thao Moc Herbal Spa & Massage (5th Floor (09:00 - 22:00)) — Thao Moc Herbal Spa — Hot Stone Massage & Salt Sauna:**
   - Details: 90-minute hot volcanic stone massage and Himalayan salt sauna on the 5th Floor (09:00 - 22:00), with a 15% discount for staying guests.
   - Target Audience: gender=female, age_group=ALL
+- **Sky Lounge Bar (6th Floor (16:30 - 01:00 AM)) — Sky Lounge Bar — Fine Imported Wines & Signature Cocktails:**
+  - Details: Curated Chilean Montes Alpha Cabernet Sauvignon red wine, French Chablis white wine, and Aurora Sunset signature cocktails on the 6th Floor (16:30 - 01:00 AM).
+  - Target Audience: gender=ALL, age_group=adult
+- **Infinity Swimming Pool (5th Floor (06:00 - 22:00)) — 5th Floor Infinity Pool — Panoramic Views & Free Towels:**
+  - Details: Unwind at our 5th Floor outdoor Infinity Pool (06:00 - 22:00). 100% complimentary for staying guests with fresh towels, chilled water, and lockers.
 - **Rooftop Coffee with City View (6th Floor (07:00 - 23:00)) — Rooftop Coffee — Hue Salted Coffee, Saigon Iced Coffee & Tiramisu:**
   - Details: Enjoy Hue Salted Coffee, Saigon Iced Milk Coffee, Fresh Orange Juice with Classic Italian Tiramisu and Berry Panna Cotta on the 6th Floor (07:00 - 23:00).
   - Target Audience: gender=ALL, age_group=young_adult
-- **Infinity Swimming Pool (5th Floor (06:00 - 22:00)) — 5th Floor Infinity Pool — Panoramic Views & Free Towels:**
-  - Details: Unwind at our 5th Floor outdoor Infinity Pool (06:00 - 22:00). 100% complimentary for staying guests with fresh towels, chilled water, and lockers.
-- **24/7 In-Room Dining (24/7 In-Room Service) — 24/7 In-Room Dining — Wagyu Beef Pho & Peppercorn Grilled Beef:**
-  - Details: Order 24/7 from our Central Kitchen: Wagyu Beef Pho, Mushroom/Peppercorn Grilled Beef, Grilled Lamb Chops, Wagyu Cheese Burger, and Seasonal Fresh Fruit.
 - **Thao Moc Herbal Spa & Massage (5th Floor (09:00 - 22:00)) — Thao Moc Herbal Spa — Herbal Facial & Lemongrass Bath:**
   - Details: Deep relaxation package with lemongrass essential oil bath and organic herbal facial on the 5th Floor (09:00 - 22:00). 15% off when booked via Robot.
   - Target Audience: gender=female, age_group=adult
+- **24/7 In-Room Dining (24/7 In-Room Service) — 24/7 In-Room Dining — Wagyu Beef Pho & Peppercorn Grilled Beef:**
+  - Details: Order 24/7 from our Central Kitchen: Wagyu Beef Pho, Mushroom/Peppercorn Grilled Beef, Grilled Lamb Chops, Wagyu Cheese Burger, and Seasonal Fresh Fruit.
+- **VIP Karaoke Rooms (6th Floor (14:00 - 00:00)) — 6th Floor VIP Karaoke Suites — Hi-Fi Audio & Private Lounge:**
+  - Details: Soundproof luxury VIP Karaoke suites on the 6th Floor (14:00 - 00:00) featuring UHD displays, hi-fi audio, and fresh fruit platters & drinks served inside the karaoke suite.
+  - Target Audience: gender=ALL, age_group=young_adult
 - **24/7 Fitness & Gym Center (5th Floor (Open 24/7)) — 24/7 Fitness Center — Premium Technogym Equipment:**
   - Details: Train anytime 24/7 on the 5th Floor with Technogym treadmills, free weights, complimentary workout towels, and chilled water for in-house guests.
   - Target Audience: gender=male, age_group=young_adult
-- **VIP Karaoke Rooms (6th Floor (14:00 - 00:00)) — 6th Floor VIP Karaoke Suites — Hi-Fi Audio & Private Lounge:**
-  - Details: Soundproof luxury VIP Karaoke suites on the 6th Floor (14:00 - 00:00) featuring UHD displays, hi-fi audio, fruit platters, and private drink service.
-  - Target Audience: gender=ALL, age_group=young_adult
 - **Aurora Gift Shop (6th Floor (08:00 - 22:00)) — Aurora Gift Shop — Specialty Coffee & Artisanal Souvenirs:**
   - Details: Discover Vietnamese specialty roasted coffee gift boxes, silk scarves, and handcrafted ceramics at the 6th Floor Gift Shop (08:00 - 22:00).
   - Target Audience: gender=ALL, age_group=senior

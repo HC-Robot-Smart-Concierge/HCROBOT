@@ -26,12 +26,28 @@ socket.getaddrinfo = _edge_ipv4_getaddrinfo
 
 
 def clean_text_for_tts(text: str) -> str:
-    """Strip markdown/emoji and normalize punctuation so speech sounds natural."""
+    """Strip markdown/emoji and normalize time/punctuation so speech sounds natural."""
     if not text:
         return ""
     t = re.sub(r"[*#_`\[\]()~]", "", text)
     t = re.sub(r"[\U00010000-\U0010ffff]", "", t)
     t = re.sub(r"^[\s*•\-–—]+\s*", "", t, flags=re.MULTILINE)
+    if is_vietnamese(t):
+        t = re.sub(
+            r"\b(\d{1,2}):(\d{2})\s*[-–—]\s*(\d{1,2}):(\d{2})\b",
+            lambda m: (
+                f"từ {int(m.group(1))} giờ"
+                + (f" {int(m.group(2))} phút" if int(m.group(2)) > 0 else "")
+                + f" đến {int(m.group(3))} giờ"
+                + (f" {int(m.group(4))} phút" if int(m.group(4)) > 0 else "")
+            ),
+            t,
+        )
+        t = re.sub(
+            r"\b(\d{1,2}):(\d{2})\b",
+            lambda m: f"{int(m.group(1))} giờ" + (f" {int(m.group(2))} phút" if int(m.group(2)) > 0 else ""),
+            t,
+        )
     t = re.sub(r":\s*", ", ", t)
     t = re.sub(r"\s*;\s*", ", ", t)
     t = re.sub(r"\.{2,}", ".", t)

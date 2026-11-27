@@ -230,35 +230,35 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 <!-- FACILITY_ADS_SYNC_START -->
 ## 13. Quảng Cáo & Chi Tiết Dịch Vụ Cơ Sở Vật Chất Nổi Bật (Đồng Bộ Từ Admin)
 
-- **Sky Lounge Bar (Tầng 6 (16:30 - 01:00)) — Sky Lounge Bar — Bia, Rượu & Cocktail Horizon Sunset:**
-  - Chi tiết: Phục vụ Bia, rượu theo menu, Cocktail Horizon Sunset kèm khai vị Sake chiên giòn, Chả giò hải sản tại Tầng 6 (16:30 - 01:00).
+- **Sky Lounge Bar (Tầng 6, mở cửa từ 16 giờ 30 đến 1 giờ sáng) — Sky Lounge Bar — Bia, Rượu & Cocktail Horizon Sunset:**
+  - Chi tiết: Phục vụ bia lạnh, rượu vang và Cocktail Horizon Sunset cùng khai vị Sake chiên giòn, Chả giò hải sản tại Sky Lounge Bar Tầng 6, từ 16 giờ 30 đến 1 giờ sáng.
   - Đối tượng gợi ý: gender=male, age_group=young_adult
-- **Sky Lounge Bar (Tầng 6 (16:30 - 01:00)) — Sky Lounge Bar — Rượu Vang Nhập Khẩu & Signature Cocktails:**
-  - Chi tiết: Bộ sưu tập rượu vang đỏ Chile Montes Alpha Cabernet Sauvignon, vang trắng Pháp Chablis cùng cocktail Aurora Sunset tại Tầng 6 (16:30 - 01:00).
-  - Đối tượng gợi ý: gender=ALL, age_group=adult
-- **Thảo Mộc Spa & Massage (Tầng 5 (09:00 - 22:00)) — Thảo Mộc Spa — Massage Đá Nóng & Xông Hơi Đá Muối:**
-  - Chi tiết: Liệu trình massage body đá nóng 90 phút kết hợp xông hơi đá muối Himalaya tại Tầng 5 (09:00 - 22:00), giảm 15% cho khách lưu trú.
+- **Thảo Mộc Spa & Massage (Tầng 5, mở cửa từ 9 giờ đến 22 giờ) — Thảo Mộc Spa — Massage Đá Nóng & Xông Hơi Đá Muối:**
+  - Chi tiết: Liệu trình massage body đá nóng 90 phút kết hợp xông hơi đá muối Himalaya tại Thảo Mộc Spa Tầng 5, từ 9 giờ đến 22 giờ, giảm 15 phần trăm cho khách lưu trú.
   - Đối tượng gợi ý: gender=female, age_group=ALL
-- **Rooftop Coffee & View (Tầng 6 (07:00 - 23:00)) — Rooftop Coffee — Cà Phê Muối Cố Đô, Cà Phê Sữa Đá & Tiramisu:**
-  - Chi tiết: Thưởng thức Cà Phê Muối Cố Đô, Cà Phê Sữa Đá Sài Gòn, Nước Ép Cam Tươi Nguyên Chất cùng Bánh Tiramisu Ý Cổ Điển và Panna Cotta Sốt Dâu Rừng tại Tầng 6 (07:00 - 23:00).
+- **Sky Lounge Bar (Tầng 6, mở cửa từ 16 giờ 30 đến 1 giờ sáng) — Sky Lounge Bar — Rượu Vang Nhập Khẩu & Signature Cocktails:**
+  - Chi tiết: Bộ sưu tập rượu vang đỏ Chile Montes Alpha, vang trắng Pháp Chablis cùng các loại cocktail đặc trưng tại Sky Lounge Bar Tầng 6, từ 16 giờ 30 đến 1 giờ sáng.
+  - Đối tượng gợi ý: gender=ALL, age_group=adult
+- **Hồ Bơi Vô Cực (Tầng 5, mở cửa từ 6 giờ đến 22 giờ) — Hồ Bơi Vô Cực Tầng 5 — Ngắm Toàn Cảnh & Khăn Tắm Miễn Phí:**
+  - Chi tiết: Thư giãn tại Hồ Bơi Vô Cực ngoài trời Tầng 5, mở cửa từ 6 giờ đến 22 giờ hàng ngày. Miễn phí hoàn toàn cho khách lưu trú kèm khăn tắm, nước suối và tủ khóa Locker.
+- **Rooftop Coffee & View (Tầng 6, mở cửa từ 7 giờ đến 23 giờ) — Rooftop Coffee — Cà Phê Muối Cố Đô, Cà Phê Sữa Đá & Tiramisu:**
+  - Chi tiết: Thưởng thức Cà Phê Muối Cố Đô, Cà Phê Sữa Đá Sài Gòn, Nước Ép Cam Tươi Nguyên Chất cùng Bánh Tiramisu Ý Cổ Điển và Panna Cotta Sốt Dâu Rừng tại Tầng 6, từ 7 giờ đến 23 giờ.
   - Đối tượng gợi ý: gender=ALL, age_group=young_adult
-- **Hồ Bơi Vô Cực (Tầng 5 (06:00 - 22:00)) — Hồ Bơi Vô Cực Tầng 5 — Ngắm Toàn Cảnh & Khăn Tắm Miễn Phí:**
-  - Chi tiết: Thư giãn tại Hồ Bơi Vô Cực ngoài trời Tầng 5 (06:00 - 22:00). Miễn phí 100% cho khách lưu trú kèm khăn tắm, nước suối và tủ khóa Locker.
-- **Ẩm Thực Tận Phòng 24/7 (Phục vụ 24/7 tại phòng) — Ẩm Thực Tận Phòng 24/7 — Phở Bò Tái Nạm Wagyu & Bò Nướng Sốt Tiêu:**
-  - Chi tiết: Đặt món trực tiếp từ Bếp Chính 24/7: Phở Bò Tái Nạm Wagyu, Bò nướng sốt nấm / tiêu, Sườn cừu nướng, Burger Bò Wagyu Nướng Phô Mai và Trái cây tươi theo mùa.
-- **Thảo Mộc Spa & Massage (Tầng 5 (09:00 - 22:00)) — Thảo Mộc Spa — Chăm Sóc Da Mặt & Tắm Tinh Dầu Sả Chanh:**
-  - Chi tiết: Gói thư giãn chuyên sâu gồm ngâm bồn tinh dầu sả chanh, đắp mặt nạ thảo mộc thiên nhiên tại Tầng 5 (09:00 - 22:00). Giảm 15% khi đặt trước qua Robot.
+- **Thảo Mộc Spa & Massage (Tầng 5, mở cửa từ 9 giờ đến 22 giờ) — Thảo Mộc Spa — Chăm Sóc Da Mặt & Tắm Tinh Dầu Sả Chanh:**
+  - Chi tiết: Gói thư giãn chuyên sâu gồm ngâm bồn tinh dầu sả chanh và chăm sóc da mặt thảo mộc thiên nhiên tại Thảo Mộc Spa Tầng 5, từ 9 giờ đến 22 giờ.
   - Đối tượng gợi ý: gender=female, age_group=adult
-- **Phòng Tập Gym 24/7 (Tầng 5 (24/7)) — Phòng Tập Gym 24/7 — Trang Thiết Bị Technogym Cao Cấp:**
-  - Chi tiết: Tập luyện không giới hạn 24/7 tại Tầng 5 với máy chạy bộ Technogym, giàn tạ đa năng, khăn tập và nước mát miễn phí cho khách phòng.
-  - Đối tượng gợi ý: gender=male, age_group=young_adult
-- **Phòng VIP Karaoke (Tầng 6 (14:00 - 00:00)) — Phòng VIP Karaoke Tầng 6 — Âm Thanh Chuẩn Quốc Tế:**
-  - Chi tiết: Phòng hát VIP cách âm sang trọng tại Tầng 6 (14:00 - 00:00) với màn hình UHD, dàn âm thanh quốc tế, phục vụ đĩa trái cây và đồ uống tận phòng.
+- **Ẩm Thực Tận Phòng (Phục vụ 24 giờ mỗi ngày tại phòng) — Ẩm Thực Tận Phòng 24/7 — Phở Bò Tái Nạm Wagyu & Bò Nướng Sốt Tiêu:**
+  - Chi tiết: Đặt món trực tiếp từ Bếp Chính 24 giờ mỗi ngày: Phở Bò Tái Nạm Wagyu, Bò nướng sốt nấm tiêu, Sườn cừu nướng, Burger Bò Wagyu Nướng Phô Mai và Trái cây tươi theo mùa.
+- **Phòng VIP Karaoke (Tầng 6, mở cửa từ 14 giờ đến 0 giờ đêm) — Phòng VIP Karaoke Tầng 6 — Âm Thanh Chuẩn Quốc Tế:**
+  - Chi tiết: Phòng hát VIP cách âm sang trọng tại Tầng 6, mở cửa từ 14 giờ đến 0 giờ đêm, trang bị màn hình lớn UHD, dàn âm thanh chuẩn quốc tế cùng dịch vụ đồ uống và đĩa trái cây tươi phục vụ ngay tại phòng hát.
   - Đối tượng gợi ý: gender=ALL, age_group=young_adult
-- **Cửa Hàng Lưu Niệm (Tầng 6 (08:00 - 22:00)) — Aurora Gift Shop — Cà Phê Đặc Sản & Quà Thủ Công Mỹ Nghệ:**
-  - Chi tiết: Khám phá hộp quà cà phê rang xay đặc sản Việt Nam, khăn lụa tơ tằm và gốm sứ thủ công tinh xảo tại Tầng 6 (08:00 - 22:00).
+- **Phòng Tập Gym (Tầng 5, mở cửa 24 giờ mỗi ngày) — Phòng Tập Gym 24/7 — Trang Thiết Bị Technogym Cao Cấp:**
+  - Chi tiết: Phòng Tập Gym hiện đại tại Tầng 5 mở cửa suốt 24 giờ mỗi ngày, trang bị máy chạy bộ Technogym, giàn tạ đa năng cùng khăn tập và nước mát miễn phí.
+  - Đối tượng gợi ý: gender=male, age_group=young_adult
+- **Cửa Hàng Lưu Niệm (Tầng 6, mở cửa từ 8 giờ đến 22 giờ) — Aurora Gift Shop — Cà Phê Đặc Sản & Quà Thủ Công Mỹ Nghệ:**
+  - Chi tiết: Cửa Hàng Lưu Niệm Aurora Gift Shop tại Tầng 6, mở cửa từ 8 giờ đến 22 giờ, trưng bày cà phê rang xay đặc sản Việt Nam, khăn lụa tơ tằm và đồ gốm thủ công.
   - Đối tượng gợi ý: gender=ALL, age_group=senior
-- **Sky Lounge Bar (Tầng 6 (16:30 - 01:00)) — Beer heeneken:**
+- **Sky Lounge Bar (Tầng 6, mở cửa từ 16 giờ 30 đến 1 giờ sáng) — Beer heeneken:**
   - Chi tiết: Beer mát thích hợp cho tâm trạng buồn
   - Đối tượng gợi ý: gender=ALL, age_group=young_adult
 - **Dịch vụ chung khách sạn — Dallas Milk:**

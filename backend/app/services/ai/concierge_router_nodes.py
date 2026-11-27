@@ -70,6 +70,20 @@ _BARE_NO_MORE_HELP_RE = re.compile(
 )
 
 
+def _is_map_or_nav_view_query(prompt_lower: str) -> bool:
+    """Return True for map/direction viewing queries so order-review phrases ('cho tôi xem') never intercept them."""
+    has_map_kw = any(k in prompt_lower for k in (
+        "bản đồ", "ban do", "sơ đồ", "so do", "chỉ đường", "chi duong",
+        "dẫn đường", "dan duong", "đường đi", "duong di", "đường đến", "duong den",
+        "directions", "way to", "map",
+    ))
+    has_service_kw = any(k in prompt_lower for k in (
+        "món", "mon", "đơn", "don", "đồ ăn", "do an", "order",
+        "dọn", "don", "giặt", "giat", "taxi", "hành lý", "hanh ly",
+    ))
+    return has_map_kw and not has_service_kw
+
+
 async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
     """
     Node 1: Dynamic Fast-Path Rule Engine.
@@ -192,12 +206,14 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
     prompt_lower_fp = prompt.lower()
     faq_kws_fp = [
         "ở đâu", "o dau", "mấy giờ", "may gio", "bao nhiêu", "bao nhieu", "giá", "gia", "thế nào", "the nao", "có không", "co khong",
-        "where", "when", "how", "what", "giờ nào", "tầng mấy", "tang may", "bảng giá", "quy định", "chính sách",
+        "where", "where's", "when", "how", "what", "giờ nào", "tầng mấy", "tang may", "bao xa", "bảng giá", "quy định", "chính sách",
         "gồm những gì", "gom nhung gi", "có những gì", "co nhung gi",
         "đi tới", "di toi", "đi đến", "di den", "tới", "toi", "đến", "den", "chỉ đường", "chi duong",
         "dẫn đường", "dan duong", "hướng dẫn đường", "lối đi", "loi di", "lối lên", "loi len", "lối xuống", "loi xuong",
         "đường đến", "duong den", "đường đi", "duong di", "đường ra", "duong ra", "vị trí", "vi tri", "chỉ tôi", "chi toi",
-        "dẫn tôi", "dan toi", "cách đi", "cach di", "làm sao để đến", "lam sao de den"
+        "dẫn tôi", "dan toi", "cách đi", "cach di", "làm sao để đến", "lam sao de den",
+        "nhà vệ sinh", "nha ve sinh", "toilet", "wc", "restroom", "washroom",
+        "bản đồ", "ban do", "sơ đồ", "so do", "directions", "way to", "show me the way", "take me to",
     ]
     is_asking_info_fp = any(k in prompt_lower_fp for k in faq_kws_fp)
     stored_room_fp = state.get("room_number") or session_manager.get_room_number(session_id)
@@ -263,7 +279,9 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
         "rejected", "declined", "cancelled",
         "lý do", "ly do", "tại sao", "tai sao", "vì sao", "vi sao", "sao lại"
     ]) and any(k in prompt_lower_fp for k in ["từ chối", "tu choi", "hủy", "huy", "không nhận", "khong nhan", "bỏ", "rejected", "declined", "cancelled"])
-    is_query_status_fp = any(k in prompt_lower_fp for k in query_status_kws_fp) or is_reject_inquiry_fp
+    is_query_status_fp = (not _is_map_or_nav_view_query(prompt_lower_fp)) and (
+        any(k in prompt_lower_fp for k in query_status_kws_fp) or is_reject_inquiry_fp
+    )
     # Bỏ qua Fast-Path nếu có pending intent, hoặc tra cứu tiến độ đơn món/dịch vụ, hoặc yêu cầu hành động dịch vụ
     if pending_fp or is_query_status_fp or is_reject_inquiry_fp or (is_service_action and not is_asking_info_fp and (is_actionable_call or not stored_room_fp)):
         if not language or language.lower() in ["auto", ""]:
@@ -280,6 +298,10 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
     has_explicit_kb_ctx = bool((state.get("rag_context") or "").strip())
     fast_hit = None if has_explicit_kb_ctx else ollama_service.check_fast_path_full(prompt, language)
     if fast_hit:
+        fast_action_check = fast_hit[3] if len(fast_hit) > 3 else None
+        if fast_action_check in ("open_food_menu", "open_room_service_menu") and _is_map_or_nav_view_query(prompt_lower_fp):
+            fast_hit = None
+    if fast_hit:
         reply = fast_hit[0]
         lang_name = fast_hit[1]
         lang_code = fast_hit[2]
@@ -287,6 +309,25 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
         action_payload = fast_hit[4] if len(fast_hit) > 4 else None
 
         dest_key = action_payload.get("destination_key") if isinstance(action_payload, dict) else None
+        is_restaurant_dir_query = (
+            any(k in prompt_lower_fp for k in ["nhà hàng", "nha hang", "restaurant"])
+            and any(k in prompt_lower_fp for k in ["ở đâu", "o dau", "chỉ đường", "chi duong", "dẫn đường", "dan duong", "đường đến", "duong den", "đường đi", "duong di", "tầng mấy", "tang may", "where is", "where's", "directions", "way to"])
+            and not any(k in prompt_lower_fp for k in ["ăn sáng", "an sang", "buffet", "breakfast"])
+        )
+        if action_type == "none" and is_restaurant_dir_query and not dest_key:
+            action_type = "show_map"
+            dest_key = "restaurant"
+
+        is_direction_fast_hit = action_type == "show_map" or bool(dest_key)
+        if is_direction_fast_hit and reply:
+            # Never ask permission to open the map when showing directions; map + QR open automatically.
+            reply = re.sub(
+                r'\s*(?:Quý khách có muốn (?:Rora |em )?mở bản đồ[^?.!]*\?|Would you like me to show directions on the map[^?.!]*\?)',
+                '',
+                reply,
+                flags=re.IGNORECASE,
+            ).strip()
+
         if action_payload and action_payload.get("invalid_room"):
             return {
                 "fast_path_hit": True,
@@ -338,6 +379,35 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
             "room_number": (action_payload.get("target_room_number") if isinstance(action_payload, dict) else None) or state.get("room_number"),
             "target_room_number": (action_payload.get("target_room_number") if isinstance(action_payload, dict) else None) or state.get("room_number"),
         }
+
+    # Fast-path cho yêu cầu mở bản đồ chung chung ("cho tôi xem bản đồ", "mở bản đồ", "map của tôi đâu") tránh timeout 4.8s LLM
+    if _is_map_or_nav_view_query(prompt_lower_fp) and any(k in prompt_lower_fp for k in ["bản đồ", "ban do", "sơ đồ", "so do", "map"]):
+        from app.services.ai.ai_poi_detector import _detect_destination_poi
+        quick_dest = _detect_destination_poi(prompt, "", stored_room_fp, session_id=session_id)
+        if quick_dest:
+            is_en_fp = bool(language and ("en" in language.lower())) or bool(re.search(r'\b(show|open|map|where|directions)\b', prompt_lower_fp))
+            return {
+                "fast_path_hit": True,
+                "response": (
+                    "Here is the hotel wayfinding map on the screen. You can scan the QR code on the screen to save directions on your mobile phone."
+                    if is_en_fp
+                    else "Dạ bản đồ chỉ đường đã được mở ngay trên màn hình ạ. Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ."
+                ),
+                "lang_name": "English" if is_en_fp else "Vietnamese",
+                "lang_code": "en-US" if is_en_fp else "vi-VN",
+                "intent_category": "fast_path",
+                "action": "show_map",
+                "destination_key": quick_dest,
+                "eye_expression": None,
+                "trigger_video_call": False,
+                "trigger_menu": None,
+                "missing_room_number": False,
+                "require_room_pin": False,
+                "pending_service_action": None,
+                "pending_service_items": None,
+                "room_number": stored_room_fp,
+                "target_room_number": stored_room_fp,
+            }
 
     # Tự động nhận diện ngôn ngữ nếu chưa có
     if not language or language.lower() in ["auto", ""]:
@@ -398,7 +468,8 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
     ]) or (any(k in prompt_lower for k in [
         "tại sao", "tai sao", "sao lại", "sao lai", "vì sao", "vi sao", "lý do", "ly do", "sao không", "sao"
     ]) and any(k in prompt_lower for k in ["từ chối", "tu choi", "hủy", "huy", "không nhận", "khong nhan", "bỏ", "rejected", "declined", "cancelled"]))
-    is_review_order = any(k in prompt_lower for k in [
+    is_map_or_nav_view_req = _is_map_or_nav_view_query(prompt_lower)
+    is_review_order = (not is_map_or_nav_view_req) and any(k in prompt_lower for k in [
         "xem lại", "xem lai", "cho tôi xem", "cho toi xem", "cho xem",
         "xem món", "xem mon", "xem đơn", "xem don", "xem đồ", "xem do",
         "món đồ đặc", "mon do dac", "món đồ đạc", "mon do dac",
@@ -427,7 +498,7 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
         "đã tới", "da toi", "đã đến", "da den"
     ])
     is_chitchat_mood = bool(re.search(r'\b(tâm trạng|tam trang|cảm xúc|cam xuc|cảm thấy|cam thay|khỏe không|khoe khong|bạn tên là|em tên là|em mấy tuổi)\b', prompt_lower))
-    is_query_status = not is_chitchat_mood and (is_reject_inquiry or is_review_order or any(k in prompt_lower for k in query_status_kws)) and (not is_explicit_order_intent or has_status_timing_kw or is_reject_inquiry or is_review_order)
+    is_query_status = (not is_map_or_nav_view_req) and (not is_chitchat_mood) and (is_reject_inquiry or is_review_order or any(k in prompt_lower for k in query_status_kws)) and (not is_explicit_order_intent or has_status_timing_kw or is_reject_inquiry or is_review_order)
     if is_query_status:
         # Tra cứu trạng thái đơn món & dịch vụ: TUYỆT ĐỐI không dùng số phòng cũ của khách trước
         action = "query_order_status"
@@ -486,13 +557,13 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
     # 3. Phân loại Category & FAQ / Facility / Nearby Exploration Keywords (KHÔNG BAO GIỜ HỎI SỐ PHÒNG NẾU LÀ CÂU HỎI THÔNG TIN)
     faq_keywords = [
-        "ở đâu", "mấy giờ", "bao nhiêu", "giá", "thế nào", "có không",
-        "where", "when", "how", "what", "giờ nào", "tầng mấy", "bao xa",
-        "chỉ đường", "đường nào", "hướng nào", "đi vệ sinh", "nhà vệ sinh",
+        "ở đâu", "o dau", "mấy giờ", "may gio", "bao nhiêu", "bao nhieu", "giá", "gia", "thế nào", "the nao", "có không", "co khong",
+        "where", "where's", "when", "how", "what", "giờ nào", "tầng mấy", "tang may", "bao xa",
+        "chỉ đường", "chi duong", "đường nào", "hướng nào", "đi vệ sinh", "nhà vệ sinh", "nha ve sinh",
         "đi tới", "di toi", "đi đến", "di den", "tới", "đến", "dẫn đường", "dan duong",
         "lối đi", "loi di", "lối lên", "loi len", "lối xuống", "đường đến", "duong den",
         "đường đi", "duong di", "đường ra", "vị trí", "vi tri", "chỉ tôi", "dẫn tôi", "cách đi", "làm sao để đến",
-        "toilet", "wc", "restroom", "washroom", "phòng vệ sinh",
+        "toilet", "wc", "restroom", "washroom", "phòng vệ sinh", "bản đồ", "ban do", "sơ đồ", "so do", "directions", "way to", "show me the way", "take me to",
         "có món gì", "có những gì", "gồm những gì", "những món nào", "xem thực đơn", "xem menu",
         "thực đơn", "menu", "có dịch vụ gì", "chi phí thế nào", "bảng giá", "quy định", "chính sách",
         # Từ khóa khám phá xung quanh, ngoại khu, chợ đêm, danh thắng

@@ -20,21 +20,6 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     p_lower = (prompt or "").lower().strip()
     r_lower = (reply or "").lower().strip()
 
-    # 0. Hỗ trợ câu hỏi nối tiếp xác nhận điều hướng POI từ lượt trước (Multi-turn Context)
-    if session_id:
-        affirmative_nav = bool(re.search(
-            r'^(?:có|dạ có|da co|ừ|uh|yes|sure)?[\s\,\.\-]*'
-            r'(?:chỉ đường|chi duong|dẫn đường|dan duong|chỉ đi|dẫn đi|mở bản đồ|mo ban do|dẫn tôi đi|chỉ tôi đi|show me|take me there|navigate)'
-            r'(?:[\s\w]*)$'
-            r'|'
-            r'^(?:có|dạ có|da co|ừ|uh|yes|sure)[\s\!\.\?]*$',
-            p_lower
-        ))
-        if affirmative_nav:
-            last_key = session_manager.get_last_destination_key(session_id)
-            if last_key:
-                return last_key
-
     # Neu cau hoi nhac toi phong khong ton tai hoac phan hoi thong bao phong khong ton tai -> Tuyet doi khong bat ban do
     cand_room = extract_room_number(p_lower)
     if cand_room and not is_valid_hotel_room(cand_room):
@@ -156,11 +141,16 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
 
     room_nav_match = (room_4xx_match is not None or room_3xx_match is not None or is_general_room_query) and (not is_service_order_context or has_explicit_nav)
 
+    has_explicit_map_request = bool(
+        re.search(r'(?:^|\b)(?:bản đồ|ban do|sơ đồ|so do|map)(?:\b|$)', p_lower)
+    ) and not is_service_order_context
+
     has_nav_intent = (
         room_nav_match or
         any(k in p_lower for k in nav_intent_phrases) or
         any(k in p_lower for k in direct_loc_phrases) or
-        is_short_location_utterance
+        is_short_location_utterance or
+        has_explicit_map_request
     )
 
     # Bỏ qua các câu hỏi tổng quan về dịch vụ / tiện ích của khách sạn (không nhắm đến 1 địa điểm cụ thể)
@@ -267,5 +257,22 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
             if re.match(r'^(?:40[1-9]|30[1-9])$', clean_rn):
                 return f"room_{clean_rn}"
         return None
+
+    # 8. Nếu câu không nhắc POI mới nhưng là câu nối tiếp/xác nhận/mở lại map -> kế thừa POI từ lượt trước
+    if session_id:
+        affirmative_nav = bool(re.search(
+            r'(?:^|\b)(?:chỉ đường|chi duong|dẫn đường|dan duong|chỉ luôn|chỉ đi|dẫn đi|mở bản đồ|mo ban do|xem bản đồ|hiện bản đồ|mở map|xem map|hiện map|map của tôi đâu|bản đồ đâu|bản đồ của tôi đâu|dẫn tôi đi|chỉ tôi đi|show me the map|open the map|show map|take me there|navigate)(?:\b|$)'
+            r'|'
+            r'^(?:có|dạ có|da co|ừ|uh|yes|sure)[\s\!\.\?]*$',
+            p_lower
+        ))
+        if affirmative_nav:
+            last_key = session_manager.get_last_destination_key(session_id)
+            if last_key:
+                return last_key
+
+    # 9. Yêu cầu mở bản đồ / chỉ đường chung chung chưa nêu rõ địa điểm (khớp FloorMap.jsx fallback)
+    if re.search(r'(?:^|\b)(?:bản đồ|ban do|sơ đồ|so do|map|chỉ đường|chi duong|directions)(?:\b|$)', p_lower):
+        return "infinity_pool"
 
     return None

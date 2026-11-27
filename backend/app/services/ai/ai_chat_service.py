@@ -294,6 +294,8 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         destination_key = None
     else:
         destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply, current_room, session_id=sid)
+    if destination_key and act in ("conversation", "chitchat", "faq", "unknown", "none"):
+        act = "show_map"
     if destination_key and destination_key.startswith("room_"):
         r_part = destination_key.replace("room_", "")
         if not is_valid_hotel_room(r_part):

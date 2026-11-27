@@ -141,9 +141,22 @@ def match_facility_ads_fast_path(
     floor_info = fac.get("floor_en" if is_en else "floor_vi") or ""
 
     parts: List[str] = []
+    seen_time_note = False
     for ad in matching_ads[:2]:
         t = (ad["title_en"] or ad["title"]) if is_en else ad["title"]
         d = (ad["description_en"] or ad["description"]) if is_en else ad["description"]
+        if d:
+            if seen_time_note:
+                d = re.sub(
+                    r",?\s*(?:tại\s+[^.,]*?Tầng\s*\d+[^.,]*|từ\s+\d{1,2}\s+giờ[^.,]*|on\s+the\s+\d+(?:st|nd|rd|th)\s+Floor[^.,]*|\(\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}[^)]*\))",
+                    "",
+                    d,
+                    flags=re.IGNORECASE,
+                ).strip(" ,.")
+                if d and not d.endswith("."):
+                    d += "."
+            if re.search(r"(?:giờ|\d{1,2}:\d{2}|24/7)", d, re.IGNORECASE):
+                seen_time_note = True
         segment = f"{t}. {d}".strip() if d else t
         if segment:
             parts.append(segment)
@@ -152,10 +165,12 @@ def match_facility_ads_fast_path(
         return None
 
     details_text = " ".join(parts)
+    has_hours_in_details = bool(re.search(r"(?:giờ|\d{1,2}:\d{2}|24/7)", details_text, re.IGNORECASE))
+    loc_suffix = "" if (has_hours_in_details or not floor_info) else f" ({floor_info})"
     if is_en:
-        reply = f"At {fac_name} ({floor_info}), we currently feature: {details_text}"
+        reply = f"At {fac_name}{loc_suffix}, we currently feature: {details_text}"
     else:
-        reply = f"Dạ tại {fac_name} ({floor_info}) hiện đang có: {details_text}"
+        reply = f"Dạ tại {fac_name}{loc_suffix} hiện đang có: {details_text}"
 
     primary_ad = matching_ads[0]
     ad_payload = (

@@ -21,12 +21,12 @@ import {
 import { createTaxiRequest } from '../../services/taxiApi';
 
 export const POPULAR_DESTINATIONS = [
-  { id: 'dad', name: 'Sân bay Quốc tế Đà Nẵng (DAD)', desc: '15 phút di chuyển' },
-  { id: 'hoian', name: 'Phố cổ Hội An', desc: '40 phút di chuyển' },
-  { id: 'banahills', name: 'Bà Nà Hills & Cầu Vàng', desc: '45 phút di chuyển' },
-  { id: 'sontra', name: 'Bán đảo Sơn Trà & Chùa Linh Ứng', desc: '20 phút di chuyển' },
-  { id: 'mykhe', name: 'Bãi biển Mỹ Khê', desc: '5 phút di chuyển' },
-  { id: 'custom', name: 'Điểm đến khác...', desc: 'Nhập địa chỉ tùy chọn' },
+  { id: 'dad', nameEn: 'Da Nang International Airport (DAD)', descEn: '15-minute drive', name: 'Sân bay Quốc tế Đà Nẵng (DAD)', desc: '15 phút di chuyển' },
+  { id: 'hoian', nameEn: 'Hoi An Ancient Town', descEn: '40-minute drive', name: 'Phố cổ Hội An', desc: '40 phút di chuyển' },
+  { id: 'banahills', nameEn: 'Ba Na Hills & Golden Bridge', descEn: '45-minute drive', name: 'Bà Nà Hills & Cầu Vàng', desc: '45 phút di chuyển' },
+  { id: 'sontra', nameEn: 'Son Tra Peninsula & Linh Ung Pagoda', descEn: '20-minute drive', name: 'Bán đảo Sơn Trà & Chùa Linh Ứng', desc: '20 phút di chuyển' },
+  { id: 'mykhe', nameEn: 'My Khe Beach', descEn: '5-minute drive', name: 'Bãi biển Mỹ Khê', desc: '5 phút di chuyển' },
+  { id: 'custom', nameEn: 'Other destination...', descEn: 'Enter an address', name: 'Điểm đến khác...', desc: 'Nhập địa chỉ tùy chọn' },
 ];
 
 export const TAXI_PARTNERS = [
@@ -63,6 +63,45 @@ export const TAXI_PARTNERS = [
     desc: 'Chuyên tuyến đưa đón Sân bay Quốc tế Đà Nẵng và tour tham quan.',
   },
 ];
+
+export function taxiDestinationLabel(destination, isEn = false) {
+  if (!isEn) return destination;
+  const known = POPULAR_DESTINATIONS.find((item) => item.name === destination);
+  return known?.nameEn || ({
+    'Cầu Rồng Đà Nẵng': 'Dragon Bridge, Da Nang',
+    'Chợ Hàn Đà Nẵng': 'Han Market, Da Nang',
+    'Chợ đêm Helio': 'Helio Night Market',
+    'Danh thắng Ngũ Hành Sơn': 'Marble Mountains',
+  })[destination] || destination;
+}
+
+export function taxiVehicleLabel(vehicleType, isEn = false) {
+  return vehicleType === '7-Seater SUV'
+    ? (isEn ? '7-seater SUV' : 'xe 7 chỗ')
+    : (isEn ? '4-seater sedan' : 'xe 4 chỗ');
+}
+
+export function getTaxiOptionsPrompt(room, isEn = false) {
+  const intro = room ? (isEn ? `Room ${room} is verified. ` : `Dạ phòng ${room} đã được xác thực. `) : '';
+  return intro + (isEn
+    ? 'You have two options: option one, call a taxi company yourself; option two, ask our staff to arrange a taxi. Which would you prefer?'
+    : 'Quý khách có hai lựa chọn: lựa chọn một, tự gọi cho hãng taxi; lựa chọn hai, nhờ nhân viên đặt xe giúp. Quý khách muốn chọn cách nào ạ?');
+}
+
+export function getTaxiVehiclePrompt(destination, isEn = false) {
+  const label = taxiDestinationLabel(destination, isEn);
+  return isEn
+    ? `Your destination is ${label}. Would you like a 4-seater or 7-seater car?`
+    : `Dạ điểm đến là ${label}. Quý khách muốn đặt xe 4 chỗ hay 7 chỗ ạ?`;
+}
+
+export function getTaxiReviewPrompt(destination, vehicle, isEn = false) {
+  const label = taxiDestinationLabel(destination, isEn);
+  const car = taxiVehicleLabel(vehicle, isEn);
+  return isEn
+    ? `A ${car} to ${label}. Please check the booking details on the screen. Is everything correct?`
+    : `Dạ em đã ghi nhận thông tin đặt xe đi ${label}, ${car}. Quý khách vui lòng kiểm tra lại thông tin trên màn hình đã đúng chưa ạ?`;
+}
 
 export const AUTO_CLOSE_SECONDS = 45;
 export const CONFIRMED_AUTO_CLOSE_SECONDS = 5;
@@ -112,7 +151,7 @@ export function startAutoCloseTimer({ durationSeconds, onTick, onExpire }) {
 export function getTaxiSelfBookingAnnouncement(isEn = false) {
   return isEn
     ? 'Here is the directory of trusted taxi hotlines in Da Nang. This screen will turn off automatically after 45 seconds or when you say thank you.'
-    : 'Dạ, đây là danh bạ hotline các hãng taxi uy tín tại Đà Nẵng. Màn hình sẽ tự tắt sau 45 giây hoặc khi quý khách nói cảm ơn ạ.';
+    : 'Dạ, đây là danh bạ số điện thoại các hãng taxi uy tín tại Đà Nẵng. Màn hình sẽ tự tắt sau 45 giây hoặc khi quý khách nói cảm ơn ạ.';
 }
 
 export function getTaxiSelfBookingNotice(isEn = false) {
@@ -128,7 +167,7 @@ export function getTaxiCloseFollowUpMessage({ justBooked = false, closeReason = 
   if (justBooked) {
     return isEn
       ? 'Your taxi request has been sent to Concierge! How may I assist you further?'
-      : 'Dạ yêu cầu đặt xe taxi của quý khách đã được chuyển tới bộ phận Concierge rồi ạ! Em có thể hỗ trợ thêm gì cho quý khách nữa không ạ?';
+      : 'Dạ yêu cầu đặt xe taxi của quý khách đã được chuyển tới bộ phận hỗ trợ đặt xe rồi ạ! Em có thể hỗ trợ thêm gì cho quý khách nữa không ạ?';
   }
   if (closeReason === 'voice_dismiss') {
     return isEn
@@ -148,19 +187,20 @@ export function isDismissVoiceIntent(transcript) {
 }
 
 export function isSelfBookingVoiceIntent(transcript) {
-  return /tự đặt|tu dat|tự gọi|tu goi|tự liên hệ|tự book|cho tôi số|cho số|số điện thoại|hotline|option 1|option một|lựa chọn 1|lua chon 1|lựa chọn một|phương án 1|phuong an 1|phương án một|số 1|so 1|số một|thứ nhất|thu nhat|đầu tiên|chọn 1|chon 1|^\s*1\s*$|(?:\b|^)một(?:\b|$)/i.test(transcript || '');
+  return /tự đặt|tu dat|tự gọi|tu goi|tự liên hệ|tự book|cho tôi số|cho số|số điện thoại|hotline|option one|first option|call (?:it |a taxi )?myself|book (?:it )?myself|taxi numbers?|option 1|option một|lựa chọn 1|lua chon 1|lựa chọn một|phương án 1|phuong an 1|phương án một|số 1|so 1|số một|thứ nhất|thu nhat|đầu tiên|chọn 1|chon 1|^\s*(?:1|one)[.!?]?\s*$|(?:\b|^)một(?:\b|$)/i.test(transcript || '');
 }
 
 export function isConciergeVoiceIntent(transcript) {
-  return /nhờ đặt|nho dat|đặt giùm|dat gium|đặt giúp|dat giup|đặt hộ|dat ho|concierge|nhân viên đặt|lễ tân đặt|hỗ trợ đặt|option 2|option hai|lựa chọn 2|lua chon 2|lựa chọn hai|phương án 2|phuong an 2|phương án hai|số 2|so 2|số hai|thứ hai|thu hai|thứ 2|chọn 2|chon 2|^\s*2\s*$|(?:\b|^)hai(?:\b|$)/i.test(transcript || '');
+  return /nhờ đặt|nho dat|đặt giùm|dat gium|đặt giúp|dat giup|đặt hộ|dat ho|concierge|nhân viên đặt|lễ tân đặt|hỗ trợ đặt|option two|second option|staff (?:to )?(?:book|arrange)|book (?:it |a taxi )?for me|option 2|option hai|lựa chọn 2|lua chon 2|lựa chọn hai|phương án 2|phuong an 2|phương án hai|số 2|so 2|số hai|thứ hai|thu hai|thứ 2|chọn 2|chon 2|^\s*(?:2|two)[.!?]?\s*$|(?:\b|^)hai(?:\b|$)/i.test(transcript || '');
 }
 
 export function isConfirmVoiceIntent(transcript) {
-  return /đúng rồi|dung roi|chính xác|chinh xac|xác nhận|xac nhan|chuẩn rồi|chuan roi|gửi đi|gui di|gửi yêu cầu|gui yeu cau|đồng ý|dong y|được rồi|duoc roi|ok|okay|yes|correct|confirm/i.test(transcript || '');
+  if (isEditVoiceIntent(transcript)) return false;
+  return /đúng rồi|dung roi|chính xác|chinh xac|xác nhận|xac nhan|chuẩn rồi|chuan roi|gửi đi|gui di|gửi yêu cầu|gui yeu cau|đồng ý|dong y|được rồi|duoc roi|\b(?:ok|okay|yes|correct|confirm)\b/i.test(transcript || '');
 }
 
 export function isEditVoiceIntent(transcript) {
-  return /chưa đúng|chua dung|không đúng|khong dung|sai rồi|sai roi|sửa lại|sua lai|chỉnh sửa|thay đổi|thay doi|chọn lại|chon lai|sửa|sua|no|edit|change/i.test(transcript || '');
+  return /chưa đúng|chua dung|không đúng|khong dung|sai rồi|sai roi|sửa lại|sua lai|chỉnh sửa|thay đổi|thay doi|chọn lại|chon lai|sửa|sua|đừng|chưa xác nhận|không xác nhận|\b(?:no|not|wrong|edit|change)\b|don['’]t|do not/i.test(transcript || '');
 }
 
 export function extractDestinationFromVoice(transcript) {
@@ -171,17 +211,17 @@ export function extractDestinationFromVoice(transcript) {
   // 1. Phù hợp các địa danh du lịch nổi tiếng Đà Nẵng
   if (/sân bay|airport|dad\b/i.test(clean)) return 'Sân bay Quốc tế Đà Nẵng (DAD)';
   if (/hội an|hoi an|phố cổ|pho co/i.test(clean)) return 'Phố cổ Hội An';
-  if (/bà nà|ba na|cầu vàng|cau vang/i.test(clean)) return 'Bà Nà Hills & Cầu Vàng';
+  if (/bà nà|ba na|cầu vàng|cau vang|golden bridge/i.test(clean)) return 'Bà Nà Hills & Cầu Vàng';
   if (/sơn trà|son tra|chùa linh ứng|linh ung/i.test(clean)) return 'Bán đảo Sơn Trà & Chùa Linh Ứng';
   if (/mỹ khê|my khe|bãi biển|bai bien/i.test(clean)) return 'Bãi biển Mỹ Khê';
-  if (/cầu rồng|cau rong/i.test(clean)) return 'Cầu Rồng Đà Nẵng';
-  if (/chợ hàn|cho han/i.test(clean)) return 'Chợ Hàn Đà Nẵng';
+  if (/cầu rồng|cau rong|dragon bridge/i.test(clean)) return 'Cầu Rồng Đà Nẵng';
+  if (/chợ hàn|cho han|han market/i.test(clean)) return 'Chợ Hàn Đà Nẵng';
   if (/chợ đêm|cho dem|helio/i.test(clean)) return 'Chợ đêm Helio';
-  if (/ngũ hành sơn|ngu hanh son/i.test(clean)) return 'Danh thắng Ngũ Hành Sơn';
+  if (/ngũ hành sơn|ngu hanh son|marble mountains/i.test(clean)) return 'Danh thắng Ngũ Hành Sơn';
 
   // 2. Nhận diện các cấu trúc câu: "đi [X]", "đến [X]", "tới [X]", "qua [X]", "ra [X]"
   // Giữ nguyên casing gốc từ transcript
-  const match = transcript.match(/(?:tôi muốn đi|cho tôi đi|muốn đi|đi đến|đi tới|đi ra|đi|đến|tới|qua|ra)\s+(.+)/i);
+  const match = transcript.match(/(?:take me to|I want to go to|go to|to|tôi muốn đi|cho tôi đi|muốn đi|đi đến|đi tới|đi ra|đi|đến|tới|qua|ra)\s+(.+)/i);
   if (match && match[1]) {
     const rawDest = match[1].replace(/[.,?!]+$/, '').trim();
     if (rawDest.length >= 2) {
@@ -204,32 +244,32 @@ export function extractVehicleAndPartyFromVoice(transcript) {
   let partySize = null;
 
   // 1. Nhận diện loại xe
-  if (/7 chỗ|bảy chỗ|suv|7 cho|bay cho|xe to|xe lớn/i.test(clean)) {
+  if (/7 chỗ|bảy chỗ|suv|7 cho|bay cho|xe to|xe lớn|(?:7|seven)[ -]seat/i.test(clean)) {
     vehicleType = '7-Seater SUV';
-  } else if (/4 chỗ|bốn chỗ|sedan|4 cho|bon cho|xe nhỏ/i.test(clean)) {
+  } else if (/4 chỗ|bốn chỗ|sedan|4 cho|bon cho|xe nhỏ|(?:4|four)[ -]seat/i.test(clean)) {
     vehicleType = '4-Seater Sedan';
   }
 
   // 2. Nhận diện số lượng khách (ưu tiên số đi kèm người/khách/pax/vé)
-  const partyMatch = clean.match(/(\d+)\s*(?:người|khách|ve|vé|pax|bạn|thành viên|nguoi|khach)/i);
+  const partyMatch = clean.match(/(\d+)\s*(?:người|khách|ve|vé|pax|bạn|thành viên|nguoi|khach|people|passengers?|guests?)/i);
   if (partyMatch && partyMatch[1]) {
     const count = parseInt(partyMatch[1], 10);
     if (count >= 1 && count <= 16) {
       partySize = count;
     }
-  } else if (/một người|mình tôi|1 mình|đơn|mot nguoi/i.test(clean)) {
+  } else if (/một người|mình tôi|1 mình|đơn|mot nguoi|one person|just me/i.test(clean)) {
     partySize = 1;
-  } else if (/hai người|hai khách|2 người|hai nguoi/i.test(clean)) {
+  } else if (/hai người|hai khách|2 người|hai nguoi|two people|two passengers/i.test(clean)) {
     partySize = 2;
-  } else if (/ba người|ba khách|ba nguoi/i.test(clean)) {
+  } else if (/ba người|ba khách|ba nguoi|three people|three passengers/i.test(clean)) {
     partySize = 3;
-  } else if (/bốn người|bốn khách|bon nguoi/i.test(clean)) {
+  } else if (/bốn người|bốn khách|bon nguoi|four people|four passengers/i.test(clean)) {
     partySize = 4;
-  } else if (/năm người|năm khách|nam nguoi/i.test(clean)) {
+  } else if (/năm người|năm khách|nam nguoi|five people|five passengers/i.test(clean)) {
     partySize = 5;
-  } else if (/sáu người|sáu khách|sau nguoi/i.test(clean)) {
+  } else if (/sáu người|sáu khách|sau nguoi|six people|six passengers/i.test(clean)) {
     partySize = 6;
-  } else if (/bảy người|bảy khách|bay nguoi/i.test(clean)) {
+  } else if (/bảy người|bảy khách|bay nguoi|seven people|seven passengers/i.test(clean)) {
     partySize = 7;
   } else {
     // Nếu chỉ có số đứng sau "đi X" hoặc "cho X" mà không phải "chỗ"
@@ -292,6 +332,9 @@ export const RobotTaxiModal = ({
   speak,
   onStartTalk,
 }) => {
+  const isEn = language === 'English' || language === 'EN';
+  const langCode = isEn ? 'en-US' : 'vi-VN';
+  const t = (vi, en) => isEn ? en : vi;
   const [mode, setMode] = useState(initialMode);
   const [conciergeStage, setConciergeStage] = useState('form'); // 'form' | 'review'
   const [conciergeSubStep, setConciergeSubStep] = useState('ask_destination'); // 'ask_destination' | 'ask_vehicle'
@@ -339,15 +382,15 @@ export const RobotTaxiModal = ({
         setNote('');
         setConciergeStage('form');
         setConciergeSubStep('ask_destination');
-        const promptMsg = 'Dạ, quý khách muốn đi đến đâu ạ?';
+        const promptMsg = t('Dạ, quý khách muốn đi đến đâu ạ?', 'Where would you like to go?');
         setVoiceGuidance(promptMsg);
         if (typeof speak === 'function') {
-          speak(promptMsg, 'vi-VN', () => {
+          speak(promptMsg, langCode, () => {
             if (typeof onStartTalk === 'function') onStartTalk();
           });
         }
       } else if (startMode === 'self_booking') {
-        setVoiceGuidance('Danh bạ hotline các hãng taxi đối tác uy tín');
+        setVoiceGuidance(t('Số điện thoại các hãng taxi đối tác', 'Partner taxi phone numbers'));
       }
     } else {
       stopAutoCloseTimer();
@@ -381,7 +424,10 @@ export const RobotTaxiModal = ({
 
   // Xử lý tương tác giọng nói trong các chế độ
   useEffect(() => {
-    if (!isOpen || !lastVoiceTranscript) return;
+    if (!isOpen || !lastVoiceTranscript) {
+      lastProcessedTranscriptRef.current = '';
+      return;
+    }
 
     const transcriptLower = lastVoiceTranscript.toLowerCase().trim();
     if (!transcriptLower || transcriptLower === lastProcessedTranscriptRef.current) return;
@@ -413,6 +459,11 @@ export const RobotTaxiModal = ({
 
     // 3. Chế độ nhờ Concierge đặt giùm (concierge_booking)
     if (mode === 'concierge_booking') {
+      // A confirmation such as 'được rồi' belongs to review, not the dismiss handler.
+      if (/^(?:hủy|huy|cancel|no thanks|cảm ơn|cam on|thank you|thanks)(?:[\s.!?]|$)/i.test(transcriptLower) || (isDismissVoiceIntent(transcriptLower) && !isConfirmVoiceIntent(transcriptLower) && !isEditVoiceIntent(transcriptLower))) {
+        onClose?.('voice_dismiss');
+        return;
+      }
       if (conciergeStage === 'form') {
         if (conciergeSubStep === 'ask_destination') {
           const foundDest = extractDestinationFromVoice(transcriptLower);
@@ -425,11 +476,10 @@ export const RobotTaxiModal = ({
             if (vehicleInfo.partySize) setPartySize(vehicleInfo.partySize);
 
             setConciergeStage('review');
-            const vLabel = (vehicleInfo.vehicleType || vehicleType) === '7-Seater SUV' ? 'xe 7 chỗ' : 'xe 4 chỗ';
-            const reviewMsg = `Dạ em đã ghi nhận thông tin đặt xe đi ${foundDest}, ${vLabel}. Quý khách vui lòng kiểm tra lại thông tin trên màn hình đã đúng chưa ạ?`;
+            const reviewMsg = getTaxiReviewPrompt(foundDest, vehicleInfo.vehicleType || vehicleType, isEn);
             setVoiceGuidance(reviewMsg);
             if (typeof speak === 'function') {
-              speak(reviewMsg, 'vi-VN', () => {
+              speak(reviewMsg, langCode, () => {
                 if (typeof onStartTalk === 'function') onStartTalk({ silent: true });
               });
             }
@@ -437,10 +487,10 @@ export const RobotTaxiModal = ({
             // Khách trả lời điểm đến -> Lưu điểm đến và hỏi tiếp loại xe
             setSelectedDest(foundDest);
             setConciergeSubStep('ask_vehicle');
-            const askVehicleMsg = `Dạ điểm đến là ${foundDest}. Quý khách muốn đặt xe 4 chỗ hay 7 chỗ ạ?`;
+            const askVehicleMsg = getTaxiVehiclePrompt(foundDest, isEn);
             setVoiceGuidance(askVehicleMsg);
             if (typeof speak === 'function') {
-              speak(askVehicleMsg, 'vi-VN', () => {
+              speak(askVehicleMsg, langCode, () => {
                 if (typeof onStartTalk === 'function') onStartTalk({ silent: true });
               });
             }
@@ -454,11 +504,10 @@ export const RobotTaxiModal = ({
 
             setConciergeStage('review');
             const currentDest = selectedDest === 'Điểm đến khác...' ? customDest.trim() : selectedDest;
-            const vLabel = nextVehicle === '7-Seater SUV' ? 'xe 7 chỗ' : 'xe 4 chỗ';
-            const reviewMsg = `Dạ em đã ghi nhận thông tin đặt xe đi ${currentDest || 'điểm đến'}, ${vLabel}. Quý khách vui lòng kiểm tra lại thông tin trên màn hình đã đúng chưa ạ?`;
+            const reviewMsg = getTaxiReviewPrompt(currentDest, nextVehicle, isEn);
             setVoiceGuidance(reviewMsg);
             if (typeof speak === 'function') {
-              speak(reviewMsg, 'vi-VN', () => {
+              speak(reviewMsg, langCode, () => {
                 if (typeof onStartTalk === 'function') onStartTalk({ silent: true });
               });
             }
@@ -466,15 +515,15 @@ export const RobotTaxiModal = ({
         }
       } else if (conciergeStage === 'review') {
         // Khách đang ở bước kiểm tra lại thông tin
-        if (isConfirmVoiceIntent(transcriptLower)) {
+        if (isConfirmVoiceIntent(transcriptLower) && !isEditVoiceIntent(transcriptLower)) {
           handleSubmitConciergeRequest();
         } else if (isEditVoiceIntent(transcriptLower)) {
           setConciergeStage('form');
           setConciergeSubStep('ask_destination');
-          const editMsg = 'Dạ quý khách muốn thay đổi thông tin nào ạ? Quý khách có thể nói lại điểm đến hoặc loại xe mới ạ.';
+          const editMsg = t('Dạ quý khách vui lòng nói lại điểm đến mới ạ.', 'Please tell me your new destination.');
           setVoiceGuidance(editMsg);
           if (typeof speak === 'function') {
-            speak(editMsg, 'vi-VN', () => {
+            speak(editMsg, langCode, () => {
               if (typeof onStartTalk === 'function') onStartTalk();
             });
           }
@@ -500,10 +549,8 @@ export const RobotTaxiModal = ({
 
   const resolvedDestination = selectedDest === 'Điểm đến khác...' ? customDest.trim() : selectedDest;
   const pickupLocation = activeRoomNumber
-    ? `Sảnh chính (Khách Phòng ${activeRoomNumber})`
-    : 'Sảnh chính & Cổng trước (Main Lobby)';
-
-  const isEn = language === 'English' || language === 'EN';
+    ? t(`Sảnh chính (Phòng ${activeRoomNumber})`, `Main lobby (Room ${activeRoomNumber})`)
+    : t('Sảnh chính và cửa trước', 'Main lobby and front entrance');
 
   const handleSelectSelfBooking = () => {
     setMode('self_booking');
@@ -525,10 +572,10 @@ export const RobotTaxiModal = ({
     setNote('');
     setConciergeStage('form');
     setConciergeSubStep('ask_destination');
-    const promptMsg = 'Dạ, quý khách muốn đi đến đâu ạ?';
+    const promptMsg = t('Dạ, quý khách muốn đi đến đâu ạ?', 'Where would you like to go?');
     setVoiceGuidance(promptMsg);
     if (typeof speak === 'function') {
-      speak(promptMsg, 'vi-VN', () => {
+      speak(promptMsg, langCode, () => {
         if (typeof onStartTalk === 'function') onStartTalk();
       });
     }
@@ -536,12 +583,13 @@ export const RobotTaxiModal = ({
 
   const handleSelectDestinationCard = (destName) => {
     setSelectedDest(destName);
+    if (destName === 'Điểm đến khác...') return;
     if (conciergeSubStep === 'ask_destination') {
       setConciergeSubStep('ask_vehicle');
-      const askVehicleMsg = `Dạ điểm đến là ${destName}. Quý khách muốn đặt xe 4 chỗ hay 7 chỗ ạ?`;
+      const askVehicleMsg = getTaxiVehiclePrompt(destName, isEn);
       setVoiceGuidance(askVehicleMsg);
       if (typeof speak === 'function') {
-        speak(askVehicleMsg, 'vi-VN', () => {
+        speak(askVehicleMsg, langCode, () => {
           if (typeof onStartTalk === 'function') onStartTalk({ silent: true });
         });
       }
@@ -551,16 +599,15 @@ export const RobotTaxiModal = ({
   const handleProceedToReview = () => {
     const targetDest = selectedDest === 'Điểm đến khác...' ? customDest.trim() : selectedDest;
     if (!targetDest) {
-      setErrorMsg('Vui lòng chọn hoặc nhập điểm đến của quý khách.');
+      setErrorMsg(t('Vui lòng chọn hoặc nhập điểm đến của quý khách.', 'Please select or enter your destination.'));
       return;
     }
     setErrorMsg('');
     setConciergeStage('review');
-    const vLabel = vehicleType === '7-Seater SUV' ? 'xe 7 chỗ' : 'xe 4 chỗ';
-    const reviewMsg = `Dạ em đã ghi nhận thông tin đặt xe đi ${targetDest}, ${vLabel}. Quý khách vui lòng kiểm tra lại thông tin trên màn hình đã đúng chưa ạ?`;
+    const reviewMsg = getTaxiReviewPrompt(targetDest, vehicleType, isEn);
     setVoiceGuidance(reviewMsg);
     if (typeof speak === 'function') {
-      speak(reviewMsg, 'vi-VN', () => {
+      speak(reviewMsg, langCode, () => {
         if (typeof onStartTalk === 'function') onStartTalk({ silent: true });
       });
     }
@@ -570,7 +617,7 @@ export const RobotTaxiModal = ({
     if (e) e.preventDefault();
     const finalDest = selectedDest === 'Điểm đến khác...' ? customDest.trim() : selectedDest;
     if (!finalDest) {
-      setErrorMsg('Vui lòng chọn hoặc nhập điểm đến của quý khách.');
+      setErrorMsg(t('Vui lòng chọn hoặc nhập điểm đến của quý khách.', 'Please select or enter your destination.'));
       setConciergeStage('form');
       return;
     }
@@ -599,11 +646,11 @@ export const RobotTaxiModal = ({
       });
       setMode('concierge_confirmed');
 
-      const roomText = activeRoomNumber ? `phòng ${activeRoomNumber}` : 'quý khách';
+      const roomText = activeRoomNumber ? t(`phòng ${activeRoomNumber}`, `room ${activeRoomNumber}`) : t('quý khách', 'you');
       if (typeof speak === 'function') {
         speak(
-          `Dạ em đã chuyển tiếp yêu cầu đặt taxi của ${roomText} đến bộ phận Concierge rồi ạ. Quý khách có cần em hỗ trợ thêm gì nữa không ạ?`,
-          'vi-VN',
+          t(`Dạ em đã chuyển yêu cầu đặt taxi của ${roomText} đến bộ phận hỗ trợ đặt xe rồi ạ. Quý khách cần hỗ trợ gì thêm không ạ?`, `Your taxi request for ${roomText} has been sent to our staff. How else may I help you?`),
+          langCode,
           () => {
             if (typeof onStartTalk === 'function') onStartTalk({ silent: true });
           }
@@ -614,7 +661,7 @@ export const RobotTaxiModal = ({
         onSuccess(res || { ticket_code: ticketCode });
       }
     } catch (err) {
-      setErrorMsg('Không thể gửi yêu cầu gọi xe. Quý khách vui lòng thử lại hoặc liên hệ Lễ tân.');
+      setErrorMsg(t('Không thể gửi yêu cầu gọi xe. Quý khách vui lòng thử lại hoặc liên hệ lễ tân.', 'Could not send your taxi request. Please try again or contact reception.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -653,7 +700,7 @@ export const RobotTaxiModal = ({
                   }
                 }}
                 className="w-7 h-7 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
-                aria-label="Quay lại"
+                aria-label={t('Quay lại', 'Back')}
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
@@ -663,19 +710,19 @@ export const RobotTaxiModal = ({
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <h2 className="text-sm font-bold text-white tracking-wide whitespace-nowrap">Đặt Xe &amp; Taxi Sảnh</h2>
+                <h2 className="text-sm font-bold text-white tracking-wide whitespace-nowrap">{t('Đặt xe taxi', 'Taxi Booking')}</h2>
                 {activeRoomNumber && (
                   <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold text-[10px] border border-emerald-500/40 inline-flex items-center gap-1 whitespace-nowrap">
                     <ShieldCheck className="w-3 h-3" />
-                    Phòng {activeRoomNumber}
+                    {t('Phòng', 'Room')} {activeRoomNumber}
                   </span>
                 )}
               </div>
               {mode !== 'self_booking' && (
                 <p className="text-[11px] text-stone-400 truncate">
-                  {mode === 'options' && 'Vui lòng chọn hình thức đặt xe thuận tiện cho quý khách'}
-                  {mode === 'concierge_booking' && (conciergeStage === 'review' ? 'Kiểm tra lại thông tin trước khi gửi Concierge' : 'Giao tiếp giọng nói hoặc chạm để điền thông tin')}
-                  {mode === 'concierge_confirmed' && 'Yêu cầu đặt xe đã được chuyển tiếp thành công'}
+                  {mode === 'options' && t('Vui lòng chọn hình thức đặt xe thuận tiện cho quý khách', 'Choose how to book your taxi')}
+                  {mode === 'concierge_booking' && (conciergeStage === 'review' ? t('Kiểm tra lại thông tin trước khi gửi nhân viên', 'Review the details before sending to staff') : t('Giao tiếp giọng nói hoặc chạm để điền thông tin', 'Speak or tap to fill in your trip details'))}
+                  {mode === 'concierge_confirmed' && t('Yêu cầu đặt xe đã được chuyển tiếp thành công', 'Your taxi request has been sent')}
                 </p>
               )}
             </div>
@@ -685,7 +732,7 @@ export const RobotTaxiModal = ({
               type="button"
               onClick={handleResetAndClose}
               className="w-7 h-7 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white flex items-center justify-center transition-all cursor-pointer shrink-0"
-              aria-label="Đóng"
+              aria-label={t('Đóng', 'Close')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -714,12 +761,12 @@ export const RobotTaxiModal = ({
                     <PhoneCall className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">Lựa chọn 1</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">{t('Lựa chọn 1', 'Option 1')}</span>
                     <h3 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors leading-tight">
-                      Khách Tự Đặt Xe
+                      {t('Khách Tự Đặt Xe', 'Call a Taxi Yourself')}
                     </h3>
                     <p className="text-[11px] text-stone-400 mt-0.5 leading-snug line-clamp-2">
-                      Xem danh bạ hotline các hãng taxi uy tín để tự gọi xe.
+                      {t('Xem danh bạ số điện thoại các hãng taxi uy tín để tự gọi xe.', 'View taxi company phone numbers and call yourself.')}
                     </p>
                   </div>
                 </div>
@@ -733,19 +780,19 @@ export const RobotTaxiModal = ({
                     <UserCheck className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">Lựa chọn 2</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">{t('Lựa chọn 2', 'Option 2')}</span>
                     <h3 className="text-sm font-bold text-white group-hover:text-emerald-300 transition-colors leading-tight">
-                      Nhờ Concierge Đặt Giùm
+                      {t('Nhờ nhân viên đặt xe', 'Ask Staff to Book')}
                     </h3>
                     <p className="text-[11px] text-stone-400 mt-0.5 leading-snug line-clamp-2">
-                      Điền form cùng Robot, Concierge sẽ đặt xe và đón tại sảnh.
+                      {t('Cung cấp thông tin để nhân viên đặt xe đón tại sảnh.', 'Provide the trip details for staff to arrange your lobby pickup.')}
                     </p>
                   </div>
                 </div>
               </div>
 
               <div className="text-center text-[11px] text-stone-400">
-                Xác thực: <strong className="text-stone-200">{pickupLocation}</strong> · Quý khách có thể nói <em>&quot;Option 1&quot;</em> hoặc <em>&quot;Option 2&quot;</em>
+                {t('Điểm đón:', 'Pickup:')} <strong className="text-stone-200">{pickupLocation}</strong> · {t('Nói “Lựa chọn một” hoặc “Lựa chọn hai”.', 'Say “Option one” or “Option two”.')}
               </div>
             </div>
           )}
@@ -763,7 +810,7 @@ export const RobotTaxiModal = ({
                   >
                     <div className="flex items-center gap-1.5 min-w-0">
                       <Phone className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <h4 className="text-[11px] font-bold text-white truncate">{partner.name}</h4>
+                      <h4 className="text-[11px] font-bold text-white truncate">{isEn && partner.id === 'airport_taxi' ? 'Da Nang Airport Taxi' : partner.name}</h4>
                     </div>
                     <span className="text-sm font-mono font-bold text-amber-400 tracking-wide whitespace-nowrap">
                       {partner.hotline}
@@ -787,7 +834,7 @@ export const RobotTaxiModal = ({
                 <Mic className="w-3.5 h-3.5 text-amber-400 animate-pulse shrink-0" />
                 <span className="text-[10px] uppercase font-bold tracking-wider text-amber-400 shrink-0">Rora:</span>
                 <p className="text-xs font-semibold text-white truncate">
-                  {voiceGuidance || 'Quý khách muốn đi đến đâu ạ?'}
+                  {voiceGuidance || t('Quý khách muốn đi đến đâu ạ?', 'Where would you like to go?')}
                 </p>
               </div>
 
@@ -796,7 +843,7 @@ export const RobotTaxiModal = ({
                 <div className="md:col-span-3 space-y-1.5">
                   <div className="flex items-center justify-between gap-2">
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-300 truncate">
-                      1. Điểm đến {selectedDest ? <span className="text-emerald-400 normal-case ml-1">({resolvedDestination})</span> : null}
+                      {t('1. Điểm đến', '1. Destination')} {selectedDest ? <span className="text-emerald-400 normal-case ml-1">({taxiDestinationLabel(resolvedDestination, isEn)})</span> : null}
                     </label>
                     {selectedDest && (
                       <button
@@ -808,7 +855,7 @@ export const RobotTaxiModal = ({
                         }}
                         className="text-[11px] text-amber-400 hover:underline cursor-pointer shrink-0"
                       >
-                        Chọn lại
+                        {t('Chọn lại', 'Choose again')}
                       </button>
                     )}
                   </div>
@@ -821,7 +868,7 @@ export const RobotTaxiModal = ({
                           key={dest.id}
                           type="button"
                           onClick={() => handleSelectDestinationCard(dest.name)}
-                          title={`${dest.name} - ${dest.desc}`}
+                          title={`${isEn ? dest.nameEn : dest.name} - ${isEn ? dest.descEn : dest.desc}`}
                           className={`px-2.5 py-1.5 rounded-xl text-left border transition-all cursor-pointer flex items-center gap-1.5 min-w-0 ${isSelected
                             ? 'bg-amber-500/20 border-amber-500 text-white ring-1 ring-amber-500/50'
                             : 'bg-stone-800/60 border-stone-700/60 text-stone-300 hover:bg-stone-800 hover:border-stone-600'
@@ -833,8 +880,8 @@ export const RobotTaxiModal = ({
                             <Navigation className="w-3.5 h-3.5 text-stone-400 shrink-0" />
                           )}
                           <div className="min-w-0">
-                            <span className="block text-[11px] font-bold leading-tight truncate">{dest.name}</span>
-                            <span className="block text-[10px] text-stone-400 leading-tight truncate">{dest.desc}</span>
+                            <span className="block text-[11px] font-bold leading-tight truncate">{isEn ? dest.nameEn : dest.name}</span>
+                            <span className="block text-[10px] text-stone-400 leading-tight truncate">{isEn ? dest.descEn : dest.desc}</span>
                           </div>
                         </button>
                       );
@@ -846,7 +893,7 @@ export const RobotTaxiModal = ({
                       type="text"
                       value={customDest}
                       onChange={(e) => setCustomDest(e.target.value)}
-                      placeholder="Nhập địa chỉ hoặc điểm đến (vd: Cầu Rồng, Chợ Hàn...)"
+                      placeholder={t('Nhập địa chỉ hoặc điểm đến (vd: Cầu Rồng, Chợ Hàn...)', 'Enter an address or destination (e.g. Dragon Bridge)')}
                       className="w-full px-3 py-1.5 bg-stone-800 border border-stone-700 rounded-lg text-stone-100 placeholder-stone-500 text-[11px] focus:outline-none focus:border-amber-500 animate-in fade-in"
                     />
                   )}
@@ -855,12 +902,12 @@ export const RobotTaxiModal = ({
                 {/* Vehicle Type & Note */}
                 <div className="md:col-span-2 space-y-1.5">
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-300">
-                    2. Loại xe
+                    {t('2. Loại xe', '2. Vehicle')}
                   </label>
                   <div className="grid grid-cols-2 gap-1.5">
                     {[
-                      { id: '4-Seater Sedan', name: '4 Chỗ Sedan', desc: '1 - 3 khách' },
-                      { id: '7-Seater SUV', name: '7 Chỗ SUV', desc: '4 - 6 khách' },
+                      { id: '4-Seater Sedan', name: t('Xe 4 chỗ', '4-seater sedan'), desc: t('1 - 3 khách', '1 - 3 passengers') },
+                      { id: '7-Seater SUV', name: t('Xe 7 chỗ', '7-seater SUV'), desc: t('4 - 6 khách', '4 - 6 passengers') },
                     ].map((v) => (
                       <button
                         key={v.id}
@@ -881,7 +928,7 @@ export const RobotTaxiModal = ({
                     type="text"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    placeholder="Ghi chú (tùy chọn): vd 2 vali lớn..."
+                    placeholder={t('Ghi chú (tùy chọn): vd 2 vali lớn...', 'Optional note: e.g. two large suitcases')}
                     className="w-full px-2.5 py-1.5 bg-stone-800 border border-stone-700 rounded-lg text-stone-100 placeholder-stone-500 text-[11px] focus:outline-none focus:border-amber-500"
                   />
                 </div>
@@ -894,7 +941,7 @@ export const RobotTaxiModal = ({
                   disabled={isSubmitting}
                   className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-[11px] transition-all cursor-pointer"
                 >
-                  Quay lại
+                  {t('Quay lại', 'Back')}
                 </button>
                 <button
                   type="button"
@@ -902,7 +949,7 @@ export const RobotTaxiModal = ({
                   disabled={!resolvedDestination || isSubmitting}
                   className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-[11px] transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <span>Kiểm tra lại thông tin</span>
+                  <span>{t('Kiểm tra lại thông tin', 'Review details')}</span>
                   <ArrowLeft className="w-3.5 h-3.5 rotate-180" />
                 </button>
               </div>
@@ -915,36 +962,36 @@ export const RobotTaxiModal = ({
               {/* Question Banner */}
               <div className="px-3 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-center">
                 <h3 className="text-xs font-bold text-white">
-                  Quý khách vui lòng kiểm tra lại thông tin đặt xe đã đúng chưa ạ?
+                  {t('Quý khách vui lòng kiểm tra lại thông tin đặt xe đã đúng chưa ạ?', 'Are these booking details correct?')}
                 </h3>
                 <p className="text-[11px] text-stone-300">
-                  Nói <strong>&quot;Đúng rồi&quot;</strong> hoặc bấm nút bên dưới để gửi yêu cầu cho Concierge.
+                  {t('Nói “Đúng rồi” hoặc bấm nút bên dưới để gửi yêu cầu cho nhân viên.', 'Say “Confirm” or tap below to send the request to staff.')}
                 </p>
               </div>
 
               {/* Review Summary Card */}
               <div className="bg-stone-800/80 border border-stone-700 rounded-xl px-3 py-2 text-[11px] grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
                 <div className="flex items-center justify-between gap-2 py-0.5 border-b border-stone-700/60">
-                  <span className="text-stone-400 shrink-0">Điểm đón:</span>
+                  <span className="text-stone-400 shrink-0">{t('Điểm đón:', 'Pickup:')}</span>
                   <span className="font-bold text-stone-100 truncate">{pickupLocation}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2 py-0.5 border-b border-stone-700/60">
-                  <span className="text-stone-400 shrink-0">Điểm đến:</span>
-                  <span className="font-bold text-amber-400 truncate">{resolvedDestination}</span>
+                  <span className="text-stone-400 shrink-0">{t('Điểm đến:', 'Destination:')}</span>
+                  <span className="font-bold text-amber-400 truncate">{taxiDestinationLabel(resolvedDestination, isEn)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-2 py-0.5 border-b border-stone-700/60">
-                  <span className="text-stone-400 shrink-0">Loại xe:</span>
+                  <span className="text-stone-400 shrink-0">{t('Loại xe:', 'Vehicle:')}</span>
                   <span className="font-bold text-stone-100">
-                    {vehicleType === '7-Seater SUV' ? 'Xe 7 Chỗ SUV / Van' : 'Xe 4 Chỗ Sedan'}
+                    {taxiVehicleLabel(vehicleType, isEn)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-2 py-0.5">
-                  <span className="text-stone-400 shrink-0">Thời gian đón:</span>
-                  <span className="font-semibold text-emerald-400">Ngay lập tức</span>
+                  <span className="text-stone-400 shrink-0">{t('Thời gian đón:', 'Pickup time:')}</span>
+                  <span className="font-semibold text-emerald-400">{t('Ngay lập tức', 'As soon as possible')}</span>
                 </div>
                 {note && (
                   <div className="flex items-center justify-between gap-2 py-0.5">
-                    <span className="text-stone-400 shrink-0">Ghi chú:</span>
+                    <span className="text-stone-400 shrink-0">{t('Ghi chú:', 'Note:')}</span>
                     <span className="font-medium text-stone-300 italic truncate">{note}</span>
                   </div>
                 )}
@@ -962,7 +1009,7 @@ export const RobotTaxiModal = ({
                   className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-[11px] transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
-                  <span>Chỉnh sửa lại</span>
+                  <span>{t('Chỉnh sửa lại', 'Edit details')}</span>
                 </button>
 
                 <button
@@ -972,7 +1019,7 @@ export const RobotTaxiModal = ({
                   className="px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-bold text-[11px] transition-all cursor-pointer active:scale-95 flex items-center gap-1.5 disabled:opacity-50"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>{isSubmitting ? 'Đang gửi yêu cầu...' : 'Đúng rồi, Gửi yêu cầu'}</span>
+                  <span>{isSubmitting ? t('Đang gửi yêu cầu...', 'Sending request...') : t('Đúng rồi, gửi yêu cầu', 'Confirm and send')}</span>
                 </button>
               </div>
             </div>
@@ -986,9 +1033,9 @@ export const RobotTaxiModal = ({
                   <CheckCircle2 className="w-5 h-5" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-bold text-white">Chuyển tiếp yêu cầu thành công</h3>
+                  <h3 className="text-sm font-bold text-white">{t('Chuyển tiếp yêu cầu thành công', 'Request sent')}</h3>
                   <p className="text-[11px] text-stone-300">
-                    Đã gửi đến <strong className="text-emerald-400">Bộ phận Concierge</strong> · Mã yêu cầu:{' '}
+                    {t('Đã gửi đến', 'Sent to')} <strong className="text-emerald-400">{t('Bộ phận hỗ trợ đặt xe', 'Concierge')}</strong> · {t('Mã yêu cầu:', 'Request ID:')}{' '}
                     <span className="text-amber-400 font-mono font-bold">{confirmedTicket.ticketCode}</span>
                   </p>
                 </div>
@@ -996,22 +1043,22 @@ export const RobotTaxiModal = ({
 
               <div className="bg-stone-800/80 border border-stone-700 rounded-xl px-3 py-2 text-[11px] grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
                 <div className="flex justify-between gap-2 py-0.5 border-b border-stone-700/60">
-                  <span className="text-stone-400 shrink-0">Điểm đón:</span>
+                  <span className="text-stone-400 shrink-0">{t('Điểm đón:', 'Pickup:')}</span>
                   <span className="font-semibold text-stone-200 truncate">{pickupLocation}</span>
                 </div>
                 <div className="flex justify-between gap-2 py-0.5 border-b border-stone-700/60">
-                  <span className="text-stone-400 shrink-0">Điểm đến:</span>
-                  <span className="font-semibold text-stone-200 truncate">{confirmedTicket.destination}</span>
+                  <span className="text-stone-400 shrink-0">{t('Điểm đến:', 'Destination:')}</span>
+                  <span className="font-semibold text-stone-200 truncate">{taxiDestinationLabel(confirmedTicket.destination, isEn)}</span>
                 </div>
                 <div className="flex justify-between gap-2 py-0.5">
-                  <span className="text-stone-400 shrink-0">Loại xe:</span>
+                  <span className="text-stone-400 shrink-0">{t('Loại xe:', 'Vehicle:')}</span>
                   <span className="font-semibold text-stone-200 truncate">
-                    {confirmedTicket.vehicleType === '7-Seater SUV' ? 'Xe 7 Chỗ SUV / Van' : 'Xe 4 Chỗ Sedan'}
+                    {taxiVehicleLabel(confirmedTicket.vehicleType, isEn)}
                   </span>
                 </div>
                 <div className="flex justify-between gap-2 py-0.5">
-                  <span className="text-stone-400 shrink-0">Xe đến:</span>
-                  <span className="font-semibold text-emerald-400">Dự kiến 3 - 5 phút tại sảnh</span>
+                  <span className="text-stone-400 shrink-0">{t('Xe đến:', 'Arrival:')}</span>
+                  <span className="font-semibold text-emerald-400">{t('Dự kiến 3 - 5 phút tại sảnh', 'Estimated 3–5 minutes at the lobby')}</span>
                 </div>
               </div>
 
@@ -1019,21 +1066,21 @@ export const RobotTaxiModal = ({
               <div className="px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-stone-300 flex items-center gap-2">
                 <Info className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>
-                  Hỏi Robot <em>&quot;Kiểm tra trạng thái đặt taxi&quot;</em> hoặc <em>&quot;Taxi tới chưa&quot;</em> để cập nhật tiến độ xe đón.
+                  {t('Hỏi “Kiểm tra trạng thái đặt taxi” hoặc “Taxi tới chưa” để cập nhật tiến độ.', 'Ask “Check my taxi booking” or “Has my taxi arrived?” for an update.')}
                 </span>
               </div>
 
               <div className="flex items-center justify-between pt-1">
                 <span className="text-[11px] text-stone-400 flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                  <span>Tự động đóng sau: <strong className="font-mono text-white">{countdown}s</strong></span>
+                  <span>{t('Tự động đóng sau:', 'Closing in:')} <strong className="font-mono text-white">{countdown}s</strong></span>
                 </span>
                 <button
                   type="button"
                   onClick={handleResetAndClose}
                   className="px-5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-stone-950 font-bold text-xs transition-all cursor-pointer active:scale-95"
                 >
-                  Hoàn tất ({countdown}s)
+                  {t('Hoàn tất', 'Done')} ({countdown}s)
                 </button>
               </div>
             </div>

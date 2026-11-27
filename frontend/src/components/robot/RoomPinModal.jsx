@@ -63,7 +63,10 @@ export const RoomPinModal = ({
   isSelectingRoomInitial = false,
   skipTicketCreation = true,
   sessionId = null,
+  language = 'Tiếng Việt',
 }) => {
+  const isEn = language === 'English' || language === 'EN';
+  const t = useCallback((vi, en) => isEn ? en : vi, [isEn]);
   const [selectedRoom, setSelectedRoom] = useState(roomNumber || '');
   const [isSelectingRoom, setIsSelectingRoom] = useState(Boolean(isSelectingRoomInitial || !roomNumber));
   const [isForgotPinView, setIsForgotPinView] = useState(false);
@@ -91,11 +94,11 @@ export const RoomPinModal = ({
     if (state.lockedUntil > Date.now()) {
       const remainingSec = Math.ceil((state.lockedUntil - Date.now()) / 1000);
       setLockoutRemaining(remainingSec);
-      setErrorMessage(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${remainingSec}s).`);
+      setErrorMessage(t(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${remainingSec}s).`, `Too many incorrect PIN attempts. Please try again in ${remainingSec} seconds.`));
     } else {
       setLockoutRemaining(0);
     }
-  }, [selectedRoom, isOpen]);
+  }, [selectedRoom, isOpen, t]);
 
   // Bo dem giam dan lockout 1 phut (60s)
   useEffect(() => {
@@ -109,12 +112,12 @@ export const RoomPinModal = ({
           return 0;
         }
         const next = prev - 1;
-        setErrorMessage(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${next}s).`);
+        setErrorMessage(t(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${next}s).`, `Too many incorrect PIN attempts. Please try again in ${next} seconds.`));
         return next;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [lockoutRemaining, selectedRoom]);
+  }, [lockoutRemaining, selectedRoom, t]);
 
   const [nfcStatus, setNfcStatus] = useState('idle');
   const [nfcStatusMsg, setNfcStatusMsg] = useState('');
@@ -129,7 +132,7 @@ export const RoomPinModal = ({
 
     if (!('NDEFReader' in window)) {
       setNfcStatus('unsupported');
-      setNfcStatusMsg('Trình duyệt chưa hỗ trợ Web NFC. Cần dùng Google Chrome trên Android.');
+      setNfcStatusMsg(t('Trình duyệt chưa hỗ trợ Web NFC. Cần dùng Google Chrome trên Android.', 'Web NFC is unavailable. Use Google Chrome on Android.'));
       return;
     }
 
@@ -143,7 +146,7 @@ export const RoomPinModal = ({
       const ndef = new window.NDEFReader();
 
       setNfcStatus('starting');
-      setNfcStatusMsg('Đang kích hoạt đầu đọc thẻ NFC...');
+      setNfcStatusMsg(t('Đang kích hoạt đầu đọc thẻ NFC...', 'Starting the NFC reader...'));
 
       ndef.onreading = async (event) => {
         let ndefText = '';
@@ -168,7 +171,7 @@ export const RoomPinModal = ({
         const tagCode = (ndefText || '').trim() || event.serialNumber;
         if (tagCode) {
           setNfcStatus('read_detected');
-          setNfcStatusMsg(`Đã nhận diện thẻ: ${tagCode}. Đang đối chiếu...`);
+          setNfcStatusMsg(t(`Đã nhận diện thẻ: ${tagCode}. Đang đối chiếu...`, `Card detected: ${tagCode}. Verifying...`));
           setIsLoading(true);
           setErrorMessage('');
 
@@ -189,7 +192,7 @@ export const RoomPinModal = ({
             setIsSuccess(true);
             setSuccessInfo(res);
             setIsLoading(false);
-            setNfcStatusMsg(`Xác thực thành công phòng ${res.room_number} (${res.guest_name})!`);
+            setNfcStatusMsg(t(`Xác thực thành công phòng ${res.room_number} (${res.guest_name})!`, `Room ${res.room_number} verified (${res.guest_name})!`));
 
             if (onVerifiedSuccess) {
               onVerifiedSuccess(res, res.room_number || selectedRoom);
@@ -201,32 +204,32 @@ export const RoomPinModal = ({
             console.error('[RoomPinModal] verify-nfc error:', err);
             setIsLoading(false);
             setNfcStatus('error');
-            setErrorMessage(err.message || 'Thẻ NFC không hợp lệ hoặc phòng chưa check-in.');
+            setErrorMessage(t('Thẻ NFC không hợp lệ hoặc phòng chưa check-in.', 'The NFC card is invalid or the room is not checked in.'));
             setIsShaking(true);
             setTimeout(() => setIsShaking(false), 500);
           }
         } else {
-          setErrorMessage('Thẻ không trả về dữ liệu NDEF hoặc mã UID.');
+          setErrorMessage(t('Thẻ không trả về dữ liệu NDEF hoặc mã UID.', 'The card did not return NDEF data or a UID.'));
         }
       };
 
       ndef.onreadingerror = () => {
-        setNfcStatusMsg('Lỗi đọc: Hãy giữ yên thẻ NFC trong 1-2 giây.');
+        setNfcStatusMsg(t('Lỗi đọc: Hãy giữ yên thẻ NFC trong 1-2 giây.', 'Read error: hold the NFC card still for 1–2 seconds.'));
       };
 
       await ndef.scan({ signal: controller.signal });
       setNfcStatus('scanning');
-      setNfcStatusMsg('Đang lắng nghe thẻ NFC... Vui lòng áp thẻ vào mặt lưng thiết bị.');
+      setNfcStatusMsg(t('Đang lắng nghe thẻ NFC... Vui lòng áp thẻ vào mặt lưng thiết bị.', 'Ready to scan. Hold the NFC card against the back of the device.'));
     } catch (err) {
       console.warn('[WebNFC] Scan error:', err);
       setNfcStatus('error');
       if (err.name === 'NotAllowedError') {
-        setNfcStatusMsg('Quyền truy cập NFC bị từ chối.');
+        setNfcStatusMsg(t('Quyền truy cập NFC bị từ chối.', 'NFC access was denied.'));
       } else {
-        setNfcStatusMsg(`Lỗi kích hoạt NFC: ${err.message || 'Không thể mở đầu đọc'}`);
+        setNfcStatusMsg(t('Không thể mở đầu đọc NFC. Vui lòng thử lại.', 'Unable to start the NFC reader. Please try again.'));
       }
     }
-  }, [selectedRoom, pendingAction, pendingItems, skipTicketCreation, sessionId, onVerifiedSuccess, onClose]);
+  }, [selectedRoom, pendingAction, pendingItems, skipTicketCreation, sessionId, onVerifiedSuccess, onClose, t]);
 
   const handleVerifyNfc = useCallback(
     async (scannedCode) => {
@@ -235,7 +238,7 @@ export const RoomPinModal = ({
       setIsLoading(true);
       setErrorMessage('');
       setNfcStatus('read_detected');
-      setNfcStatusMsg(`Nhận diện thẻ USB: ${scannedCode}. Đang xác thực...`);
+      setNfcStatusMsg(t(`Nhận diện thẻ USB: ${scannedCode}. Đang xác thực...`, `USB card detected: ${scannedCode}. Verifying...`));
 
       try {
         const res = await verifyRoomNfc(
@@ -250,7 +253,7 @@ export const RoomPinModal = ({
         setIsSuccess(true);
         setSuccessInfo(res);
         setIsLoading(false);
-        setNfcStatusMsg(`Xác thực thành công phòng ${res.room_number} (${res.guest_name})!`);
+        setNfcStatusMsg(t(`Xác thực thành công phòng ${res.room_number} (${res.guest_name})!`, `Room ${res.room_number} verified (${res.guest_name})!`));
 
         if (onVerifiedSuccess) {
           onVerifiedSuccess(res, res.room_number || selectedRoom);
@@ -263,12 +266,12 @@ export const RoomPinModal = ({
         console.error('[RoomPinModal] USB verify-nfc error:', err);
         setIsLoading(false);
         setNfcStatus('error');
-        setErrorMessage(err.message || 'Thẻ phòng không khớp hoặc chưa làm thủ tục nhận phòng.');
+        setErrorMessage(t('Thẻ phòng không khớp hoặc chưa làm thủ tục nhận phòng.', 'The room card does not match or the room is not checked in.'));
         setIsShaking(true);
         setTimeout(() => setIsShaking(false), 500);
       }
     },
-    [isLoading, isSuccess, selectedRoom, pendingAction, pendingItems, skipTicketCreation, sessionId, onVerifiedSuccess, onClose]
+    [isLoading, isSuccess, selectedRoom, pendingAction, pendingItems, skipTicketCreation, sessionId, onVerifiedSuccess, onClose, t]
   );
 
   handleVerifyNfcRef.current = handleVerifyNfc;
@@ -304,7 +307,7 @@ export const RoomPinModal = ({
         nfcAbortControllerRef.current = null;
       }
     };
-  }, [isOpen, roomNumber, initialTab, isSelectingRoomInitial]);
+  }, [isOpen, roomNumber, initialTab, isSelectingRoomInitial, t]);
 
   useEffect(() => {
     if (!isOpen || activeTab !== 'nfc') return;
@@ -329,25 +332,25 @@ export const RoomPinModal = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, activeTab]);
+  }, [isOpen, activeTab, t]);
 
   const handleKeyPress = useCallback((digit) => {
     if (isLoading || isSuccess || lockoutRemaining > 0) return;
     setErrorMessage('');
     setPin((prev) => (prev.length < 4 ? prev + digit : prev));
-  }, [isLoading, isSuccess, lockoutRemaining]);
+  }, [isLoading, isSuccess, lockoutRemaining, t]);
 
   const handleDelete = useCallback(() => {
     if (isLoading || isSuccess || lockoutRemaining > 0) return;
     setErrorMessage('');
     setPin((prev) => prev.slice(0, -1));
-  }, [isLoading, isSuccess, lockoutRemaining]);
+  }, [isLoading, isSuccess, lockoutRemaining, t]);
 
   const handleClear = useCallback(() => {
     if (isLoading || isSuccess || lockoutRemaining > 0) return;
     setErrorMessage('');
     setPin('');
-  }, [isLoading, isSuccess, lockoutRemaining]);
+  }, [isLoading, isSuccess, lockoutRemaining, t]);
 
   useEffect(() => {
     if (pin.length === 4 && !isLoading && !isSuccess && activeTab === 'pin' && selectedRoom && !isSelectingRoom) {
@@ -383,14 +386,14 @@ export const RoomPinModal = ({
         } catch (err) {
           setIsLoading(false);
           if (err.not_checked_in) {
-            setErrorMessage(err.message || 'Phòng chưa làm thủ tục nhận phòng. Đang chuyển tới quầy Lễ tân...');
+            setErrorMessage(t('Phòng chưa làm thủ tục nhận phòng. Đang chuyển tới quầy Lễ tân...', 'This room is not checked in. Opening directions to reception...'));
             setIsShaking(true);
             if (onNotCheckedIn) {
               setTimeout(() => {
                 onNotCheckedIn({
                   roomNumber: err.room_number || selectedRoom,
                   destination_key: err.destination_key || 'front_desk',
-                  message: err.message,
+                  message: t('Phòng chưa làm thủ tục nhận phòng. Quý khách vui lòng liên hệ lễ tân.', 'This room is not checked in. Please contact reception.'),
                 });
                 onClose();
               }, 1200);
@@ -403,7 +406,7 @@ export const RoomPinModal = ({
             const lockedUntil = Date.now() + PIN_LOCKOUT_DURATION_SEC * 1000;
             setRoomLockoutState(selectedRoom, { count: PIN_LOCKOUT_MAX_ATTEMPTS, lockedUntil });
             setLockoutRemaining(PIN_LOCKOUT_DURATION_SEC);
-            setErrorMessage(err.message || `Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${PIN_LOCKOUT_DURATION_SEC}s).`);
+            setErrorMessage(t(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${PIN_LOCKOUT_DURATION_SEC}s).`, `Too many incorrect PIN attempts. Please try again in ${PIN_LOCKOUT_DURATION_SEC} seconds.`));
             setIsShaking(true);
             setTimeout(() => setIsShaking(false), 500);
             setPin('');
@@ -418,10 +421,10 @@ export const RoomPinModal = ({
             const lockedUntil = Date.now() + PIN_LOCKOUT_DURATION_SEC * 1000;
             setRoomLockoutState(selectedRoom, { count: nextCount, lockedUntil });
             setLockoutRemaining(PIN_LOCKOUT_DURATION_SEC);
-            setErrorMessage(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${PIN_LOCKOUT_DURATION_SEC}s).`);
+            setErrorMessage(t(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${PIN_LOCKOUT_DURATION_SEC}s).`, `Too many incorrect PIN attempts. Please try again in ${PIN_LOCKOUT_DURATION_SEC} seconds.`));
           } else {
             setRoomLockoutState(selectedRoom, { count: nextCount, lockedUntil: 0 });
-            setErrorMessage(err.message || DEFAULT_WRONG_PIN_ERROR_MSG);
+            setErrorMessage(t(DEFAULT_WRONG_PIN_ERROR_MSG, 'Incorrect room PIN. Please try again.'));
           }
           setIsShaking(true);
           setTimeout(() => setIsShaking(false), 500);
@@ -431,7 +434,7 @@ export const RoomPinModal = ({
 
       submitPin();
     }
-  }, [pin, isLoading, isSuccess, activeTab, selectedRoom, isSelectingRoom, pendingAction, pendingItems, onVerifiedSuccess, onNotCheckedIn, onClose]);
+  }, [pin, isLoading, isSuccess, activeTab, selectedRoom, isSelectingRoom, pendingAction, pendingItems, onVerifiedSuccess, onNotCheckedIn, onClose, t]);
 
   if (!isOpen) return null;
   return (
@@ -447,7 +450,7 @@ export const RoomPinModal = ({
           onClick={onClose}
           disabled={isLoading || isSuccess}
           className="absolute top-3.5 right-3.5 z-10 w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 hover:text-stone-800 transition-colors flex items-center justify-center cursor-pointer"
-          title="Đóng"
+          title={t('Đóng', 'Close')}
         >
           <X className="w-4 h-4" />
         </button>
@@ -460,15 +463,15 @@ export const RoomPinModal = ({
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-extrabold text-stone-900">
-                Xác Thực Thành Công
+                {t('Xác Thực Thành Công', 'Verification Successful')}
               </h3>
               <p className="mt-1 text-xs text-stone-600">
-                Chào mừng {successInfo?.guest_name || 'quý khách'}! Đã xác nhận phòng {successInfo?.room_number || selectedRoom}.
+                {t('Chào mừng', 'Welcome')} {successInfo?.guest_name || t('quý khách', 'guest')}! {t('Đã xác nhận phòng', 'Verified room')} {successInfo?.room_number || selectedRoom}.
               </p>
             </div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-100 border border-stone-200 text-[11px] font-semibold text-stone-700">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Đang gửi yêu cầu...</span>
+              <span>{t('Đang gửi yêu cầu...', 'Sending request...')}</span>
             </div>
           </div>
         ) : isForgotPinView ? (
@@ -480,10 +483,10 @@ export const RoomPinModal = ({
 
             <div>
               <h3 className="text-base font-extrabold text-stone-900">
-                Quên Mã PIN Phòng?
+                {t('Quên Mã PIN Phòng?', 'Forgot Your Room PIN?')}
               </h3>
               <p className="text-xs text-stone-600 mt-2 leading-relaxed px-1">
-                Vì lý do bảo mật, Robot không được phép cấp lại mã PIN. Quý khách vui lòng liên hệ quầy Lễ tân tại sảnh chính để được nhân viên hỗ trợ cấp lại mã PIN nhé ạ.
+                {t('Vì lý do bảo mật, Robot không được phép cấp lại mã PIN. Quý khách vui lòng liên hệ quầy Lễ tân tại sảnh chính để được nhân viên hỗ trợ cấp lại mã PIN nhé ạ.', 'Please contact reception in the main lobby to reset your PIN. The robot cannot reset it for security reasons.')}
               </p>
             </div>
 
@@ -498,7 +501,7 @@ export const RoomPinModal = ({
                 }}
                 className="w-full py-2.5 px-4 rounded-2xl bg-[#1A1917] hover:bg-stone-800 text-white font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
               >
-                <span>Chỉ đường đến Quầy Lễ Tân</span>
+                <span>{t('Chỉ đường đến Quầy Lễ Tân', 'Directions to Reception')}</span>
               </button>
 
               <button
@@ -506,7 +509,7 @@ export const RoomPinModal = ({
                 onClick={() => setIsForgotPinView(false)}
                 className="w-full py-2 px-4 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold transition-all cursor-pointer"
               >
-                Quay lại nhập mã PIN
+                {t('Quay lại nhập mã PIN', 'Back to PIN entry')}
               </button>
             </div>
           </div>
@@ -515,10 +518,10 @@ export const RoomPinModal = ({
           <div className="space-y-3.5">
             <div className="text-center">
               <h3 className="text-sm sm:text-base font-extrabold text-stone-900">
-                Chọn Số Phòng Lưu Trú
+                {t('Chọn Số Phòng Lưu Trú', 'Choose Your Room')}
               </h3>
               <p className="text-[11px] text-stone-500 mt-0.5">
-                Chạm chọn số phòng của quý khách
+                {t('Chạm chọn số phòng của quý khách', 'Tap your room number')}
               </p>
             </div>
 
@@ -533,7 +536,7 @@ export const RoomPinModal = ({
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
-                Tầng 3 (P.301 - 310)
+                {t('Tầng 3 (P.301 - 310)', 'Floor 3 (Rooms 301–310)')}
               </button>
               <button
                 type="button"
@@ -544,7 +547,7 @@ export const RoomPinModal = ({
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
-                Tầng 4 (P.401 - 410)
+                {t('Tầng 4 (P.401 - 410)', 'Floor 4 (Rooms 401–410)')}
               </button>
             </div>
 
@@ -581,11 +584,11 @@ export const RoomPinModal = ({
             {/* Header thông tin ngắn gọn */}
             <div className="flex flex-col items-center text-center">
               <h3 className="text-base sm:text-lg font-extrabold text-stone-900">
-                {selectedRoom ? `Mã PIN Phòng ${selectedRoom}` : 'Nhập Mã PIN Phòng'}
+                {selectedRoom ? t(`Mã PIN Phòng ${selectedRoom}`, `Room ${selectedRoom} PIN`) : t('Nhập Mã PIN Phòng', 'Enter Your Room PIN')}
               </h3>
 
               <p className="text-xs text-stone-500 mt-0.5">
-                4 số cuối CCCD của khách lưu trú
+                {t('4 số cuối CCCD của khách lưu trú', 'Last 4 digits of the registered identity document')}
               </p>
 
               {/* Thanh hiển thị phòng đang chọn kèm nút đổi phòng */}
@@ -593,7 +596,7 @@ export const RoomPinModal = ({
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-500" />
                   <span className="text-xs font-bold text-stone-900">
-                    Phòng {selectedRoom}
+                    {t('Phòng', 'Room')} {selectedRoom}
                   </span>
                 </div>
                 <button
@@ -605,7 +608,7 @@ export const RoomPinModal = ({
                   }}
                   className="text-[11px] font-semibold text-stone-700 hover:text-stone-900 px-2 py-0.5 rounded-lg bg-stone-200 hover:bg-stone-300 transition-colors cursor-pointer"
                 >
-                  Đổi phòng
+                  {t('Đổi phòng', 'Change room')}
                 </button>
               </div>
 
@@ -613,13 +616,13 @@ export const RoomPinModal = ({
               <div className="min-h-[16px] mt-1 text-center">
                 {isLoading && (
                   <span className="text-[11px] text-stone-600 animate-pulse font-medium">
-                    Đang xác thực mã PIN...
+                    {t('Đang xác thực mã PIN...', 'Verifying PIN...')}
                   </span>
                 )}
                 {lockoutRemaining > 0 && !isLoading && (
                   <div className="flex items-center justify-center gap-1.5 text-[11px] text-rose-600 font-bold bg-rose-50 border border-rose-200/80 rounded-xl py-1.5 px-2.5">
                     <Lock className="w-3.5 h-3.5 flex-shrink-0 text-rose-600" />
-                    <span>Đã khóa 1 phút: Thử lại sau {lockoutRemaining}s</span>
+                    <span>{t('Thử lại sau', 'Try again in')} {lockoutRemaining}s</span>
                   </div>
                 )}
                 {errorMessage && !isLoading && lockoutRemaining <= 0 && (
@@ -668,7 +671,7 @@ export const RoomPinModal = ({
                 disabled={isLoading || isSuccess || pin.length === 0 || lockoutRemaining > 0}
                 className="h-11 rounded-2xl bg-stone-100/70 hover:bg-stone-100 border border-stone-200/50 text-[11px] font-bold text-stone-500 hover:text-stone-800 uppercase tracking-wider active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-30 cursor-pointer"
               >
-                Xóa
+                {t('Xóa', 'Clear')}
               </button>
 
               <button
@@ -685,7 +688,7 @@ export const RoomPinModal = ({
                 onClick={handleDelete}
                 disabled={isLoading || isSuccess || pin.length === 0 || lockoutRemaining > 0}
                 className="h-11 rounded-2xl bg-stone-100/70 hover:bg-stone-100 border border-stone-200/50 text-stone-600 hover:text-stone-900 active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-30 cursor-pointer"
-                title="Xóa lùi"
+                title={t('Xóa lùi', 'Backspace')}
               >
                 <Delete className="w-4 h-4" />
               </button>
@@ -698,7 +701,7 @@ export const RoomPinModal = ({
                 onClick={() => setIsForgotPinView(true)}
                 className="text-xs text-stone-500 hover:text-stone-900 underline underline-offset-4 transition-colors cursor-pointer font-semibold"
               >
-                Quên mã PIN?
+                {t('Quên mã PIN?', 'Forgot PIN?')}
               </button>
             </div>
           </div>

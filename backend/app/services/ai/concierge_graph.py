@@ -82,6 +82,8 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
     """
     session_id = state.get("session_id") or "default_session"
     action = state.get("action") or "room_service"
+    if action in ("book_taxi", "taxi_booking"):
+        action = "taxi"
     current_room = state.get("room_number") or session_manager.get_room_number(session_id)
     items = state.get("items") or "dịch vụ"
     lang_code = state.get("lang_code", "vi-VN")
@@ -278,6 +280,8 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
         return {
             "missing_room_number": True,
+            "action": action,
+            "trigger_video_call": False,
             "room_number": None,
             "response": ask_reply,
         }
@@ -377,11 +381,11 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
         }
     elif is_authenticated:
         # Phiên đã được xác thực mã PIN phòng trước đó -> Tiếp nhận ngay, không bắt nhập lại PIN
-        if action in ["taxi", "book_taxi"]:
+        if action in ["taxi", "book_taxi", "taxi_booking"]:
             if lang_code == "en-US":
-                confirm_reply = f"Room {current_room}. Would you like our partner taxi hotlines to book directly, or would you like Concierge to arrange a taxi for you?"
+                confirm_reply = f"Room {current_room}. Would you like our partner taxi hotlines to book directly, or would you like our staff to arrange a taxi for you?"
             else:
-                confirm_reply = f"Dạ phòng {current_room}. Quý khách muốn tự gọi xe taxi theo số điện thoại đối tác hay nhờ bộ phận Concierge đặt xe giùm quý khách ạ?"
+                confirm_reply = f"Dạ phòng {current_room}. Quý khách muốn tự gọi xe taxi theo số điện thoại đối tác hay nhờ nhân viên đặt xe giúp ạ?"
             return {
                 "missing_room_number": False,
                 "room_number": current_room,
@@ -390,6 +394,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
                 "target_room_number": current_room,
                 "pending_service_action": "book_taxi",
                 "action": "book_taxi",
+                "trigger_video_call": False,
                 "pending_service_items": items,
             }
         else:
@@ -406,7 +411,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
                 "pending_service_action": action,
                 "pending_service_items": items,
             }
-    elif action in ["taxi", "book_taxi"]:
+    elif action in ["taxi", "book_taxi", "taxi_booking"]:
         if lang_code == "en-US":
             confirm_reply = f"To assist with taxi booking for Room {current_room}, please enter your 4-digit room PIN on the touchscreen."
         else:
@@ -419,6 +424,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
             "target_room_number": current_room,
             "pending_service_action": "book_taxi",
             "action": "book_taxi",
+            "trigger_video_call": False,
             "pending_service_items": items,
         }
     elif lang_code == "en-US":

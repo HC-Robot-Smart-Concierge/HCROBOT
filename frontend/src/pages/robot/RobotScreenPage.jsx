@@ -12,11 +12,13 @@ import { RobotBellmanMenuScreen, bellRequestMessage } from '../../components/rob
 import {
   RobotTaxiModal,
   getTaxiSelfBookingAnnouncement,
+  getTaxiOptionsPrompt,
   getTaxiCloseFollowUpMessage,
   isSelfBookingVoiceIntent,
   isConciergeVoiceIntent,
   isDismissVoiceIntent,
 } from '../../components/robot/RobotTaxiModal';
+import { assistanceReplyIntent, canOpenVoiceVideoCall, isTaxiAction } from '../../utils/robotConversationGuards';
 import { guestRequestPhase, hasFollowUpConfirmationStep } from '../../utils/workflowGuestRequest';
 import { WorkflowGuestRequestPanel } from '../admin/tabs/workflow/WorkflowGuestRequestPanel';
 import { useWorkflowRunner } from '../../hooks/useWorkflowRunner';
@@ -563,7 +565,26 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const [isUnhappyAssistanceOpen, setIsUnhappyAssistanceOpen] = useState(false);
   const unhappyTimerRef = useRef(null);
 
+  const hasActiveServiceInteraction = useCallback(() => Boolean(
+    taxiFlowStageRef.current || isTaxiModalOpenRef.current || isPinModalOpenRef.current
+    || isRoomPickerOpenRef.current || activeMenuTypeRef.current || isProcessingRef.current
+  ), []);
+
+  const clearEmotionAssistance = useCallback(() => {
+    clearTimeout(unhappyTimerRef.current);
+    unhappyTimerRef.current = null;
+    setIsUnhappyAssistanceOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (hasActiveServiceInteraction()) clearEmotionAssistance();
+  }, [taxiFlowStage, isTaxiModalOpen, isPinModalOpen, isRoomPickerOpen, activeMenuType, isProcessing, hasActiveServiceInteraction, clearEmotionAssistance]);
+
   const handleConfirmCallConcierge = useCallback(async () => {
+    if (hasActiveServiceInteraction()) {
+      clearEmotionAssistance();
+      return;
+    }
     if (unhappyTimerRef.current) {
       clearTimeout(unhappyTimerRef.current);
       unhappyTimerRef.current = null;
@@ -598,7 +619,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setVideoCallTicketCode(fallbackCode);
       setIsVideoCallOpen(true);
     }
-  }, [activeRoomNumber, language, speak]);
+  }, [activeRoomNumber, language, speak, hasActiveServiceInteraction, clearEmotionAssistance]);
 
   const handleDismissUnhappyAssistance = useCallback(() => {
     if (unhappyTimerRef.current) {
@@ -620,6 +641,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setGuestEmotion(emotion);
       guestEmotionRef.current = emotion;
 
+      if (hasActiveServiceInteraction()) {
+        clearEmotionAssistance();
+        return;
+      }
+
       if (emotion === 'unhappy') {
         // Dang co timer dem nguoc hoac video call dang mo hoac popup da mo -> Bo qua
         if (unhappyTimerRef.current || isVideoCallOpenRef.current || isUnhappyAssistanceOpen) {
@@ -637,7 +663,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           unhappyTimerRef.current = null;
 
           // Bat buoc kiem tra lai: CHI KHI KHIEU NAI/NHAN MAT VAN DANG LA UNHAPPY
-          if (guestEmotionRef.current !== 'unhappy') {
+          if (guestEmotionRef.current !== 'unhappy' || hasActiveServiceInteraction()) {
             return;
           }
 
@@ -662,7 +688,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }
       }
     },
-    [language, speak, isUnhappyAssistanceOpen]
+    [language, speak, isUnhappyAssistanceOpen, hasActiveServiceInteraction, clearEmotionAssistance]
   );
   handleGuestEmotionDetectedRef.current = handleGuestEmotionDetected;
 
@@ -675,17 +701,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, []);
   handleGuestDemographicsDetectedRef.current = handleGuestDemographicsDetected;
-
-  // Lang nghe phan hoi bang giong noi khi Modal ho tro bieu cam dang mo
-  useEffect(() => {
-    if (!isUnhappyAssistanceOpen || !transcript || isSpeechActive || isSpeechActiveRef.current) return;
-    const lower = transcript.toLowerCase();
-    if (/có|gọi|nhân viên|đồng ý|hỗ trợ|yes|call|staff|concierge|help/i.test(lower)) {
-      handleConfirmCallConcierge();
-    } else if (/không|thôi|được rồi|tự làm|tự xử lý|no|cancel|dismiss/i.test(lower)) {
-      handleDismissUnhappyAssistance();
-    }
-  }, [transcript, isUnhappyAssistanceOpen, handleConfirmCallConcierge, handleDismissUnhappyAssistance]);
 
   // Load available workflows for AUTO_DETECT trigger & manual launcher
   useEffect(() => {
@@ -1491,7 +1506,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     return () => clearTimeout(timer);
   }, [isTaxiModalOpen, isSpeaking, isSpeechActive, isListening, isPinModalOpen, isVideoCallOpen]);
 
-  // Khi có transcript mới trực tiếp từ micro, xóa taxiVoiceInput cũ để lastVoiceTranscript luôn nhận diện được câu nói mới nhất
+  // Clear the previous finalized taxi reply when a new utterance begins.
   useEffect(() => {
     if (transcript && taxiVoiceInput) {
       setTaxiVoiceInput('');
@@ -1511,7 +1526,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     setCurrentState('RT-02');
     lastInteractionTimeRef.current = Date.now();
 
-    const isEn = languageRef.current === 'English' || language === 'English';
+    const isEn = languageRef.current === 'English';
     if (justBooked && closeReason === 'voice_dismiss') {
       handleOpenFeedback({ speakPrompt: true });
       return;
@@ -1553,7 +1568,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isTaxiModalOpenRef.current = true;
     setIsFoodMenuOpen(false);
     setIsRoomServiceMenuOpen(false);
-    const isEn = languageRef.current === 'English' || language === 'English';
+    const isEn = languageRef.current === 'English';
     const msg = getTaxiSelfBookingAnnouncement(isEn);
     setAiResponseText('');
     speak(msg, isEn ? 'en-US' : 'vi-VN', () => {
@@ -1580,9 +1595,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     setTaxiVoiceInput('');
     stopListening();
     resetTranscript();
-    const cancelMsg = 'Dạ em đã hủy yêu cầu đặt xe. Quý khách cần em hỗ trợ gì thêm không ạ?';
+    const isEn = languageRef.current === 'English';
+    const cancelMsg = isEn ? 'Taxi booking cancelled. How else may I help you?' : 'Dạ em đã hủy yêu cầu đặt xe. Quý khách cần em hỗ trợ gì thêm không ạ?';
     setAiResponseText(cancelMsg);
-    speak(cancelMsg, 'vi-VN', () => {
+    speak(cancelMsg, isEn ? 'en-US' : 'vi-VN', () => {
       setTimeout(() => handleStartTalkRef.current?.({ silent: true }), 120);
     });
   }, [speak, setTaxiFlowStage, stopListening, resetTranscript]);
@@ -1594,10 +1610,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setTaxiFlowStage(null);
       setPinModalRoomNumber(cleanRoom);
       setPinModalAction('book_taxi');
-      setPinModalItems('Yêu cầu đặt xe Taxi');
+      setPinModalItems(languageRef.current === 'English' ? 'Taxi booking request' : 'Yêu cầu đặt xe taxi');
       setIsPinModalOpen(true);
       isPinModalOpenRef.current = true;
-      const isEn = language === 'English';
+      const isEn = languageRef.current === 'English';
       const msg = isEn
         ? `Room ${cleanRoom}. Please enter your 4-digit PIN on the screen to verify.`
         : `Dạ phòng ${cleanRoom}. Quý khách vui lòng nhập mã PIN xác thực trên màn hình ạ.`;
@@ -1605,7 +1621,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setCurrentState('RT-02');
       speak(msg, isEn ? 'en-US' : 'vi-VN');
     } else if (cleanRoom) {
-      const isEn = language === 'English';
+      const isEn = languageRef.current === 'English';
       const msg = isEn
         ? 'Hotel rooms are from 301 to 310, and 401 to 410. Which room are you staying in?'
         : 'Dạ khách sạn hiện chỉ có các phòng từ 301 đến 310 và 401 đến 410. Quý khách vui lòng nói lại số phòng của mình ạ.';
@@ -1618,6 +1634,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Kích hoạt luồng đặt xe taxi: kiểm tra session phòng, nếu chưa có thì hỏi số phòng qua giọng nói (KHÔNG hiện popup chọn phòng), nếu có rồi thì nói 2 option
   const handleTriggerTaxiBooking = useCallback((specifiedRoom = null) => {
+    clearEmotionAssistance();
     const requested = typeof specifiedRoom === 'string' ? specifiedRoom.trim() : '';
     const cleanAuthRoom = authenticatedRoom ? String(authenticatedRoom).trim() : '';
     const currentRoom = requested || cleanAuthRoom;
@@ -1632,10 +1649,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         isTaxiModalOpenRef.current = false;
         hasSpokenTaxiPromptRef.current = false;
         setTaxiFlowStage('choosing_option');
-        const isEn = language === 'English';
-        const msg = isEn
-          ? `Room ${authenticatedRoom} is confirmed. I have 2 options: Option 1 is to call our partner taxi hotlines directly; Option 2 is to have Concierge arrange a taxi for you. Which option would you like?`
-          : `Dạ phòng ${authenticatedRoom} đã được xác thực thành công. Em có 2 lựa chọn: Lựa chọn 1 là quý khách tự gọi xe theo danh bạ hotline các hãng taxi; Lựa chọn 2 là nhờ Concierge đặt xe giùm. Quý khách muốn chọn phương án nào ạ?`;
+        const isEn = languageRef.current === 'English';
+        const msg = getTaxiOptionsPrompt(authenticatedRoom, isEn);
         setAiResponseText(msg);
         setCurrentState('RT-02');
         speak(msg, isEn ? 'en-US' : 'vi-VN', () => {
@@ -1655,7 +1670,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       isTaxiModalOpenRef.current = false;
       hasSpokenTaxiPromptRef.current = false;
       setTaxiFlowStage('asking_room');
-      const isEn = language === 'English';
+      const isEn = languageRef.current === 'English';
       const msg = isEn
         ? 'To assist with taxi booking, which room are you staying in?'
         : 'Dạ để hỗ trợ đặt xe taxi, quý khách đang ở phòng bao nhiêu ạ?';
@@ -1670,17 +1685,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     // Đã có số phòng nhưng chưa xác thực mã PIN -> Mở PIN pad trực tiếp cho phòng đó (roomNumber đã có sẵn nên không hiện popup chọn phòng)
     setPinModalRoomNumber(currentRoom);
     setPinModalAction('book_taxi');
-    setPinModalItems('Yêu cầu đặt xe Taxi');
+    setPinModalItems(languageRef.current === 'English' ? 'Taxi booking request' : 'Yêu cầu đặt xe taxi');
     setIsPinModalOpen(true);
     isPinModalOpenRef.current = true;
-    const isEn = language === 'English';
+    const isEn = languageRef.current === 'English';
     const msg = isEn
       ? `To assist with taxi booking for room ${currentRoom}, please enter your PIN on the screen.`
       : `Dạ để hỗ trợ đặt xe taxi cho phòng ${currentRoom}, quý khách vui lòng nhập mã PIN xác thực trên màn hình ạ.`;
     setAiResponseText('');
     setCurrentState('RT-02');
     speak(msg, isEn ? 'en-US' : 'vi-VN');
-  }, [authenticatedRoom, activeRoomNumber, language, speak, setTaxiFlowStage]);
+  }, [authenticatedRoom, speak, setTaxiFlowStage, clearEmotionAssistance]);
 
   // 2. Gửi tới Ollama RAG Backend
   const handleStopTalkAndProcess = async (userText, options = {}) => {
@@ -1724,6 +1739,20 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       return;
     }
 
+    // Only finalized guest speech may answer the optional assistance question.
+    // Service flows own their replies (room numbers, PINs and booking choices).
+    if (isUnhappyAssistanceOpen && !hasActiveServiceInteraction()) {
+      const assistanceIntent = assistanceReplyIntent(query);
+      if (assistanceIntent) {
+        stopListening();
+        resetTranscript();
+        if (assistanceIntent === 'confirm') await handleConfirmCallConcierge();
+        else handleDismissUnhappyAssistance();
+        return;
+      }
+      clearEmotionAssistance();
+    }
+
     // Workflow song song: khách chào tạm biệt -> chào lại rồi cho xe đi tiếp
     if (parallelRun.isTalking && !isTaxiModalOpenRef.current && isGuestFarewell(query)) {
       parallelFarewellRef.current = true;
@@ -1738,12 +1767,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     // 1. Chuyển giọng nói trực tiếp cho Modal Đặt Xe xử lý nếu modal đang mở
     if (isTaxiModalOpen || isTaxiModalOpenRef.current) {
       resetTranscript();
-      if (isDismissVoiceIntent(query)) {
-        handleCloseTaxiModal('voice_dismiss');
-        isProcessingRef.current = false;
-        setIsProcessing(false);
-        return;
-      }
       setTaxiVoiceInput(query);
       isProcessingRef.current = false;
       setIsProcessing(false);
@@ -1774,7 +1797,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       return;
     }
 
-    const currentTaxiStage = taxiFlowStageRef.current || taxiFlowStage;
+    if (isPinModalOpenRef.current && isTaxiAction(pinModalAction)) {
+      stopListening();
+      resetTranscript();
+      return;
+    }
+
+    const currentTaxiStage = taxiFlowStageRef.current;
 
     // 2. Nếu đang ở bước Robot hỏi số phòng để đặt xe taxi (không có popup chọn phòng)
     if (currentTaxiStage === 'asking_room') {
@@ -1792,7 +1821,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       if (detectedRoom) {
         handleTaxiRoomProvided(detectedRoom);
       } else {
-        const isEn = language === 'English';
+        const isEn = languageRef.current === 'English';
         const msg = isEn
           ? "I didn't catch your room number. Could you please say your room number again, for example room 301?"
           : 'Dạ em chưa nghe rõ số phòng. Quý khách vui lòng nói lại số phòng, ví dụ như phòng 301 ạ?';
@@ -1829,9 +1858,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         setIsProcessing(false);
         return;
       }
-      const retryMsg = 'Dạ em có 2 lựa chọn: Lựa chọn 1 là danh bạ hotline tự gọi; Lựa chọn 2 là nhờ Concierge đặt xe giùm. Quý khách muốn chọn phương án nào ạ?';
+      const isEn = languageRef.current === 'English';
+      const retryMsg = getTaxiOptionsPrompt(null, isEn);
       setAiResponseText(retryMsg);
-      speak(retryMsg, 'vi-VN', () => {
+      speak(retryMsg, isEn ? 'en-US' : 'vi-VN', () => {
         setTimeout(() => handleStartTalkRef.current?.({ silent: true }), 120);
       });
       isProcessingRef.current = false;
@@ -2149,7 +2179,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         languageRef.current = detectedLang;
 
         // Tự động mở video call nếu nhận diện ý định gọi nhân viên
-        if (chatRes.trigger_video_call) {
+        if (canOpenVoiceVideoCall(chatRes, Boolean(taxiFlowStageRef.current || isTaxiModalOpenRef.current || (isPinModalOpenRef.current && isTaxiAction(pinModalAction))))) {
           stopSpeaking();
           stopListening();
           const canonicalCode = chatRes.ticket_code || chatRes.support_session_id || chatRes.session_id || sessionId;
@@ -2854,10 +2884,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       isTaxiModalOpenRef.current = false;
       hasSpokenTaxiPromptRef.current = false;
       setTaxiFlowStage('choosing_option');
-      const isEn = language === 'English';
-      const taxiPrompt = isEn
-        ? `Room ${verifiedRoom} confirmed. I have 2 options: Option 1 is to call our partner taxi hotlines directly; Option 2 is to have Concierge arrange a taxi for you. Which option would you like?`
-        : `Dạ phòng ${verifiedRoom} đã được xác thực thành công. Em có 2 lựa chọn: Lựa chọn 1 là quý khách tự gọi xe theo danh bạ hotline các hãng taxi; Lựa chọn 2 là nhờ Concierge đặt xe giùm. Quý khách muốn chọn phương án nào ạ?`;
+      const isEn = languageRef.current === 'English';
+      const taxiPrompt = getTaxiOptionsPrompt(verifiedRoom, isEn);
       setAiResponseText(taxiPrompt);
       setCurrentState('RT-02');
       speak(taxiPrompt, isEn ? 'en-US' : 'vi-VN', () => {
@@ -2916,11 +2944,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [language, pinModalRoomNumber, pinModalAction, pinModalItems, updateStatusQueryType, setTaxiFlowStage, triggerFollowUpPrompt, speak]);
 
   const handlePinNotCheckedIn = useCallback((info) => {
-    const notCheckedInMsg = info?.message || `Dạ phòng ${info?.roomNumber || ''} hiện chưa làm thủ tục nhận phòng. Quý khách vui lòng qua quầy Lễ tân để check-in rồi mới được đặt món nhé ạ.`;
+    const isEn = languageRef.current === 'English';
+    const notCheckedInMsg = isEn
+      ? `Room ${info?.roomNumber || ''} is not checked in. Please visit reception before requesting services.`
+      : `Dạ phòng ${info?.roomNumber || ''} chưa làm thủ tục nhận phòng. Quý khách vui lòng liên hệ lễ tân trước khi yêu cầu dịch vụ ạ.`;
     setAiResponseText(notCheckedInMsg);
     setNavigationDestinationKey(info?.destination_key || 'front_desk');
     setCurrentState('RT-05');
-    speak(notCheckedInMsg, language === 'English' ? 'en-US' : 'vi-VN');
+    speak(notCheckedInMsg, isEn ? 'en-US' : 'vi-VN');
   }, [language, speak]);
 
   const handleForgotPinFallback = useCallback((info) => {
@@ -4534,6 +4565,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
       {/* ROOM PIN VERIFICATION MODAL (KIOSK TOUCH NUMPAD) */}
       <RoomPinModal
+        language={language}
         isOpen={isPinModalOpen}
         onClose={() => {
           isPinModalOpenRef.current = false;
@@ -4560,7 +4592,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         initialMode={taxiModalInitialMode}
         language={language}
         activeRoomNumber={authenticatedRoom || activeRoomNumber}
-        lastVoiceTranscript={taxiVoiceInput || transcript}
+        lastVoiceTranscript={taxiVoiceInput}
         speak={speak}
         onStartTalk={handleStartTalk}
         onSuccess={() => {

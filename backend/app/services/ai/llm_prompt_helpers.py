@@ -138,8 +138,8 @@ def build_concierge_system_prompt(
             + "   - NEVER hallucinate or invent facilities not documented in the provided knowledge base.\n"
             + "   - If an amenity or inquiry is not found in the documentation, politely advise the guest to check with the Front Desk.\n"
             + "8. CONVERSATIONAL ENGAGEMENT & CONTINUATION RULE:\n"
-            + "   - Never end inquiries or questions with an abrupt dead-end statement.\n"
-            + "   - Always conclude your answer with ONE natural, context-aware follow-up suggestion, helpful question, or relevant next step based on hotel amenities (e.g., offering map directions for facilities, menu/reservations for dining, amenities for room stay, or asking how else you may assist) to keep the conversation flowing smoothly.\n"
+            + "   - When the guest asks for directions to any hotel facility or room, reply directly with concise directions and NEVER ask if they want to open the map or QR code (the map and QR code open automatically on screen).\n"
+            + "   - For non-direction inquiries, never end with an abrupt dead-end statement; conclude with ONE natural follow-up suggestion (e.g., menu/reservations for dining, amenities for room stay, or asking how else you may assist).\n"
         )
     else:
         prompt = (
@@ -154,8 +154,8 @@ def build_concierge_system_prompt(
             + "   - Tuyệt đối KHÔNG tự ý suy diễn hoặc bịa đặt các dịch vụ không có trong tài liệu.\n"
             + "   - Nếu thông tin khách hỏi không có trong tài liệu, hãy lịch sự trả lời rằng Rora sẽ liên hệ nhân viên hoặc quầy lễ tân để hỗ trợ quý khách.\n"
             + "10. NGUYÊN TẮC DUY TRÌ HỘI THOẠI VÀ GỢI Ý MỞ (CONVERSATIONAL CONTINUATION):\n"
-            + "   - Tuyệt đối không kết thúc câu trả lời một cách cụt lủn hoặc rơi vào ngõ cụt.\n"
-            + "   - Luôn chủ động khép lại câu nói bằng MỘT câu hỏi gợi ý mở hoặc đề xuất hành động tiếp theo thật tự nhiên bám sát tiện ích khách sạn (ví dụ: gợi ý mở bản đồ chỉ đường nếu hỏi về tiện ích/địa điểm, gợi ý xem thực đơn/đặt bàn nếu hỏi về ăn uống, gợi ý đồ dùng nếu hỏi về lưu trú phòng, hoặc hỏi xem khách có cần hỗ trợ thêm thông tin gì khác không).\n"
+            + "   - Khi khách hỏi chỉ đường hoặc vị trí bên trong khách sạn: trả lời trực tiếp bằng chỉ dẫn ngắn gọn; TUYỆT ĐỐI KHÔNG hỏi khách 'có muốn mở bản đồ/QR không' (bản đồ và QR tự động hiển thị trên màn hình).\n"
+            + "   - Với các câu hỏi khác (không phải chỉ đường), không kết thúc cụt lủn; luôn khép lại bằng MỘT câu gợi ý mở phù hợp (ví dụ: xem thực đơn/đặt món nếu hỏi ăn uống, tiện ích phòng nếu hỏi lưu trú, hoặc hỏi khách cần hỗ trợ thêm gì không).\n"
         )
 
     if kb_facts:

@@ -111,7 +111,7 @@ class PersonaService:
                 f"2. Speak directly and helpfully as a professional {star_rating}-star concierge. Answer questions accurately and concisely.\n"
                 "3. Never use emojis, markdown formatting (*, #, _, -), or bulleted lists to ensure smooth speech synthesis.\n"
                 "4. State times clearly in full words (e.g., 'from 6:00 AM to 10:00 PM', '12:00 PM noon').\n"
-                f"5. Only when providing directions to a specific hotel facility or room, end with: '{qr_cta_en}'. Never add this phrase to general conversation or local attraction queries.\n"
+                f"5. Only when providing directions to a specific hotel facility or room, give concise step-by-step directions directly and end with: '{qr_cta_en}'. NEVER ask the guest if they want to open the map or QR code (both open automatically on screen). Never add this phrase to general conversation or local attraction queries.\n"
             )
 
         pronoun_bot = cfg.get("pronoun_bot_vi") or "em hoặc Rora"
@@ -132,7 +132,7 @@ class PersonaService:
             "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa.\n"
             "5. Tuyệt đối KHÔNG dùng emoji, ký hiệu markdown (*, #, _, -) hay gạch đầu dòng.\n"
             "6. Viết thời gian rõ ràng: luôn viết bằng chữ như 'từ 6 giờ sáng đến 22 giờ tối', '12 giờ trưa', không viết tắt '6-22h'.\n"
-            f"7. Chỉ khi hướng dẫn chỉ đường đến một vị trí hoặc phòng cụ thể bên trong khách sạn, mới thêm ở cuối câu: '{qr_cta_vi}'. Với các câu hỏi khác, tuyệt đối không chèn câu này.\n"
+            f"7. Chỉ khi hướng dẫn chỉ đường đến một vị trí hoặc phòng cụ thể bên trong khách sạn, trả lời trực tiếp bằng chỉ dẫn ngắn gọn và kết thúc bằng: '{qr_cta_vi}'. Tuyệt đối KHÔNG hỏi khách có muốn mở bản đồ hoặc mã QR hay không (vì bản đồ và QR tự động hiển thị trên màn hình). Với các câu hỏi khác, tuyệt đối không chèn câu này.\n"
         )
 
     def get_unhappy_empathy(self, lang_code: Optional[str] = "vi-VN") -> str:

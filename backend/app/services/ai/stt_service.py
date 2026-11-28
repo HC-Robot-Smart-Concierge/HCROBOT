@@ -35,13 +35,8 @@ EN_ANCHOR_WORDS_RE = re.compile(
 
 
 HOTEL_STT_INITIAL_PROMPT = (
-    "Khách sạn Aurora Grand. Các phòng lưu trú: 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, "
-    "401, 402, 403, 404, 405, 406, 407, 408, 409, 410. "
-    "Dịch vụ: lễ tân, buồng phòng, dọn phòng, khăn tắm, bàn ủi, nước suối, hồ bơi vô cực, "
-    "nhà hàng, thực đơn, menu, gọi món, taxi, đón xe, spa, gym, toilet, WC, wifi. "
-    "Aurora Grand Hotel. Guests speak Vietnamese, English, or both in one sentence. "
-    "Room service, check-in, check-out, maintenance, housekeeping, reception, towels, breakfast. "
-    "Cho tôi order room service. Could you help me with check-in?"
+    "Aurora Grand Hotel, 301, 302, 401, 402, lễ tân, buồng phòng, dọn phòng, khăn tắm, "
+    "hồ bơi, nhà hàng, spa, gym, wifi, room service, reception, check-in, check-out."
 )
 
 WORD_TO_DIGIT_D1 = {"ba": "3", "pha": "3", "bốn": "4", "bon": "4", "tư": "4"}
@@ -63,6 +58,8 @@ WHISPER_HALLUCINATION_PATTERNS = [
     re.compile(r"thank you for watching.*", re.IGNORECASE),
     re.compile(r"thanks for watching.*", re.IGNORECASE),
     re.compile(r"subtitles by.*", re.IGNORECASE),
+    re.compile(r"^(?:could you |i can |can i )?help (?:you|me) with (?:your )?check-?in\.?$", re.IGNORECASE),
+    re.compile(r"^cho tôi order room service\.?$", re.IGNORECASE),
 ]
 
 
@@ -272,6 +269,8 @@ def transcribe_audio_wav_detailed(
                     beam_size=5,
                     vad_filter=True,
                     vad_parameters=dict(min_silence_duration_ms=400),
+                    no_speech_threshold=0.6,
+                    condition_on_previous_text=False,
                     initial_prompt=HOTEL_STT_INITIAL_PROMPT,
                 )
                 raw_whisper_lang = (getattr(info, "language", "") or "").lower()
@@ -394,6 +393,8 @@ def transcribe_audio_wav_detailed(
                 beam_size=2,
                 vad_filter=True,
                 vad_parameters=dict(min_silence_duration_ms=400),
+                no_speech_threshold=0.6,
+                condition_on_previous_text=False,
                 initial_prompt=HOTEL_STT_INITIAL_PROMPT,
             )
             results = [seg.text.strip() for seg in segments if seg.text.strip()]

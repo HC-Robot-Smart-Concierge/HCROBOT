@@ -133,28 +133,79 @@ class TranslationService:
         self, text: str, src_lang: str, target_lang: str
     ) -> Tuple[Optional[str], Optional[str]]:
         """
-        Gọi Google Translate Web API siêu tốc (50ms - 150ms).
+        Gọi Google Translate Web API siêu tốc (50ms - 150ms), tự động chuyển sang clients5 khi bị 429.
         Trả về tuple (translated_text, detected_source_lang).
         """
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+            )
+        }
         try:
             encoded_text = urllib.parse.quote(text)
             url = (
                 f"https://translate.googleapis.com/translate_a/single"
                 f"?client=gtx&sl={src_lang}&tl={target_lang}&dt=t&q={encoded_text}"
             )
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=4.5, headers=headers) as client:
                 res = await client.get(url)
-            if res.status_code == 200:
-                data = res.json()
-                detected = data[2] if len(data) > 2 and data[2] else None
-                if data and isinstance(data, list) and len(data) > 0 and data[0]:
-                    parts = [seg[0] for seg in data[0] if seg and len(seg) > 0 and seg[0]]
-                    translated = "".join(parts).strip()
-                    if translated:
-                        return translated, detected
+                if res.status_code == 200:
+                    data = res.json()
+                    detected = data[2] if len(data) > 2 and data[2] else None
+                    if data and isinstance(data, list) and len(data) > 0 and data[0]:
+                        parts = [seg[0] for seg in data[0] if seg and len(seg) > 0 and seg[0]]
+                        translated = "".join(parts).strip()
+                        if translated:
+                            return translated, detected
+                else:
+                    logger.warning(f"[TranslationService] Google GTX HTTP {res.status_code}, trying clients5...")
+
+                c5_url = "https://clients5.google.com/translate_a/t"
+                c5_res = await client.get(
+                    c5_url,
+                    params={
+                        "client": "dict-chrome-ex",
+                        "sl": src_lang,
+                        "tl": target_lang,
+                        "q": text,
+                    },
+                )
+                if c5_res.status_code == 200:
+                    c5_data = c5_res.json()
+                    if isinstance(c5_data, list) and c5_data:
+                        first = c5_data[0]
+                        if isinstance(first, str) and first.strip():
+                            return first.strip(), None
+                        if isinstance(first, list) and first and isinstance(first[0], str) and first[0].strip():
+                            det = first[1] if len(first) > 1 and isinstance(first[1], str) else None
+                            return first[0].strip(), det
         except Exception as e:
-            logger.warning(f"[TranslationService] Google GTX failed ({e}), attempting fallback...")
+            logger.warning(f"[TranslationService] Google GTX/clients5 failed ({e}), attempting fallback...")
         return None, None
+
+    async def _translate_via_mymemory(
+        self, text: str, src_lang: str, target_lang: str
+    ) -> Optional[str]:
+        """Dự phòng dịch qua MyMemory API miễn phí khi Google Translate bị rate-limit."""
+        try:
+            src_code = "vi" if src_lang == "vi" else "en"
+            tgt_code = "en" if target_lang == "en" else "vi"
+            if src_code == tgt_code:
+                return text
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                res = await client.get(
+                    "https://api.mymemory.translated.net/get",
+                    params={"q": text, "langpair": f"{src_code}|{tgt_code}"},
+                )
+            if res.status_code == 200:
+                payload = res.json()
+                translated = (payload.get("responseData") or {}).get("translatedText")
+                if isinstance(translated, str) and translated.strip():
+                    return translated.strip()
+        except Exception as e:
+            logger.warning(f"[TranslationService] MyMemory fallback translation failed: {e}")
+        return None
 
     async def _translate_via_gemini_fallback(
         self, text: str, src_lang: str, target_lang: str
@@ -305,7 +356,9 @@ class TranslationService:
                 "tts_error_detail": None,
             }
 
-        # Fallback sang Gemini nếu Google GTX lỗi
+        # Fallback sang MyMemory và Gemini nếu Google GTX/clients5 lỗi
+        if not translated:
+            translated = await self._translate_via_mymemory(clean_text, detected_src, target_code)
         if not translated:
             translated = await self._translate_via_gemini_fallback(clean_text, detected_src, target_code)
 

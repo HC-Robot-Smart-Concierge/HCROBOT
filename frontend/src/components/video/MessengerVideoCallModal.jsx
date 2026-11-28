@@ -1097,7 +1097,11 @@ export const MessengerVideoCallModal = ({
                     senderRole: 'staff',
                     withAudio: false,
                   });
-                  if (fallbackTrans?.translated_text) {
+                  if (
+                    fallbackTrans?.needs_translation &&
+                    fallbackTrans?.translated_text &&
+                    fallbackTrans.translated_text.trim().toLowerCase() !== data.originalText.trim().toLowerCase()
+                  ) {
                     finalTranslatedText = fallbackTrans.translated_text;
                     finalNeedsTranslation = true;
                     finalSourceLang = 'vi';

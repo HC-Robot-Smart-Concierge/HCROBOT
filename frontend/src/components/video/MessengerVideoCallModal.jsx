@@ -1202,6 +1202,9 @@ export const MessengerVideoCallModal = ({
               isManualLockedRef.current = Boolean(data.manualLocked);
             }
             if (data.mode === 'bypass') {
+              setActiveSubtitle(null);
+              setPeerInterim(null);
+              setInterimText('');
               audioQueueRef.current = [];
               if (activeAudioSourceRef.current) {
                 try { activeAudioSourceRef.current.stop(); } catch (e) {}
@@ -2390,6 +2393,9 @@ export const MessengerVideoCallModal = ({
     setShowTranslateSettings(false);
 
     if (newMode === 'bypass') {
+      setActiveSubtitle(null);
+      setPeerInterim(null);
+      setInterimText('');
       audioQueueRef.current = [];
       if (activeAudioSourceRef.current) {
         try { activeAudioSourceRef.current.stop(); } catch (e) {}
@@ -2790,8 +2796,11 @@ export const MessengerVideoCallModal = ({
             </div>
           )}
 
-          {/* FLOATING LIVE CAPTIONS FEED (TRANSPARENT OVERLAY FOR LANDSCAPE & DESKTOP) */}
-          {(callTranscripts.length > 0 || activeSubtitle || peerInterim || (interimText && translateMode !== 'bypass')) && (
+          {/* FLOATING LIVE CAPTIONS FEED (TRANSPARENT OVERLAY - ONLY WHEN TRANSLATION ENABLED) */}
+          {translateMode !== 'bypass' &&
+            (callTranscripts.some((item) => (role === 'staff' ? item.speaker === 'Guest' : item.speaker === 'Staff')) ||
+              activeSubtitle ||
+              peerInterim) && (
             <div className="absolute bottom-16 sm:bottom-20 left-3 right-32 sm:left-6 sm:right-44 lg:right-52 z-25 flex justify-start pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200">
               <div className="bg-transparent max-w-xl w-full text-left space-y-1.5 [text-shadow:0_2px_6px_rgba(0,0,0,0.95)]">
                 {callTranscripts

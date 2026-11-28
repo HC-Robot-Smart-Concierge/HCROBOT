@@ -45,7 +45,6 @@ export const AdminOperationsTab = ({
     total_active: 0,
     all_count: 0,
     reception_count: 0,
-    housekeeping_count: 0,
     room_service_count: 0,
     bell_services_count: 0,
     maintenance_count: 0,
@@ -80,7 +79,7 @@ export const AdminOperationsTab = ({
 
   // Form Dispatch State
   const [dispatchForm, setDispatchForm] = useState({
-    department: 'Housekeeping',
+    department: 'Room Service',
     title: '',
     room_number: '',
     guest_name: 'Hotel Guest',
@@ -201,7 +200,7 @@ export const AdminOperationsTab = ({
       if (res && res.id) {
         onNotify(t('opsNotifyDispatched').replace('{id}', res.id));
         setDispatchForm({
-          department: 'Housekeeping',
+          department: 'Room Service',
           title: '',
           room_number: '',
           guest_name: 'Hotel Guest',
@@ -222,7 +221,6 @@ export const AdminOperationsTab = ({
   const deptList = [
     { id: 'All', label: language === 'VI' ? 'Tất cả' : 'All', count: summary.all_count },
     { id: 'Reception', label: language === 'VI' ? 'Lễ tân' : 'Reception', count: summary.reception_count },
-    { id: 'Housekeeping', label: language === 'VI' ? 'Buồng phòng' : 'Housekeeping', count: summary.housekeeping_count },
     { id: 'F&B', label: language === 'VI' ? 'Phục vụ phòng' : 'Room Service', count: summary.room_service_count },
     { id: 'Bell Services', label: language === 'VI' ? 'Hành lý' : 'Bell Services', count: summary.bell_services_count },
     { id: 'Maintenance', label: language === 'VI' ? 'Kỹ thuật' : 'Maintenance', count: summary.maintenance_count },
@@ -597,7 +595,7 @@ export const AdminOperationsTab = ({
                   {t('opsDispatchDeptLabel')}
                 </label>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {['Reception', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Concierge', 'Taxi', 'Directive'].map(
+                  {['Reception', 'Room Service', 'Kitchen', 'Bell Services', 'Maintenance', 'Concierge', 'Taxi', 'Directive'].map(
                     (d) => (
                       <button
                         type="button"

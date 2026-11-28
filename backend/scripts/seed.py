@@ -4,7 +4,7 @@ AURORA OS / HCROBOT - UNIFIED DATABASE SEEDING ENGINE
 File tổng hợp duy nhất thay thế toàn bộ các file seed rời rạc trước đây.
 Cung cấp dữ liệu mẫu chuẩn khách sạn 5 sao cho toàn bộ hệ thống:
 1. Tài khoản nhân viên & Robot Kiosk (Staff Accounts)
-2. Nghiệp vụ phòng: Room Service, Buồng phòng, Bellman, Bảo trì, Chỉ thị điều hành, Tồn kho
+2. Nghiệp vụ phòng: Room Service, Bellman, Bảo trì, Chỉ thị điều hành, Tồn kho
 3. Phiếu hỗ trợ Lễ tân (Reception Tickets)
 4. Phiếu can thiệp song ngữ của nhân viên (Human Support Sessions)
 5. Chuông thông báo phòng ban (Department Notifications)
@@ -83,17 +83,6 @@ STAFF_ACCOUNTS = [
         "shift": "Morning Shift (06:00 - 14:00)",
     },
     {
-        "username": "hk_lead",
-        "code": "HKL",
-        "full_name": "Pham Thi Mai",
-        "role": "Housekeeping Lead",
-        "department": "Housekeeping",
-        "default_dashboard": "housekeeping",
-        "location": "Floor 3 Storage",
-        "status": "available",
-        "shift": "Morning Shift (06:00 - 14:00)",
-    },
-    {
         "username": "bell_captain",
         "code": "BEL",
         "full_name": "Le Hoang Nam",
@@ -167,10 +156,9 @@ async def seed_departments_and_services(session):
     deps = [
         ("DEP-RECEPTION", "RECEPTION", "Reception", "Bộ phận Lễ tân & Tiền sảnh, thủ tục check-in/out, đặt phòng và thông tin lưu trú"),
         ("DEP-CONCIERGE", "CONCIERGE", "Concierge", "Bộ phận Trợ lý Concierge, tổng đài hỗ trợ trực tuyến và live call video từ Robot"),
-        ("DEP-HOUSEKEEPING", "HOUSEKEEPING", "Housekeeping", "Dịch vụ buồng phòng và dọn dẹp"),
         ("DEP-BELL", "BELL", "Bell Services", "Vận chuyển hành lý và hỗ trợ sảnh"),
         ("DEP-TAXI", "TAXI", "Taxi", "Điều phối taxi và đưa đón di chuyển"),
-        ("DEP-ROOMSERVICE", "ROOMSERVICE", "Room Service", "Bộ phận Phục vụ phòng (Room Service)"),
+        ("DEP-ROOMSERVICE", "ROOMSERVICE", "Room Service", "Bộ phận Phục vụ phòng, dọn phòng, tiện ích & đồ ăn (Room Service)"),
         ("DEP-MAINTENANCE", "MAINTENANCE", "Maintenance", "Kỹ thuật và bảo trì trang thiết bị"),
         ("DEP-EXECUTIVE", "EXECUTIVE", "Executive", "Ban quản trị và điều hành khách sạn"),
         ("DEP-KITCHEN", "KITCHEN", "Kitchen", "Bộ phận Bếp & Chế biến ẩm thực (Kitchen Operations)"),
@@ -186,11 +174,10 @@ async def seed_departments_and_services(session):
     services = [
         ("ST-RECEPTION", "RECEPTION", "Dịch vụ Lễ tân & Đặt phòng", "DEP-RECEPTION", "Hỗ trợ đặt phòng, check-in, check-out, đổi phòng và thủ tục tiền sảnh", "NORMAL"),
         ("ST-CONCIERGE", "CONCIERGE", "Dịch vụ Concierge & Live Call Hỗ trợ", "DEP-CONCIERGE", "Tiếp nhận cuộc gọi trực tiếp, giải cứu robot và hỗ trợ khách hàng từ xa", "HIGH"),
-        ("ST-HOUSEKEEPING", "HOUSEKEEPING", "Dịch vụ Buồng phòng", "DEP-HOUSEKEEPING", "Dọn dẹp phòng nghỉ hoặc xử lý vết tràn đổ", "NORMAL"),
         ("ST-BELL", "BELL_SERVICE", "Dịch vụ Bellman & Hành lý", "DEP-BELL", "Khuân vác hành lý check-in / check-out", "NORMAL"),
         ("ST-TAXI", "TAXI", "Dịch vụ Đặt xe & Taxi", "DEP-TAXI", "Gọi xe taxi hoặc đưa đón sân bay", "NORMAL"),
         ("ST-MAINTENANCE", "MAINTENANCE", "Dịch vụ Kỹ thuật & Bảo trì", "DEP-MAINTENANCE", "Bảo trì điều hòa nhiệt độ, điện nước", "HIGH"),
-        ("ST-ROOM-SERVICE", "ROOM_SERVICE", "Dịch vụ Ẩm thực & Phục vụ phòng", "DEP-ROOMSERVICE", "Phục vụ đồ ăn thức uống tại phòng", "NORMAL"),
+        ("ST-ROOM-SERVICE", "ROOM_SERVICE", "Dịch vụ Phục vụ phòng & Tiện ích", "DEP-ROOMSERVICE", "Phục vụ đồ ăn thức uống, dọn phòng, khăn tắm & tiện ích tại phòng", "NORMAL"),
     ]
     for s_id, s_code, s_name, s_dep, s_desc, _ in services:
         s = await session.get(ServiceType, s_id)

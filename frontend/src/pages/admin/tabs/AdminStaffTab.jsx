@@ -12,11 +12,10 @@ import {
 // Danh sách phòng ban khách sạn chuẩn
 const STANDARD_DEPARTMENTS = [
   'Reception',
-  'Housekeeping',
-  'Food & Beverage',
+  'Room Service',
+  'Kitchen',
   'Bell Services',
   'Maintenance',
-  'Restaurant',
   'Taxi',
   'Concierge',
   'Executive',

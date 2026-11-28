@@ -34,10 +34,6 @@ USERNAME_ALIASES = {
     "bell services": "bellman",
     "bellservice": "bellman",
     "bell": "bellman",
-    "house_keeping": "housekeeping",
-    "house-keeping": "housekeeping",
-    "house keeping": "housekeeping",
-    "buongphong": "housekeeping",
     "receptionist": "reception",
     "frontdesk": "reception",
     "front_desk": "reception",
@@ -74,7 +70,7 @@ def resolve_dashboard_for_staff(staff: Staff) -> str:
 
     dept_lower = (staff.department or "").lower()
     if "housekeeping" in dept_lower or "buồng" in dept_lower or "housekeeping" in username_lower:
-        return "housekeeping"
+        return "room_service"
     if "reception" in dept_lower or "lễ tân" in dept_lower or "front" in dept_lower or "reception" in username_lower:
         return "reception"
     if "bell" in dept_lower or "hành lý" in dept_lower or "bell" in username_lower:

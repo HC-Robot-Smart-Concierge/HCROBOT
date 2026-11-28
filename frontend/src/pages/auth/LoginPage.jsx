@@ -82,7 +82,7 @@ export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }
               </label>
               <input
                 type="text"
-                placeholder="Ví dụ: reception, housekeeping, admin"
+                placeholder="Ví dụ: reception, roomservice, admin"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required

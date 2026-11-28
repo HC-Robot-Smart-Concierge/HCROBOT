@@ -381,7 +381,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
     # Trường hợp 4: Đã có đủ số phòng và có yêu cầu dịch vụ -> Xác nhận gửi tới đúng phòng ban kèm số phòng
     DEPT_MAP_VI = {
-        "housekeeping": "buồng phòng và dọn dẹp",
+        "housekeeping": "phục vụ phòng và dọn dẹp",
         "room_service": "ẩm thực và đồ ăn",
         "bellman": "hành lý",
         "maintenance": "kỹ thuật và sửa chữa",
@@ -393,14 +393,14 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
         "cancel_service": "hủy yêu cầu dịch vụ",
     }
     DEPT_MAP_EN = {
-        "housekeeping": "Housekeeping Department",
+        "housekeeping": "Room Service Department",
         "room_service": "Food & Beverage (Room Service)",
         "bellman": "Bell Services Department",
         "maintenance": "Maintenance & Engineering",
         "restaurant": "Restaurant & F&B Department",
         "taxi": "Transportation & Taxi Desk",
         "reception": "Front Desk & Reception",
-        "laundry": "Laundry & Housekeeping Department",
+        "laundry": "Room Service & Laundry Department",
         "wake_up": "Front Desk & Telephone Operator",
         "cancel_service": "Operations & Service Dispatch",
     }

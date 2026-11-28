@@ -184,40 +184,10 @@ async def auto_create_ticket(
         if action in ["room_service", "restaurant"]:
             return await handle_room_service_or_restaurant_ticket(db, rm, items)
 
-        elif action == "housekeeping":
-            ticket_code = f"HK-{random.randint(1000, 99999)}"
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="HCRobot Concierge AI Chat",
-                title=f"Yêu cầu Buồng phòng (Phòng {rm}): {items}",
-                room_number=rm,
-                description=items,
-                guest_name=f"Guest (Room {rm})",
-                department_id="DEP-HOUSEKEEPING",
-                service_type_id="ST-HOUSEKEEPING",
-                status="Unassigned",
+        elif action in ["housekeeping", "laundry"]:
+            return await handle_room_service_or_restaurant_ticket(
+                db, rm, items, force_service_request=True
             )
-            db.add(req)
-            await create_department_notification(
-                db=db,
-                department="Housekeeping",
-                title=f"Robot AI: Yêu cầu Buồng phòng mới #{ticket_code}",
-                description=f"Phòng {rm}: {items}",
-                request_id=req.id,
-                request_type="housekeeping",
-                type="Request",
-            )
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Buồng phòng từ Khách Phòng {rm}",
-                description=f"Phiếu #{ticket_code}: {items}",
-                request_id=req.id,
-                request_type="housekeeping",
-                type="Request",
-            )
-            await db.commit()
-            return ticket_code
 
         elif action == "bellman":
             req, _ = await create_bell_voice_ticket(db, rm, items)
@@ -326,42 +296,6 @@ async def auto_create_ticket(
 
         elif action == "cancel_service":
             return await handle_cancel_service_ticket(db, rm, items)
-
-        elif action == "laundry":
-            ticket_code = f"LD-{random.randint(1000, 99999)}"
-            if db:
-                req = SupportRequest(
-                    ticket_code=ticket_code,
-                    source="HCRobot Concierge AI Chat",
-                    title=f"Yêu cầu Giặt ủi (Phòng {rm}): {items}",
-                    room_number=rm,
-                    description=items,
-                    guest_name=f"Guest (Room {rm})",
-                    department_id="DEP-HOUSEKEEPING",
-                    service_type_id="ST-HOUSEKEEPING",
-                    status="Pending",
-                )
-                db.add(req)
-                await create_department_notification(
-                    db=db,
-                    department="Housekeeping",
-                    title=f"Robot AI: Yêu cầu Giặt ủi mới #{ticket_code}",
-                    description=f"Phòng {rm}: {items}",
-                    request_id=req.id,
-                    request_type="laundry",
-                    type="Request",
-                )
-                await create_department_notification(
-                    db=db,
-                    department="Reception",
-                    title=f"Robot AI: Yêu cầu Giặt ủi từ Khách Phòng {rm}",
-                    description=f"Phiếu #{ticket_code}: {items}",
-                    request_id=req.id,
-                    request_type="laundry",
-                    type="Request",
-                )
-                await db.commit()
-            return ticket_code
 
         elif action == "wake_up":
             ticket_code = f"WU-{random.randint(1000, 99999)}"

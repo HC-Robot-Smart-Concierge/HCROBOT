@@ -11,7 +11,13 @@ from app.models.support_request import SupportRequest
 logger = logging.getLogger(__name__)
 
 
-async def handle_room_service_or_restaurant_ticket(db: AsyncSession, rm: str, items: str) -> str:
+async def handle_room_service_or_restaurant_ticket(
+    db: AsyncSession,
+    rm: str,
+    items: str,
+    *,
+    force_service_request: bool = False,
+) -> str:
     """Create or merge an F&B / Room Service ticket from a voice request."""
     import uuid
     from sqlalchemy import select, or_, desc
@@ -36,7 +42,7 @@ async def handle_room_service_or_restaurant_ticket(db: AsyncSession, rm: str, it
     if any(k in items_lower for k in non_orderable_kw):
         logger.warning(f"[AITicketService] Bỏ qua tạo/gộp món rác từ câu hỏi tra cứu: '{items}'")
         return ""
-    is_svc = any(k in items_lower for k in service_kw)
+    is_svc = force_service_request or any(k in items_lower for k in service_kw)
     assigned_dept_id = "DEP-ROOMSERVICE" if is_svc else "DEP-KITCHEN"
     target_dept_name = "Room Service" if is_svc else "Kitchen"
     clean_room = rm.upper().replace("ROOM", "").strip()

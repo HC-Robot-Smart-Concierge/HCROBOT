@@ -16,7 +16,7 @@ class ManagementDirective(Base):
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"DIR-{uuid.uuid4().hex[:8]}")
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. 'OP-101', 'OP-102'
     title: Mapped[str] = mapped_column(String(200), nullable=False) # e.g. 'Spill in Lobby'
-    department: Mapped[str] = mapped_column(String(50), default="Housekeeping")
+    department: Mapped[str] = mapped_column(String(50), default="Room Service")
     priority: Mapped[str] = mapped_column(String(50), default="URGENT") # 'URGENT', 'PENDING', 'IN PROGRESS'
     location: Mapped[str] = mapped_column(String(100), default="Main Entrance")
     reported_time_label: Mapped[str] = mapped_column(String(50), default="Reported 2m ago")

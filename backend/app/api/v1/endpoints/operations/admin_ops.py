@@ -66,9 +66,7 @@ async def get_admin_operations_summary(db: AsyncSession = Depends(get_db)):
             summary.concierge_count += 1
         elif "reception" in dept:
             summary.reception_count += 1
-        elif "housekeeping" in dept:
-            summary.housekeeping_count += 1
-        elif "f&b" in dept or "room service" in dept or "kitchen" in dept:
+        elif "housekeeping" in dept or "f&b" in dept or "room service" in dept or "kitchen" in dept:
             summary.room_service_count += 1
         elif "bell" in dept:
             summary.bell_services_count += 1
@@ -189,10 +187,11 @@ async def dispatch_admin_task(
     db: AsyncSession = Depends(get_db),
 ):
     dept_map = {
-        "housekeeping": ("DEP-HOUSEKEEPING", "ST-HOUSEKEEPING", "HK"),
+        "housekeeping": ("DEP-ROOMSERVICE", "ST-ROOM-SERVICE", "RS"),
         "reception": ("DEP-RECEPTION", "ST-RECEPTION", "REC"),
-        "f&b": ("DEP-ROOMSERVICE", "ST-ROOM_SERVICE", "ORD"),
-        "room service": ("DEP-ROOMSERVICE", "ST-ROOM_SERVICE", "ORD"),
+        "f&b": ("DEP-ROOMSERVICE", "ST-ROOM-SERVICE", "RS"),
+        "room service": ("DEP-ROOMSERVICE", "ST-ROOM-SERVICE", "RS"),
+        "kitchen": ("DEP-KITCHEN", "ST-ROOM-SERVICE", "ORD"),
         "bell services": ("DEP-BELL", "ST-BELL", "BS"),
         "bell": ("DEP-BELL", "ST-BELL", "BS"),
         "maintenance": ("DEP-MAINTENANCE", "ST-MAINTENANCE", "MN"),
@@ -201,6 +200,7 @@ async def dispatch_admin_task(
     }
     norm_dept = payload.department.strip().lower()
     dep_id, st_id, prefix = dept_map.get(norm_dept, ("DEP-EXECUTIVE", None, "OP"))
+    notif_dept = "Room Service" if norm_dept == "housekeeping" else payload.department
     if dep_id == "DEP-TAXI" or st_id == "ST-TAXI":
         from app.repositories.support_request_repository import ensure_taxi_catalog_entities
         dep_id, st_id = await ensure_taxi_catalog_entities(db)
@@ -227,11 +227,11 @@ async def dispatch_admin_task(
     try:
         await create_department_notification(
             db=db,
-            department=payload.department,
+            department=notif_dept,
             title=f"Lệnh điều phối từ Admin: #{ticket_code}",
             description=f"{payload.room_number}: {payload.title}. {payload.description or ''}".strip(),
             request_id=new_req.id,
-            request_type=payload.department.lower(),
+            request_type=notif_dept.lower(),
             type="Request",
         )
     except Exception as e:
@@ -246,7 +246,7 @@ async def dispatch_admin_task(
         "ticket_code": new_req.ticket_code,
         "raw_id": new_req.id,
         "title": new_req.title,
-        "department": payload.department,
+        "department": notif_dept,
         "status": new_req.status,
     }
 
@@ -274,7 +274,7 @@ async def update_task_status(
     """
     Cập nhật trạng thái phiếu công việc (Pending, In Progress, Completed...) và nhân viên phụ trách.
     Đồng bộ trên toàn bộ cơ sở dữ liệu: bảng SupportRequest, RoomServiceOrder, và ManagementDirective.
-    Hỗ trợ tất cả các phòng ban: Buồng phòng, Lễ tân, F&B/Room Service, Bellman, Kỹ thuật bảo trì, Taxi.
+    Hỗ trợ tất cả các phòng ban: Lễ tân, Room Service, Bếp, Bellman, Kỹ thuật bảo trì, Taxi, Concierge.
     """
     target_status = status if isinstance(status, str) else None
     target_assigned_to = assigned_to if isinstance(assigned_to, str) else None

@@ -188,7 +188,7 @@ export const AssignStaffModal = ({
 
 // 2. Modal: Tạo chỉ thị mới / Yêu cầu bảo trì / Phục vụ
 export const NewDirectiveModal = ({ isOpen, onClose, onSubmit = () => {} }) => {
-  const [department, setDepartment] = useState('Housekeeping');
+  const [department, setDepartment] = useState('Room Service');
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
   const [notes, setNotes] = useState('');
@@ -230,7 +230,6 @@ export const NewDirectiveModal = ({ isOpen, onClose, onSubmit = () => {} }) => {
               onChange={(e) => setDepartment(e.target.value)}
               className="w-full px-3 py-2 rounded-xl bg-white border border-[#E0DCD3] text-xs font-semibold text-stone-800 outline-none focus:border-stone-500"
             >
-              <option value="Housekeeping">Housekeeping</option>
               <option value="Room Service">Room Service / F&B</option>
               <option value="Bell Services">Bell Services</option>
               <option value="Maintenance">Maintenance</option>

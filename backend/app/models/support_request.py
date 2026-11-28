@@ -235,7 +235,7 @@ class SupportRequest(Base):
             if "BELL" in st:
                 return "Bell Services"
             elif "HOUSEKEEPING" in st:
-                return "Housekeeping"
+                return "Room Service"
             elif "TAXI" in st:
                 return "Taxi & Transportation"
             elif "MAINTENANCE" in st:

@@ -20,7 +20,7 @@ class AdminOperationsSummary(BaseModel):
 
 
 class AdminTaskDispatchCreate(BaseModel):
-    department: str = Field("Housekeeping", description="Tên bộ phận tiếp nhận (Housekeeping, F&B, Reception, Bell Services, Maintenance, Taxi, Concierge)")
+    department: str = Field("Room Service", description="Tên bộ phận tiếp nhận (Room Service, Kitchen, Reception, Bell Services, Maintenance, Taxi, Concierge)")
     title: str = Field(..., description="Tiêu đề yêu cầu điều phối")
     room_number: str = Field(..., description="Số phòng hoặc vị trí tiếp nhận")
     guest_name: Optional[str] = Field("Hotel Guest", description="Tên khách hàng")

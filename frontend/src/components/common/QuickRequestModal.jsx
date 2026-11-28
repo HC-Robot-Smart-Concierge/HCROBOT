@@ -3,14 +3,14 @@ import React, { useState } from 'react';
 import { PlusCircle, X, Send, CheckCircle2 } from 'lucide-react';
 import {
   createReceptionRequest,
-  createHousekeepingRequest,
+  createRoomServiceOrder,
   createBellRequest,
   createMaintenanceRequest,
   createOperationalDirective,
 } from '../../services/operationsApi';
 
 export function QuickRequestModal({ isOpen, onClose, onCreated }) {
-  const [department, setDepartment] = useState('Housekeeping');
+  const [department, setDepartment] = useState('Room Service');
   const [roomNumber, setRoomNumber] = useState('');
   const [guestName, setGuestName] = useState('');
   const [title, setTitle] = useState('');
@@ -48,11 +48,13 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
           room_number: roomNumber.trim() || 'Lobby',
           request_type: 'Other',
         });
-      } else if (department === 'Housekeeping') {
-        res = await createHousekeepingRequest({
-          ...basePayload,
-          room_number: roomNumber.trim() || 'Phòng chưa gán',
-          source: 'Front Desk / Kiosk',
+      } else if (department === 'Room Service') {
+        res = await createRoomServiceOrder({
+          room_number: roomNumber.trim() || 'Lobby',
+          items: [{ name: title.trim(), qty: 1 }],
+          note: description.trim(),
+          guest_name: guestName.trim() || 'Khách lưu trú',
+          is_service_request: true,
         });
       } else if (department === 'Bell Services') {
         res = await createBellRequest({
@@ -140,7 +142,7 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
                 onChange={(e) => setDepartment(e.target.value)}
                 className="hc-select"
               >
-                <option value="Housekeeping">Buồng phòng (Housekeeping)</option>
+                <option value="Room Service">Phục vụ phòng (Room Service)</option>
                 <option value="Reception">Lễ tân (Reception)</option>
                 <option value="Bell Services">Hành lý & Sảnh (Bell Services)</option>
                 <option value="Maintenance">Kỹ thuật & Bảo trì (Maintenance)</option>

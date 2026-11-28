@@ -24,7 +24,7 @@ class Account(Base):
     # Foreign key to Department
     department_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
     
-    default_dashboard: Mapped[str] = mapped_column(String(50), default="room_service") # 'reception', 'room_service', 'housekeeping', 'bell_services', 'maintenance', 'admin_map'
+    default_dashboard: Mapped[str] = mapped_column(String(50), default="room_service") # 'reception', 'room_service', 'bell_services', 'maintenance', 'admin_map'
     location: Mapped[str] = mapped_column(String(100), default="Main Hotel") # e.g. 'Floor 3', 'Lobby', 'Floor 5'
     status: Mapped[str] = mapped_column(String(50), default="available") # 'available', 'busy', 'off_shift'
     avatar_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -48,7 +48,7 @@ class Account(Base):
             return dept.name
         if self.department_id:
             dept_map = {
-                "DEP-HOUSEKEEPING": "Housekeeping",
+                "DEP-HOUSEKEEPING": "Room Service",
                 "DEP-BELL": "Bell Services",
                 "DEP-TAXI": "Taxi & Transportation",
                 "DEP-MAINTENANCE": "Maintenance & Engineering",

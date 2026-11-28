@@ -61,25 +61,31 @@ async def seed_operations(session):
     session.add_all(orders)
 
     hk = [
-        HousekeepingRequest(
-            ticket_code="HK-1042",
+        SupportRequest(
+            ticket_code="RS-1042",
             source="From HCRobot",
             time_label="10:15 AM",
             title="Spill cleanup required",
             room_number="502",
             description="Wine spill on carpet. Guest requested immediate attention.",
             guest_name="Mr. John Smith",
-            status="Unassigned",
+            department_id="DEP-ROOMSERVICE",
+            service_type_id="ST-ROOM-SERVICE",
+            status="Pending",
+            extra_data={"is_service_request": True},
         ),
-        HousekeepingRequest(
-            ticket_code="HK-1043",
+        SupportRequest(
+            ticket_code="RS-1043",
             source="From HCRobot",
             time_label="10:22 AM",
             title="Extra Towels",
             room_number="314",
             description="Guest requested 4 extra bath towels.",
             guest_name="Mrs. Alena Croft",
-            status="Unassigned",
+            department_id="DEP-ROOMSERVICE",
+            service_type_id="ST-ROOM-SERVICE",
+            status="Pending",
+            extra_data={"is_service_request": True},
         ),
     ]
     session.add_all(hk)
@@ -144,7 +150,7 @@ async def seed_operations(session):
         ManagementDirective(
             code="M-101",
             title="Spill in Lobby",
-            department="Housekeeping",
+            department="Room Service",
             priority="URGENT",
             location="Main Entrance",
             reported_time_label="Reported 2m ago",
@@ -154,7 +160,7 @@ async def seed_operations(session):
         ManagementDirective(
             code="M-102",
             title="Room Make-up",
-            department="Housekeeping",
+            department="Room Service",
             priority="PENDING",
             location="Suite 402",
             reported_time_label="Guest Requested",
@@ -332,7 +338,7 @@ async def seed_notifications(session):
             is_read=False,
         ),
         Notification(
-            department="Housekeeping",
+            department="Room Service",
             title="Yêu cầu dọn vết tràn sảnh chính #M-101",
             description="Khu vực sảnh chính có vết tràn cần xử lý gấp.",
             request_id="M-101",

@@ -18,10 +18,8 @@ class NotificationRepository(BaseRepository[Notification]):
     def _get_department_aliases(department: str) -> List[str]:
         dep_clean = department.strip().lower()
         aliases = [dep_clean]
-        if "f&b" in dep_clean or "room" in dep_clean or "ẩm thực" in dep_clean:
-            aliases.extend(["f&b", "room service", "room_service", "ẩm thực & f&b"])
-        elif "housekeeping" in dep_clean or "buồng" in dep_clean:
-            aliases.extend(["housekeeping", "buồng phòng"])
+        if "f&b" in dep_clean or "room" in dep_clean or "ẩm thực" in dep_clean or "housekeeping" in dep_clean or "buồng" in dep_clean:
+            aliases.extend(["f&b", "room service", "room_service", "ẩm thực & f&b", "housekeeping", "buồng phòng"])
         elif "bell" in dep_clean or "hành lý" in dep_clean:
             aliases.extend(["bell services", "bellman", "bell_services", "vận chuyển hành lý"])
         elif "maint" in dep_clean or "kỹ thuật" in dep_clean or "bảo trì" in dep_clean:

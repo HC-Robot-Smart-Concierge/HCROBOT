@@ -69,7 +69,6 @@ export function NotificationCenterModal({ isOpen, onClose, currentDepartment = '
   const departmentFilters = [
     { label: 'Tất cả', value: 'All' },
     { label: 'Lễ tân', value: 'Reception' },
-    { label: 'Buồng phòng', value: 'Housekeeping' },
     { label: 'Phục vụ phòng', value: 'Room Service' },
     { label: 'Hành lý', value: 'Bell Services' },
     { label: 'Kỹ thuật', value: 'Maintenance' },

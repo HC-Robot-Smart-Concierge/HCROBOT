@@ -122,8 +122,8 @@ async def create_department(
 async def get_department_detail(
     department_id: str = Path(
         ...,
-        description="Mã định danh duy nhất (vd: `DEP-HOUSEKEEPING`, `DEP-TAXI`) hoặc code phòng ban (vd: `HOUSEKEEPING`, `TAXI`)",
-        examples=["DEP-HOUSEKEEPING", "DEP-BELL", "DEP-TAXI"],
+        description="Mã định danh duy nhất (vd: `DEP-ROOMSERVICE`, `DEP-TAXI`) hoặc code phòng ban (vd: `ROOMSERVICE`, `TAXI`)",
+        examples=["DEP-ROOMSERVICE", "DEP-BELL", "DEP-TAXI"],
     ),
     repo: StaffRepository = Depends(get_staff_repository),
 ):
@@ -229,7 +229,7 @@ async def delete_department(
 async def list_service_types(
     department_id: Optional[str] = Query(
         None,
-        description="Lọc loại dịch vụ theo ID phòng ban (vd: `DEP-TAXI`, `DEP-HOUSEKEEPING`)",
+        description="Lọc loại dịch vụ theo ID phòng ban (vd: `DEP-TAXI`, `DEP-ROOMSERVICE`)",
         examples=["DEP-TAXI", "DEP-BELL"],
     ),
     is_active: Optional[bool] = Query(
@@ -245,11 +245,10 @@ async def list_service_types(
 
     ### Các mã dịch vụ tiêu chuẩn:
     - **ST-TAXI** (`TAXI`): Dịch vụ Đặt xe & Taxi di chuyển -> Thuộc `DEP-TAXI`
-    - **ST-HOUSEKEEPING** (`HOUSEKEEPING`): Dịch vụ Buồng phòng & Đồ dùng -> Thuộc `DEP-HOUSEKEEPING`
     - **ST-BELL** (`BELL_SERVICE`): Dịch vụ Bellman & Vận chuyển hành lý -> Thuộc `DEP-BELL`
     - **ST-MAINTENANCE** (`MAINTENANCE`): Dịch vụ Kỹ thuật, Điện nước & Điều hòa -> Thuộc `DEP-MAINTENANCE`
     - **ST-RECEPTION** (`RECEPTION`): Dịch vụ Lễ tân & Đặt phòng -> Thuộc `DEP-RECEPTION`
     - **ST-CONCIERGE** (`CONCIERGE`): Dịch vụ Concierge & Live Call Hỗ trợ -> Thuộc `DEP-CONCIERGE`
-    - **ST-ROOM-SERVICE** (`ROOM_SERVICE`): Dịch vụ Ẩm thực & Phục vụ phòng -> Thuộc `DEP-ROOMSERVICE`
+    - **ST-ROOM-SERVICE** (`ROOM_SERVICE`): Dịch vụ Ẩm thực, Dọn phòng & Phục vụ phòng -> Thuộc `DEP-ROOMSERVICE`
     """
     return await repo.list_service_types(department_id=department_id, is_active=is_active)

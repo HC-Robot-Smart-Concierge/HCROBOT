@@ -71,7 +71,7 @@ def _resolve_kiosk_ticket_routing(action: str, items_text: str) -> Tuple[str, st
         items_check = f"{act_lower} {items_text.lower()}"
         req_type = "lost_found" if is_lost_found_text(items_check) else "luggage"
         return BELL_DEPARTMENT_ID, BELL_SERVICE_TYPE_ID, "BS", "Bell Services", req_type
-    return "DEP-HOUSEKEEPING", "ST-HOUSEKEEPING", "REQ", "Housekeeping", "housekeeping"
+    return "DEP-ROOMSERVICE", "ST-ROOM-SERVICE", "RS", "Room Service", "room_service"
 
 
 async def _complete_room_verification(

@@ -195,16 +195,6 @@ async def execute_create_room_service_order(
             request_type="room_service",
             type="Request",
         )
-        if order_in.is_service_request:
-            await create_department_notification(
-                db=db,
-                department="Housekeeping",
-                title=f"Đơn gộp dịch vụ #{existing_order.order_number} - Phòng {order_in.room_number}",
-                description=f"Phòng {order_in.room_number}: Khách gộp thêm {items_desc}. Tổng chi phí: {existing_order.total_amount:,.0f} đ.",
-                request_id=existing_order.id,
-                request_type="room_service",
-                type="Request",
-            )
         await create_department_notification(
             db=db,
             department="Reception",
@@ -346,16 +336,6 @@ async def execute_create_room_service_order(
         request_type="room_service",
         type="Request",
     )
-    if order_in.is_service_request:
-        await create_department_notification(
-            db=db,
-            department="Housekeeping",
-            title=f"Yêu cầu Dịch vụ phòng mới #{order_num} - Phòng {order_in.room_number}",
-            description=f"Phòng {order_in.room_number}: {items_desc or order_in.note or 'Yêu cầu phục vụ phòng mới'}. Chi phí: {total_amount:,.0f} đ.",
-            request_id=new_order.id,
-            request_type="room_service",
-            type="Request",
-        )
     # Đồng bộ thông báo hóa đơn dịch vụ phòng về Quầy Lễ Tân (Reception) đối soát khi check-out
     await create_department_notification(
         db=db,

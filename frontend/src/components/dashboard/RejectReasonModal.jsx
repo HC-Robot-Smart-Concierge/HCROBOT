@@ -21,7 +21,7 @@ export const RejectReasonModal = ({
 
   const roomServicePresets = [
     'Tạm hết đồ dùng / vật dụng yêu cầu',
-    'Nhân viên buồng phòng đang kín lịch',
+    'Nhân viên phục vụ phòng đang kín lịch',
     'Dịch vụ tạm ngưng phục vụ ngoài giờ',
     'Phòng cần liên hệ lễ tân để xác nhận',
   ];
@@ -59,7 +59,7 @@ export const RejectReasonModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
-      <div 
+      <div
         className="w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
@@ -93,8 +93,8 @@ export const RejectReasonModal = ({
               {typeof order.items === 'string'
                 ? order.items
                 : Array.isArray(order.items)
-                ? order.items.map((it) => (typeof it === 'string' ? it : `${it.qty || it.quantity || 1}x ${it.name || it.item_name || ''}`)).join(', ')
-                : ''}
+                  ? order.items.map((it) => (typeof it === 'string' ? it : `${it.qty || it.quantity || 1}x ${it.name || it.item_name || ''}`)).join(', ')
+                  : ''}
             </div>
           )}
 
@@ -108,11 +108,10 @@ export const RejectReasonModal = ({
                   key={preset}
                   type="button"
                   onClick={() => handleSelectPreset(preset)}
-                  className={`px-3 py-2 text-left rounded-xl border text-xs transition-all cursor-pointer ${
-                    selectedPreset === preset
+                  className={`px-3 py-2 text-left rounded-xl border text-xs transition-all cursor-pointer ${selectedPreset === preset
                       ? 'border-rose-500 bg-rose-50 text-rose-700 font-semibold shadow-xs'
                       : 'border-stone-200 bg-white hover:bg-stone-50 text-stone-700'
-                  }`}
+                    }`}
                 >
                   {preset}
                 </button>
@@ -135,11 +134,10 @@ export const RejectReasonModal = ({
                 if (error) setError('');
               }}
               placeholder={isKitchen ? 'Ví dụ: Hết nguyên liệu hải sản tươi trong ngày...' : 'Ví dụ: Đang giặt sấy, tạm hết khăn tắm bổ sung...'}
-              className={`w-full rounded-xl border px-3.5 py-2.5 text-xs text-stone-800 placeholder-stone-400 focus:outline-hidden transition-all resize-none ${
-                error
+              className={`w-full rounded-xl border px-3.5 py-2.5 text-xs text-stone-800 placeholder-stone-400 focus:outline-hidden transition-all resize-none ${error
                   ? 'border-rose-400 ring-2 ring-rose-100'
                   : 'border-stone-300 focus:border-rose-500 focus:ring-2 focus:ring-rose-100'
-              }`}
+                }`}
             />
             {error && (
               <p className="mt-1 text-xs text-rose-600 flex items-center gap-1 font-medium">

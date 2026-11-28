@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field, ConfigDict
 # Department & Organization Schemas
 # ---------------------------------------------------------
 class ServiceTypeResponse(BaseModel):
-    id: str = Field(..., description="ID định danh duy nhất của loại dịch vụ (vd: 'ST-HOUSEKEEPING', 'ST-TAXI')", json_schema_extra={"example": "ST-TAXI"})
-    code: str = Field(..., description="Mã code chuẩn của loại dịch vụ (vd: 'TAXI', 'HOUSEKEEPING', 'BELL_SERVICE', 'MAINTENANCE', 'RECEPTION', 'ROOM_SERVICE')", json_schema_extra={"example": "TAXI"})
+    id: str = Field(..., description="ID định danh duy nhất của loại dịch vụ (vd: 'ST-ROOM-SERVICE', 'ST-TAXI')", json_schema_extra={"example": "ST-TAXI"})
+    code: str = Field(..., description="Mã code chuẩn của loại dịch vụ (vd: 'TAXI', 'ROOM_SERVICE', 'BELL_SERVICE', 'MAINTENANCE', 'RECEPTION')", json_schema_extra={"example": "TAXI"})
     name: str = Field(..., description="Tên hiển thị của dịch vụ", json_schema_extra={"example": "Dịch vụ Đặt xe & Taxi"})
     department_id: str = Field(..., description="Mã ID phòng ban phụ trách", json_schema_extra={"example": "DEP-TAXI"})
     department_name: Optional[str] = Field(None, description="Tên phòng ban phụ trách", json_schema_extra={"example": "Taxi & Transportation"})
@@ -21,10 +21,10 @@ class ServiceTypeResponse(BaseModel):
 
 
 class DepartmentResponse(BaseModel):
-    id: str = Field(..., description="ID định danh duy nhất của phòng ban (vd: 'DEP-HOUSEKEEPING')", json_schema_extra={"example": "DEP-HOUSEKEEPING"})
-    code: str = Field(..., description="Mã code chuẩn của phòng ban (vd: 'HOUSEKEEPING', 'BELL', 'TAXI', 'MAINTENANCE', 'RECEPTION', 'FB')", json_schema_extra={"example": "HOUSEKEEPING"})
-    name: str = Field(..., description="Tên phòng ban hiển thị", json_schema_extra={"example": "Housekeeping"})
-    description: Optional[str] = Field(None, description="Mô tả chức năng nhiệm vụ của phòng ban", json_schema_extra={"example": "Bộ phận buồng phòng, vệ sinh và tiện ích phòng ở"})
+    id: str = Field(..., description="ID định danh duy nhất của phòng ban (vd: 'DEP-ROOMSERVICE')", json_schema_extra={"example": "DEP-ROOMSERVICE"})
+    code: str = Field(..., description="Mã code chuẩn của phòng ban (vd: 'ROOMSERVICE', 'BELL', 'TAXI', 'MAINTENANCE', 'RECEPTION', 'KITCHEN')", json_schema_extra={"example": "ROOMSERVICE"})
+    name: str = Field(..., description="Tên phòng ban hiển thị", json_schema_extra={"example": "Room Service"})
+    description: Optional[str] = Field(None, description="Mô tả chức năng nhiệm vụ của phòng ban", json_schema_extra={"example": "Bộ phận phục vụ phòng, dọn phòng và tiện ích phòng ở"})
     is_active: bool = Field(True, description="Trạng thái hoạt động của phòng ban", json_schema_extra={"example": True})
     created_at: Optional[datetime] = Field(None, description="Thời gian tạo phòng ban")
     updated_at: Optional[datetime] = Field(None, description="Thời gian cập nhật phòng ban")
@@ -59,13 +59,13 @@ class DepartmentUpdate(BaseModel):
 class StaffBase(BaseModel):
     code: str = Field(..., description="Mã viết tắt / huy hiệu nhân viên (vd: 'MS', 'JD')", json_schema_extra={"example": "MS"})
     full_name: str = Field(..., description="Họ và tên đầy đủ của nhân viên", json_schema_extra={"example": "Maria Santos"})
-    role: str = Field(..., description="Chức danh / Vai trò chuyên môn", json_schema_extra={"example": "Housekeeping Lead"})
-    department: str = Field(..., description="Tên phòng ban hiển thị", json_schema_extra={"example": "Housekeeping"})
-    department_id: Optional[str] = Field(None, description="Mã phòng ban chuẩn (vd: 'DEP-HOUSEKEEPING')", json_schema_extra={"example": "DEP-HOUSEKEEPING"})
+    role: str = Field(..., description="Chức danh / Vai trò chuyên môn", json_schema_extra={"example": "Room Service Lead"})
+    department: str = Field(..., description="Tên phòng ban hiển thị", json_schema_extra={"example": "Room Service"})
+    department_id: Optional[str] = Field(None, description="Mã phòng ban chuẩn (vd: 'DEP-ROOMSERVICE')", json_schema_extra={"example": "DEP-ROOMSERVICE"})
     location: str = Field("Main Hotel", description="Khu vực làm việc chính", json_schema_extra={"example": "Floor 3 & 4"})
     status: str = Field("available", description="Trạng thái trực: 'available' (sẵn sàng), 'busy' (đang bận), 'off_shift' (hết ca)", json_schema_extra={"example": "available"})
     avatar_url: Optional[str] = Field(None, description="URL ảnh đại diện nhân viên", json_schema_extra={"example": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2"})
-    email: Optional[str] = Field(None, description="Địa chỉ email liên hệ", json_schema_extra={"example": "housekeeping@aurora.hotel"})
+    email: Optional[str] = Field(None, description="Địa chỉ email liên hệ", json_schema_extra={"example": "roomservice@aurora.hotel"})
     phone: Optional[str] = Field(None, description="Số điện thoại di động", json_schema_extra={"example": "+84 90 123 4567"})
     is_fallback_agent: bool = Field(False, description="Cờ kích hoạt làm nhân viên tiếp nhận cuộc gọi khẩn / chuyển tiếp từ Robot", json_schema_extra={"example": True})
     is_active: bool = Field(True, description="Trạng thái tài khoản (True = Đang hoạt động, False = Đã khóa/xóa mềm)", json_schema_extra={"example": True})
@@ -73,8 +73,8 @@ class StaffBase(BaseModel):
 
 class StaffResponse(StaffBase):
     id: str = Field(..., description="ID định danh duy nhất của tài khoản (vd: 'STF-f9ab1b15')", json_schema_extra={"example": "STF-f9ab1b15"})
-    username: Optional[str] = Field(None, description="Tên đăng nhập hệ thống", json_schema_extra={"example": "housekeeping"})
-    department_name: Optional[str] = Field(None, description="Tên phòng ban chính thức từ bảng Department", json_schema_extra={"example": "Housekeeping"})
+    username: Optional[str] = Field(None, description="Tên đăng nhập hệ thống", json_schema_extra={"example": "roomservice"})
+    department_name: Optional[str] = Field(None, description="Tên phòng ban chính thức từ bảng Department", json_schema_extra={"example": "Room Service"})
     created_at: datetime = Field(..., description="Thời gian tạo tài khoản")
     updated_at: datetime = Field(..., description="Thời gian cập nhật thông tin gần nhất")
 

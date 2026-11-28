@@ -17,7 +17,7 @@ import { buildDashboardReportHtml } from './adminDashboardReport';
 export { buildDashboardReportHtml } from './adminDashboardReport';
 
 export const AdminDashboardTab = ({
-  onNavigateToOperations = () => {},
+  onNavigateToOperations = () => { },
 }) => {
   const { t, language } = useLanguage();
   const [data, setData] = useState({
@@ -38,7 +38,6 @@ export const AdminDashboardTab = ({
       Concierge: 0,
       'F&B': 0,
       Kitchen: 0,
-      Housekeeping: 0,
       'Bell Services': 0,
       Maintenance: 0,
       Taxi: 0,
@@ -98,7 +97,6 @@ export const AdminDashboardTab = ({
       { id: 'Concierge', name: t('deptConcierge'), count: dist.Concierge || 0, color: '#334155' },
       { id: 'F&B', name: t('deptFB'), count: dist['F&B'] || 0, color: '#57534E' },
       { id: 'Kitchen', name: t('deptKitchen'), count: dist.Kitchen || 0, color: '#854D0E' },
-      { id: 'Housekeeping', name: t('deptHousekeeping'), count: dist.Housekeeping || 0, color: '#3F6212' },
       { id: 'Bell Services', name: t('deptBell'), count: dist['Bell Services'] || 0, color: '#78716C' },
       { id: 'Maintenance', name: t('deptMaintenance'), count: dist.Maintenance || 0, color: '#94A3B8' },
       { id: 'Taxi', name: t('deptTaxi'), count: dist.Taxi || 0, color: '#A8A29E' },

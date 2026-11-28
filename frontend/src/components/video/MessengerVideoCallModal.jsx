@@ -107,6 +107,8 @@ export const MessengerVideoCallModal = ({
   const [uploadStatus, setUploadStatus] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [hasNoCamera, setHasNoCamera] = useState(false);
+  const [remoteFallbackFrame, setRemoteFallbackFrame] = useState('');
+  const [hasRemoteVideoFrame, setHasRemoteVideoFrame] = useState(false);
 
   // Live Subtitle & Auto-Translation State (EN ⇄ VI)
   // Mode: 'auto' (Tự động dịch thông minh 2 chiều) | 'bypass' (Thuần Việt - Không dịch)
@@ -1141,6 +1143,10 @@ export const MessengerVideoCallModal = ({
               });
               setTimeout(() => setTtsStatus(null), 3500);
             }
+          } else if (data.type === 'video_frame') {
+            if (data.senderRole !== role && data.frame) {
+              setRemoteFallbackFrame(data.frame);
+            }
           } else if (data.type === 'translate_mode_change' || data.type === 'translate_mode_sync') {
             if (data.mode) {
               setTranslateMode(data.mode);
@@ -1203,6 +1209,8 @@ export const MessengerVideoCallModal = ({
       setRecordingDuration(0);
       setUploadStatus(null);
       setErrorMessage('');
+      setRemoteFallbackFrame('');
+      setHasRemoteVideoFrame(false);
       setActiveSubtitle(null);
       setInterimText('');
       setCallTranscripts([]);
@@ -1232,6 +1240,49 @@ export const MessengerVideoCallModal = ({
       if (callTimer) clearInterval(callTimer);
     };
   }, [callStatus]);
+
+  // Đồng bộ lại srcObject khi DOM video mount/re-render và kích hoạt relay video qua WS nếu P2P WebRTC chưa lên hình
+  useEffect(() => {
+    if (localVideoRef.current && localStreamRef.current && localVideoRef.current.srcObject !== localStreamRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+    }
+    if (callStatus === 'connected' && remoteVideoRef.current && remoteStreamRef.current) {
+      if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      }
+      remoteVideoRef.current.play().catch(() => {});
+    }
+  }, [callStatus, hasNoCamera]);
+
+  useEffect(() => {
+    if (!isOpen || callStatus !== 'connected' || hasRemoteVideoFrame) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 360;
+    canvas.height = 270;
+    const ctx = canvas.getContext('2d');
+
+    const timer = setInterval(() => {
+      if (isEndingRef.current || hasNoCamera || isVideoDisabled) return;
+      const ws = wsRef.current;
+      const videoEl = localVideoRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN || ws.bufferedAmount > 180000) return;
+      if (!videoEl || videoEl.readyState < 2 || !videoEl.videoWidth || !ctx) return;
+
+      try {
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        const frame = canvas.toDataURL('image/jpeg', 0.55);
+        ws.send(JSON.stringify({
+          type: 'video_frame',
+          senderRole: role,
+          frame,
+        }));
+      } catch {
+        // Ignore transient canvas capture errors
+      }
+    }, 120);
+
+    return () => clearInterval(timer);
+  }, [isOpen, callStatus, hasRemoteVideoFrame, hasNoCamera, isVideoDisabled, role]);
 
   // Dừng riêng adapter thu âm STT từ localStreamRef (KHÔNG làm dừng track WebRTC gốc)
   const stopCallAudioSttAdapter = useCallback(() => {
@@ -2713,10 +2764,29 @@ export const MessengerVideoCallModal = ({
             playsInline
             webkit-playsinline="true"
             muted={isSpeakerMuted}
+            onLoadedData={() => {
+              if (remoteVideoRef.current && remoteVideoRef.current.videoWidth > 0) {
+                setHasRemoteVideoFrame(true);
+                setRemoteFallbackFrame('');
+              }
+            }}
+            onPlaying={() => {
+              if (remoteVideoRef.current && remoteVideoRef.current.videoWidth > 0) {
+                setHasRemoteVideoFrame(true);
+                setRemoteFallbackFrame('');
+              }
+            }}
             className={`w-full h-full object-cover transition-opacity duration-500 ${
-              callStatus === 'connected' ? 'opacity-100' : 'opacity-0'
+              callStatus === 'connected' && (hasRemoteVideoFrame || !remoteFallbackFrame) ? 'opacity-100' : 'opacity-0'
             }`}
           />
+          {callStatus === 'connected' && !hasRemoteVideoFrame && remoteFallbackFrame && (
+            <img
+              src={remoteFallbackFrame}
+              alt="Remote video"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          )}
 
           {callStatus !== 'connected' && callStatus !== 'ended' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center p-4 sm:p-6 text-center z-10 bg-[#121212]/95">

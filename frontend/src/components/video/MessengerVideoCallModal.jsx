@@ -278,8 +278,8 @@ export const MessengerVideoCallModal = ({
     // Tầng 1: Thử camera vật lý (tránh chọn nhầm OBS Virtual Camera nếu có webcam thật) + mic tiêu chuẩn
     try {
       let preferredVideoConstraint = role === 'staff'
-        ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
-        : { width: { ideal: 1280 }, height: { ideal: 720 } };
+        ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: { ideal: 16 / 9 } }
+        : { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: { ideal: 16 / 9 } };
 
       if (typeof navigator.mediaDevices.enumerateDevices === 'function') {
         try {
@@ -1257,7 +1257,7 @@ export const MessengerVideoCallModal = ({
   useEffect(() => {
     if (!isOpen || callStatus !== 'connected' || hasRemoteVideoFrame) return;
     const canvas = document.createElement('canvas');
-    canvas.width = 360;
+    canvas.width = 480;
     canvas.height = 270;
     const ctx = canvas.getContext('2d');
 
@@ -1269,7 +1269,16 @@ export const MessengerVideoCallModal = ({
       if (!videoEl || videoEl.readyState < 2 || !videoEl.videoWidth || !ctx) return;
 
       try {
-        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        ctx.save();
+        if (videoEl.videoHeight > videoEl.videoWidth) {
+          // Camera điện thoại trả khung hình dọc -> xoay ngang 90 độ cho đúng chiều landscape
+          ctx.translate(canvas.width / 2, canvas.height / 2);
+          ctx.rotate(-Math.PI / 2);
+          ctx.drawImage(videoEl, -canvas.height / 2, -canvas.width / 2, canvas.height, canvas.width);
+        } else {
+          ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        }
+        ctx.restore();
         const frame = canvas.toDataURL('image/jpeg', 0.55);
         ws.send(JSON.stringify({
           type: 'video_frame',
@@ -2413,52 +2422,30 @@ export const MessengerVideoCallModal = ({
       <div className="relative w-full h-full lg:h-[620px] lg:max-w-4xl bg-[#1A1A1A] rounded-none lg:rounded-3xl overflow-hidden shadow-2xl border-0 lg:border lg:border-stone-800 flex flex-col">
         {/* TOP BAR (GOOGLE MEET MINIMALIST HEADER - LANDSCAPE FRIENDLY) */}
         <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 sm:px-5 py-1.5 sm:py-2.5 pt-[max(0.5rem,env(safe-area-inset-top))] bg-gradient-to-b from-black/75 via-black/30 to-transparent robot-safe-x">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <div className="text-white text-xs sm:text-sm font-semibold tracking-wide truncate max-w-[120px] sm:max-w-[180px] md:max-w-xs flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-              <span className="truncate">{role === 'guest' ? (calleeName || 'Nhân viên hỗ trợ') : (callerName || 'Khách hàng')}</span>
-              {roomNumber && (
-                <span className="hidden sm:inline-block text-[11px] text-stone-300 bg-white/10 px-2 py-0.5 rounded-full font-normal">
-                  Phòng {roomNumber}
-                </span>
-              )}
-            </div>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+            {roomNumber && (
+              <span className="text-[11px] text-white bg-[#141413]/90 border border-white/20 px-2.5 py-0.5 rounded-full font-medium">
+                {roomNumber}
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {callStatus === 'connected' && (
-              <div className="flex items-center gap-1 sm:gap-1.5">
-                <div className="flex items-center bg-[#202124]/90 backdrop-blur-md p-1 rounded-full border border-white/10 shadow-lg">
-                  {/* 1. NÚT THÔNG DỊCH AI (EN ⇄ VI) */}
-                  <button
-                    type="button"
-                    onClick={() => handleToggleTranslateMode('auto')}
-                    className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
-                      translateMode === 'auto'
-                        ? 'bg-amber-500/25 text-amber-300 border border-amber-500/60 shadow-sm'
-                        : 'text-stone-300 hover:text-white hover:bg-white/10'
-                    }`}
-                    title="Bật chế độ Thông dịch AI: Khách nói tiếng Anh ➔ Dịch tiếng Việt (phát âm Hoài My); Nhân viên nói tiếng Việt ➔ Dịch tiếng Anh (phát âm Jenny); Tự động giữ nguyên nếu cùng ngôn ngữ"
-                  >
-                    <Languages className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Dịch EN ⇄ VI</span>
-                  </button>
-
-                  {/* 2. NÚT THUẦN VIỆT (KHÔNG DỊCH) */}
-                  <button
-                    type="button"
-                    onClick={() => handleToggleTranslateMode('bypass')}
-                    className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
-                      translateMode === 'bypass'
-                        ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 shadow-sm'
-                        : 'text-stone-300 hover:text-white hover:bg-white/10'
-                    }`}
-                    title="Bật chế độ Thuần Việt: Nói tiếng Việt trực tiếp, không dịch"
-                  >
-                    <span>Thuần Việt</span>
-                  </button>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => handleToggleTranslateMode(translateMode === 'auto' ? 'bypass' : 'auto')}
+                className={`w-8 h-8 rounded-full bg-[#141413] hover:bg-[#262523] text-white flex items-center justify-center transition-all cursor-pointer border ${
+                  translateMode === 'auto'
+                    ? 'border-amber-400'
+                    : 'border-white/20 opacity-80'
+                }`}
+                title={translateMode === 'auto' ? 'Đang bật dịch EN ⇄ VI (bấm để tắt)' : 'Đang tắt dịch (bấm để bật EN ⇄ VI)'}
+                aria-label="Bật tắt dịch phụ đề"
+              >
+                <Languages className={`w-4 h-4 ${translateMode === 'auto' ? 'text-amber-300' : 'text-white'}`} />
+              </button>
             )}
 
             {/* CALL DURATION BADGE */}
@@ -2736,16 +2723,12 @@ export const MessengerVideoCallModal = ({
                   className={`w-full h-full object-cover ${isVideoDisabled ? 'hidden' : 'block'}`}
                 />
                 {isVideoDisabled && (
-                  <div className="w-full h-full flex flex-col items-center justify-center bg-[#202124] text-stone-400">
-                    <VideoOff className="w-5 h-5 mb-1 text-stone-500" />
-                    <span className="text-[10px]">Camera tắt</span>
+                  <div className="w-full h-full flex items-center justify-center bg-[#141413]">
+                    <VideoOff className="w-5 h-5 text-white" />
                   </div>
                 )}
               </>
             )}
-            <div className="absolute bottom-2 left-2 text-[10px] text-white/90 bg-[#202124]/80 backdrop-blur-md border border-white/10 px-2 py-0.5 rounded-full font-medium">
-              Bạn
-            </div>
           </div>
         </div>
 
@@ -2802,16 +2785,15 @@ export const MessengerVideoCallModal = ({
             {/* DIVIDER */}
             <div className="w-px h-5 bg-white/20 mx-0.5 hidden sm:block" />
 
-            {/* 4. END CALL BUTTON */}
+            {/* 4. END CALL BUTTON (ICON ONLY) */}
             <button
               type="button"
               onClick={() => handleEndCall(true)}
               title="Rời khỏi cuộc gọi"
               aria-label="Rời khỏi cuộc gọi"
-              className="px-4 sm:px-5 h-10 sm:h-11 rounded-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/30 transition-all cursor-pointer active:scale-95"
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white flex items-center justify-center shadow-lg shadow-red-600/30 transition-all cursor-pointer active:scale-95"
             >
-              <PhoneOff className="w-4 h-4 text-white" />
-              <span className="font-semibold hidden xs:inline sm:inline">Kết thúc</span>
+              <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
             </button>
           </div>
         </div>

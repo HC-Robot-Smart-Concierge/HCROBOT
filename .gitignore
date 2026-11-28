@@ -238,3 +238,6 @@ graphify-out/
 .agents/rules/graphify.md
 .agents/workflows/graphify.md
 
+
+# Temporary video call recordings
+backend/uploaded_recordings/

@@ -177,7 +177,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Operations',    label: t('adminOperations') },
     { id: 'Robot Control', label: t('adminRobotControl') },
     { id: 'Manage Robot',  label: t('adminManageRobot') },
-    { id: 'Guest Map',     label: 'Map chỉ đường' },
+    { id: 'Guest Map',     label: 'Configmap' },
     { id: 'Knowledge',     label: t('adminKnowledge') },
     { id: 'Advertisements',label: t('adminAdvertisements') },
     { id: 'Department',    label: t('adminDepartment') },

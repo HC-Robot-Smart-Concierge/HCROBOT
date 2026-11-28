@@ -543,7 +543,7 @@ export const AdminGuestNavMapTab = ({ onNotify }) => {
     <div className="w-full h-full flex flex-col gap-3 p-4 overflow-hidden" style={{ background: '#F2EFE9' }}>
       {/* Thanh trên */}
       <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-base font-extrabold text-stone-900 mr-1">Map chỉ đường</h2>
+        <h2 className="text-base font-extrabold text-stone-900 mr-1">Configmap</h2>
         <select
           value={mapId || ''}
           onChange={(e) => {

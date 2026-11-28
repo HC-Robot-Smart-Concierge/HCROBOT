@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Star, MessageSquare, X, Check, RefreshCw } from 'lucide-react';
 import { submitFeedbackStrict, fetchFeedbacks } from '../../services/aiApi';
+import { formatDateTimeVN } from '../../utils/timeAgo';
 
 export const FeedbackModal = ({ isOpen, onClose, onNotify = () => {}, sessionId = 'default_session', roomNumber = null }) => {
   const [activeTab, setActiveTab] = useState('write'); // 'write' | 'view'
@@ -200,9 +201,16 @@ export const FeedbackModal = ({ isOpen, onClose, onNotify = () => {}, sessionId 
                         <span className="text-[10px] text-stone-400">({fb.room_number})</span>
                       )}
                     </div>
-                    <span className="text-[10px] font-semibold text-stone-500 bg-white px-2 py-0.5 rounded border border-stone-200">
-                      {fb.category || 'Service'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {fb.created_at && (
+                        <span className="text-[10px] font-mono text-stone-400">
+                          {formatDateTimeVN(fb.created_at, '')}
+                        </span>
+                      )}
+                      <span className="text-[10px] font-semibold text-stone-500 bg-white px-2 py-0.5 rounded border border-stone-200">
+                        {fb.category || 'Service'}
+                      </span>
+                    </div>
                   </div>
                   {fb.comment && (
                     <p className="text-xs text-stone-600 mt-2 font-sans italic">

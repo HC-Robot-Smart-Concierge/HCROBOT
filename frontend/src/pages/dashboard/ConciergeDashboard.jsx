@@ -35,6 +35,7 @@ import {
   updateConciergeEmotionAlertStatus,
 } from '../../services/conciergeApi';
 import { fetchFeedbacks, fetchSessionMessages } from '../../services/aiApi';
+import { formatDateTimeVN } from '../../utils/timeAgo';
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import { useLanguage } from '../../context/LanguageContext';
 import { taxiVehicleLabel } from '../../utils/taxiAssistance';
@@ -1592,7 +1593,7 @@ export const ConciergeDashboard = ({
                         <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
                           <div className="text-[11px] font-mono text-[#777] flex items-center gap-1">
                             <Clock className="w-3 h-3 text-[#999]" />
-                            <span>{fb.created_at ? new Date(fb.created_at).toLocaleString('vi-VN') : 'Vừa xong'}</span>
+                            <span>{formatDateTimeVN(fb.created_at, 'Vừa xong')}</span>
                           </div>
                           {fb.chat_session_id && (
                             <span className="text-[11px] font-semibold text-sky-700 hover:text-sky-900 flex items-center gap-1">

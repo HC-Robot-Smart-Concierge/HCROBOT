@@ -143,6 +143,7 @@ export const MessengerVideoCallModal = ({
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
   const callStartTimeRef = useRef(null);
+  const lastWebSpeechResultAtRef = useRef(0);
   const timerIntervalRef = useRef(null);
   const iceCandidatesQueueRef = useRef([]);
   const isEndingRef = useRef(false);
@@ -1543,10 +1544,17 @@ export const MessengerVideoCallModal = ({
 
       const flushAudioSegment = async (chunksToFlush) => {
         if (!chunksToFlush || chunksToFlush.length < MIN_SPEECH_FRAMES || state.stopped) return;
-        // Nếu Web Speech API đang hoạt động bình thường ở phía Staff, không flush song song sang backend STT
-        // để tránh race condition làm vỡ câu nói thành 2 nửa.
-        // Audio Stream Adapter lúc này chỉ dùng VAD theo dõi mức năng lượng giọng nói (lastAudioVadSpeechAtRef).
-        if (role === 'staff' && speechRecognitionRef.current && !speechRecognitionRef.current._hasPermError) {
+        // Chỉ bỏ qua fallback Whisper ở phía Staff khi Web Speech API thực sự vừa trả kết quả (< 4s).
+        // Nếu Web Speech lỗi network/im lặng trên laptop, tự động fallback sang backend STT.
+        const hasRecentWebSpeech =
+          lastWebSpeechResultAtRef.current > 0 &&
+          Date.now() - lastWebSpeechResultAtRef.current < 4000;
+        if (
+          role === 'staff' &&
+          speechRecognitionRef.current &&
+          !speechRecognitionRef.current._hasPermError &&
+          hasRecentWebSpeech
+        ) {
           return;
         }
         const wavBlob = encodeWavBlobFromFloat32(chunksToFlush, ctx.sampleRate || 16000);
@@ -1792,6 +1800,8 @@ export const MessengerVideoCallModal = ({
           const combinedPreview = [combinedFinal, currentInterim].filter(Boolean).join(' ').trim();
           if (!combinedPreview) return;
 
+          lastWebSpeechResultAtRef.current = Date.now();
+
           if (isAiSpeakingRef.current) {
             console.log(`[VideoCall Flow] [staff] step=STT_SKIPPED reason=ECHO_AI_SPEAKING engine=web_speech len=${combinedPreview.length}`);
             return;
@@ -1799,15 +1809,42 @@ export const MessengerVideoCallModal = ({
 
           pendingTranscriptRef.current = combinedPreview;
           setInterimText(combinedPreview);
+
+          const nowTs = Date.now();
+          if (nowTs - lastInterimSentAtRef.current >= 450 && wsRef.current?.readyState === WebSocket.OPEN) {
+            lastInterimSentAtRef.current = nowTs;
+            wsRef.current.send(
+              JSON.stringify({
+                type: 'live_interim',
+                speaker: 'Staff',
+                text: combinedPreview,
+              })
+            );
+          }
+
           console.log(
             `[VideoCall Flow] [staff] step=STT_RESULT engine=web_speech startIdx=${startIdx} carryLen=${carry.length} finalLen=${turnFinalText.length} interimLen=${currentInterim.length} totalLen=${combinedPreview.length}`
           );
 
           if (staffTurnTimerRef.current) {
             clearTimeout(staffTurnTimerRef.current);
+            staffTurnTimerRef.current = null;
           }
-          const currentEpoch = staffTurnEpochRef.current;
+
           const currentResultsLen = event.results.length;
+          if (combinedFinal && !currentInterim && combinedFinal.length > 1) {
+            turnStartIndexRef.current = currentResultsLen;
+            turnCarryoverRef.current = '';
+            pendingTranscriptRef.current = '';
+            setInterimText('');
+            commitSpokenText(combinedFinal, {
+              engine: 'web_speech',
+              detectedLang: 'vi',
+            });
+            return;
+          }
+
+          const currentEpoch = staffTurnEpochRef.current;
 
           staffTurnTimerRef.current = setTimeout(() => {
             staffTurnTimerRef.current = null;
@@ -2638,10 +2675,12 @@ export const MessengerVideoCallModal = ({
           {(callTranscripts.length > 0 || activeSubtitle || peerInterim || (interimText && translateMode !== 'bypass')) && (
             <div className="absolute bottom-16 sm:bottom-20 left-3 right-32 sm:left-6 sm:right-44 lg:right-52 z-25 flex justify-start pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200">
               <div className="bg-transparent max-w-xl w-full text-left space-y-1.5 [text-shadow:0_2px_6px_rgba(0,0,0,0.95)]">
-                {callTranscripts.slice(-2).map((item, idx, arr) => {
+                {callTranscripts
+                  .filter((item) => (role === 'staff' ? item.speaker === 'Guest' : item.speaker === 'Staff'))
+                  .slice(-2)
+                  .map((item, idx, arr) => {
                   const isStaffSpeaker = item.speaker === 'Staff';
-                  const isMine = (role === 'staff' && isStaffSpeaker) || (role === 'guest' && !isStaffSpeaker);
-                  const isLatest = idx === arr.length - 1 && !peerInterim && !interimText;
+                  const isLatest = idx === arr.length - 1 && !peerInterim;
                   return (
                     <div
                       key={`${item.timestamp}-${idx}`}
@@ -2653,7 +2692,7 @@ export const MessengerVideoCallModal = ({
                         <span className={`text-[10px] uppercase font-bold tracking-wider ${
                           isStaffSpeaker ? 'text-emerald-300' : 'text-amber-300'
                         }`}>
-                          {isMine ? 'Bạn' : (isStaffSpeaker ? calleeName : callerName)}
+                          {isStaffSpeaker ? calleeName : callerName}
                         </span>
                         {item.needs_translation && (
                           <span className="text-[9px] text-stone-200/90">
@@ -2680,17 +2719,6 @@ export const MessengerVideoCallModal = ({
                     </span>
                     <p className="text-white text-xs sm:text-sm italic">
                       "{peerInterim.text}..."
-                    </p>
-                  </div>
-                )}
-
-                {interimText && translateMode !== 'bypass' && (
-                  <div className="border-l-2 border-white/60 pl-2.5 opacity-90">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-stone-200">
-                      Bạn (đang nói...)
-                    </span>
-                    <p className="text-stone-100 text-xs sm:text-sm italic">
-                      "{interimText}..."
                     </p>
                   </div>
                 )}

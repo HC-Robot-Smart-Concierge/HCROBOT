@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BatteryCharging, BatteryLow, Columns2, Plus, X } from 'lucide-react';
-import { OTTO_STEP_TYPES, STEP_SCRATCH_THEMES } from '../workflowConstants';
+import { ADDABLE_OTTO_STEP_TYPES, OTTO_STEP_TYPES, STEP_SCRATCH_THEMES } from '../workflowConstants';
 
 const ROBOT_TYPES = new Set(['MOVE', 'FOLLOW_ROUTE', 'WAIT']);
 
@@ -48,7 +48,7 @@ export function NodePalette({ robotMode, hasBatteryBranch, hasParallel = false, 
         </button>}
         <p className="px-2 pt-2 text-[10px] font-bold uppercase tracking-wide text-stone-500">Khối lệnh</p>
       </>}
-      {OTTO_STEP_TYPES.map((item) => {
+      {ADDABLE_OTTO_STEP_TYPES.map((item) => {
         const Icon = (STEP_SCRATCH_THEMES[item.type] || STEP_SCRATCH_THEMES.WAIT).icon;
         const unsupported = robotMode && !ROBOT_TYPES.has(item.type);
         return <button key={item.type} type="button" role="menuitem" onClick={() => pick(() => onAdd(createStep(item.type)))}

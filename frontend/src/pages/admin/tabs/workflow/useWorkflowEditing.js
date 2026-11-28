@@ -13,7 +13,7 @@ const newWorkflow = () => ({
   steps: [
     { step_id: `step-${Date.now()}-1`, type: 'MOVE', title: 'Di chuyển lại gần khách tại Sảnh', params: { ...OTTO_STEP_TYPES[0].defaultParams } },
     { step_id: `step-${Date.now()}-2`, type: 'GREET', title: 'Chào hỏi và biểu cảm', params: { ...OTTO_STEP_TYPES[1].defaultParams } },
-    { step_id: `step-${Date.now()}-3`, type: 'SPEAK', title: 'Phát âm thanh giới thiệu', params: { ...OTTO_STEP_TYPES[2].defaultParams } },
+    { step_id: `step-${Date.now()}-3`, type: 'COMMUNICATE', title: 'Giao tiếp với khách', params: { ...OTTO_STEP_TYPES[2].defaultParams, initial_prompt: '' } },
   ],
 });
 

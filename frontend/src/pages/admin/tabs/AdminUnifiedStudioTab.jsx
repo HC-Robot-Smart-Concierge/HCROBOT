@@ -20,7 +20,7 @@ import {
   ROS_MSG_TYPES,
   createZoneSyncMsg,
 } from '../../../services/rosbridgeService';
-import { OTTO_STEP_TYPES } from './AdminWorkflowTab';
+import { ADDABLE_OTTO_STEP_TYPES } from './workflow/workflowConstants';
 import { unconfiguredRouteSteps } from '../../../utils/physicalMapRoute';
 import { Trash2, RotateCw, Compass, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -648,7 +648,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
   // Step Workflow editing
   const handleAddStep = (stepType) => {
     if (!activeWf) return;
-    const stepDef = OTTO_STEP_TYPES.find((s) => s.type === stepType);
+    const stepDef = ADDABLE_OTTO_STEP_TYPES.find((s) => s.type === stepType);
     if (!stepDef) return;
 
     const newStep = {
@@ -1342,7 +1342,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   style={{ backgroundColor: '#262626', color: '#F2EFE9', borderColor: '#262626' }}
                 >
                   <option value="" disabled>+ Chọn bước chuẩn Otto</option>
-                  {OTTO_STEP_TYPES.map((st) => (
+                  {ADDABLE_OTTO_STEP_TYPES.map((st) => (
                     <option key={st.type} value={st.type}>
                       {st.label}
                     </option>

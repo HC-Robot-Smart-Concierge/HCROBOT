@@ -5,6 +5,7 @@ import {
   resolveMoveTarget,
 } from './workflowSimulatorUtils';
 import { simulatorScreenKind } from './workflowSimulatorPresentation';
+import { isGuestWaitingAd } from '../../../../utils/workflowFlow';
 
 const ENTRANCE = { x: 0.55, y: 6.25 };
 const FOLLOW_DISTANCE = 1.15;
@@ -13,8 +14,10 @@ const point = (p) => ({ x: p.x, y: p.y });
 const INTERACTION_TYPES = new Set(['GREET', 'COMMUNICATE', 'LISTEN', 'RECOMMEND', 'CHOICE', 'CREATE_REQUEST', 'FEEDBACK']);
 
 export function hasSimulatedGuest(workflow, chargeRoutineId) {
+  const steps = workflow?.steps || [];
   return workflow?.id !== chargeRoutineId && workflow?.id !== 'wf-06-idle-promo' &&
-    (workflow?.steps || []).some((step) => INTERACTION_TYPES.has(step.type));
+    (workflow?.execution_config?.execution_mode === 'ROBOT' || !steps.some(isGuestWaitingAd)) &&
+    steps.some((step) => INTERACTION_TYPES.has(step.type));
 }
 
 function guestPickupTarget(step, endpoints = []) {

@@ -1,21 +1,23 @@
 import React, { useEffect, useState } from 'react';
-import { BatteryLow, CalendarClock, Layers, Settings2, Trash2, Workflow, X } from 'lucide-react';
+import { BatteryLow, Layers, Repeat, Settings2, Trash2, Workflow, X } from 'lucide-react';
 import { OTTO_STEP_TYPES } from './workflowConstants';
 import { WorkflowStepBlock } from './WorkflowStepBlock';
 import { WorkflowExecutionSettings } from './WorkflowExecutionSettings';
-import { WorkflowMetaPanel, WorkflowTriggerSelect } from './WorkflowMetaPanel';
+import { WorkflowMetaPanel } from './WorkflowMetaPanel';
+import { WorkflowTriggerPanel } from './WorkflowTriggerPanel';
+import { WorkflowCurrentStatus } from './WorkflowCurrentStatus';
 import { WorkflowCanvas } from './canvas/WorkflowCanvas';
 import { ParallelLanePanel } from './ParallelLanePanel';
 import { AdminPhysicalMapTab } from '../AdminPhysicalMapTab';
 import { selectedStepIndex, stepSetup } from '../../../../utils/workflowStepSetup';
 import { isChargerMove } from '../../../../utils/workflowExecution';
-import { BATTERY, GUEST_EVENT, SCREEN_LANE, eventBranch, removeBatteryBranch, setBatteryThreshold } from '../../../../utils/workflowGraph';
+import { BATTERY, GUEST_EVENT, SCREEN_LANE, START, eventBranch, removeBatteryBranch, setBatteryThreshold } from '../../../../utils/workflowGraph';
 import { parallelOf } from '../../../../utils/workflowLanes';
 
 const TABS = [
   ['steps', 'Sơ đồ', Workflow],
   ['workflow', 'Thông tin', Settings2],
-  ['schedule', 'Lịch & lặp', CalendarClock],
+  ['execution', 'Chạy & lặp', Repeat],
 ];
 const noop = () => {};
 
@@ -41,6 +43,7 @@ function BatteryBranchPanel({ workflow, onWorkflowChange, onSelect }) {
 export const WorkflowBuilderModal = ({
   isOpen,
   workflow,
+  currentWorkflows,
   workflows = [],
   onSelectWorkflow,
   waypoints = [],
@@ -64,9 +67,10 @@ export const WorkflowBuilderModal = ({
   }, [workflow?.id, isOpen]);
 
   if (!isOpen || !workflow) return null;
+  const triggerSelected = selectedId === START;
   const batterySelected = selectedId === BATTERY && Boolean(eventBranch(workflow, 'LOW_BATTERY'));
   const laneSelected = [SCREEN_LANE, GUEST_EVENT].includes(selectedId) && Boolean(parallelOf(workflow));
-  const activeIndex = batterySelected || laneSelected ? -1 : selectedStepIndex(steps, selectedId);
+  const activeIndex = triggerSelected || batterySelected || laneSelected ? -1 : selectedStepIndex(steps, selectedId);
   const active = activeIndex >= 0 ? steps[activeIndex] : null;
   const status = active ? stepSetup(active, routes) : null;
   const pendingRoute = steps.some((step) => step.type === 'FOLLOW_ROUTE' && !step.params?.route_id);
@@ -81,7 +85,8 @@ export const WorkflowBuilderModal = ({
             <h3 className="font-extrabold text-sm sm:text-base flex items-center gap-2 text-[#262626]">
               <Layers className="w-4 h-4" /><span>Thiết lập workflow</span>
             </h3>
-            <p className="text-[11px] sm:text-xs mt-0.5 text-[#8C8C8C]">Kéo dây giữa các cổng để nối bước. Node ⚡ là nhánh pin yếu. Chọn node để cấu hình.</p>
+            <p className="text-[11px] sm:text-xs mt-0.5 text-[#8C8C8C]">Kéo dây để nối các bước. Chọn node Trigger để đặt cách khởi chạy hoặc lên lịch.</p>
+            <WorkflowCurrentStatus current={currentWorkflows} compact />
             {pendingRoute && <p className="mt-1 text-xs text-amber-800">Có thể lưu bản nháp trước, rồi sang Physical Map → Tuyến đường chọn workflow và bước để gán tuyến.</p>}
           </div>
           <div className="flex items-center gap-2">
@@ -114,7 +119,8 @@ export const WorkflowBuilderModal = ({
               <WorkflowCanvas workflow={workflow} routes={routes} selectedId={selectedId}
                 onSelect={setSelectedId} onChange={onWorkflowChange} />
             </div>
-            <aside aria-label="Cấu hình mục đang chọn" className="nokey lg:w-[400px] shrink-0 min-h-0 overflow-y-auto p-4 space-y-4">
+            <aside aria-label="Cấu hình mục đang chọn" className="nokey flex-1 lg:flex-none lg:w-[400px] min-h-0 overflow-y-auto p-4 space-y-4">
+              {triggerSelected && <WorkflowTriggerPanel workflow={workflow} onWorkflowMetaChange={onWorkflowMetaChange} />}
               {batterySelected && <BatteryBranchPanel workflow={workflow} onWorkflowChange={onWorkflowChange} onSelect={setSelectedId} />}
               {laneSelected && <ParallelLanePanel workflow={workflow} selectedId={selectedId} onWorkflowChange={onWorkflowChange} onSelect={setSelectedId} />}
               {active && <>
@@ -142,17 +148,14 @@ export const WorkflowBuilderModal = ({
                   onRemove={(index) => { setSelectedId(null); onRemoveStep(index); }}
                 />}
               </>}
-              {!batterySelected && !laneSelected && !active && <div className="p-8 text-center text-stone-400 border-2 border-dashed border-stone-300 rounded-2xl text-xs font-semibold">
+              {!triggerSelected && !batterySelected && !laneSelected && !active && <div className="p-8 text-center text-stone-400 border-2 border-dashed border-stone-300 rounded-2xl text-xs font-semibold">
                 Chưa có bước nào. Bấm “Thêm node” trên sơ đồ để thêm bước.
               </div>}
             </aside>
           </>}
           {panel !== 'steps' && <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6 space-y-4">
             {panel === 'workflow' && <WorkflowMetaPanel workflow={workflow} onWorkflowMetaChange={onWorkflowMetaChange} />}
-            {panel === 'schedule' && <>
-              <WorkflowTriggerSelect workflow={workflow} onWorkflowMetaChange={onWorkflowMetaChange} />
-              <WorkflowExecutionSettings workflow={workflow} onChange={onWorkflowMetaChange} />
-            </>}
+            {panel === 'execution' && <WorkflowExecutionSettings workflow={workflow} onChange={onWorkflowMetaChange} />}
           </div>}
         </div>
 

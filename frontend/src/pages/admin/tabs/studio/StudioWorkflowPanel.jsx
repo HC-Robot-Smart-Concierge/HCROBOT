@@ -1,5 +1,5 @@
 import React from 'react';
-import { OTTO_STEP_TYPES } from '../AdminWorkflowTab';
+import { ADDABLE_OTTO_STEP_TYPES } from '../workflow/workflowConstants';
 
 export const StudioWorkflowPanel = ({
   activeWf,
@@ -32,7 +32,7 @@ export const StudioWorkflowPanel = ({
           <option value="" disabled>
             + Chọn bước chuẩn Otto
           </option>
-          {OTTO_STEP_TYPES.map((st) => (
+          {ADDABLE_OTTO_STEP_TYPES.map((st) => (
             <option key={st.type} value={st.type}>
               {st.label}
             </option>

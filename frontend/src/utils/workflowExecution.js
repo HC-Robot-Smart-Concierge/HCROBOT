@@ -1,5 +1,5 @@
 import { laneMembers, parallelError, parallelOf } from './workflowLanes';
-import { isGuestWaitingAd, resolveNextStepIndex } from './workflowFlow';
+import { isGuestWaitingAd, resolveAdGuestTalkStepIndex } from './workflowFlow';
 
 export const WEEK_DAYS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
 
@@ -28,8 +28,8 @@ export function executionError(workflow, { allowDraft = false, forSave = false }
   }
   if (config.execution_mode === 'SCREEN') {
     const steps = workflow.steps || [];
-    if (steps.some((step, index) => isGuestWaitingAd(step) && steps[resolveNextStepIndex(steps, index)]?.type !== 'COMMUNICATE')) {
-      return 'Nối bước quảng cáo chờ khách tới một bước Giao tiếp.';
+    if (steps.some((step, index) => isGuestWaitingAd(step) && resolveAdGuestTalkStepIndex(steps, index) < 0)) {
+      return 'Nối bước quảng cáo chờ khách tới Giao tiếp, có thể qua Chào hỏi và Gợi ý.';
     }
   }
   if (!['COUNT', 'CONTINUOUS'].includes(config.repeat_mode)) return 'Chọn chế độ lặp hợp lệ.';

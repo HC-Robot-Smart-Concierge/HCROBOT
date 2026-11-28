@@ -27,6 +27,7 @@ import { useWorkflowEditing } from './workflow/useWorkflowEditing';
 import { expandWorkflowRoutes, unconfiguredRouteSteps } from '../../../utils/physicalMapRoute';
 import { stepSetup } from '../../../utils/workflowStepSetup';
 import { WorkflowRunsPanel } from './workflow/WorkflowRunsPanel';
+import { useCurrentWorkflows, WorkflowCurrentStatus } from './workflow/WorkflowCurrentStatus';
 
 export { OTTO_STEP_TYPES };
 
@@ -38,6 +39,7 @@ export const AdminWorkflowTab = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
   const [startedRunId, setStartedRunId] = useState(null);
+  const currentWorkflows = useCurrentWorkflows();
 
   // View state: 'list' (Quản lý kịch bản) | 'simulator' (Phòng giả lập Gazebo & Kiosk)
   const [activeView, setActiveView] = useState('list');
@@ -281,6 +283,7 @@ export const AdminWorkflowTab = () => {
         </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 space-y-4" style={{ backgroundColor: '#F2EFE9' }}>
+        <WorkflowCurrentStatus current={currentWorkflows} />
         <WorkflowRunsPanel key={startedRunId || 'latest'} runId={startedRunId || undefined} />
         {/* Workflow Cards Grid - 2 Cột rộng rãi, màu xám #E9E5DC đồng bộ */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -425,6 +428,7 @@ export const AdminWorkflowTab = () => {
       <WorkflowBuilderModal
         isOpen={isEditorOpen}
         workflow={editingWorkflow}
+        currentWorkflows={currentWorkflows}
         workflows={workflows}
         onSelectWorkflow={(id) => {
           const selected = workflows.find((item) => item.id === id);

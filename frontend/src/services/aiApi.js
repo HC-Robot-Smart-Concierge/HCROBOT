@@ -5,6 +5,17 @@
 
 const API_BASE_URL = '/api/v1/ai';
 
+export async function fetchServiceRecommendations({ language, ageGroup, gender, signal }) {
+  const response = await fetch(`${API_BASE_URL}/service-recommendations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ language, age_group: ageGroup, gender }),
+    signal,
+  });
+  if (!response.ok) throw new Error(`Could not load service recommendations (${response.status})`);
+  return response.json();
+}
+
 /**
  * Gửi prompt qua WebSocket Streaming Pipeline (TTFA < 1s).
  * Sử dụng PipecatAudioClient để stream text + audio chunks real-time.

@@ -50,6 +50,7 @@ import {
   insertZoneVertex,
   polygonEdgeAtPoint,
 } from './physicalMapZones';
+import SpeedZoneLimitInput from './SpeedZoneLimitInput';
 import {
   OTTO_ENDPOINT_TEMPLATES,
   getEndpointTemplateInfo,
@@ -361,6 +362,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
   useEffect(() => { setSelectedZoneVertex(null); setZoneEdgeHover(null); }, [selectedZone?.id]);
   const [hasUnsavedEndpoints, setHasUnsavedEndpoints] = useState(false);
   const [hasUnsavedZones, setHasUnsavedZones] = useState(false);
+  const [isZoneSpeedValid, setIsZoneSpeedValid] = useState(true);
   const [isSavingEndpoints, setIsSavingEndpoints] = useState(false);
   const [isSavingZones, setIsSavingZones] = useState(false);
 
@@ -542,7 +544,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
       try {
         const dbZones = await fetchZones(mapId);
         if (isMounted && Array.isArray(dbZones) && (dbZones.length > 0 || !isLegacy)) {
-          setZones(dbZones);
+          setZones(dbZones.map((zone) => zone.type === 'SLOW_SPEED' ? { ...zone, type: 'SPEED_ZONE' } : zone));
         }
       } catch (e) {
         // Giu danh sach hien tai neu API loi
@@ -1181,6 +1183,9 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
   const handleUpdateSelectedZone = (field, value) => {
     if (!selectedZone) return false;
     const updated = { ...selectedZone, [field]: value };
+    if (field === 'type' && value === 'SPEED_ZONE' && !updated.speed_limit) {
+      updated.speed_limit = ZONE_TEMPLATES.find((template) => template.type === 'SPEED_ZONE').defaultSpeed;
+    }
     // Doi loai sang cam dung/cam vao, hoac doi tam/kich thuoc bang o nhap => de len endpoint?
     // (Doi ten/mo ta thi khong xet, de vung cu lo de endpoint van sua ten duoc.)
     const geometryChange = ['type', 'x', 'y', 'width', 'height', 'yaw'].includes(field);
@@ -1204,7 +1209,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
   // (robot/maps/keepout|speed/<map>.pgm); Nav2 dang chay thi nap lai ngay, khong thi dung khi
   // bat Navigation lan sau. NO_STOP khong co mask: chan endpoint ngay tren Web (handleSendGoal).
   const refreshNav2Keepout = (prefix) => {
-    updateRos2KeepoutMask(mapConfig.mapId)
+    return updateRos2KeepoutMask(mapConfig.mapId)
       .then((res) =>
         setNavStatus(
           `${prefix} • Nav2: ${res?.keepout_zones ?? 0} vùng cấm, ${res?.speed_zones ?? 0} vùng giới hạn tốc độ ${res?.reloaded ? 'đã nạp lại ngay' : 'sẽ áp dụng khi bật Navigation'
@@ -1218,6 +1223,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
   };
 
   const handleSaveZones = async () => {
+    if (!isZoneSpeedValid) return;
     setIsSavingZones(true);
     try {
       for (const z of zones) {
@@ -1225,7 +1231,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
       }
       setHasUnsavedZones(false);
       setNavStatus('Đã lưu toàn bộ vùng chức năng vào CSDL');
-      refreshNav2Keepout('Đã lưu vùng chức năng');
+      await refreshNav2Keepout('Đã lưu vùng chức năng');
 
       if (rosClientRef.current?.isConnected) {
         rosClientRef.current.publish('/hotel_zones', 'std_msgs/String', createZoneSyncMsg(zones));
@@ -2705,7 +2711,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
               {speedStatus.active ? (
                 <div className="mt-1 text-[11px] font-bold text-amber-300 animate-pulse">{speedStatus.label}</div>
               ) : (
-                <div className="mt-1 text-[10px] opacity-60">Không giới hạn (bình thường ~0.25 m/s)</div>
+                <div className="mt-1 text-[10px] opacity-60">{speedStatus.zone ? 'Xe chưa nhận mức giới hạn' : 'Ngoài vùng giảm tốc'}</div>
               )}
               {speedStatus.warning && (
                 <div className="mt-1 max-w-[260px] text-[10px] leading-snug text-left text-rose-300">{speedStatus.warning}</div>
@@ -2813,22 +2819,13 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
               />
 
               {/* Neu la SPEED_ZONE: input toc do */}
-              {selectedZone.type === 'SPEED_ZONE' && (
-                <div className="flex items-center gap-1 shrink-0 px-2 py-1 rounded bg-slate-800 border border-slate-700">
-                  <span className="text-[10px] text-amber-400 font-semibold">Tối đa:</span>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.12"
-                    max="0.25"
-                    title="Tốc độ tối đa trong vùng (Nav2 Speed Filter). Xe thật: bình thường ~0.25 m/s, chậm nhất ~0.12 m/s (thấp hơn motor không lăn). Đặt 0.12 để demo thấy rõ nhất (còn một nửa tốc độ); đặt thấp hơn thì xe vẫn chạy ~0.12 m/s, từ 0.25 trở lên thì không thấy chậm lại."
-                    value={selectedZone.speed_limit || 0.12}
-                    onChange={(e) => handleUpdateSelectedZone('speed_limit', parseFloat(e.target.value) || 0.12)}
-                    className="w-12 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-amber-400 text-xs focus:outline-none"
-                  />
-                  <span className="text-slate-400 text-[10px]">m/s</span>
-                </div>
-              )}
+              {selectedZone.type === 'SPEED_ZONE' && <SpeedZoneLimitInput
+                zone={selectedZone}
+                onCommit={(speed) => handleUpdateSelectedZone('speed_limit', speed)}
+                motorMinSpeed={healthState?.motor_min_linear_speed_mps}
+                onDirty={() => setHasUnsavedZones(true)}
+                onValidityChange={setIsZoneSpeedValid}
+              />}
 
               {/* Tam & Kich thuoc */}
               <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-800 border border-slate-700 font-mono text-[10px] shrink-0 text-slate-300">
@@ -2891,7 +2888,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
               <button
                 type="button"
                 onClick={handleSaveZones}
-                disabled={isSavingZones || !hasUnsavedZones}
+                disabled={isSavingZones || !hasUnsavedZones || !isZoneSpeedValid}
                 className={`p-1.5 rounded-lg border cursor-pointer transition-colors shrink-0 flex items-center justify-center ${hasUnsavedZones
                   ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-500 animate-pulse'
                   : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
@@ -3558,7 +3555,7 @@ export const AdminPhysicalMapTab = ({ currentUser, routeLibraryMode = false, ini
 
                   <button
                     onClick={handleSaveZones}
-                    disabled={isSavingZones || !hasUnsavedZones}
+                    disabled={isSavingZones || !hasUnsavedZones || !isZoneSpeedValid}
                     className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all ${hasUnsavedZones
                       ? 'bg-emerald-600 text-white shadow-sm animate-pulse'
                       : 'bg-slate-800 text-slate-500 cursor-not-allowed'

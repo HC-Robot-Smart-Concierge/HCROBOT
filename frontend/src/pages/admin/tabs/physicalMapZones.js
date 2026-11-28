@@ -195,20 +195,24 @@ export function resizeZoneFromCorner(zone, corner, point, minSize = MIN_ZONE_SIZ
   return { x: centre.x, y: centre.y, width, height, yaw: normalizeZoneYaw(zone.yaw) };
 }
 
-// Trang thai vung giam toc cho dong ho toc do tren map. Su that la gioi han Nav2 dang ap
+// Trang thai vung giam toc cho dong ho toc do tren map, theo gioi han bridge dang ap
 // (health.speed_limit_mps tu bridge, null = khong gioi han); hinh hoc vung chi de biet ten vung
 // va phat hien vung ve tren Web ma Nav2 chua ap (chua Luu / Nav2 chay map khac).
 const SPEED_ZONE_EDGE_M = 0.1; // sat mep: Nav2 xet tam xe + tin 1 Hz => khong bao "chua ap" o day
 
 export function speedZoneStatus(pose, zones, health) {
   const limit = Number.isFinite(health?.speed_limit_mps) ? health.speed_limit_mps : null;
-  const zone = (zones || []).find((z) => z.type === 'SPEED_ZONE' && isPointInZone(pose.x, pose.y, z)) || null;
+  const zone = (zones || []).reduce((strictest, candidate) => {
+    if (!['SPEED_ZONE', 'SLOW_SPEED'].includes(candidate.type) || !isPointInZone(pose.x, pose.y, candidate)) return strictest;
+    return !strictest || candidate.speed_limit < strictest.speed_limit ? candidate : strictest;
+  }, null);
   const name = zone ? ` “${zone.name || zone.id}”` : '';
   if (limit !== null) {
-    const floor = health?.motor_min_linear_speed_mps;
-    const warning = health?.speed_limit_below_motor_floor && Number.isFinite(floor)
-      ? `Vùng đặt ${limit.toFixed(2)} m/s thấp hơn mức xe chạy được: xe chạy chậm nhất ~${floor.toFixed(2)} m/s.`
-      : '';
+    const warning = health?.speed_limit_below_motor_floor
+      ? `Bridge đang chặn lệnh chạy vì motor không giữ được mức ${limit.toFixed(2)} m/s với lệnh hiện tại.`
+      : zone && limit - Number(zone.speed_limit) >= 0.005
+        ? `Vùng đặt ${Number(zone.speed_limit).toFixed(2)} m/s. Xe đang nhận mức giới hạn cao hơn.`
+        : '';
     return { active: true, limitMps: limit, zone, label: `VÙNG GIẢM TỐC${name} · tối đa ${limit.toFixed(2)} m/s`, warning };
   }
   let warning = '';
@@ -217,7 +221,7 @@ export function speedZoneStatus(pose, zones, health) {
     const depth = isPolygonZone(zone) ? polygonEdgeDistance(pose, zone.vertices)
       : Math.min(Number(zone.width) / 2 - Math.abs(p.x), Number(zone.height) / 2 - Math.abs(p.y));
     if (depth >= SPEED_ZONE_EDGE_M) {
-      warning = `Xe đang ở vùng${name} nhưng Nav2 chưa áp giới hạn tốc độ: bấm Lưu vùng, hoặc bật lại Nav2 với đúng map này.`;
+      warning = `Xe đang ở vùng${name} nhưng chưa nhận giới hạn tốc độ: bấm Lưu vùng, hoặc bật lại Nav2 với đúng map này.`;
     }
   }
   return { active: false, limitMps: null, zone, label: '', warning };

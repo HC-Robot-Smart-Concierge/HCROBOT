@@ -38,7 +38,7 @@ export function WorkflowRunsPanel({ workflowId, runId } = {}) {
   return <section className="rounded-xl border border-stone-300 bg-white p-4 space-y-3">
     <h3 className="text-sm font-bold text-stone-800">Lượt chạy xe thật</h3>
     {error && <p role="alert" className="text-xs text-rose-700">{error}</p>}
-    {!runs.length && !error && <p className="text-xs text-stone-500">{runId ? 'Đang tải nhật ký lượt chạy mới…' : workflowId ? 'Chưa có lượt chạy. Bấm “Bắt đầu workflow” sau khi lưu tuyến và kích hoạt.' : 'Chưa có lượt chạy. Chọn chế độ Điều khiển xe thật trong Lịch chạy rồi lưu workflow.'}</p>}
+    {!runs.length && !error && <p className="text-xs text-stone-500">{runId ? 'Đang tải nhật ký lượt chạy mới…' : workflowId ? 'Chưa có lượt chạy. Bấm “Bắt đầu workflow” sau khi lưu tuyến và kích hoạt.' : 'Chưa có lượt chạy. Chọn chế độ Điều khiển xe thật trong Chạy & lặp rồi lưu workflow.'}</p>}
     <ol className="space-y-2 max-h-80 overflow-y-auto">
       {runs.map((run) => <li key={run.id} className="rounded-lg border border-stone-200 p-3 text-xs space-y-1">
         <div className="flex items-center justify-between gap-3">

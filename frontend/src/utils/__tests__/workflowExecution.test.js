@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { executionConfig, executionError, executionSummary, isChargerMove } from '../workflowExecution';
+import { isAdGuestGreetingStep, isAdGuestRecommendationStep, isAdGuestTalkStep, isGuestWaitingAd } from '../workflowFlow';
 
 describe('Workflow execution settings', () => {
   it('keeps legacy workflows manual with one round and independent schedules', () => {
@@ -26,6 +27,59 @@ describe('Workflow execution settings', () => {
     expect(executionError({ trigger_type: 'SCHEDULE', execution_config: { schedules: [
       { time: '08:00', days: [0], timezone: 'UTC', enabled: false },
     ] } })).toContain('ít nhất');
+  });
+
+  it('waits for a guest only on opted-in ads and uses their linked conversation', () => {
+    const ad = { step_id: 'ad', type: 'SHOW', params: { screen_mode: 'ACTIVE_ADS', wait_for_guest: true, next_step_id: 'talk' } };
+    const talk = { step_id: 'talk', type: 'COMMUNICATE', params: { next_step_id: 'ad' } };
+    const alternate = { ...talk, step_id: 'alternate' };
+    const workflow = { steps: [ad, alternate, talk] };
+    expect(isGuestWaitingAd(ad)).toBe(true);
+    expect(isAdGuestTalkStep(workflow, talk)).toBe(true);
+    expect(isAdGuestTalkStep(workflow, alternate)).toBe(false);
+    expect(executionError(workflow)).toBe('');
+
+    ad.params.next_step_id = 'END';
+    expect(executionError(workflow)).toContain('Giao tiếp');
+    ad.params.wait_for_guest = false;
+    expect(isGuestWaitingAd(ad)).toBe(false);
+    expect(executionError(workflow)).toBe('');
+  });
+
+  it('supports a greeting before the ad conversation and rejects a broken greeting link', () => {
+    const ad = { step_id: 'ad', type: 'SHOW', params: { screen_mode: 'ACTIVE_ADS', wait_for_guest: true, next_step_id: 'greet' } };
+    const greet = { step_id: 'greet', type: 'GREET', params: { next_step_id: 'talk' } };
+    const talk = { step_id: 'talk', type: 'COMMUNICATE', params: { next_step_id: 'ad' } };
+    const workflow = { steps: [ad, talk, greet] };
+
+    expect(executionError(workflow)).toBe('');
+    expect(isAdGuestGreetingStep(workflow, greet)).toBe(true);
+    expect(isAdGuestTalkStep(workflow, talk)).toBe(true);
+
+    greet.params.next_step_id = 'ad';
+    expect(executionError(workflow)).toContain('Giao tiếp');
+    expect(isAdGuestGreetingStep(workflow, greet)).toBe(false);
+    expect(isAdGuestTalkStep(workflow, talk)).toBe(false);
+  });
+
+  it('saves an ad workflow with recommendations after the greeting and before conversation', () => {
+    const ad = { step_id: 'ad', type: 'SHOW', params: { screen_mode: 'ACTIVE_ADS', wait_for_guest: true, next_step_id: 'greet' } };
+    const greet = { step_id: 'greet', type: 'GREET', params: { next_step_id: 'recommend' } };
+    const talk = { step_id: 'talk', type: 'COMMUNICATE', params: { next_step_id: 'ad' } };
+    const recommend = { step_id: 'recommend', type: 'RECOMMEND', params: { next_step_id: 'talk' } };
+    const workflow = { steps: [ad, greet, talk, recommend] };
+
+    expect(executionError(workflow, { forSave: true })).toBe('');
+    expect(isAdGuestGreetingStep(workflow, greet)).toBe(true);
+    expect(isAdGuestRecommendationStep(workflow, recommend)).toBe(true);
+    expect(isAdGuestTalkStep(workflow, talk)).toBe(true);
+
+    ad.params.next_step_id = 'recommend';
+    expect(executionError(workflow)).toBe('');
+    expect(isAdGuestGreetingStep(workflow, greet)).toBe(false);
+    recommend.params.next_step_id = 'greet';
+    expect(executionError(workflow, { forSave: true })).toContain('Giao tiếp');
+    expect(isAdGuestRecommendationStep(workflow, recommend)).toBe(false);
   });
 
   it('allows saving a draft before configuring schedules without enabling execution', () => {

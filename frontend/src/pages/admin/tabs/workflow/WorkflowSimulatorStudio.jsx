@@ -89,7 +89,7 @@ import { guestRequestPhase, hasFollowUpConfirmationStep } from '../../../../util
 import { WorkflowGuestRequestPanel } from './WorkflowGuestRequestPanel';
 import { useLanguage } from '../../../../context/LanguageContext';
 import { KioskChoicePrompt } from './KioskChoicePrompt';
-import { OUTCOME, findBrokenFlowLinks, getChoiceTimeoutSec, resolveNextStepIndex } from '../../../../utils/workflowFlow';
+import { OUTCOME, findBrokenFlowLinks, getChoiceTimeoutSec, isGuestWaitingAd, resolveNextStepIndex } from '../../../../utils/workflowFlow';
 import {
   BATTERY_CRITICAL_PERCENT,
   BATTERY_LOW_PERCENT,
@@ -1257,6 +1257,7 @@ export const WorkflowSimulatorStudio = ({
   }, []);
 
   const activeStep = isPlaying && currentStepIndex < steps.length ? steps[currentStepIndex] : null;
+  const waitingForAdGuest = activeWorkflow?.execution_config?.execution_mode !== 'ROBOT' && isGuestWaitingAd(activeStep);
   const showingIdlePromo = activeWorkflow?.id === 'wf-06-idle-promo' && activeStep?.type === 'SHOW';
   const promotionInterrupted = showingIdlePromo && simGuestPresent;
   const requestPhase = guestRequestPhase(activeWorkflow?.id, activeStep);
@@ -1527,7 +1528,7 @@ export const WorkflowSimulatorStudio = ({
     const resumedProgress = showingIdlePromo ? promotionProgressRef.current.percent : 0;
     setStepProgress(resumedProgress);
     setVisitedSteps((prev) => (prev.has(currentStepIndex) ? prev : new Set(prev).add(currentStepIndex)));
-    if (requestPhase) return;
+    if (requestPhase || waitingForAdGuest) return;
     const stepType = activeStep.type;
     const params = activeStep.params || {};
 
@@ -1637,7 +1638,7 @@ export const WorkflowSimulatorStudio = ({
       if (timerRef.current) clearTimeout(timerRef.current);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isPlaying, isPaused, currentStepIndex, stepRun, selectedWorkflowId, handleStepFinish, handleNavigateToGoal, promotionInterrupted, showingIdlePromo, guestRunId]);
+  }, [isPlaying, isPaused, currentStepIndex, stepRun, selectedWorkflowId, handleStepFinish, handleNavigateToGoal, promotionInterrupted, showingIdlePromo, guestRunId, waitingForAdGuest]);
 
   // PIN YEU: tu chay kich ban ve tram sac theo utils/batteryPolicy (giong man hinh robot)
   const chargeRoutine = useMemo(() => findChargeRoutine(localWorkflows), [localWorkflows]);
@@ -1689,6 +1690,14 @@ export const WorkflowSimulatorStudio = ({
     isPlaying, isPaused, isCharging: isChargeRoutineRunning, chargeRoutineId: chargeRoutine.id,
     robot: robotPose, endpoints, simSpeed, onPresenceChange: setSimGuestPresent,
   });
+  const greetedAdGuestRef = useRef(false);
+  const simulatedGuestMode = simulatedGuest.guest?.mode;
+  useEffect(() => {
+    if (!simGuestPresent) greetedAdGuestRef.current = false;
+    if (!waitingForAdGuest || isPaused || !simGuestPresent || simulatedGuestMode !== 'interacting' || greetedAdGuestRef.current) return;
+    greetedAdGuestRef.current = true;
+    handleStepFinish();
+  }, [waitingForAdGuest, isPaused, simGuestPresent, simulatedGuestMode, handleStepFinish]);
 
   // Bo dieu khien
   // options.keepPose: bat dau tu vi tri hien tai (kich ban ve tram sac tu chay)

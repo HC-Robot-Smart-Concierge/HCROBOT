@@ -120,6 +120,7 @@ export function useParallelWorkflowRun({
 
   return {
     active: Boolean(current), phase, lane, isTalking,
+    workflowId: current?.workflow_id, workflowName: current?.workflow_name,
     showAds: Boolean(current) && showsAds(phase, playlistStep),
     ads, handleRunStatus, requestGuest, finishTalk,
   };

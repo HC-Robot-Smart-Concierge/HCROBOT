@@ -1,21 +1,5 @@
 import React from 'react';
 
-export function WorkflowTriggerSelect({ workflow, onWorkflowMetaChange }) {
-  const savedType = workflow.trigger_type;
-  const value = !savedType || savedType === 'AUTO_DETECT' ? 'MANUAL' : savedType;
-  return (
-    <label className="block text-xs font-bold text-stone-700 space-y-1">
-      <span>Kích hoạt bởi</span>
-      <select value={value} onChange={(e) => onWorkflowMetaChange('trigger_type', e.target.value)}
-        className="w-full px-3 py-2 rounded-lg border border-stone-300 bg-white">
-        <option value="MANUAL">Thủ công</option>
-        <option value="SCHEDULE">Theo lịch</option>
-        {!['MANUAL', 'SCHEDULE'].includes(value) && <option value={value}>Giữ thiết lập cũ ({value})</option>}
-      </select>
-    </label>
-  );
-}
-
 export function WorkflowMetaPanel({ workflow, onWorkflowMetaChange }) {
   return (
     <div className="p-4 rounded-xl bg-white border border-stone-300 shadow-2xs space-y-3">
@@ -60,7 +44,6 @@ export function WorkflowMetaPanel({ workflow, onWorkflowMetaChange }) {
         />
       </div>
 
-      <WorkflowTriggerSelect workflow={workflow} onWorkflowMetaChange={onWorkflowMetaChange} />
     </div>
   );
 }

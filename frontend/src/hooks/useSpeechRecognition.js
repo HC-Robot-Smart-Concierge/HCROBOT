@@ -151,6 +151,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const utteranceCommittedRef = useRef(false);
   const lastCommittedTextRef = useRef('');
   const analyserInitPromiseRef = useRef(null);
+  const microphoneEpochRef = useRef(0);
   const isTranscribingRef = useRef(false);
   const transcribeControllerRef = useRef(null);
   const webSpeechBlockedRef = useRef(false);
@@ -183,8 +184,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     callbacksRef.current = callbacks;
   }, [callbacks]);
 
-  // Giai phong stream micro va AudioContext (permanent = true khi unmount component)
-  const stopAudioAnalyser = useCallback((permanent = false) => {
+  const stopAudioAnalyser = useCallback((releaseMicrophone = false) => {
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
@@ -195,8 +195,9 @@ export const useSpeechRecognition = (callbacks = {}) => {
     }
     clearSpeechFinalizeTimer();
 
-    // Chi giai phong phan cung khi tat han ung dung (unmount)
-    if (permanent) {
+    if (releaseMicrophone) {
+      microphoneEpochRef.current += 1;
+      analyserInitPromiseRef.current = null;
       if (scriptProcessorRef.current) {
         try {
           scriptProcessorRef.current.disconnect();
@@ -207,6 +208,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
         mediaStreamRef.current.getTracks().forEach((track) => track.stop());
         mediaStreamRef.current = null;
       }
+      analyserRef.current = null;
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         audioContextRef.current.close().catch(() => {});
         audioContextRef.current = null;
@@ -318,6 +320,8 @@ export const useSpeechRecognition = (callbacks = {}) => {
     if (analyserInitPromiseRef.current) {
       return analyserInitPromiseRef.current;
     }
+    const microphoneEpoch = microphoneEpochRef.current;
+    const captureCancelled = () => destroyedRef.current || microphoneEpoch !== microphoneEpochRef.current;
     const initTask = (async () => {
       destroyedRef.current = false;
       try {
@@ -341,7 +345,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
           if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
             await audioContextRef.current.resume().catch(() => {});
           }
-          return true;
+          return !captureCancelled();
         }
 
         // Xin quyền và lấy stream micro thực
@@ -353,7 +357,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
           },
         });
 
-        if (destroyedRef.current) {
+        if (captureCancelled()) {
           stream.getTracks().forEach((t) => t.stop());
           return false;
         }
@@ -371,6 +375,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
           if (audioCtx.state === 'suspended') {
             await audioCtx.resume().catch(() => {});
           }
+          if (captureCancelled()) return false;
 
           // Analyser đo volume visualizer
           const analyser = audioCtx.createAnalyser();
@@ -475,6 +480,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
         }
         return true;
       } catch (err) {
+        if (captureCancelled()) return false;
         console.warn('[Microphone] Không thể truy cập Micro phần cứng:', err);
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
           setHasMicPermission(false);
@@ -485,7 +491,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
         return false;
       }
     })().finally(() => {
-      analyserInitPromiseRef.current = null;
+      if (microphoneEpoch === microphoneEpochRef.current) analyserInitPromiseRef.current = null;
     });
     analyserInitPromiseRef.current = initTask;
     return initTask;
@@ -732,7 +738,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     setIsTranscribing(false);
     destroyedRef.current = false;
     webSpeechBlockedRef.current = false;
-    listenEpochRef.current += 1;
+    const listenEpoch = ++listenEpochRef.current;
     utteranceCommittedRef.current = false;
     lastCommittedTextRef.current = '';
     currentLanguageRef.current = language;
@@ -784,7 +790,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
       mediaStreamRef.current.getAudioTracks().some((t) => t.readyState === 'live');
     if (!isStreamActive) {
       startAudioAnalyser().then((ready) => {
-        if (!ready && !recognitionRef.current) {
+        if (!ready && listenEpoch === listenEpochRef.current && !recognitionRef.current) {
           shouldListenRef.current = false;
           setIsListening(false);
         }
@@ -798,7 +804,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     }
   };
 
-  const stopListening = useCallback(() => {
+  const stopListening = useCallback(({ releaseMicrophone = false } = {}) => {
     shouldListenRef.current = false;
     transcribeControllerRef.current?.abort();
     transcribeControllerRef.current = null;
@@ -824,7 +830,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     setIsListening(false);
     setMicLive(false);
     clearSpeechFinalizeTimer();
-    stopAudioAnalyser(false); // Giu stream phan cung alive de tranh bi iOS hoi quyen lai
+    stopAudioAnalyser(releaseMicrophone);
   }, [stopAudioAnalyser, clearSpeechFinalizeTimer]);
 
   const resetTranscript = useCallback(() => {

@@ -21,7 +21,8 @@ import { guestRequestPhase, hasFollowUpConfirmationStep } from '../../utils/work
 import { WorkflowGuestRequestPanel } from '../admin/tabs/workflow/WorkflowGuestRequestPanel';
 import { useWorkflowRunner } from '../../hooks/useWorkflowRunner';
 import { useParallelWorkflowRun } from '../../hooks/useParallelWorkflowRun';
-import { isAdGuestTalkStep, isGuestWaitingAd } from '../../utils/workflowFlow';
+import { useRobotWorkflowStatus } from '../../hooks/useRobotWorkflowStatus';
+import { isAdGuestGreetingStep, isAdGuestRecommendationStep, isAdGuestTalkStep, isGuestWaitingAd } from '../../utils/workflowFlow';
 import { adPlaylist, isGuestFarewell, isGuestTalkStep, laneOfWorkflow } from '../../utils/workflowParallelRun';
 import { KioskDisplayPreview } from '../admin/tabs/workflow/KioskDisplayPreview';
 import { fetchWorkflows } from '../../services/workflowApi';
@@ -29,7 +30,7 @@ import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket';
 
 import { useSpeechRecognition, getSemanticSilenceDebounce } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
-import { sendChatPrompt, sendChatStreamSSE, resetSession, flushSession, getVoiceSettings, synthesizeSpeech } from '../../services/aiApi';
+import { sendChatPrompt, sendChatStreamSSE, resetSession, flushSession, getVoiceSettings, synthesizeSpeech, fetchServiceRecommendations } from '../../services/aiApi';
 import { playEarcon } from '../../utils/audioFeedback';
 
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
@@ -48,6 +49,7 @@ import {
 } from '../../utils/batteryPolicy';
 import { fetchActiveAdvertisements } from '../../services/advertisementApi';
 import { RobotAdPlayer } from '../../components/robot/RobotAdPlayer';
+import { DEFAULT_PHONE_CAMERA_WORKFLOW_ID, PhoneCameraWorkflowTest } from '../../components/robot/PhoneCameraWorkflowTest';
 import { RoomPinModal } from '../../components/robot/RoomPinModal';
 import { RoomPickerModal } from '../../components/robot/RoomPickerModal';
 import { extractSpokenRoomNumber, isValidHotelRoom } from '../../utils/roomHelper';
@@ -153,6 +155,10 @@ const FloatingCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
 };
 
 export const RobotScreenPage = ({ onLogout = () => { } }) => {
+  const query = new URLSearchParams(window.location.search);
+  const phoneCameraTest = query.get('test') === 'phone-camera';
+  const phoneCameraWorkflowId = query.get('workflow') || DEFAULT_PHONE_CAMERA_WORKFLOW_ID;
+  const mobileCameraAvailable = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   // States: 'RT-01' | 'RT-02' | 'RT-03' | 'RT-04' | 'RT-05'
   const [currentState, setCurrentState] = useState(() => {
     try {
@@ -350,6 +356,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   useNotificationWebSocket({
     department: 'All',
     onNotificationReceived: (event) => {
+      if (phoneCameraTest) return;
       if (event && event.type === 'ADVERTISEMENT_PUSH' && event.advertisement && !isServingGuest && !guestPresent && batteryGuard.canStartGuestSession) {
         setPushedAd(event.advertisement);
         setIsStandby(true);
@@ -363,7 +370,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         if (event.emotion) {
           handleGuestEmotionDetectedRef.current?.(event.emotion);
         }
-        if (event.gender || event.age_group) {
+        if (event.is_face_detected === false) {
+          handleGuestDemographicsDetectedRef.current?.({ gender: 'unknown', ageGroup: 'unknown' });
+        } else if (event.gender || event.age_group) {
           handleGuestDemographicsDetectedRef.current?.({
             gender: event.gender,
             ageGroup: event.age_group,
@@ -373,6 +382,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     },
     // Studio "Gửi tới robot" -> chạy kịch bản trên màn hình này bằng cùng bộ quyết định rẽ nhánh
     onWorkflowDispatch: (event) => {
+      if (phoneCameraTest) return;
       // Pin yếu: chỉ nhận kịch bản về trạm sạc
       if (!batteryGuard.canStartGuestSession && event?.workflow?.id !== chargeRoutine.id) return;
       if (Array.isArray(event?.workflow?.steps) && event.workflow.steps.length > 0) {
@@ -382,7 +392,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       }
     },
     // Xe thật đang chạy workflow song song: màn hình theo pha của xe
-    onRobotRunStatus: (payload) => parallelRun.handleRunStatus(payload),
+    onRobotRunStatus: (payload) => { if (!phoneCameraTest) parallelRun.handleRunStatus(payload); },
   });
 
   // Session Memory & Room Number States
@@ -454,6 +464,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const [guestPresent, setGuestPresent] = useState(false);
   guestPresentRef.current = guestPresent;
+  const [phoneGuestPresent, setPhoneGuestPresent] = useState(false);
+  const [phoneDemographics, setPhoneDemographics] = useState(null);
   const pausedPromo = useRef(null);
 
   // Available Workflows State (for AUTO_DETECT and manual triggers)
@@ -533,7 +545,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
   const guestEmotionRef = useRef('neutral');
-  const [guestAgeGroup, setGuestAgeGroup] = useState('young_adult');
+  const [guestAgeGroup, setGuestAgeGroup] = useState('unknown');
   const [guestGender, setGuestGender] = useState('unknown');
   const [suggestedPrompts, setSuggestedPrompts] = useState([]);
   const lastUnhappyAlertTimeRef = useRef(0);
@@ -644,7 +656,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   handleGuestEmotionDetectedRef.current = handleGuestEmotionDetected;
 
   const handleGuestDemographicsDetected = useCallback(({ gender, ageGroup }) => {
-    if (gender && gender !== 'unknown') {
+    if (gender) {
       setGuestGender((prev) => (prev !== gender ? gender : prev));
     }
     if (ageGroup) {
@@ -664,14 +676,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, [transcript, isUnhappyAssistanceOpen, handleConfirmCallConcierge, handleDismissUnhappyAssistance]);
 
-  // Load available workflows for AUTO_DETECT trigger & manual launcher
+  // Load saved workflows for the kiosk launcher and charging routine.
   useEffect(() => {
+    if (phoneCameraTest) return;
     fetchWorkflows()
       .then((data) => {
         if (Array.isArray(data)) setAvailableWorkflows(data);
       })
       .catch((err) => console.warn('Could not load workflows:', err));
-  }, []);
+  }, [phoneCameraTest]);
 
   // Sync global robot voice settings from Backend (fetch once on mount)
   useEffect(() => {
@@ -715,12 +728,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     sessionId,
     roomNumber: authenticatedRoom || activeRoomNumber || null,
     isExternalTalkStep: (workflow, step) => isGuestTalkStep(workflow, step) ||
-      (!laneOfWorkflow(workflow?.id) && isAdGuestTalkStep(workflow, step)),
+      (!laneOfWorkflow(workflow?.id) && (isAdGuestGreetingStep(workflow, step) || isAdGuestTalkStep(workflow, step))),
     isWaitingForGuest: (workflow, step) => !laneOfWorkflow(workflow?.id) && isGuestWaitingAd(step),
   });
   const isKioskWorkflow = !laneOfWorkflow(activeWorkflow?.id);
   const waitingForAdGuest = isKioskWorkflow && isGuestWaitingAd(activeStep);
+  const isAdGuestGreeting = isKioskWorkflow && isAdGuestGreetingStep(activeWorkflow, activeStep);
+  const isAdGuestRecommendation = isKioskWorkflow && isAdGuestRecommendationStep(activeWorkflow, activeStep);
   const isAdGuestTalking = isKioskWorkflow && isAdGuestTalkStep(activeWorkflow, activeStep);
+  const [greetingNeedsSound, setGreetingNeedsSound] = useState(false);
+  const [greetingAttempt, setGreetingAttempt] = useState(0);
 
   // Pin yếu: cùng quy tắc với Studio (utils/batteryPolicy). Pin ước tính từ Pi 5 đại diện cho cả pin động cơ.
   const batteryPercent = useRobotBattery();
@@ -732,7 +749,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const isScreenLaneRunning = isWorkflowRunning && laneOfWorkflow(activeWorkflow?.id) === 'screen';
   const isServingGuest = (isWorkflowRunning && !isChargeRoutineRunning && !isScreenLaneRunning && !waitingForAdGuest) || currentState !== 'RT-01' || isVideoCallOpen;
   const batteryGuard = useLowBatteryGuard({
-    percent: batteryPercent,
+    percent: phoneCameraTest ? null : batteryPercent,
     routine: chargeRoutine,
     isRoutineRunning: isChargeRoutineRunning,
     isServingGuest,
@@ -768,11 +785,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   });
 
   // Kết thúc phiên khách: đóng modal, lưu hội thoại, về trạng thái nghỉ RT-01
-  const endGuestSession = () => {
+  const endGuestSession = ({ releaseMicrophone = false } = {}) => {
     stopSpeaking();
-    stopListening();
+    stopListening({ releaseMicrophone });
     resetTranscript();
     setAiResponseText('');
+    setSuggestedPrompts([]);
     setActiveRoomNumber(null);
     setAuthenticatedRoom(null);
     clearRouteGuidanceTimers();
@@ -787,7 +805,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isPinModalOpenRef.current = false;
     setShowQuickMenu(false);
     setShowLangMenu(false);
-    flushSession(sessionId).catch(() => {});
+    if (!phoneCameraTest) flushSession(sessionId).catch(() => {});
     setSessionId('session_kiosk_' + Math.random().toString(36).substring(2, 9));
     setCurrentState('RT-01');
     lastInteractionTimeRef.current = Date.now();
@@ -795,7 +813,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const workflowTalkRef = useRef(null);
   const workflowFarewellRef = useRef(false);
-  const closeWorkflowTalk = (force = false) => {
+  const closeWorkflowTalk = ({ force = false, releaseMicrophone = false } = {}) => {
     if (!force && !workflowTalkRef.current) return;
     workflowTalkRef.current = null;
     workflowFarewellRef.current = false;
@@ -811,7 +829,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     clearFollowUpTimer();
     setIsMaintenanceMenuOpen(false);
     setIsBellmanMenuOpen(false);
-    endGuestSession();
+    endGuestSession({ releaseMicrophone });
   };
   const beginWorkflowTalk = (step) => {
     const params = step.params || {};
@@ -839,44 +857,141 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     busy: Boolean(isSpeaking || isSpeechActive || isProcessing || isVideoCallOpen || (transcript && transcript.trim())),
     activeAds,
     lastInteractionRef: lastInteractionTimeRef,
-    onEnterPatrol: () => { setGuestPresent(false); setIsStandby(false); closeWorkflowTalk(true); },
+    onEnterPatrol: () => {
+      if (waitingForAdGuest || isAdGuestGreeting || isAdGuestRecommendation || isAdGuestTalking) stopWorkflow();
+      setGuestPresent(false);
+      setIsStandby(false);
+      closeWorkflowTalk({ force: true, releaseMicrophone: isAdGuestTalking });
+    },
     onBeginTalk: beginWorkflowTalk,
     onEndTalk: () => closeWorkflowTalk(),
   });
+  useRobotWorkflowStatus(
+    phoneCameraTest ? 'phone_test' : 'kiosk',
+    parallelRun.workflowId || (isWorkflowRunning ? activeWorkflow?.id : undefined),
+    parallelRun.workflowName || (isWorkflowRunning ? activeWorkflow?.name : undefined),
+    isWorkflowRunning ? activeStep?.title || activeStep?.type : undefined,
+    isWorkflowRunning ? currentStepIndex : undefined,
+  );
   const showParallelAds = parallelRun.showAds && !isVideoCallOpen;
-  const showGuestWaitAds = waitingForAdGuest && !isVideoCallOpen;
-  const isWorkflowGuestTalking = parallelRun.isTalking || isAdGuestTalking;
-  const greetedAdGuestRef = useRef(false);
+  const showGuestWaitAds = waitingForAdGuest && !parallelRun.active && !isVideoCallOpen;
+  const phoneCameraTestActive = phoneCameraTest && isWorkflowRunning && activeWorkflow?.id === phoneCameraWorkflowId;
+  const isRecommendationStep = activeStep?.type === 'RECOMMEND';
+  const needsRecommendations = (isRecommendationStep && activeStep.params?.ai_suggestion !== false) || isAdGuestGreeting || isAdGuestTalking;
+  const phoneCameraKioskActive = !phoneCameraTest && mobileCameraAvailable && !parallelRun.active &&
+    (waitingForAdGuest || isAdGuestGreeting || isAdGuestRecommendation || isAdGuestTalking || (isRecommendationStep && needsRecommendations));
+  const usePhoneDemographics = phoneCameraTest || phoneCameraKioskActive;
+  const detectedAge = usePhoneDemographics ? phoneDemographics?.ageGroup : guestPresent ? guestAgeGroup : null;
+  const detectedGender = usePhoneDemographics ? phoneDemographics?.gender : guestPresent ? guestGender : null;
+  const recommendationAge = ['child', 'teen', 'young_adult', 'adult', 'middle_aged', 'senior'].includes(detectedAge) ? detectedAge : 'unknown';
+  const recommendationGender = ['male', 'female'].includes(detectedGender) ? detectedGender : 'unknown';
+  const recommendationLanguage = language === 'English' ? 'en-US' : 'vi-VN';
+  const recommendationKey = `${recommendationLanguage}/${recommendationAge}/${recommendationGender}`;
+  const [serviceRecommendations, setServiceRecommendations] = useState(null);
+  const loadedRecommendations = serviceRecommendations?.key === recommendationKey ? serviceRecommendations.items : [];
+  const adGuestPresent = guestPresent || phoneGuestPresent;
+  const workflowSuggestions = isAdGuestTalking && !isProcessing && !isSpeaking && !isSpeechPending && !isVideoCallOpen && !isPinModalOpen
+    ? (adGuestPresent && suggestedPrompts.length ? suggestedPrompts : loadedRecommendations) : [];
+  const visibleDesktopSuggestions = isAdGuestTalking ? workflowSuggestions : suggestedPrompts;
+  const nodeSuggestions = needsRecommendations && loadedRecommendations.length
+    ? loadedRecommendations : [activeStep?.params?.highlight_item].filter(Boolean);
 
   useEffect(() => {
-    if (!guestPresent) {
+    if (!needsRecommendations) {
+      setServiceRecommendations(null);
+      return undefined;
+    }
+    const controller = new AbortController();
+    fetchServiceRecommendations({
+      language: recommendationLanguage, ageGroup: recommendationAge, gender: recommendationGender, signal: controller.signal,
+    }).then((items) => {
+      if (!controller.signal.aborted) setServiceRecommendations({ key: recommendationKey, items });
+    }).catch(() => {
+      if (!controller.signal.aborted) setServiceRecommendations({ key: recommendationKey, items: [] });
+    });
+    return () => controller.abort();
+  }, [needsRecommendations, recommendationKey, recommendationLanguage, recommendationAge, recommendationGender]);
+  const stopPhoneCameraTest = () => {
+    if (!phoneCameraTestActive) return;
+    stopWorkflow();
+    setGuestPresent(false);
+  };
+  const isWorkflowGuestTalking = parallelRun.isTalking || isAdGuestTalking;
+  const greetedAdGuestRef = useRef(false);
+  const adGuestPresentRef = useRef(false);
+  adGuestPresentRef.current = adGuestPresent;
+
+  useEffect(() => {
+    if (!adGuestPresent) {
       greetedAdGuestRef.current = false;
       return undefined;
     }
     if (!showGuestWaitAds || greetedAdGuestRef.current || !batteryGuard.canStartGuestSession || isPinModalOpen) return undefined;
 
     const timer = setTimeout(() => {
-      if (!guestPresentRef.current || isVideoCallOpenRef.current || isPinModalOpenRef.current) return;
+      if (!adGuestPresentRef.current || isVideoCallOpenRef.current || isPinModalOpenRef.current) return;
       greetedAdGuestRef.current = true;
       nextStep();
-    }, 800);
+    }, phoneGuestPresent ? 250 : 800);
     return () => clearTimeout(timer);
-  }, [showGuestWaitAds, guestPresent, stepRun, batteryGuard.canStartGuestSession, isPinModalOpen]);
+  }, [showGuestWaitAds, adGuestPresent, phoneGuestPresent, stepRun, batteryGuard.canStartGuestSession, isPinModalOpen]);
+
+  useEffect(() => {
+    if (!isAdGuestGreeting) return undefined;
+    const { greeting_text, text, language, voice_speed } = activeStep.params || {};
+    const greeting = (greeting_text || text || 'Dạ em chào quý khách.').trim();
+    let cancelled = false;
+    let timer;
+
+    setIsStandby(false);
+    setCurrentState('RT-02');
+    setAiResponseText(greeting);
+    setGreetingNeedsSound(false);
+    speak(greeting, language || 'vi-VN', (error) => {
+      if (cancelled) return;
+      if (error?.name === 'NotAllowedError') {
+        setGreetingNeedsSound(true);
+        return;
+      }
+      if (error) timer = setTimeout(nextStep, 2000);
+      else nextStep();
+    }, null, null, parseFloat(voice_speed) || 1.0);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      stopSpeaking();
+      setGreetingNeedsSound(false);
+      setAiResponseText('');
+    };
+  }, [isAdGuestGreeting, stepRun, greetingAttempt]);
+
+  useEffect(() => {
+    if (waitingForAdGuest) stopListening({ releaseMicrophone: true });
+  }, [waitingForAdGuest, stopListening]);
 
   useEffect(() => {
     if (!isAdGuestTalking) return undefined;
     beginWorkflowTalk(activeStep);
-    return () => closeWorkflowTalk();
+    return () => closeWorkflowTalk({ releaseMicrophone: true });
   }, [isAdGuestTalking, stepRun]);
 
+  const adGuestTimeoutSec = Number(activeStep?.params?.silence_timeout_sec ?? activeStep?.params?.timeout);
   useEffect(() => {
-    if (!isAdGuestTalking || isSpeaking || isSpeechPending || isSpeechActive || isProcessing || isVideoCallOpen || isPinModalOpen) return undefined;
-    const timeoutMs = (Number(activeStep?.params?.silence_timeout_sec || activeStep?.params?.timeout) || 30) * 1000;
-    const timer = setInterval(() => {
-      if (!workflowFarewellRef.current && Date.now() - lastInteractionTimeRef.current >= timeoutMs) nextStep();
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isAdGuestTalking, stepRun, isSpeaking, isSpeechPending, isSpeechActive, isProcessing, isVideoCallOpen, isPinModalOpen]);
+    if (!isAdGuestTalking || isSpeaking || isSpeechPending || isSpeechActive || isProcessing || isTranscribing || isVideoCallOpen || isPinModalOpen) return undefined;
+    const timeoutMs = (adGuestTimeoutSec > 0 && Number.isFinite(adGuestTimeoutSec) ? adGuestTimeoutSec : 30) * 1000;
+    const talk = workflowTalkRef.current;
+    const readyAt = Date.now();
+    let timer;
+    const checkSilence = () => {
+      if (workflowTalkRef.current !== talk || workflowFarewellRef.current) return;
+      const remainingMs = timeoutMs - (Date.now() - Math.max(readyAt, lastInteractionTimeRef.current));
+      if (remainingMs > 0) timer = setTimeout(checkSilence, remainingMs);
+      else nextStep();
+    };
+    timer = setTimeout(checkSilence, timeoutMs);
+    return () => clearTimeout(timer);
+  }, [isAdGuestTalking, stepRun, adGuestTimeoutSec, isSpeaking, isSpeechPending, isSpeechActive, isProcessing, isTranscribing, isVideoCallOpen, isPinModalOpen]);
 
   const pausePromoForGuest = () => {
     if (!isIdlePromo) return;
@@ -1074,6 +1189,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   };
 
   const handleStopSpeaking = () => {
+    if (isAdGuestGreeting) {
+      nextStep();
+      return;
+    }
     activeChatRequestIdRef.current += 1;
     if (chatAbortControllerRef.current) {
       try { chatAbortControllerRef.current.abort(); } catch (e) { }
@@ -1104,6 +1223,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Bộ giám sát thời gian rảnh rỗi độc lập: kiểm tra mỗi 1 giây
   useEffect(() => {
     const checkIdleInterval = setInterval(() => {
+      // The ad workflow owns its silence clock while it is listening for a guest.
+      if (isAdGuestTalking) return;
       // 1. Kiểm tra trạng thái đang bận giao tiếp hoặc tương tác thực sự:
       // - Đang phát giọng nói robot qua loa (isSpeaking hoặc isSpeakingRef)
       // - AI Backend đang xử lý suy luận (isProcessing hoặc isProcessingRef)
@@ -1192,6 +1313,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isVideoCallOpen,
     isTaxiModalOpen,
     isWorkflowRunning,
+    isAdGuestTalking,
     parallelRun.isTalking,
     activeRoomNumber,
     isStandby,
@@ -1423,6 +1545,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động rảnh tay)
   const handleStartTalk = (options = {}) => {
+    if (waitingForAdGuest || isAdGuestGreeting || isAdGuestRecommendation || (phoneCameraTest && !isWorkflowRunning)) return;
     const isSilent = Boolean(options?.silent);
     if (isSilent && (isSpeakingRef.current || isSpeechActiveRef.current)) return;
     if (!isSpeechActiveRef.current) {
@@ -2050,7 +2173,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         sessionId,
         effectiveRoomNumber,
         chatSignal,
-        { ageGroup: guestAgeGroup, gender: guestGender, preferredLanguage: languageRef.current }
+        { ageGroup: recommendationAge, gender: recommendationGender, preferredLanguage: languageRef.current }
       );
 
       // Nếu người dùng đã kích hoạt câu nói mới, ngắt lời hoặc timeout xảy ra -> Hủy bỏ câu cũ
@@ -3270,7 +3393,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       {/* Màn hình Trình chiếu Quảng cáo Cloudinary (Khi rảnh rỗi hoặc nhận lệnh push từ Admin) */}
       <RobotAdPlayer
         isOpen={showParallelAds || showGuestWaitAds || (isStandby && !isWorkflowRunning && !guestPresent)}
-        onStop={showGuestWaitAds ? stopWorkflow : undefined}
+        onStop={showGuestWaitAds && !phoneCameraTestActive ? stopWorkflow : undefined}
         onClose={showGuestWaitAds ? undefined : () => {
           // Xe đang đi tuyến: chạm quảng cáo là khách muốn nói chuyện, báo xe dừng
           if (showParallelAds) {
@@ -3288,6 +3411,50 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           resetStandbyTimer();
         }}
       />
+
+      {(phoneCameraTest || phoneCameraKioskActive) && (
+        <PhoneCameraWorkflowTest
+          key={phoneCameraTest ? phoneCameraWorkflowId : activeWorkflow?.id}
+          workflowId={phoneCameraTest ? phoneCameraWorkflowId : undefined}
+          active={phoneCameraTestActive || phoneCameraKioskActive}
+          canStart={phoneCameraTest
+            ? !isWorkflowRunning && !isVideoCallOpen
+            : (showGuestWaitAds || isRecommendationStep) && batteryGuard.canStartGuestSession}
+          onStart={(workflow) => {
+            if (phoneCameraTest) {
+              setGuestPresent(false);
+              setIsStandby(false);
+              setCurrentState('RT-01');
+              startWorkflow(workflow);
+            }
+            prime?.();
+          }}
+          onStop={phoneCameraTest ? stopPhoneCameraTest : undefined}
+          onPresenceChange={setPhoneGuestPresent}
+          onDemographicsChange={setPhoneDemographics}
+        />
+      )}
+      {isAdGuestGreeting && greetingNeedsSound && (
+        <button type="button" className="fixed bottom-4 left-1/2 z-[65] -translate-x-1/2 rounded-full bg-stone-950 px-4 py-2 text-sm font-semibold text-white"
+          onClick={() => { prime?.(); setGreetingAttempt((attempt) => attempt + 1); }}>
+          Bật âm thanh để nghe lời chào
+        </button>
+      )}
+
+      {isRecommendationStep && (
+        <section className="absolute inset-0 z-[55] grid place-items-center overflow-y-auto bg-amber-50 p-4" aria-label="Gợi ý dịch vụ">
+          <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-4 text-stone-900 shadow-lg">
+            <h2 className="text-lg font-bold">{language === 'English' ? 'Suggested services' : 'Gợi ý dịch vụ'}</h2>
+            <ul className="my-3 space-y-2">
+              {!nodeSuggestions.length && <li className="text-sm text-stone-600">{language === 'English' ? 'Explore hotel amenities at the front desk.' : 'Quý khách có thể hỏi lễ tân về các tiện ích khách sạn.'}</li>}
+              {nodeSuggestions.map((item) => <li key={item} className="rounded-lg bg-stone-100 px-3 py-2 text-sm">{item}</li>)}
+            </ul>
+            <button type="button" onClick={nextStep} className="rounded-lg bg-stone-900 px-4 py-2 text-sm font-semibold text-white">
+              {language === 'English' ? 'Continue' : 'Tiếp tục'}
+            </button>
+          </div>
+        </section>
+      )}
 
       <MobileRobotScreen
         activeRoomNumber={activeRoomNumber}
@@ -3318,6 +3485,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         speechError={ttsError || speechError}
         transcript={transcript}
         volumeLevel={volumeLevel}
+        serviceSuggestions={workflowSuggestions}
+        onSelectSuggestion={(prompt) => {
+          setSuggestedPrompts([]);
+          handleStopTalkAndProcess(prompt, { force: true });
+        }}
         workflowTrigger={null}
         availableWorkflows={availableWorkflows}
         onStartWorkflow={startWorkflow}
@@ -3929,7 +4101,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         <main className="w-full flex-1 px-16 py-[54px] flex items-center justify-center gap-16 overflow-hidden">
 
           {/* Render Workflow Kiosk Interface trực tiếp tại trung tâm màn hình robot (loại trừ wf-06-idle-promo) */}
-          {requestPhase ? null : isWorkflowRunning && activeWorkflow?.id !== 'wf-06-idle-promo' && ((activeStep?.type === 'SHOW' && !waitingForAdGuest) || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || (activeStep?.type === 'COMMUNICATE' && !isWorkflowGuestTalking) || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST' || activeStep?.type === 'CHOICE') ? (
+          {requestPhase ? null : isWorkflowRunning && activeWorkflow?.id !== 'wf-06-idle-promo' && ((activeStep?.type === 'SHOW' && !waitingForAdGuest) || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || (activeStep?.type === 'COMMUNICATE' && !isWorkflowGuestTalking) || activeStep?.type === 'CREATE_REQUEST' || activeStep?.type === 'CHOICE') ? (
             <div className="w-[700px] max-h-[610px] bg-white/98 backdrop-blur-2xl border-2 border-stone-200/90 rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col overflow-hidden animate-fadeIn">
               <KioskDisplayPreview
                 activeStep={activeStep}
@@ -4117,9 +4289,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               )}
 
               {/* Interactive Quick-Reply Chips for Dynamic Conversation Continuation */}
-              {suggestedPrompts && suggestedPrompts.length > 0 && !isSpeaking && (
+              {visibleDesktopSuggestions.length > 0 && !isSpeaking && (
                 <div className="mt-3 flex flex-wrap items-center justify-center gap-2 animate-fadeIn z-20 max-w-xl">
-                  {suggestedPrompts.map((promptText, idx) => (
+                  {visibleDesktopSuggestions.map((promptText, idx) => (
                     <button
                       key={idx}
                       type="button"

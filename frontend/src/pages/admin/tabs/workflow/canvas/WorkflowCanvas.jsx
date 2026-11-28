@@ -51,6 +51,9 @@ export function WorkflowCanvas({ workflow, routes = [], selectedId, onSelect, on
       if (node.type === 'battery') {
         return { ...node, data: { ...node.data, onThreshold: (value) => onChange(setBatteryThreshold(workflow, value)) } };
       }
+      if (node.type === 'start') {
+        return { ...node, draggable: false, data: { ...node.data, onConfigure: () => onSelect(node.id) } };
+      }
       if (node.type === 'screenLane' || node.type === 'guestEvent') return node;
       if (node.type !== 'step') return { ...node, draggable: false, selectable: false };
       const issues = [...stepSetup(node.data.step, routes).issues, ...(parallelIssues[node.id] || [])];
@@ -58,7 +61,7 @@ export function WorkflowCanvas({ workflow, routes = [], selectedId, onSelect, on
       return { ...node, data: { ...node.data, issues } };
     });
     return { nodes: decorated, edges: edges.map(edgeStyle) };
-  }, [workflow, routes, robotMode, onChange]);
+  }, [workflow, routes, robotMode, onChange, onSelect]);
 
   const [nodes, setNodes] = useState(() => markSelected(graph.nodes, selectedId));
   useEffect(() => { setNodes(markSelected(graph.nodes, selectedId)); }, [graph, selectedId]);
@@ -104,7 +107,7 @@ export function WorkflowCanvas({ workflow, routes = [], selectedId, onSelect, on
             .reduce((acc, edge) => disconnect(acc, edge), wf)));
         if (removed.has(selectedId)) onSelect(null);
       }}
-      onNodeClick={(_, node) => onSelect(['step', 'battery', 'screenLane', 'guestEvent'].includes(node.type) ? node.id : null)}
+      onNodeClick={(_, node) => onSelect(['start', 'step', 'battery', 'screenLane', 'guestEvent'].includes(node.type) ? node.id : null)}
       onPaneClick={() => onSelect(null)}
       deleteKeyCode={['Backspace', 'Delete']}
       fitView

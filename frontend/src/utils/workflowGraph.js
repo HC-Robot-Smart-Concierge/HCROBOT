@@ -156,7 +156,10 @@ export function workflowToGraph(workflow) {
   const parallel = parallelOf(wf);
   const lanes = parallel ? laneMap(wf) : {};
   const nodes = [
-    { id: START, type: 'start', position: layout[START], data: { parallel: Boolean(parallel) }, deletable: false },
+    { id: START, type: 'start', position: layout[START], deletable: false, data: {
+      triggerType: wf.trigger_type,
+      scheduleCount: (wf.execution_config?.schedules || []).filter((schedule) => schedule.enabled).length,
+    } },
     { id: END_NODE, type: 'end', position: layout[END_NODE], data: {}, deletable: false },
     ...wf.steps.map((step, index) => ({
       id: step.step_id, type: 'step', position: step.params.ui_position || layout[step.step_id],

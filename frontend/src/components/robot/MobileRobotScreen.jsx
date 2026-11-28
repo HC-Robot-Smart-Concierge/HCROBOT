@@ -159,6 +159,8 @@ export const MobileRobotScreen = ({
   speechError,
   transcript = '',
   volumeLevel = 0,
+  serviceSuggestions = [],
+  onSelectSuggestion,
   workflowTrigger,
   onOpenFacilities,
   onOpenFoodMenu,
@@ -963,6 +965,19 @@ export const MobileRobotScreen = ({
               )}
             </div>
           </main>
+        )}
+
+        {!isNavigating && !isUtilitiesMenuOpen && serviceSuggestions.length > 0 && (
+          <div className="relative z-30 flex shrink-0 flex-wrap justify-center gap-1.5 border-t border-stone-200/70 bg-[#F5F2EB] p-2 robot-safe-x"
+            aria-label={isEn ? 'Suggested services' : 'Gợi ý dịch vụ'}>
+            {serviceSuggestions.map((suggestion) => (
+              <button key={suggestion} type="button"
+                className="rounded-full border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-stone-900 shadow-sm active:bg-stone-100"
+                onClick={(event) => { event.stopPropagation(); onSelectSuggestion?.(suggestion); }}>
+                {suggestion}
+              </button>
+            ))}
+          </div>
         )}
 
         {/* Vùng chạm bí mật góc dưới bên phải cho Mobile (Chạm 5 lần trong 2s để đăng xuất) */}

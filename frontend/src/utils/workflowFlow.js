@@ -88,11 +88,39 @@ export function resolveNextStepIndex(steps, currentIndex, outcome) {
   return followLink(list, params.timeout_next_step_id ?? cancelTarget, sequential);
 }
 
-export function isAdGuestTalkStep(workflow, step) {
-  if (step?.type !== 'COMMUNICATE') return false;
+function resolveAdGuestSequence(steps, adIndex) {
+  const first = resolveNextStepIndex(steps, adIndex);
+  const greeting = steps[first]?.type === 'GREET' ? first : -1;
+  const afterGreeting = greeting >= 0 ? resolveNextStepIndex(steps, greeting) : first;
+  const recommendation = steps[afterGreeting]?.type === 'RECOMMEND' ? afterGreeting : -1;
+  const talk = recommendation >= 0 ? resolveNextStepIndex(steps, recommendation) : afterGreeting;
+  return steps[talk]?.type === 'COMMUNICATE' ? { greeting, recommendation, talk } : null;
+}
+
+export function resolveAdGuestTalkStepIndex(steps, adIndex) {
+  return resolveAdGuestSequence(steps, adIndex)?.talk ?? -1;
+}
+
+function isAdGuestStep(workflow, step, type, stage) {
+  if (step?.type !== type) return false;
   const steps = workflow?.steps || [];
-  return steps.some((ad, index) => isGuestWaitingAd(ad) &&
-    steps[resolveNextStepIndex(steps, index)]?.step_id === step.step_id);
+  return steps.some((ad, index) => {
+    if (!isGuestWaitingAd(ad)) return false;
+    const stageIndex = resolveAdGuestSequence(steps, index)?.[stage] ?? -1;
+    return stageIndex >= 0 && steps[stageIndex].step_id === step.step_id;
+  });
+}
+
+export function isAdGuestGreetingStep(workflow, step) {
+  return isAdGuestStep(workflow, step, 'GREET', 'greeting');
+}
+
+export function isAdGuestRecommendationStep(workflow, step) {
+  return isAdGuestStep(workflow, step, 'RECOMMEND', 'recommendation');
+}
+
+export function isAdGuestTalkStep(workflow, step) {
+  return isAdGuestStep(workflow, step, 'COMMUNICATE', 'talk');
 }
 
 /** The option a guest named, or null when nothing or more than one option matched. */

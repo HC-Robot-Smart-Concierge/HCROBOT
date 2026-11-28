@@ -135,6 +135,9 @@ export const OTTO_STEP_TYPES = [
   },
 ];
 
+const LEGACY_STEP_TYPES = new Set(['CREATE_REQUEST', 'CHOICE', 'LISTEN', 'SPEAK']);
+export const ADDABLE_OTTO_STEP_TYPES = OTTO_STEP_TYPES.filter(({ type }) => !LEGACY_STEP_TYPES.has(type));
+
 /**
  * Clean Neutral Palette Definitions for Otto Steps (Minimalist Slate / Stone)
  */

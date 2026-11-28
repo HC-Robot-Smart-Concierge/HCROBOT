@@ -68,7 +68,7 @@ export async function fetchWorkflows() {
  * Fetch a single workflow by ID
  */
 export async function fetchWorkflowById(workflowId) {
-  const res = await fetch(`${API_BASE}/workflows/${workflowId}`);
+  const res = await fetch(`${API_BASE}/workflows/${encodeURIComponent(workflowId)}`);
   if (!res.ok) throw new Error('Không thể tải chi tiết Workflow');
   return res.json();
 }
@@ -77,11 +77,11 @@ export async function fetchWorkflowById(workflowId) {
  * Create or save a workflow with steps
  */
 export async function saveWorkflow(workflow) {
-  const body = workflow.trigger_type === 'AUTO_DETECT' ? { ...workflow, trigger_type: 'MANUAL' } : workflow;
+  const payload = workflow.trigger_type === 'AUTO_DETECT' ? { ...workflow, trigger_type: 'MANUAL' } : workflow;
   const res = await fetch(`${API_BASE}/workflows`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -143,6 +143,19 @@ export async function fetchWorkflowRuns(signal) {
   const res = await fetch(`${API_BASE}/workflows/runs/recent`, { signal });
   if (!res.ok) throw await errorFromResponse(res, 'Không tải được lịch sử chạy workflow');
   return res.json();
+}
+
+export async function fetchCurrentWorkflows(signal) {
+  const res = await fetch(`${API_BASE}/workflows/runs/current`, { signal, cache: 'no-store' });
+  if (!res.ok) throw await errorFromResponse(res, 'Không tải được workflow đang chạy');
+  return res.json();
+}
+
+export async function reportScreenWorkflow(payload, signal) {
+  const res = await fetch(`${API_BASE}/workflows/runs/screen-status`, {
+    method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await errorFromResponse(res, 'Không gửi được trạng thái workflow của màn hình');
 }
 
 export async function cancelWorkflowRun(runId) {

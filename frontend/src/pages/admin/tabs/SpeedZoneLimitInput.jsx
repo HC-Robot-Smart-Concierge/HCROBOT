@@ -7,7 +7,7 @@ export default function SpeedZoneLimitInput({ zone, onCommit, motorMinSpeed, onD
   useEffect(() => {
     setDraft(String(zone.speed_limit));
     setError('');
-    onValidityChange(true);
+    onValidityChange(parseZoneSpeed(zone.speed_limit) !== null);
   }, [zone.id, zone.speed_limit, onValidityChange]);
   useEffect(() => () => onValidityChange(true), [onValidityChange]);
   const commit = () => {
@@ -40,9 +40,9 @@ export default function SpeedZoneLimitInput({ zone, onCommit, motorMinSpeed, onD
       <span className={`block text-[9px] mt-1 ${error ? 'text-red-400' : 'text-slate-400'}`}>
         {error || 'Nhấn Lưu vùng để áp dụng'}
       </span>
-      {Number.isFinite(motorMinSpeed) && Number(draft) < motorMinSpeed && (
+      {Number.isFinite(motorMinSpeed) && parseZoneSpeed(draft) !== null && Number(draft) + 0.005 <= motorMinSpeed && (
         <span className="block text-[9px] mt-1 text-amber-300 max-w-52">
-          Dưới sàn motor ước tính {motorMinSpeed.toFixed(2)} m/s: xe thật sẽ dừng.
+          Mức tối thiểu khi chạy thẳng khoảng {motorMinSpeed.toFixed(2)} m/s. Bridge có thể chặn lệnh chạy trong vùng này.
         </span>
       )}
     </div>

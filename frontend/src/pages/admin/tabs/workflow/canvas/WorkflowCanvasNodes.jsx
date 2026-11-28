@@ -1,8 +1,9 @@
 import React from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { AlertTriangle, BatteryLow, CornerDownLeft, Flag, Monitor, Play, Repeat, RotateCw, UserRound } from 'lucide-react';
+import { AlertTriangle, BatteryLow, CornerDownLeft, Flag, Monitor, Repeat, RotateCw, UserRound, Zap } from 'lucide-react';
 import { isChargerMove } from '../../../../../utils/workflowExecution';
 import { STEP_SCRATCH_THEMES, OTTO_STEP_TYPES } from '../workflowConstants';
+import { triggerLabel } from '../WorkflowTriggerPanel';
 
 export const OK_COLOR = '#16a34a';
 export const ERROR_COLOR = '#dc2626';
@@ -14,9 +15,15 @@ const HEADER = 58;
 
 const handleStyle = (color) => ({ width: 11, height: 11, background: color, border: '2px solid #fff' });
 
-function StartNode({ data }) {
-  return <div className="flex items-center gap-1.5 rounded-full bg-stone-900 text-white px-4 py-2 text-xs font-bold shadow">
-    <Play className="w-3.5 h-3.5" />{data?.parallel ? 'Bắt đầu · Làn Xe' : 'Bắt đầu'}
+function StartNode({ data, selected }) {
+  return <div className={`relative rounded-xl bg-stone-900 text-white shadow ${selected ? 'ring-2 ring-offset-2 ring-stone-500' : ''}`}>
+    <button type="button" onClick={(event) => { event.stopPropagation(); data.onConfigure(); }}
+      className="nodrag nopan block w-full rounded-xl px-4 py-2 text-left text-xs" aria-label="Cấu hình Trigger">
+      <span className="flex items-center gap-1.5 font-bold"><Zap className="h-3.5 w-3.5" />Trigger</span>
+      <span className="mt-0.5 block max-w-36 truncate text-[10px] text-stone-300">
+        {triggerLabel(data.triggerType)}{data.triggerType === 'SCHEDULE' && ` · ${data.scheduleCount} lịch`}
+      </span>
+    </button>
     <Handle type="source" id="ok" position={Position.Right} style={handleStyle(OK_COLOR)} />
   </div>;
 }

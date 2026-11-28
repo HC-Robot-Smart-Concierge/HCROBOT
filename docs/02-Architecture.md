@@ -1,7 +1,7 @@
 # TỔNG QUAN KIẾN TRÚC HỆ THỐNG HC-ROBOT (ARCHITECTURE)
 
 > **Mục đích:** Đặc tả kiến trúc tổng thể, mô hình phân tầng, các luồng dữ liệu thời gian thực và cơ chế chịu lỗi của hệ thống Robot Trợ lý Dịch vụ Khách sạn (HC-Robot).
-> **Ngày cập nhật đối chiếu:** 06/11/2026.
+> **Ngày cập nhật đối chiếu:** 28/11/2026.
 > **Tài liệu tham chiếu liên quan:**
 > - Bản đồ file: [[01-File-Map|Bản đồ source code (File Map)]]
 > - Báo cáo tối ưu hội thoại: [[guides/ai_optimization|Hướng Dẫn Tối Ưu Voice Pipeline]]
@@ -78,7 +78,7 @@ graph TD
         ConciergeUI["ConciergeDashboard.jsx (Bàn trực tổng đài)"]
         VideoModal["MessengerVideoCallModal.jsx (WebRTC 2-Way Video Call)"]
         AdminUI["AdminPortalPage.jsx (Bản đồ, Kịch bản, RAG, Quảng cáo)"]
-        DeptDashboards["Department Dashboards (Lễ tân, Buồng phòng, Bếp, Taxi, Bảo trì)"]
+        DeptDashboards["Department Dashboards (Lễ tân, Phục vụ phòng, Bếp, Hành lý, Taxi, Bảo trì)"]
 
         ConciergeUI --> VideoModal
         AdminUI --> DeptDashboards
@@ -214,9 +214,8 @@ stateDiagram-v2
 
 ### Các phòng ban nghiệp vụ tích hợp:
 - **Lễ tân (Reception):** Nhận diện thủ tục nhận/trả phòng, giải đáp quy định lưu trú.
-- **Buồng phòng (Housekeeping):** Dọn phòng, bổ sung khăn tắm, nước uống, đồ amenities.
 - **Bếp & Nhà hàng (Kitchen & F&B):** Tiếp nhận order món từ `RobotFoodMenuScreen.jsx`, chuyển thẳng vào KDS Bếp (`KitchenDashboard.jsx`).
-- **Phục vụ phòng (Room Service):** Xác thực số phòng và mã PIN khách hàng qua `RoomPickerModal.jsx` (đã bỏ cơ chế quẹt thẻ NFC cũ), chuyển yêu cầu giao đồ ăn/dụng cụ lên phòng.
+- **Phục vụ phòng (Room Service):** Tiếp nhận và điều phối các yêu cầu dọn phòng, bổ sung khăn tắm, nước uống, đồ amenities, giặt ủi (đã hợp nhất từ phòng ban Housekeeping cũ vào `DEP-ROOMSERVICE`) và giao đồ ăn/vật phẩm lên phòng sau khi xác thực qua `RoomPickerModal.jsx` (đã bỏ cơ chế quẹt thẻ NFC cũ).
 - **Vận chuyển & Đặt xe (Taxi Services):** Hỗ trợ khách đặt taxi 4 chỗ/7 chỗ, ước tính thời gian đón và hãng xe đối tác.
 - **Hành lý (Bell Services):** Hỗ trợ mang vác hành lý lên phòng hoặc gửi đồ tại sảnh.
 - **Kỹ thuật & Bảo trì (Maintenance):** Quản lý danh mục sự cố kỹ thuật qua `MaintenanceCatalogModal.jsx`, tiếp nhận báo hỏng qua `RobotMaintenanceMenuScreen.jsx` với giao diện Touch-First, tra cứu tiến độ độc lập bảo mật bằng mã PIN.

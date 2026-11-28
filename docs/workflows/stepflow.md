@@ -56,7 +56,7 @@ Dưới đây là phần mô tả chi tiết từng Step dưới dạng đoạn 
 ### **7. Step CREATE\_REQUEST (Khởi tạo và gửi yêu cầu dịch vụ)**
 
 * **Giải thích chi tiết:** Đây là bước kết nối giữa robot và hệ thống quản lý nội bộ của khách sạn. Khi khách có nhu cầu phát sinh, robot sẽ đóng gói thông tin thành một phiếu dịch vụ (ticket) và đồng bộ về hệ thống backend để các phòng ban xử lý.
-* **Nhiệm vụ cụ thể:** Robot thu thập số phòng cùng chi tiết yêu cầu, sau đó tạo phiếu công việc gửi tới bộ phận buồng phòng (housekeeping) để dọn phòng, giao thêm khăn/nước uống, hoặc hỗ trợ đặt taxi đưa đón sân bay. Ngoài ra, bước này cũng hỗ trợ phát cảnh báo gọi nhân viên trực tiếp khi khách cần sự trợ giúp đặc biệt.
+* **Nhiệm vụ cụ thể:** Robot thu thập số phòng cùng chi tiết yêu cầu, sau đó tạo phiếu công việc gửi tới bộ phận phục vụ phòng (Room Service) để dọn phòng, giao thêm khăn/nước uống, hoặc gửi tới bộ phận tương ứng (Kitchen, Concierge/Taxi, Bell Services, Maintenance, Reception). Ngoài ra, bước này cũng hỗ trợ phát cảnh báo gọi nhân viên trực tiếp khi khách cần sự trợ giúp đặc biệt.
 
 ### **8. Step FEEDBACK (Thu thập đánh giá chất lượng)**
 
@@ -73,7 +73,7 @@ Dưới đây là phần mô tả chi tiết từng Step dưới dạng đoạn 
 | **SHOW** | screen\_type  content\_id  timeout | string  string  int | Loại màn hình ("MENU", "MAP", "SLIDE")  ID giao diện hoặc file ảnh/video  Thời gian hiển thị (giây) |
 | **LISTEN** | input\_source  timeout  output\_var | string  int  string | Kênh nhận ("VOICE", "TOUCH", "BOTH")  Thời gian chờ phản hồi (giây)  Biến lưu kết quả |
 | **RECOMMEND** | category  limit  filter | string  int  object | Nhóm gợi ý ("DINING", "AMENITIES")  Số lượng kết quả cần lấy  Điều kiện lọc phụ (JSON) |
-| **CREATE\_REQUEST** | service\_type  room\_number  note  urgency | string  string  string  string | Dịch vụ ("HOUSEKEEPING", "TAXI")  Số phòng của khách  Ghi chú chi tiết yêu cầu  Độ ưu tiên ("LOW", "NORMAL", "HIGH") |
+| **CREATE\_REQUEST** | target\_department  service\_type  room\_number  note  urgency | string  string  string  string  string | Bộ phận nhận ("Room\_Service", "Food\_and\_Beverage", "Front\_Desk", "Reception", "Bell\_Services", "Maintenance", "Taxi", "Concierge")  Loại dịch vụ ("ROOM\_SERVICE", "TAXI", ...)  Số phòng của khách  Ghi chú chi tiết yêu cầu  Độ ưu tiên ("LOW", "NORMAL", "HIGH") |
 | **FEEDBACK** | scale  timeout  output\_var | int  int  string | Thang điểm tối đa (mặc định: 5)  Thời gian chờ chấm điểm (giây)  Biến lưu số sao đánh giá |
 
 **Workflows**
@@ -98,13 +98,13 @@ Dưới đây là phần mô tả chi tiết từng Step dưới dạng đoạn 
   4. SHOW (screen\_type: "MENU", content\_id: "UI\_RECOMMEND\_LIST", timeout: 45)
   5. SPEAK (text: "Dưới đây là các gợi ý nhà hàng nổi bật cho bạn.", language: "vi-VN", speed: 1.0)
 
-**Workflow 3: Đặt dịch vụ buồng phòng / Gọi xe**
+**Workflow 3: Đặt dịch vụ phục vụ phòng (Room Service) / Gọi xe**
 
 * Mục đích: Tạo phiếu yêu cầu dọn phòng, xin thêm đồ dùng hoặc đặt taxi.
 * Chuỗi Step:
   1. SHOW (screen\_type: "MENU", content\_id: "UI\_SERVICE\_FORM", timeout: 30)
   2. LISTEN (input\_source: "BOTH", timeout: 30, output\_var: "request\_data")
-  3. CREATE\_REQUEST (service\_type: "HOUSEKEEPING", room\_number: "402", note: "Them 2 chai nuoc", urgency: "NORMAL")
+  3. CREATE\_REQUEST (target\_department: "Room\_Service", service\_type: "ROOM\_SERVICE", room\_number: "402", note: "Them 2 chai nuoc", urgency: "NORMAL")
   4. SPEAK (text: "Yêu cầu của quý khách đã được gửi tới nhân viên.", language: "vi-VN", speed: 1.0)
   5. SHOW (screen\_type: "MENU", content\_id: "UI\_CONFIRMATION", timeout: 10)
 

@@ -1,10 +1,15 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, Integer, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+
+def _utcnow_naive() -> datetime:
+    """Return UTC naive datetime compatible with TIMESTAMP WITHOUT TIME ZONE."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 if TYPE_CHECKING:
     from app.models.account import Account
@@ -34,8 +39,8 @@ class ManagementDirective(Base):
     type: Mapped[str] = mapped_column(String(50), default="spill") # 'spill', 'room_service', 'towels', 'directive'
     created_by: Mapped[str] = mapped_column(String(100), default="System Administrator")
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow_naive, onupdate=_utcnow_naive)
 
     # Relationships
     assigned_account: Mapped[Optional["Account"]] = relationship("Account", foreign_keys=[assigned_account_id])

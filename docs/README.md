@@ -73,7 +73,7 @@ flowchart LR
   * Tài liệu chi tiết 6 luồng vận hành cốt lõi theo chuẩn slide đồ án: Cấu hình Admin, Đón tiếp & Tư vấn AI, Điều phối dịch vụ khách sạn, Chuyển giao hỗ trợ sang nhân viên (Video Call & Live Translation), Điều hướng tự hành & Dẫn khách (Nav2), và Giám sát đội xe & Tự động sạc đa tầng.
 * **[[workflows/stepflow|Đặc Tả 8 Action Blocks & Kịch Bản Stepflows (workflows/stepflow.md)]]**:
   * Định nghĩa 8 Action Blocks chuẩn: `MOVE`, `GREET`, `SPEAK`, `SHOW`, `LISTEN`, `RECOMMEND`, `CREATE_REQUEST`, `FEEDBACK`.
-  * Đặc tả chi tiết các kịch bản vận hành khách sạn: Đón tiếp sảnh, Dẫn đường tới vị trí, Dọn buồng phòng, Đặt xe taxi, Phục vụ món tại phòng (Room Service), Báo hỏng & Sửa chữa kỹ thuật (Maintenance), Tuần tra an ninh và Thu thập phản hồi.
+  * Đặc tả chi tiết các kịch bản vận hành khách sạn: Đón tiếp sảnh, Dẫn đường tới vị trí, Phục vụ phòng & tiện ích (Room Service: dọn phòng, khăn tắm, đồ ăn), Đặt xe taxi, Báo hỏng & Sửa chữa kỹ thuật (Maintenance), Tuần tra an ninh và Thu thập phản hồi.
   * Kiến trúc SSOT Service Keywords (`constants.py`) đồng bộ danh mục từ khóa giữa kịch bản hệ thống và LangGraph Fast-path.
 
 ---

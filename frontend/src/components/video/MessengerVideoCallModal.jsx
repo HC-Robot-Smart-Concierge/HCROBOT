@@ -143,6 +143,8 @@ export const MessengerVideoCallModal = ({
   const remoteStreamRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const recordedChunksRef = useRef([]);
+  const recordingResourcesRef = useRef(null);
+  const remoteFallbackImageRef = useRef(null);
   const callStartTimeRef = useRef(null);
   const lastWebSpeechResultAtRef = useRef(0);
   const timerIntervalRef = useRef(null);
@@ -344,14 +346,110 @@ export const MessengerVideoCallModal = ({
     }
   };
 
-  // 3. Khởi tạo ghi hình cuộc gọi (Ưu tiên WebM VP8/Opus bitrate 600kbps tiết kiệm băng thông)
+  // 3. Khởi tạo ghi hình cuộc gọi ghép 2 màn hình (Khách chính + Lễ tân PiP) & mix âm thanh 2 chiều
   const startRecording = (stream) => {
     try {
-      if (!window.MediaRecorder) {
+      if (role !== 'staff' || !window.MediaRecorder) {
         return;
       }
 
+      if (recordingResourcesRef.current) {
+        if (recordingResourcesRef.current.drawInterval) {
+          clearInterval(recordingResourcesRef.current.drawInterval);
+        }
+        if (recordingResourcesRef.current.audioCtx && recordingResourcesRef.current.audioCtx.state !== 'closed') {
+          recordingResourcesRef.current.audioCtx.close().catch(() => {});
+        }
+        recordingResourcesRef.current = null;
+      }
+
       recordedChunksRef.current = [];
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 720;
+      const ctx = canvas.getContext('2d');
+
+      const drawFrame = () => {
+        if (!ctx) return;
+        ctx.fillStyle = '#121212';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 1. Vẽ video Khách (nền chính) từ WebRTC hoặc fallback video_frame
+        const remoteEl = remoteVideoRef.current;
+        const fallbackImg = remoteFallbackImageRef.current;
+        if (remoteEl && remoteEl.readyState >= 2 && remoteEl.videoWidth > 0) {
+          const vw = remoteEl.videoWidth;
+          const vh = remoteEl.videoHeight;
+          const scale = Math.min(canvas.width / vw, canvas.height / vh);
+          const dw = vw * scale;
+          const dh = vh * scale;
+          ctx.drawImage(remoteEl, (canvas.width - dw) / 2, (canvas.height - dh) / 2, dw, dh);
+        } else if (fallbackImg && fallbackImg.complete && fallbackImg.naturalWidth > 0) {
+          const iw = fallbackImg.naturalWidth;
+          const ih = fallbackImg.naturalHeight;
+          const scale = Math.min(canvas.width / iw, canvas.height / ih);
+          const dw = iw * scale;
+          const dh = ih * scale;
+          ctx.drawImage(fallbackImg, (canvas.width - dw) / 2, (canvas.height - dh) / 2, dw, dh);
+        }
+
+        // 2. Vẽ video Lễ tân (PiP góc dưới phải)
+        const localEl = localVideoRef.current;
+        if (localEl && localEl.readyState >= 2 && localEl.videoWidth > 0) {
+          const pipW = 260;
+          const pipH = 160;
+          const pipX = canvas.width - pipW - 24;
+          const pipY = canvas.height - pipH - 24;
+          ctx.save();
+          ctx.fillStyle = '#141413';
+          ctx.fillRect(pipX - 2, pipY - 2, pipW + 4, pipH + 4);
+          ctx.drawImage(localEl, pipX, pipY, pipW, pipH);
+          ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(pipX, pipY, pipW, pipH);
+          ctx.restore();
+        }
+      };
+
+      drawFrame();
+      const drawInterval = setInterval(drawFrame, 40);
+
+      // Mix âm thanh 2 chiều (Micro Lễ tân + Audio Khách) vào 1 Audio track
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = AudioCtx ? new AudioCtx() : null;
+      let mixedAudioTracks = [];
+      const connectedTrackIds = new Set();
+      let audioDest = null;
+
+      const attachAudioTracks = (mediaStream) => {
+        if (!audioCtx || !audioDest || !mediaStream) return;
+        mediaStream.getAudioTracks().forEach((track) => {
+          if (track.readyState === 'live' && !connectedTrackIds.has(track.id)) {
+            connectedTrackIds.add(track.id);
+            try {
+              const src = audioCtx.createMediaStreamSource(new MediaStream([track]));
+              src.connect(audioDest);
+            } catch {}
+          }
+        });
+      };
+
+      if (audioCtx) {
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => {});
+        }
+        audioDest = audioCtx.createMediaStreamDestination();
+        attachAudioTracks(stream || remoteStreamRef.current);
+        attachAudioTracks(localStreamRef.current);
+        mixedAudioTracks = audioDest.stream.getAudioTracks();
+      } else {
+        const fallbackAudio = (stream || remoteStreamRef.current)?.getAudioTracks() || [];
+        mixedAudioTracks = fallbackAudio;
+      }
+
+      const canvasVideoTracks = typeof canvas.captureStream === 'function' ? canvas.captureStream(25).getVideoTracks() : [];
+      const compositeStream = new MediaStream([...canvasVideoTracks, ...mixedAudioTracks]);
+
       let mimeType = '';
       if (typeof MediaRecorder.isTypeSupported === 'function') {
         if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
@@ -366,13 +464,14 @@ export const MessengerVideoCallModal = ({
       }
 
       const recorderOptions = {
-        videoBitsPerSecond: 600000, // 600 Kbps - rõ nét chuẩn web nhưng siêu nhẹ dung lượng
+        videoBitsPerSecond: 800000,
+        audioBitsPerSecond: 96000,
       };
       if (mimeType) {
         recorderOptions.mimeType = mimeType;
       }
 
-      const recorder = new MediaRecorder(stream, recorderOptions);
+      const recorder = new MediaRecorder(compositeStream, recorderOptions);
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
@@ -388,6 +487,12 @@ export const MessengerVideoCallModal = ({
 
       recorder.start(1000);
       mediaRecorderRef.current = recorder;
+      recordingResourcesRef.current = {
+        drawInterval,
+        audioCtx,
+        compositeStream,
+        attachAudioTracks,
+      };
     } catch (err) {
       console.warn('[VideoCall] Lỗi khởi tạo MediaRecorder (bỏ qua ghi hình):', err);
     }
@@ -403,8 +508,26 @@ export const MessengerVideoCallModal = ({
     const endedAt = new Date().toISOString();
     const transcripts = callTranscriptsRef.current ? [...callTranscriptsRef.current] : [];
 
+    const cleanupRecordingResources = () => {
+      if (recordingResourcesRef.current) {
+        if (recordingResourcesRef.current.drawInterval) {
+          clearInterval(recordingResourcesRef.current.drawInterval);
+        }
+        if (recordingResourcesRef.current.compositeStream) {
+          recordingResourcesRef.current.compositeStream.getTracks().forEach((t) => {
+            try { t.stop(); } catch {}
+          });
+        }
+        if (recordingResourcesRef.current.audioCtx && recordingResourcesRef.current.audioCtx.state !== 'closed') {
+          recordingResourcesRef.current.audioCtx.close().catch(() => {});
+        }
+        recordingResourcesRef.current = null;
+      }
+    };
+
     const finalizeAndSend = () => {
-      if (recordedChunksRef.current && recordedChunksRef.current.length > 0) {
+      cleanupRecordingResources();
+      if (role === 'staff' && recordedChunksRef.current && recordedChunksRef.current.length > 0) {
         const mime = recorder?.mimeType || 'video/webm';
         const blob = new Blob(recordedChunksRef.current, { type: mime });
         uploadCallRecording(sessionId, blob, durationSec, startedAt, endedAt, transcripts)
@@ -788,8 +911,12 @@ export const MessengerVideoCallModal = ({
         }
         setCallStatus('connected');
         callStatusRef.current = 'connected';
-        if (!mediaRecorderRef.current && remoteStreamRef.current) {
-          startRecording(remoteStreamRef.current);
+        if (role === 'staff') {
+          if (!mediaRecorderRef.current && remoteStreamRef.current) {
+            startRecording(remoteStreamRef.current);
+          } else if (recordingResourcesRef.current?.attachAudioTracks && remoteStreamRef.current) {
+            recordingResourcesRef.current.attachAudioTracks(remoteStreamRef.current);
+          }
         }
       };
 
@@ -1185,6 +1312,10 @@ export const MessengerVideoCallModal = ({
           } else if (data.type === 'video_frame') {
             if (data.senderRole !== role && data.frame) {
               setRemoteFallbackFrame(data.frame);
+              if (!remoteFallbackImageRef.current) {
+                remoteFallbackImageRef.current = new Image();
+              }
+              remoteFallbackImageRef.current.src = data.frame;
             }
           } else if (data.type === 'webrtc_video_ready') {
             if (data.senderRole !== role) {

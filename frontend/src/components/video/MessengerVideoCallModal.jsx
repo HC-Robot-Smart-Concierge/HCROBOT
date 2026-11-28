@@ -2411,8 +2411,8 @@ export const MessengerVideoCallModal = ({
 
       {/* Video Call Modal Window */}
       <div className="relative w-full h-full lg:h-[620px] lg:max-w-4xl bg-[#1A1A1A] rounded-none lg:rounded-3xl overflow-hidden shadow-2xl border-0 lg:border lg:border-stone-800 flex flex-col">
-        {/* TOP BAR (GOOGLE MEET MINIMALIST HEADER) */}
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 sm:px-5 py-2.5 sm:py-3 pt-[max(0.75rem,env(safe-area-inset-top))] bg-gradient-to-b from-[#141413]/90 via-[#141413]/50 to-transparent robot-safe-x">
+        {/* TOP BAR (GOOGLE MEET MINIMALIST HEADER - LANDSCAPE FRIENDLY) */}
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 sm:px-5 py-1.5 sm:py-2.5 pt-[max(0.5rem,env(safe-area-inset-top))] bg-gradient-to-b from-black/75 via-black/30 to-transparent robot-safe-x">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="text-white text-xs sm:text-sm font-semibold tracking-wide truncate max-w-[120px] sm:max-w-[180px] md:max-w-xs flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
@@ -2475,10 +2475,10 @@ export const MessengerVideoCallModal = ({
 
             <button
               onClick={toggleFullscreen}
-              className="w-8 h-8 rounded-full bg-[#202124]/90 hover:bg-white/10 text-stone-300 border border-white/10 flex items-center justify-center transition-colors cursor-pointer"
+              className="w-8 h-8 rounded-full bg-[#141413] hover:bg-[#262523] text-white border border-white/20 flex items-center justify-center transition-colors cursor-pointer"
               title="Toàn màn hình"
             >
-              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" /> : <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />}
             </button>
           </div>
         </div>
@@ -2647,11 +2647,11 @@ export const MessengerVideoCallModal = ({
             </div>
           )}
 
-          {/* FLOATING LIVE CAPTIONS FEED (GOOGLE MEET MULTI-LINE CAPTIONS) */}
+          {/* FLOATING LIVE CAPTIONS FEED (TRANSPARENT OVERLAY FOR LANDSCAPE & DESKTOP) */}
           {(callTranscripts.length > 0 || activeSubtitle || peerInterim || (interimText && translateMode !== 'bypass')) && (
-            <div className="absolute bottom-20 sm:bottom-24 left-3 right-24 sm:left-6 sm:right-36 lg:right-52 z-25 flex justify-start sm:justify-center pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200">
-              <div className="bg-black/80 backdrop-blur-md border border-white/15 rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 max-w-xl w-full sm:w-auto text-left shadow-2xl space-y-2 pointer-events-auto">
-                {callTranscripts.slice(-3).map((item, idx, arr) => {
+            <div className="absolute bottom-16 sm:bottom-20 left-3 right-32 sm:left-6 sm:right-44 lg:right-52 z-25 flex justify-start pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="bg-transparent max-w-xl w-full text-left space-y-1.5 [text-shadow:0_2px_6px_rgba(0,0,0,0.95)]">
+                {callTranscripts.slice(-2).map((item, idx, arr) => {
                   const isStaffSpeaker = item.speaker === 'Staff';
                   const isMine = (role === 'staff' && isStaffSpeaker) || (role === 'guest' && !isStaffSpeaker);
                   const isLatest = idx === arr.length - 1 && !peerInterim && !interimText;
@@ -2660,7 +2660,7 @@ export const MessengerVideoCallModal = ({
                       key={`${item.timestamp}-${idx}`}
                       className={`border-l-2 pl-2.5 transition-opacity ${
                         isStaffSpeaker ? 'border-emerald-400' : 'border-amber-400'
-                      } ${isLatest ? 'opacity-100' : 'opacity-75'}`}
+                      } ${isLatest ? 'opacity-100' : 'opacity-80'}`}
                     >
                       <div className="flex items-center gap-2">
                         <span className={`text-[10px] uppercase font-bold tracking-wider ${
@@ -2669,16 +2669,16 @@ export const MessengerVideoCallModal = ({
                           {isMine ? 'Bạn' : (isStaffSpeaker ? calleeName : callerName)}
                         </span>
                         {item.needs_translation && (
-                          <span className="text-[9px] text-stone-400">
+                          <span className="text-[9px] text-stone-200/90">
                             {(item.source_lang || 'en').toUpperCase()} ➔ {(item.target_lang || 'vi').toUpperCase()}
                           </span>
                         )}
                       </div>
-                      <p className={`text-white font-semibold leading-snug ${isLatest ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'}`}>
+                      <p className={`text-white font-bold leading-snug ${isLatest ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'}`}>
                         {item.translated_text || item.raw_transcript}
                       </p>
                       {item.needs_translation && item.raw_transcript !== item.translated_text && (
-                        <p className="text-stone-400 text-[11px] italic leading-tight">
+                        <p className="text-stone-200/85 text-[11px] italic leading-tight">
                           "{item.raw_transcript}"
                         </p>
                       )}
@@ -2687,22 +2687,22 @@ export const MessengerVideoCallModal = ({
                 })}
 
                 {peerInterim && (
-                  <div className="border-l-2 border-sky-400 pl-2.5 opacity-90">
+                  <div className="border-l-2 border-sky-400 pl-2.5 opacity-95">
                     <span className="text-[10px] uppercase font-bold tracking-wider text-sky-300">
                       {peerInterim.senderRole === 'staff' ? calleeName : callerName} (đang nói...)
                     </span>
-                    <p className="text-stone-200 text-xs sm:text-sm italic">
+                    <p className="text-white text-xs sm:text-sm italic">
                       "{peerInterim.text}..."
                     </p>
                   </div>
                 )}
 
                 {interimText && translateMode !== 'bypass' && (
-                  <div className="border-l-2 border-stone-500 pl-2.5 opacity-80">
-                    <span className="text-[10px] uppercase font-bold tracking-wider text-stone-400">
+                  <div className="border-l-2 border-white/60 pl-2.5 opacity-90">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-stone-200">
                       Bạn (đang nói...)
                     </span>
-                    <p className="text-stone-300 text-xs sm:text-sm italic">
+                    <p className="text-stone-100 text-xs sm:text-sm italic">
                       "{interimText}..."
                     </p>
                   </div>
@@ -2711,8 +2711,8 @@ export const MessengerVideoCallModal = ({
             </div>
           )}
 
-          {/* PICTURE-IN-PICTURE: LOCAL SELF VIDEO (GOOGLE MEET STYLE) */}
-          <div className="absolute bottom-20 sm:bottom-24 right-3 sm:right-4 w-20 h-28 sm:w-28 sm:h-36 lg:w-40 lg:h-52 rounded-2xl overflow-hidden bg-[#202124] border border-white/15 shadow-2xl z-20 transition-all">
+          {/* PICTURE-IN-PICTURE: LOCAL SELF VIDEO (LANDSCAPE-OPTIMIZED) */}
+          <div className="absolute bottom-16 sm:bottom-20 right-3 sm:right-4 w-28 h-20 sm:w-36 sm:h-24 lg:w-44 lg:h-32 rounded-2xl overflow-hidden bg-[#141413] border border-white/20 shadow-2xl z-20 transition-all">
             {hasNoCamera ? (
               <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#202124] to-[#141414] p-2 text-center select-none">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#3c4043] flex items-center justify-center mb-1.5 shadow-inner">
@@ -2749,22 +2749,22 @@ export const MessengerVideoCallModal = ({
           </div>
         </div>
 
-        {/* BOTTOM ACTION CONTROLS BAR (GOOGLE MEET FLOATING DOCK STYLE) */}
-        <div className="p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-center justify-center z-30 shrink-0 robot-safe-x">
-          <div className="flex items-center gap-2 sm:gap-3 bg-[#202124]/90 backdrop-blur-md px-3 sm:px-5 py-2 sm:py-2.5 rounded-full border border-white/10 shadow-2xl">
+        {/* BOTTOM ACTION CONTROLS BAR (AURORA BLACK/WHITE DOCK - LANDSCAPE COMPACT) */}
+        <div className="p-2 sm:p-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/80 via-black/35 to-transparent flex items-center justify-center z-30 shrink-0 robot-safe-x">
+          <div className="flex items-center gap-2 sm:gap-2.5 bg-[#141413]/90 backdrop-blur-md px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-full border border-white/20 shadow-2xl">
             {/* 1. MUTE MIC BUTTON */}
             <button
               type="button"
               onClick={toggleMic}
               title={isMicMuted ? 'Bật mic' : 'Tắt mic'}
               aria-label={isMicMuted ? 'Bật micro' : 'Tắt micro'}
-              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm ${
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 border ${
                 isMicMuted
-                  ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
-                  : 'bg-[#3c4043] hover:bg-[#474a4d] text-white hover:shadow-md'
+                  ? 'bg-[#141413] border-red-500 text-red-400'
+                  : 'bg-[#141413] hover:bg-[#262523] border-white/25 text-white'
               }`}
             >
-              {isMicMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              {isMicMuted ? <MicOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Mic className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
             </button>
 
             {/* 2. CAMERA TOGGLE (STAFF ONLY) */}
@@ -2774,13 +2774,13 @@ export const MessengerVideoCallModal = ({
                 onClick={toggleVideo}
                 title={isVideoDisabled ? 'Bật máy ảnh' : 'Tắt máy ảnh'}
                 aria-label={isVideoDisabled ? 'Bật camera' : 'Tắt camera'}
-                className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm ${
+                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 border ${
                   isVideoDisabled
-                    ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
-                    : 'bg-[#3c4043] hover:bg-[#474a4d] text-white hover:shadow-md'
+                    ? 'bg-[#141413] border-red-500 text-red-400'
+                    : 'bg-[#141413] hover:bg-[#262523] border-white/25 text-white'
                 }`}
               >
-                {isVideoDisabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+                {isVideoDisabled ? <VideoOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Video className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
               </button>
             )}
 
@@ -2790,27 +2790,27 @@ export const MessengerVideoCallModal = ({
               onClick={toggleSpeaker}
               title={isSpeakerMuted ? 'Bật loa' : 'Tắt loa'}
               aria-label={isSpeakerMuted ? 'Bật loa' : 'Tắt loa'}
-              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm ${
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 border ${
                 isSpeakerMuted
-                  ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
-                  : 'bg-[#3c4043] hover:bg-[#474a4d] text-white hover:shadow-md'
+                  ? 'bg-[#141413] border-red-500 text-red-400'
+                  : 'bg-[#141413] hover:bg-[#262523] border-white/25 text-white'
               }`}
             >
-              {isSpeakerMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+              {isSpeakerMuted ? <VolumeX className="w-4 h-4 sm:w-5 sm:h-5" /> : <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
             </button>
 
             {/* DIVIDER */}
-            <div className="w-px h-6 bg-white/15 mx-1 hidden sm:block" />
+            <div className="w-px h-5 bg-white/20 mx-0.5 hidden sm:block" />
 
-            {/* 4. END CALL BUTTON (GOOGLE MEET RED PILL) */}
+            {/* 4. END CALL BUTTON */}
             <button
               type="button"
               onClick={() => handleEndCall(true)}
               title="Rời khỏi cuộc gọi"
               aria-label="Rời khỏi cuộc gọi"
-              className="px-5 sm:px-6 h-11 sm:h-12 rounded-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 transition-all cursor-pointer active:scale-95"
+              className="px-4 sm:px-5 h-10 sm:h-11 rounded-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/30 transition-all cursor-pointer active:scale-95"
             >
-              <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+              <PhoneOff className="w-4 h-4 text-white" />
               <span className="font-semibold hidden xs:inline sm:inline">Kết thúc</span>
             </button>
           </div>

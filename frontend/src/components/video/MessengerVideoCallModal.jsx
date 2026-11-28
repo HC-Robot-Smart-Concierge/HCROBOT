@@ -795,6 +795,7 @@ export const MessengerVideoCallModal = ({
           if (remoteVideoRef.current) {
             remoteVideoRef.current.play().catch(() => {});
           }
+          markRemoteWebRtcReadyIfConnected();
         } else if (pc.connectionState === 'failed') {
           if (role === 'guest' && pc.restartIce && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             try {
@@ -816,6 +817,7 @@ export const MessengerVideoCallModal = ({
           if (remoteVideoRef.current) {
             remoteVideoRef.current.play().catch(() => {});
           }
+          markRemoteWebRtcReadyIfConnected();
         }
       };
 
@@ -1253,6 +1255,16 @@ export const MessengerVideoCallModal = ({
       remoteVideoRef.current.play().catch(() => {});
     }
   }, [callStatus, hasNoCamera]);
+
+  const markRemoteWebRtcReadyIfConnected = useCallback(() => {
+    const pcState = pcRef.current?.connectionState;
+    const iceState = pcRef.current?.iceConnectionState;
+    const isIceReady = pcState === 'connected' || iceState === 'connected' || iceState === 'completed';
+    if (isIceReady && remoteVideoRef.current && remoteVideoRef.current.videoWidth > 0) {
+      setHasRemoteVideoFrame(true);
+      setRemoteFallbackFrame('');
+    }
+  }, []);
 
   useEffect(() => {
     if (!isOpen || callStatus !== 'connected' || hasRemoteVideoFrame) return;
@@ -2764,18 +2776,8 @@ export const MessengerVideoCallModal = ({
             playsInline
             webkit-playsinline="true"
             muted={isSpeakerMuted}
-            onLoadedData={() => {
-              if (remoteVideoRef.current && remoteVideoRef.current.videoWidth > 0) {
-                setHasRemoteVideoFrame(true);
-                setRemoteFallbackFrame('');
-              }
-            }}
-            onPlaying={() => {
-              if (remoteVideoRef.current && remoteVideoRef.current.videoWidth > 0) {
-                setHasRemoteVideoFrame(true);
-                setRemoteFallbackFrame('');
-              }
-            }}
+            onLoadedData={markRemoteWebRtcReadyIfConnected}
+            onPlaying={markRemoteWebRtcReadyIfConnected}
             className={`w-full h-full object-cover transition-opacity duration-500 ${
               callStatus === 'connected' && (hasRemoteVideoFrame || !remoteFallbackFrame) ? 'opacity-100' : 'opacity-0'
             }`}

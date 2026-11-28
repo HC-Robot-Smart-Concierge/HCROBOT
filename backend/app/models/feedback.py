@@ -1,10 +1,15 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, Integer, DateTime, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+
+def _utcnow_naive() -> datetime:
+    """Return UTC naive datetime compatible with TIMESTAMP WITHOUT TIME ZONE."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 if TYPE_CHECKING:
     from app.models.account import Account
@@ -24,7 +29,7 @@ class Feedback(Base):
     guest_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     room_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow_naive)
 
     # Relationships
     chat_session: Mapped[Optional["ChatSession"]] = relationship("ChatSession", back_populates="feedbacks")

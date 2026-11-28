@@ -123,6 +123,7 @@ export const MessengerVideoCallModal = ({
   );
   const [activeSubtitle, setActiveSubtitle] = useState(null);
   const [interimText, setInterimText] = useState('');
+  const [peerInterim, setPeerInterim] = useState(null);
   const [callTranscripts, setCallTranscripts] = useState([]);
   const [showTranslateSettings, setShowTranslateSettings] = useState(false);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
@@ -159,6 +160,8 @@ export const MessengerVideoCallModal = ({
   const peerReconnectTimerRef = useRef(null);
   const serverLanIpRef = useRef(null);
   const serverHostIpsRef = useRef([]);
+  const lastInterimSentAtRef = useRef(0);
+  const peerInterimTimerRef = useRef(null);
   const interpreterAudioRef = useRef(null);
   const playInterpreterAudioRef = useRef(null);
   const activeGuestLanguageRef = useRef(isInitialGuestVi ? 'Tiếng Việt' : 'English');
@@ -1021,8 +1024,15 @@ export const MessengerVideoCallModal = ({
                 handleEndCall(false);
               }
             }, 12000);
+          } else if (data.type === 'live_interim') {
+            if (data.senderRole !== role && data.text) {
+              setPeerInterim({ senderRole: data.senderRole, text: data.text });
+              if (peerInterimTimerRef.current) clearTimeout(peerInterimTimerRef.current);
+              peerInterimTimerRef.current = setTimeout(() => setPeerInterim(null), 3500);
+            }
           } else if (data.type === 'live_subtitle') {
             if (data.senderRole !== role) {
+              setPeerInterim(null);
               console.log(
                 `[VideoCall Flow] [${data.senderRole} -> ${role}] utteranceId=${data.utteranceId || 'unknown'} seq=${data.seq || 0} mode=${translateModeRef.current} step=SUBTITLE_RECEIVED src=${data.sourceLang || 'auto'} tgt=${data.targetLang || 'auto'} needsTrans=${data.needsTranslation}`
               );
@@ -1187,6 +1197,7 @@ export const MessengerVideoCallModal = ({
       setHasRemoteVideoFrame(false);
       setActiveSubtitle(null);
       setInterimText('');
+      setPeerInterim(null);
       setCallTranscripts([]);
       callTranscriptsRef.current = [];
       const defaultMode = isInitialGuestVi ? 'bypass' : 'auto';
@@ -1844,6 +1855,19 @@ export const MessengerVideoCallModal = ({
 
         pendingTranscriptRef.current = cleanCandidate;
         setInterimText(cleanCandidate);
+        if (interim.trim() && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          const now = Date.now();
+          if (now - lastInterimSentAtRef.current >= 450) {
+            lastInterimSentAtRef.current = now;
+            try {
+              wsRef.current.send(JSON.stringify({
+                type: 'live_interim',
+                senderRole: role,
+                text: cleanCandidate,
+              }));
+            } catch {}
+          }
+        }
         console.log(
           `[VideoCall Flow] [${role}] step=STT_RESULT engine=web_speech final=${Boolean(finalChunk)} interimLen=${interim.length} totalLen=${cleanCandidate.length}`
         );
@@ -2025,6 +2049,11 @@ export const MessengerVideoCallModal = ({
         `[VideoCall Flow] [${role} -> ${effectivePeerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${translateModeRef.current} step=TRANSLATE_REQUEST srcHint=${hintLang} tgt=${effectiveTargetLang} len=${cleanText.length}`
       );
 
+      const recentContext = (callTranscriptsRef.current || [])
+        .slice(-2)
+        .map((t) => `${t.speaker}: ${t.raw_transcript}`)
+        .filter(Boolean);
+
       const res = await quickTranslateText({
         text: cleanText,
         sourceLang: hintLang,
@@ -2032,6 +2061,7 @@ export const MessengerVideoCallModal = ({
         sessionId,
         senderRole: role,
         withAudio: false,
+        context: recentContext,
       });
 
       const normalizedResSource = normalizeLanguageCode(res.source_lang);
@@ -2617,48 +2647,65 @@ export const MessengerVideoCallModal = ({
             </div>
           )}
 
-          {/* FLOATING LIVE CAPTIONS BAR (CLEAR & HIGH CONTRAST) */}
-          {(activeSubtitle || (interimText && translateMode !== 'bypass')) && (
+          {/* FLOATING LIVE CAPTIONS FEED (GOOGLE MEET MULTI-LINE CAPTIONS) */}
+          {(callTranscripts.length > 0 || activeSubtitle || peerInterim || (interimText && translateMode !== 'bypass')) && (
             <div className="absolute bottom-20 sm:bottom-24 left-3 right-24 sm:left-6 sm:right-36 lg:right-52 z-25 flex justify-start sm:justify-center pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200">
-              <div className="bg-black/80 backdrop-blur-md border border-white/15 rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 max-w-xl w-full sm:w-auto text-left sm:text-center shadow-2xl space-y-1 pointer-events-auto">
-                {interimText && !activeSubtitle && (
-                  <p className="text-stone-300 text-xs sm:text-sm italic animate-pulse">
-                    "{interimText}..."
-                  </p>
+              <div className="bg-black/80 backdrop-blur-md border border-white/15 rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 max-w-xl w-full sm:w-auto text-left shadow-2xl space-y-2 pointer-events-auto">
+                {callTranscripts.slice(-3).map((item, idx, arr) => {
+                  const isStaffSpeaker = item.speaker === 'Staff';
+                  const isMine = (role === 'staff' && isStaffSpeaker) || (role === 'guest' && !isStaffSpeaker);
+                  const isLatest = idx === arr.length - 1 && !peerInterim && !interimText;
+                  return (
+                    <div
+                      key={`${item.timestamp}-${idx}`}
+                      className={`border-l-2 pl-2.5 transition-opacity ${
+                        isStaffSpeaker ? 'border-emerald-400' : 'border-amber-400'
+                      } ${isLatest ? 'opacity-100' : 'opacity-75'}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] uppercase font-bold tracking-wider ${
+                          isStaffSpeaker ? 'text-emerald-300' : 'text-amber-300'
+                        }`}>
+                          {isMine ? 'Bạn' : (isStaffSpeaker ? calleeName : callerName)}
+                        </span>
+                        {item.needs_translation && (
+                          <span className="text-[9px] text-stone-400">
+                            {(item.source_lang || 'en').toUpperCase()} ➔ {(item.target_lang || 'vi').toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-white font-semibold leading-snug ${isLatest ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'}`}>
+                        {item.translated_text || item.raw_transcript}
+                      </p>
+                      {item.needs_translation && item.raw_transcript !== item.translated_text && (
+                        <p className="text-stone-400 text-[11px] italic leading-tight">
+                          "{item.raw_transcript}"
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {peerInterim && (
+                  <div className="border-l-2 border-sky-400 pl-2.5 opacity-90">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-sky-300">
+                      {peerInterim.senderRole === 'staff' ? calleeName : callerName} (đang nói...)
+                    </span>
+                    <p className="text-stone-200 text-xs sm:text-sm italic">
+                      "{peerInterim.text}..."
+                    </p>
+                  </div>
                 )}
 
-                {activeSubtitle && (
-                  <>
-                    <div className="flex items-center sm:justify-center gap-2 flex-wrap">
-                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full border ${
-                        activeSubtitle.senderRole === 'staff'
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                          : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                      }`}>
-                        {activeSubtitle.senderRole === role
-                          ? 'Bạn'
-                          : (activeSubtitle.senderRole === 'staff' ? calleeName : callerName)}
-                      </span>
-                      <span className="text-[10px] font-semibold text-stone-300 flex items-center gap-1">
-                        <Languages className="w-3 h-3 text-amber-400" />
-                        <span>
-                          {activeSubtitle.needsTranslation
-                            ? `${(activeSubtitle.sourceLang || 'en').toUpperCase()} ➔ ${(activeSubtitle.targetLang || 'vi').toUpperCase()}`
-                            : `${(activeSubtitle.sourceLang || 'vi').toUpperCase()}`}
-                        </span>
-                      </span>
-                    </div>
-
-                    <p className="text-white text-sm sm:text-base md:text-lg font-bold leading-snug">
-                      {activeSubtitle.translatedText || activeSubtitle.originalText}
+                {interimText && translateMode !== 'bypass' && (
+                  <div className="border-l-2 border-stone-500 pl-2.5 opacity-80">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-stone-400">
+                      Bạn (đang nói...)
+                    </span>
+                    <p className="text-stone-300 text-xs sm:text-sm italic">
+                      "{interimText}..."
                     </p>
-
-                    {activeSubtitle.needsTranslation && activeSubtitle.originalText !== activeSubtitle.translatedText && (
-                      <p className="text-stone-400 text-[11px] sm:text-xs italic leading-tight">
-                        "{activeSubtitle.originalText}"
-                      </p>
-                    )}
-                  </>
+                  </div>
                 )}
               </div>
             </div>

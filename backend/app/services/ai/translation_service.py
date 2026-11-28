@@ -1,7 +1,7 @@
 import re
 import urllib.parse
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -181,6 +181,17 @@ class TranslationService:
             logger.warning(f"[TranslationService] Gemini fallback translation failed: {e}")
         return None
 
+    @staticmethod
+    def _polish_hospitality_translation(translated: str, target_code: str) -> str:
+        """Chuẩn hóa thuật ngữ khách sạn 5 sao để câu dịch tự nhiên hơn."""
+        if not translated:
+            return translated
+        out = translated.strip()
+        if target_code == "vi":
+            out = re.sub(r"\bphòng dịch vụ\b", "dịch vụ phòng (Room Service)", out, flags=re.IGNORECASE)
+            out = re.sub(r"\bbàn phía trước\b", "quầy lễ tân", out, flags=re.IGNORECASE)
+        return out
+
     async def translate(
         self,
         text: str,
@@ -188,6 +199,7 @@ class TranslationService:
         target_lang: str = "vi",
         sender_role: str = "guest",
         with_audio: bool = False,
+        context: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Thực hiện dịch thuật tách biệt Ngôn ngữ câu nói (source_lang) và Ngôn ngữ đích của người nhận (target_lang):
@@ -290,6 +302,7 @@ class TranslationService:
             translated = clean_text
             needs_translation = False
         else:
+            translated = self._polish_hospitality_translation(translated, target_code)
             needs_translation = (translated.strip().lower() != clean_text.strip().lower()) or (detected_src != target_code)
 
         audio_b64 = None

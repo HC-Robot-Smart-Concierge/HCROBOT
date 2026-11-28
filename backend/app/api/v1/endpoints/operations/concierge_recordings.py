@@ -350,7 +350,10 @@ async def upload_call_recording(
 
     if call_started_at:
         try:
-            h_session.call_started_at = datetime.fromisoformat(call_started_at.replace("Z", "+00:00"))
+            parsed_dt = datetime.fromisoformat(call_started_at.replace("Z", "+00:00"))
+            if parsed_dt.tzinfo is not None:
+                parsed_dt = parsed_dt.astimezone(timezone.utc).replace(tzinfo=None)
+            h_session.call_started_at = parsed_dt
         except Exception:
             pass
 

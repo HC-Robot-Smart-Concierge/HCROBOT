@@ -686,6 +686,7 @@ export const quickTranslateText = async ({
   sessionId = null,
   senderRole = 'guest',
   withAudio = true,
+  context = [],
 }) => {
   if (!text || !text.trim()) {
     return {
@@ -709,6 +710,7 @@ export const quickTranslateText = async ({
         session_id: sessionId,
         sender_role: senderRole,
         with_audio: withAudio,
+        ...(Array.isArray(context) && context.length > 0 ? { context } : {}),
       }),
     });
 

@@ -2142,7 +2142,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           chatRes.audio_base64 = null; // Re-synthesize cleanly with the appended follow-up question
         }
 
-        const updatedRoom = (isValidHotelRoom(chatRes.target_room_number) ? chatRes.target_room_number : null) || (isValidHotelRoom(chatRes.current_room_number) ? chatRes.current_room_number : null) || spokenRoomDetected;
+        const updatedRoom =
+          (isValidHotelRoom(chatRes.target_room_number) ? chatRes.target_room_number : null) ||
+          (isValidHotelRoom(chatRes.room_number) ? chatRes.room_number : null) ||
+          (isValidHotelRoom(chatRes.current_room_number) ? chatRes.current_room_number : null) ||
+          spokenRoomDetected;
+        if (updatedRoom) {
+          setActiveRoomNumber(updatedRoom);
+        }
         const isStatusAction = chatRes.action === 'query_order_status';
         const isAskRoomQuestion = chatRes.missing_room_number || /ở phòng bao nhiêu|xin số phòng|cho rora biết mình đang ở phòng|room number so i can check/i.test(replyText);
 
@@ -3195,7 +3202,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   if (isFoodMenuOpen) {
     return (
       <RobotFoodMenuScreen
-        activeRoomNumber={activeRoomNumber || ''}
+        activeRoomNumber={activeRoomNumber || authenticatedRoom || ''}
         authenticatedRoom={authenticatedRoom}
         {...menuVoiceProps}
         language={language}
@@ -3319,7 +3326,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     return (
       <RobotRoomServiceScreen
         language={language}
-        activeRoomNumber={activeRoomNumber || ''}
+        activeRoomNumber={activeRoomNumber || authenticatedRoom || ''}
         authenticatedRoom={authenticatedRoom}
         {...menuVoiceProps}
         onPinVerifiedSuccess={(room) => {

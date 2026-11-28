@@ -105,6 +105,7 @@ export function isCompletedRequestResponse(chatRes, { isRouteGuidance = false, w
   if (
     chatRes.require_room_pin ||
     chatRes.missing_room_number ||
+    chatRes.waiting_for_wakeup_time ||
     chatRes.trigger_menu ||
     chatRes.trigger_video_call
   ) {
@@ -116,10 +117,10 @@ export function isCompletedRequestResponse(chatRes, { isRouteGuidance = false, w
     return false;
   }
 
-  // Do not append follow-up question to invalid-room / check-in errors or closing/farewell prompts.
+  // Do not append follow-up question to invalid-room / check-in errors, wake-up time prompts, or closing/farewell prompts.
   const replyLower = String(chatRes.response || '').toLowerCase();
   if (
-    /không có phòng|does not have room|không tồn tại|chưa làm thủ tục nhận phòng|chưa check-in|xin số phòng|nhập mã pin|4-digit room pin|enter your pin|đánh giá dịch vụ|rate our service|tạm biệt|goodbye|hẹn gặp lại/.test(
+    /không có phòng|does not have room|không tồn tại|chưa làm thủ tục nhận phòng|chưa check-in|xin số phòng|nhập mã pin|4-digit room pin|enter your pin|đặt báo thức lúc mấy giờ|schedule your wake-up call|đánh giá dịch vụ|rate our service|tạm biệt|goodbye|hẹn gặp lại/.test(
       replyLower
     )
   ) {

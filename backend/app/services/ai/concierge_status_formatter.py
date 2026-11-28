@@ -358,13 +358,13 @@ async def handle_order_status_inquiry(
             elif is_en:
                 rej_en = _reject_suffix(raw_rej)
                 svc_map = {
-                    "pending": f"Your room service request for Room {current_room}{items_desc} has been received and is queued for Housekeeping service.",
+                    "pending": f"Your room service request for Room {current_room}{items_desc} has been received and is queued for Room Service.",
                     "waiting": f"Your room service request for Room {current_room}{items_desc} is waiting to be processed.",
                     "unassigned": f"Your room service request for Room {current_room}{items_desc} is waiting for staff assignment.",
                     "sent to kitchen": f"Your request for Room {current_room}{items_desc} has been forwarded and is queued for service.",
-                    "cooking": f"Our housekeeping staff is currently preparing items and servicing Room {current_room}{items_desc}.",
-                    "in progress": f"Our housekeeping staff is currently servicing Room {current_room}{items_desc}.",
-                    "assigned": f"Our housekeeping staff has been assigned and is on the way to Room {current_room}{items_desc}.",
+                    "cooking": f"Our Room Service staff is currently preparing items and servicing Room {current_room}{items_desc}.",
+                    "in progress": f"Our Room Service staff is currently servicing Room {current_room}{items_desc}.",
+                    "assigned": f"Our Room Service staff has been assigned and is on the way to Room {current_room}{items_desc}.",
                     "ready": f"Your requested items for Room {current_room}{items_desc} are prepared and being delivered.",
                     "delivering": f"Our room service staff is on the way to Room {current_room}{items_desc} right now!",
                     "completed": f"Your room service request for Room {current_room}{items_desc} has been completed successfully. Have a wonderful stay!",
@@ -378,13 +378,13 @@ async def handle_order_status_inquiry(
             else:
                 rej_vn = _reject_suffix(raw_rej)
                 svc_map = {
-                    "pending": f"Dạ yêu cầu phục vụ phòng của phòng {current_room}{items_desc} đã được tiếp nhận và đang trong hàng đợi xử lý của bộ phận buồng phòng ạ.",
+                    "pending": f"Dạ yêu cầu phục vụ phòng của phòng {current_room}{items_desc} đã được tiếp nhận và đang trong hàng đợi xử lý của bộ phận phục vụ phòng ạ.",
                     "waiting": f"Dạ yêu cầu phục vụ phòng của phòng {current_room}{items_desc} đang chờ nhân viên tiếp nhận xử lý ạ.",
                     "unassigned": f"Dạ yêu cầu phục vụ phòng của phòng {current_room}{items_desc} đang chờ phân công nhân viên phụ trách ạ.",
                     "sent to kitchen": f"Dạ yêu cầu phục vụ phòng của phòng {current_room}{items_desc} đã được chuyển tới bộ phận chuyên trách xử lý ạ.",
-                    "cooking": f"Dạ nhân viên buồng phòng đang tiến hành chuẩn bị đồ và xử lý yêu cầu dọn phòng {items_desc} cho phòng {current_room} rồi ạ, sắp hoàn tất rồi ạ.",
-                    "in progress": f"Dạ nhân viên buồng phòng đang trực tiếp dọn dẹp và phục vụ yêu cầu {items_desc} tại phòng {current_room} rồi ạ.",
-                    "assigned": f"Dạ nhân viên buồng phòng chuyên trách đã tiếp nhận yêu cầu {items_desc} cho phòng {current_room} và đang chuẩn bị thực hiện ạ.",
+                    "cooking": f"Dạ nhân viên phục vụ phòng đang tiến hành chuẩn bị đồ và xử lý yêu cầu dọn phòng {items_desc} cho phòng {current_room} rồi ạ, sắp hoàn tất rồi ạ.",
+                    "in progress": f"Dạ nhân viên phục vụ phòng đang trực tiếp dọn dẹp và phục vụ yêu cầu {items_desc} tại phòng {current_room} rồi ạ.",
+                    "assigned": f"Dạ nhân viên phục vụ phòng chuyên trách đã tiếp nhận yêu cầu {items_desc} cho phòng {current_room} và đang chuẩn bị thực hiện ạ.",
                     "ready": f"Dạ các vật dụng yêu cầu cho phòng {current_room}{items_desc} đã được chuẩn bị xong, đang chuẩn bị mang lên phòng ạ.",
                     "delivering": f"Dạ nhân viên phục vụ phòng đang mang đồ di chuyển lên phòng {current_room} cho quý khách rồi ạ!",
                     "completed": f"Dạ yêu cầu phục vụ phòng {items_desc} của phòng {current_room} đã được hoàn tất thành công rồi ạ. Chúc quý khách có thời gian nghỉ dưỡng thoải mái!",
@@ -404,7 +404,7 @@ async def handle_order_status_inquiry(
                 )
             else:
                 status_reply = (
-                    f"I checked and there are currently no active housekeeping or room service requests for Room {current_room}. Would you like to request amenities from our Utilities menu?"
+                    f"I checked and there are currently no active room service or cleaning requests for Room {current_room}. Would you like to request amenities from our Utilities menu?"
                     if is_en else
                     f"Dạ em kiểm tra thấy hiện tại phòng {current_room} không có yêu cầu dọn phòng hoặc dịch vụ phòng nào đang chờ xử lý ạ. Quý khách có thể yêu cầu dọn phòng hoặc thêm khăn tắm trong menu Tiện ích nhé ạ!"
                 )

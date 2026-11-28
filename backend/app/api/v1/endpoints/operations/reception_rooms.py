@@ -71,7 +71,7 @@ def _resolve_kiosk_ticket_routing(action: str, items_text: str) -> Tuple[str, st
         items_check = f"{act_lower} {items_text.lower()}"
         req_type = "lost_found" if is_lost_found_text(items_check) else "luggage"
         return BELL_DEPARTMENT_ID, BELL_SERVICE_TYPE_ID, "BS", "Bell Services", req_type
-    return "DEP-HOUSEKEEPING", "ST-HOUSEKEEPING", "REQ", "Housekeeping", "housekeeping"
+    return "DEP-ROOMSERVICE", "ST-ROOM-SERVICE", "RS", "Room Service", "room_service"
 
 
 async def _complete_room_verification(
@@ -462,6 +462,19 @@ async def check_out_room(
     room.pin_code = None
     room.tag_code = None
     room.status = "CLEANING"
+
+    # Đánh dấu các hóa đơn gọi món & room service đã hoàn thành của phòng này sang 'Settled' (đã check-out)
+    from sqlalchemy import update
+    from app.models.room_service import RoomServiceOrder
+
+    await db.execute(
+        update(RoomServiceOrder)
+        .where(
+            RoomServiceOrder.room_number == room.room_number,
+            RoomServiceOrder.status == "Completed",
+        )
+        .values(status="Settled")
+    )
 
     await db.commit()
     await db.refresh(room)

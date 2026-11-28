@@ -33,6 +33,7 @@ const ICE_SERVERS = {
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:relay.metered.ca:80' },
+    { urls: 'stun:openrelay.metered.ca:80' },
     {
       urls: 'turn:relay.metered.ca:80',
       username: 'openrelayproject',
@@ -40,6 +41,26 @@ const ICE_SERVERS = {
     },
     {
       urls: 'turn:relay.metered.ca:80?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:relay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turns:relay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turns:openrelay.metered.ca:443?transport=tcp',
       username: 'openrelayproject',
       credential: 'openrelayproject',
     },
@@ -86,19 +107,23 @@ export const MessengerVideoCallModal = ({
   const [uploadStatus, setUploadStatus] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [hasNoCamera, setHasNoCamera] = useState(false);
+  const [remoteFallbackFrame, setRemoteFallbackFrame] = useState('');
+  const [hasRemoteVideoFrame, setHasRemoteVideoFrame] = useState(false);
 
   // Live Subtitle & Auto-Translation State (EN ⇄ VI)
-  // Mode: 'auto' (Tự động dịch thông minh 2 chiều) | 'bypass' (Thuần Việt - Không dịch)
-  const [translateMode, setTranslateMode] = useState('auto');
-  // Chế độ nhận diện ngôn ngữ đầu vào của Micro: 'auto' (Đa ngữ EN/VI theo âm thanh) | 'en' | 'vi'
-  const [inputLangMode, setInputLangMode] = useState('auto');
   const isInitialGuestVi =
     normalizeLanguageCode(guestLanguage) === 'vi' || guestLanguage === 'Tiếng Việt';
+  const initialTranslateMode = isInitialGuestVi ? 'bypass' : 'auto';
+  // Mode: 'auto' (Dịch phụ đề song ngữ Việt ⇄ Anh) | 'bypass' (Thuần Việt - Không dịch)
+  const [translateMode, setTranslateMode] = useState(initialTranslateMode);
+  // Chế độ nhận diện ngôn ngữ đầu vào của Micro: 'auto' (Đa ngữ EN/VI theo âm thanh) | 'en' | 'vi'
+  const [inputLangMode, setInputLangMode] = useState('auto');
   const [activeGuestLanguage, setActiveGuestLanguage] = useState(
     isInitialGuestVi ? 'Tiếng Việt' : 'English'
   );
   const [activeSubtitle, setActiveSubtitle] = useState(null);
   const [interimText, setInterimText] = useState('');
+  const [peerInterim, setPeerInterim] = useState(null);
   const [callTranscripts, setCallTranscripts] = useState([]);
   const [showTranslateSettings, setShowTranslateSettings] = useState(false);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
@@ -135,10 +160,12 @@ export const MessengerVideoCallModal = ({
   const peerReconnectTimerRef = useRef(null);
   const serverLanIpRef = useRef(null);
   const serverHostIpsRef = useRef([]);
+  const lastInterimSentAtRef = useRef(0);
+  const peerInterimTimerRef = useRef(null);
   const interpreterAudioRef = useRef(null);
   const playInterpreterAudioRef = useRef(null);
   const activeGuestLanguageRef = useRef(isInitialGuestVi ? 'Tiếng Việt' : 'English');
-  const translateModeRef = useRef('auto');
+  const translateModeRef = useRef(initialTranslateMode);
   const inputLangModeRef = useRef('auto');
 
   // Quản lý gom lượt nói cho Staff (Staff Turn Accumulation & Conversational Endpointing)
@@ -248,12 +275,33 @@ export const MessengerVideoCallModal = ({
       return createFakeVideoStream(role === 'staff' ? 'Concierge Staff' : 'Hotel Guest');
     }
 
-    // Tầng 1: Thử camera trước + mic tiêu chuẩn
+    // Tầng 1: Thử camera vật lý (tránh chọn nhầm OBS Virtual Camera nếu có webcam thật) + mic tiêu chuẩn
     try {
+      let preferredVideoConstraint = role === 'staff'
+        ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+        : { width: { ideal: 1280 }, height: { ideal: 720 } };
+
+      if (typeof navigator.mediaDevices.enumerateDevices === 'function') {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+          const physicalCam = videoInputs.find(
+            (d) => d.label && !/obs|virtual|snap|droidcam|iriun/i.test(d.label)
+          );
+          if (physicalCam && physicalCam.deviceId && videoInputs.some((d) => /obs|virtual/i.test(d.label || ''))) {
+            preferredVideoConstraint = {
+              deviceId: { exact: physicalCam.deviceId },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            };
+          }
+        } catch {
+          // Ignore enumerateDevices errors
+        }
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: role === 'staff'
-          ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
-          : { width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: preferredVideoConstraint,
         audio: true,
       });
       setHasNoCamera(false);
@@ -707,31 +755,30 @@ export const MessengerVideoCallModal = ({
       pc.ontrack = (event) => {
         console.log('[VideoCall] ontrack received track:', event.track.kind, event.track.id);
 
-        if (!remoteStreamRef.current) {
-          remoteStreamRef.current = new MediaStream();
-        }
+        const existingTracks = remoteStreamRef.current ? remoteStreamRef.current.getTracks() : [];
+        const hasTrack = existingTracks.some((t) => t.id === event.track.id);
+        const nextTracks = hasTrack ? existingTracks : [...existingTracks, event.track];
+        // Tạo MediaStream mới mỗi khi có track mới (video đến sau audio) để buộc <video> render lại hình ảnh
+        remoteStreamRef.current = new MediaStream(nextTracks);
 
         event.track.enabled = true;
 
-        if (!remoteStreamRef.current.getTracks().some((t) => t.id === event.track.id)) {
-          remoteStreamRef.current.addTrack(event.track);
-        }
-
         event.track.onunmute = () => {
           if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = new MediaStream(remoteStreamRef.current.getTracks());
             remoteVideoRef.current.play().catch(() => {});
           }
         };
 
         if (remoteVideoRef.current) {
-          if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
-            remoteVideoRef.current.srcObject = remoteStreamRef.current;
-          }
+          remoteVideoRef.current.srcObject = remoteStreamRef.current;
           const playPromise = remoteVideoRef.current.play();
           if (playPromise !== undefined) {
             playPromise.catch((e) => {
               if (e.name !== 'AbortError' && e.name === 'NotAllowedError' && remoteVideoRef.current) {
                 remoteVideoRef.current.muted = true;
+                isSpeakerMutedRef.current = true;
+                setIsSpeakerMuted(true);
                 remoteVideoRef.current.play().catch(() => {});
               }
             });
@@ -752,6 +799,7 @@ export const MessengerVideoCallModal = ({
           if (remoteVideoRef.current) {
             remoteVideoRef.current.play().catch(() => {});
           }
+          markRemoteWebRtcReadyIfConnected();
         } else if (pc.connectionState === 'failed') {
           if (role === 'guest' && pc.restartIce && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             try {
@@ -773,6 +821,7 @@ export const MessengerVideoCallModal = ({
           if (remoteVideoRef.current) {
             remoteVideoRef.current.play().catch(() => {});
           }
+          markRemoteWebRtcReadyIfConnected();
         }
       };
 
@@ -839,6 +888,28 @@ export const MessengerVideoCallModal = ({
             mode: translateModeRef.current,
             manualLocked: isManualLockedRef.current,
           }));
+        }
+        // Fallback: nếu sau 3.5s phía guest vẫn chưa kết nối ICE -> chủ động gửi lại offer
+        if (role === 'guest') {
+          setTimeout(async () => {
+            if (
+              !isEndingRef.current &&
+              pcRef.current &&
+              pcRef.current.connectionState !== 'connected' &&
+              pcRef.current.signalingState === 'stable' &&
+              wsRef.current &&
+              wsRef.current.readyState === WebSocket.OPEN
+            ) {
+              try {
+                const offer = await pcRef.current.createOffer({
+                  offerToReceiveAudio: true,
+                  offerToReceiveVideo: true,
+                });
+                await pcRef.current.setLocalDescription(offer);
+                wsRef.current.send(JSON.stringify({ type: 'offer', sdp: offer }));
+              } catch {}
+            }
+          }, 3500);
         }
       };
 
@@ -953,8 +1024,15 @@ export const MessengerVideoCallModal = ({
                 handleEndCall(false);
               }
             }, 12000);
+          } else if (data.type === 'live_interim') {
+            if (data.senderRole !== role && data.text) {
+              setPeerInterim({ senderRole: data.senderRole, text: data.text });
+              if (peerInterimTimerRef.current) clearTimeout(peerInterimTimerRef.current);
+              peerInterimTimerRef.current = setTimeout(() => setPeerInterim(null), 3500);
+            }
           } else if (data.type === 'live_subtitle') {
             if (data.senderRole !== role) {
+              setPeerInterim(null);
               console.log(
                 `[VideoCall Flow] [${data.senderRole} -> ${role}] utteranceId=${data.utteranceId || 'unknown'} seq=${data.seq || 0} mode=${translateModeRef.current} step=SUBTITLE_RECEIVED src=${data.sourceLang || 'auto'} tgt=${data.targetLang || 'auto'} needsTrans=${data.needsTranslation}`
               );
@@ -985,13 +1063,19 @@ export const MessengerVideoCallModal = ({
                 );
               }
 
+              // Nếu câu đã dịch hoặc đang ở chế độ dịch -> tự bật song ngữ để hiển thị phụ đề rõ ràng
+              if (data.needsTranslation && translateModeRef.current === 'bypass') {
+                setTranslateMode('auto');
+                translateModeRef.current = 'auto';
+              }
+
               // Hiển thị phụ đề cho người nhận (kể cả khi giữ nguyên câu gốc cùng ngôn ngữ khi đang ở chế độ dịch)
               if (data.needsTranslation || translateModeRef.current !== 'bypass') {
                 setActiveSubtitle(data);
                 if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
                 subtitleTimeoutRef.current = setTimeout(() => {
                   setActiveSubtitle(null);
-                }, 6000);
+                }, 8000);
               } else {
                 setActiveSubtitle(null);
               }
@@ -1008,41 +1092,6 @@ export const MessengerVideoCallModal = ({
               };
               setCallTranscripts((prev) => [...prev, transcriptItem]);
               callTranscriptsRef.current.push(transcriptItem);
-
-              if (data.needsTranslation && data.audioBase64 && playInterpreterAudioRef.current) {
-                playInterpreterAudioRef.current(data.audioBase64, data.translatedText, {
-                  utteranceId: data.utteranceId,
-                  seq: data.seq,
-                  timestamp: data.timestamp,
-                });
-              } else if (data.needsTranslation && !data.audioBase64 && data.translatedText && role === 'guest') {
-                // Dự phòng bên nhận (Robot): nếu gói live_audio từ Staff không đến trong 2.2s (mạng chập chờn / TTS staff lỗi),
-                // Robot tự tổng hợp TTS giọng Jenny đọc bản dịch tiếng Anh cho khách để không bị câm loa
-                const targetUtt = data.utteranceId;
-                const targetText = data.translatedText;
-                const targetSeq = data.seq;
-                setTimeout(() => {
-                  if (
-                    !playedUtteranceIdsRef.current.has(targetUtt) &&
-                    !isEndingRef.current &&
-                    callStatusRef.current !== 'ended' &&
-                    playInterpreterAudioRef.current
-                  ) {
-                    console.log(`[VideoCall Flow] [${role}] Safety TTS synthesis on receiver for utt=${targetUtt}`);
-                    synthesizeSpeech(targetText, { language: 'en-US', voice: 'en-US-JennyNeural', timeoutMs: 5000 })
-                      .then((audioData) => {
-                        if (audioData?.audio_base64 && !playedUtteranceIdsRef.current.has(targetUtt)) {
-                          playInterpreterAudioRef.current(audioData.audio_base64, targetText, {
-                            utteranceId: targetUtt,
-                            seq: targetSeq,
-                            timestamp: Date.now(),
-                          });
-                        }
-                      })
-                      .catch(() => {});
-                  }
-                }, 2200);
-              }
             }
           } else if (data.type === 'live_audio') {
             if (data.senderRole !== role && data.audioBase64 && playInterpreterAudioRef.current) {
@@ -1077,6 +1126,10 @@ export const MessengerVideoCallModal = ({
                 message: `Lỗi âm thanh (${errCode})`,
               });
               setTimeout(() => setTtsStatus(null), 3500);
+            }
+          } else if (data.type === 'video_frame') {
+            if (data.senderRole !== role && data.frame) {
+              setRemoteFallbackFrame(data.frame);
             }
           } else if (data.type === 'translate_mode_change' || data.type === 'translate_mode_sync') {
             if (data.mode) {
@@ -1140,10 +1193,18 @@ export const MessengerVideoCallModal = ({
       setRecordingDuration(0);
       setUploadStatus(null);
       setErrorMessage('');
+      setRemoteFallbackFrame('');
+      setHasRemoteVideoFrame(false);
       setActiveSubtitle(null);
       setInterimText('');
+      setPeerInterim(null);
       setCallTranscripts([]);
       callTranscriptsRef.current = [];
+      const defaultMode = isInitialGuestVi ? 'bypass' : 'auto';
+      setTranslateMode(defaultMode);
+      translateModeRef.current = defaultMode;
+      setActiveGuestLanguage(isInitialGuestVi ? 'Tiếng Việt' : 'English');
+      activeGuestLanguageRef.current = isInitialGuestVi ? 'Tiếng Việt' : 'English';
       if (setupWebRTCRef.current) {
         setupWebRTCRef.current();
       }
@@ -1169,6 +1230,59 @@ export const MessengerVideoCallModal = ({
       if (callTimer) clearInterval(callTimer);
     };
   }, [callStatus]);
+
+  // Đồng bộ lại srcObject khi DOM video mount/re-render và kích hoạt relay video qua WS nếu P2P WebRTC chưa lên hình
+  useEffect(() => {
+    if (localVideoRef.current && localStreamRef.current && localVideoRef.current.srcObject !== localStreamRef.current) {
+      localVideoRef.current.srcObject = localStreamRef.current;
+    }
+    if (callStatus === 'connected' && remoteVideoRef.current && remoteStreamRef.current) {
+      if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+        remoteVideoRef.current.srcObject = remoteStreamRef.current;
+      }
+      remoteVideoRef.current.play().catch(() => {});
+    }
+  }, [callStatus, hasNoCamera]);
+
+  const markRemoteWebRtcReadyIfConnected = useCallback(() => {
+    const pcState = pcRef.current?.connectionState;
+    const iceState = pcRef.current?.iceConnectionState;
+    const isIceReady = pcState === 'connected' || iceState === 'connected' || iceState === 'completed';
+    if (isIceReady && remoteVideoRef.current && remoteVideoRef.current.videoWidth > 0) {
+      setHasRemoteVideoFrame(true);
+      setRemoteFallbackFrame('');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen || callStatus !== 'connected' || hasRemoteVideoFrame) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 360;
+    canvas.height = 270;
+    const ctx = canvas.getContext('2d');
+
+    const timer = setInterval(() => {
+      if (isEndingRef.current || hasNoCamera || isVideoDisabled) return;
+      const ws = wsRef.current;
+      const videoEl = localVideoRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN || ws.bufferedAmount > 180000) return;
+      if (!videoEl || videoEl.readyState < 2 || !videoEl.videoWidth || !ctx) return;
+
+      try {
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        const frame = canvas.toDataURL('image/jpeg', 0.55);
+        ws.send(JSON.stringify({
+          type: 'video_frame',
+          senderRole: role,
+          frame,
+        }));
+      } catch {
+        // Ignore transient canvas capture errors
+      }
+    }, 120);
+
+    return () => clearInterval(timer);
+  }, [isOpen, callStatus, hasRemoteVideoFrame, hasNoCamera, isVideoDisabled, role]);
 
   // Dừng riêng adapter thu âm STT từ localStreamRef (KHÔNG làm dừng track WebRTC gốc)
   const stopCallAudioSttAdapter = useCallback(() => {
@@ -1741,6 +1855,19 @@ export const MessengerVideoCallModal = ({
 
         pendingTranscriptRef.current = cleanCandidate;
         setInterimText(cleanCandidate);
+        if (interim.trim() && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          const now = Date.now();
+          if (now - lastInterimSentAtRef.current >= 450) {
+            lastInterimSentAtRef.current = now;
+            try {
+              wsRef.current.send(JSON.stringify({
+                type: 'live_interim',
+                senderRole: role,
+                text: cleanCandidate,
+              }));
+            } catch {}
+          }
+        }
         console.log(
           `[VideoCall Flow] [${role}] step=STT_RESULT engine=web_speech final=${Boolean(finalChunk)} interimLen=${interim.length} totalLen=${cleanCandidate.length}`
         );
@@ -1862,8 +1989,28 @@ export const MessengerVideoCallModal = ({
       const targetConfig = resolveTranslationTarget(role, curMode, activeGuestLanguageRef.current);
       const { peerRole, targetLang, ttsLangCode, ttsVoice, isBypassMode } = targetConfig;
 
-      // 1. CHẾ ĐỘ THUẦN VIỆT (BYPASS DO NGƯỜI DÙNG CHỌN): Không dịch, không phát TTS
-      if (isBypassMode) {
+      // 1. CHẾ ĐỘ THUẦN VIỆT (BYPASS): Không dịch nếu cả 2 nói Tiếng Việt;
+      // nhưng hễ phát hiện câu nói Tiếng Anh -> tự động bật dịch Việt ⇄ Anh ngay câu đó
+      const hasVietnameseDiacritics = /[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]/i.test(cleanText);
+      const detectedEnFromMeta = normalizeLanguageCode(meta.detectedLang) === 'en';
+      const looksLikeEnglishSentence =
+        !hasVietnameseDiacritics &&
+        (detectedEnFromMeta ||
+          /\b(hello|hi|hey|please|thank|thanks|help|room|water|towel|food|menu|order|check|where|what|when|how|can|could|would|need|want|need|sorry|excuse|morning|evening|night|hotel|reception|staff|pool|spa|gym|bar|coffee|breakfast|wifi|password|taxi|airport|luggage|broken|clean)\b/i.test(cleanText));
+
+      if (isBypassMode && looksLikeEnglishSentence && !isManualLockedRef.current) {
+        setTranslateMode('auto');
+        translateModeRef.current = 'auto';
+        setActiveGuestLanguage('English');
+        activeGuestLanguageRef.current = 'English';
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: 'translate_mode_sync',
+            mode: 'auto',
+            manualLocked: false,
+          }));
+        }
+      } else if (isBypassMode) {
         const payload = {
           type: 'live_subtitle',
           senderRole: role,
@@ -1883,6 +2030,12 @@ export const MessengerVideoCallModal = ({
         return;
       }
 
+      const activeTargetConfig = isBypassMode
+        ? resolveTranslationTarget(role, 'auto', 'English')
+        : targetConfig;
+      const effectivePeerRole = activeTargetConfig.peerRole;
+      const effectiveTargetLang = activeTargetConfig.targetLang;
+
       // 2. XÁC ĐỊNH NGÔN NGỮ NGUỒN CỦA CÂU NÓI (CHUẨN HÓA DUY NHẤT 'vi' HOẶC 'en')
       const normalizedMetaLang = normalizeLanguageCode(meta.detectedLang);
       const normalizedInputMode = normalizeLanguageCode(inputLangModeRef.current);
@@ -1893,25 +2046,31 @@ export const MessengerVideoCallModal = ({
       const currentSeq = ++seqRef.current;
 
       console.log(
-        `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${curMode} step=TRANSLATE_REQUEST srcHint=${hintLang} tgt=${targetLang} len=${cleanText.length}`
+        `[VideoCall Flow] [${role} -> ${effectivePeerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${translateModeRef.current} step=TRANSLATE_REQUEST srcHint=${hintLang} tgt=${effectiveTargetLang} len=${cleanText.length}`
       );
+
+      const recentContext = (callTranscriptsRef.current || [])
+        .slice(-2)
+        .map((t) => `${t.speaker}: ${t.raw_transcript}`)
+        .filter(Boolean);
 
       const res = await quickTranslateText({
         text: cleanText,
         sourceLang: hintLang,
-        targetLang,
+        targetLang: effectiveTargetLang,
         sessionId,
         senderRole: role,
         withAudio: false,
+        context: recentContext,
       });
 
       const normalizedResSource = normalizeLanguageCode(res.source_lang);
       const resolvedSourceLang = normalizedResSource || (hintLang !== 'auto' ? hintLang : (role === 'staff' ? 'vi' : 'en'));
-      const needsTranslation = Boolean(res.needs_translation) && resolvedSourceLang !== targetLang;
+      const needsTranslation = Boolean(res.needs_translation) && resolvedSourceLang !== effectiveTargetLang;
       const finalTranslatedText = needsTranslation ? (res.translated_text || cleanText) : cleanText;
 
       console.log(
-        `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${curMode} step=TRANSLATED src=${resolvedSourceLang} tgt=${targetLang} needsTrans=${needsTranslation}`
+        `[VideoCall Flow] [${role} -> ${effectivePeerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${translateModeRef.current} step=TRANSLATED src=${resolvedSourceLang} tgt=${effectiveTargetLang} needsTrans=${needsTranslation}`
       );
 
       const payload = {
@@ -1923,7 +2082,7 @@ export const MessengerVideoCallModal = ({
         translatedText: finalTranslatedText,
         needsTranslation,
         sourceLang: resolvedSourceLang,
-        targetLang,
+        targetLang: effectiveTargetLang,
         audioBase64: null,
         timestamp: Date.now(),
       };
@@ -1936,128 +2095,8 @@ export const MessengerVideoCallModal = ({
       }
       displaySubtitleLocally(payload);
 
-      // 3. Nếu câu nói đã cùng ngôn ngữ với đích nhận (vd: Khách nói tiếng Việt gửi cho Staff target='vi',
-      // hoặc Staff nói tiếng Anh gửi cho Khách target='en'):
-      // Giữ nguyên câu gốc, KHÔNG dịch vòng, KHÔNG gọi TTS thừa, và KHÔNG tự chuyển mode sang Thuần Việt!
-      if (!needsTranslation || !finalTranslatedText.trim()) {
-        return;
-      }
-
-      // 4. Tổng hợp giọng đọc TTS cho bản dịch (có 1 lần retry nhanh nếu timeout/provider lỗi tạm thời)
-      const currentEpoch = callEpochRef.current;
-      setTtsStatus({ utteranceId, status: 'generating', message: 'Đang tạo âm thanh bản dịch...' });
-
-      console.log(
-        `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_REQUEST lang=${ttsLangCode} voice=${ttsVoice} len=${finalTranslatedText.length}`
-      );
-
-      const requestTtsWithRetry = async () => {
-        const firstAttempt = await synthesizeSpeech(finalTranslatedText, {
-          language: ttsLangCode,
-          voice: ttsVoice,
-          timeoutMs: 6500,
-        });
-        if (firstAttempt?.audio_base64) {
-          return firstAttempt;
-        }
-        const retryableCodes = [TTS_ERROR_CODES.TTS_TIMEOUT, TTS_ERROR_CODES.TTS_PROVIDER_ERROR];
-        if (retryableCodes.includes(firstAttempt?.error_code)) {
-          console.log(
-            `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_RETRY reason=${firstAttempt.error_code}`
-          );
-          return await synthesizeSpeech(finalTranslatedText, {
-            language: ttsLangCode,
-            voice: ttsVoice,
-            timeoutMs: 4500,
-          });
-        }
-        return firstAttempt;
-      };
-
-      requestTtsWithRetry()
-        .then((audioData) => {
-          if (
-            isEndingRef.current ||
-            callStatusRef.current !== 'connected' ||
-            translateModeRef.current === 'bypass' ||
-            currentEpoch !== callEpochRef.current
-          ) {
-            return;
-          }
-          if (audioData?.audio_base64 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            setTtsStatus(null);
-            console.log(
-              `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_READY provider=${audioData.provider_used || 'edge'} bytes=${audioData.audio_base64.length}`
-            );
-            wsRef.current.send(JSON.stringify({
-              type: 'live_audio',
-              callId: sessionId,
-              utteranceId,
-              seq: currentSeq,
-              senderRole: role,
-              audioBase64: audioData.audio_base64,
-              translatedText: finalTranslatedText,
-              targetLang,
-              timestamp: Date.now(),
-            }));
-            console.log(
-              `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_SENT bytes=${audioData.audio_base64.length}`
-            );
-          } else {
-            const errCode = audioData?.error_code || TTS_ERROR_CODES.TTS_AUDIO_EMPTY;
-            const errDetail = audioData?.error_detail || audioData?.error || 'TTS returned empty audio';
-            console.warn(
-              `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_EMPTY code=${errCode} detail="${errDetail}"`
-            );
-            setTtsStatus({
-              utteranceId,
-              status: 'failed',
-              code: errCode,
-              message: `Không thể tạo âm thanh (${errCode})`,
-            });
-            setTimeout(() => setTtsStatus(null), 3500);
-            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-              wsRef.current.send(JSON.stringify({
-                type: 'live_audio_status',
-                callId: sessionId,
-                utteranceId,
-                seq: currentSeq,
-                senderRole: role,
-                status: 'failed',
-                errorCode: errCode,
-                error: errDetail,
-                timestamp: Date.now(),
-              }));
-            }
-          }
-        })
-        .catch((err) => {
-          const errCode = TTS_ERROR_CODES.TTS_PROVIDER_ERROR;
-          const errDetail = err?.message || String(err);
-          console.warn(
-            `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_EMPTY code=${errCode} detail="${errDetail}"`
-          );
-          setTtsStatus({
-            utteranceId,
-            status: 'failed',
-            code: errCode,
-            message: `Lỗi tạo âm thanh (${errCode})`,
-          });
-          setTimeout(() => setTtsStatus(null), 3500);
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({
-              type: 'live_audio_status',
-              callId: sessionId,
-              utteranceId,
-              seq: currentSeq,
-              senderRole: role,
-              status: 'failed',
-              errorCode: errCode,
-              error: errDetail,
-              timestamp: Date.now(),
-            }));
-          }
-        });
+      // Chỉ hiển thị phụ đề dịch trực tiếp Việt ⇄ Anh cho cả 2 bên, không phát giọng TTS robot đè lên cuộc gọi
+      return;
     } catch (err) {
       console.warn('[VideoCall Flow] Subtitle/Translation process error:', err);
       displaySubtitleLocally({
@@ -2372,8 +2411,8 @@ export const MessengerVideoCallModal = ({
 
       {/* Video Call Modal Window */}
       <div className="relative w-full h-full lg:h-[620px] lg:max-w-4xl bg-[#1A1A1A] rounded-none lg:rounded-3xl overflow-hidden shadow-2xl border-0 lg:border lg:border-stone-800 flex flex-col">
-        {/* TOP BAR (GOOGLE MEET MINIMALIST HEADER) */}
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 sm:px-5 py-2.5 sm:py-3 pt-[max(0.75rem,env(safe-area-inset-top))] bg-gradient-to-b from-[#141413]/90 via-[#141413]/50 to-transparent robot-safe-x">
+        {/* TOP BAR (GOOGLE MEET MINIMALIST HEADER - LANDSCAPE FRIENDLY) */}
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 sm:px-5 py-1.5 sm:py-2.5 pt-[max(0.5rem,env(safe-area-inset-top))] bg-gradient-to-b from-black/75 via-black/30 to-transparent robot-safe-x">
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <div className="text-white text-xs sm:text-sm font-semibold tracking-wide truncate max-w-[120px] sm:max-w-[180px] md:max-w-xs flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
@@ -2401,8 +2440,8 @@ export const MessengerVideoCallModal = ({
                     }`}
                     title="Bật chế độ Thông dịch AI: Khách nói tiếng Anh ➔ Dịch tiếng Việt (phát âm Hoài My); Nhân viên nói tiếng Việt ➔ Dịch tiếng Anh (phát âm Jenny); Tự động giữ nguyên nếu cùng ngôn ngữ"
                   >
-                    <Languages className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
-                    <span>EN ⇄ VI</span>
+                    <Languages className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Dịch EN ⇄ VI</span>
                   </button>
 
                   {/* 2. NÚT THUẦN VIỆT (KHÔNG DỊCH) */}
@@ -2414,96 +2453,12 @@ export const MessengerVideoCallModal = ({
                         ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 shadow-sm'
                         : 'text-stone-300 hover:text-white hover:bg-white/10'
                     }`}
-                    title="Bật chế độ Thuần Việt: Cả 2 bên nói tiếng Việt trực tiếp, không dịch, không phát âm AI"
+                    title="Bật chế độ Thuần Việt: Nói tiếng Việt trực tiếp, không dịch"
                   >
                     <span>Thuần Việt</span>
                   </button>
-
-                  {/* 3. NÚT CHỌN NGÔN NGỮ ĐẦU VÀO MICRO (AUTO EN/VI | EN | VI) */}
-                  {translateMode === 'auto' && (
-                    <button
-                      type="button"
-                      onClick={cycleInputLangMode}
-                      className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold text-sky-300 hover:bg-white/10 transition-all cursor-pointer"
-                      title="Chuyển chế độ nhận diện ngôn ngữ đầu vào của Micro: Đa ngữ tự động (AUTO EN/VI) / Cố định EN / Cố định VI"
-                    >
-                      <span>Nghe: {inputLangMode === 'auto' ? 'Đa ngữ' : inputLangMode.toUpperCase()}</span>
-                    </button>
-                  )}
-
-                  {/* 4. NÚT TEST NHANH GIỌNG ĐỌC AI & PHỤ ĐỀ */}
-                  <button
-                    type="button"
-                    onClick={() => setShowTestPanel(!showTestPanel)}
-                    className={`hidden md:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
-                      showTestPanel
-                        ? 'bg-amber-500 text-stone-950 font-bold shadow-md'
-                        : 'text-stone-300 hover:text-white hover:bg-white/10'
-                    }`}
-                    title="Mở bảng công cụ Thử nghiệm Nhanh: 1-click test giọng đọc Edge TTS & phiên dịch tức thì"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>🧪 Thử AI</span>
-                  </button>
                 </div>
-
-                {isAiSpeaking && (
-                  <span className="flex items-center gap-1 text-[10px] text-emerald-300 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-500/50 animate-pulse font-medium">
-                    <Volume2 className="w-3 h-3 text-emerald-400" />
-                    <span className="hidden sm:inline">AI Đang nói</span>
-                  </span>
-                )}
-
-                {ttsStatus?.status === 'generating' && (
-                  <span className="flex items-center gap-1 text-[10px] text-amber-300 bg-amber-950/80 px-2.5 py-1 rounded-full border border-amber-500/50 animate-pulse font-medium">
-                    <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
-                    <span className="hidden sm:inline">Đang tạo giọng...</span>
-                  </span>
-                )}
-
-                {ttsStatus?.status === 'failed' && (
-                  <span
-                    className="flex items-center gap-1 text-[10px] text-rose-300 bg-rose-950/80 px-2.5 py-1 rounded-full border border-rose-500/50 font-medium"
-                    title={ttsStatus.message}
-                  >
-                    <AlertCircle className="w-3 h-3 text-rose-400" />
-                    <span className="hidden sm:inline">{ttsStatus.code || 'Lỗi TTS'}</span>
-                  </span>
-                )}
               </div>
-            )}
-
-            {/* LIVE STT LISTENING BADGE / 1-CLICK TOGGLE MIC */}
-            {callStatus === 'connected' && (
-              <button
-                type="button"
-                onClick={toggleMic}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono font-medium border cursor-pointer transition-all active:scale-95 ${
-                  isMicMuted
-                    ? 'bg-red-950/80 text-red-300 border-red-500/70 shadow-sm animate-pulse'
-                    : 'bg-[#202124]/90 hover:bg-white/10 border-white/10 text-stone-200'
-                }`}
-                title={
-                  isMicMuted
-                    ? 'Micro đang TẮT - Nhấn để BẬT lại micro'
-                    : `Micro đang BẬT (${micLangBadgeLabel}) - Nhấn để TẮT tạm thời`
-                }
-              >
-                {isMicMuted ? (
-                  <>
-                    <MicOff className="w-2.5 h-2.5 text-red-400" />
-                    <span className="font-bold text-red-300">Mic: TẮT</span>
-                  </>
-                ) : (
-                  <>
-                    <Mic className="w-2.5 h-2.5 text-emerald-400 animate-pulse" />
-                    <span className="hidden sm:inline">Mic:</span>
-                    <span className="text-emerald-300 font-semibold">
-                      {micLangBadgeLabel}
-                    </span>
-                  </>
-                )}
-              </button>
             )}
 
             {/* CALL DURATION BADGE */}
@@ -2520,10 +2475,10 @@ export const MessengerVideoCallModal = ({
 
             <button
               onClick={toggleFullscreen}
-              className="w-8 h-8 rounded-full bg-[#202124]/90 hover:bg-white/10 text-stone-300 border border-white/10 flex items-center justify-center transition-colors cursor-pointer"
+              className="w-8 h-8 rounded-full bg-[#141413] hover:bg-[#262523] text-white border border-white/20 flex items-center justify-center transition-colors cursor-pointer"
               title="Toàn màn hình"
             >
-              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" /> : <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />}
             </button>
           </div>
         </div>
@@ -2650,10 +2605,19 @@ export const MessengerVideoCallModal = ({
             playsInline
             webkit-playsinline="true"
             muted={isSpeakerMuted}
+            onLoadedData={markRemoteWebRtcReadyIfConnected}
+            onPlaying={markRemoteWebRtcReadyIfConnected}
             className={`w-full h-full object-cover transition-opacity duration-500 ${
-              callStatus === 'connected' ? 'opacity-100' : 'opacity-0'
+              callStatus === 'connected' && (hasRemoteVideoFrame || !remoteFallbackFrame) ? 'opacity-100' : 'opacity-0'
             }`}
           />
+          {callStatus === 'connected' && !hasRemoteVideoFrame && remoteFallbackFrame && (
+            <img
+              src={remoteFallbackFrame}
+              alt="Remote video"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          )}
 
           {callStatus !== 'connected' && callStatus !== 'ended' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center p-4 sm:p-6 text-center z-10 bg-[#121212]/95">
@@ -2683,57 +2647,72 @@ export const MessengerVideoCallModal = ({
             </div>
           )}
 
-          {/* FLOATING CINEMA SUBTITLE BAR (GOOGLE MEET CLOSED CAPTIONS STYLE) */}
-          {(activeSubtitle || (interimText && translateMode !== 'bypass')) && (
-            <div className="absolute bottom-20 sm:bottom-24 lg:bottom-26 left-3 right-3 sm:left-6 sm:right-6 z-25 flex justify-center pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="bg-[#202124]/95 backdrop-blur-md border border-white/10 rounded-2xl px-5 py-3 sm:px-6 sm:py-3.5 max-w-2xl text-center shadow-2xl space-y-1.5 pointer-events-auto">
-                {interimText && !activeSubtitle && (
-                  <p className="text-stone-300 text-xs sm:text-sm italic font-mono animate-pulse">
-                    "{interimText}..."
-                  </p>
-                )}
-
-                {activeSubtitle && (
-                  <>
-                    <div className="flex items-center justify-center gap-2 mb-0.5 flex-wrap">
-                      <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-white/10 text-stone-200 border border-white/10">
-                        {activeSubtitle.senderRole === role
-                          ? 'Bạn'
-                          : (activeSubtitle.senderRole === 'staff' ? calleeName : callerName)}
-                      </span>
-                      <span className="text-[10px] font-semibold text-amber-400 flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                        <Languages className="w-3 h-3" />
-                        <span>
-                          {activeSubtitle.needsTranslation
-                            ? `${(activeSubtitle.sourceLang || 'en').toUpperCase()} ➔ ${(activeSubtitle.targetLang || 'vi').toUpperCase()}`
-                            : `${(activeSubtitle.sourceLang || 'vi').toUpperCase()} (Gốc)`}
+          {/* FLOATING LIVE CAPTIONS FEED (TRANSPARENT OVERLAY FOR LANDSCAPE & DESKTOP) */}
+          {(callTranscripts.length > 0 || activeSubtitle || peerInterim || (interimText && translateMode !== 'bypass')) && (
+            <div className="absolute bottom-16 sm:bottom-20 left-3 right-32 sm:left-6 sm:right-44 lg:right-52 z-25 flex justify-start pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="bg-transparent max-w-xl w-full text-left space-y-1.5 [text-shadow:0_2px_6px_rgba(0,0,0,0.95)]">
+                {callTranscripts.slice(-2).map((item, idx, arr) => {
+                  const isStaffSpeaker = item.speaker === 'Staff';
+                  const isMine = (role === 'staff' && isStaffSpeaker) || (role === 'guest' && !isStaffSpeaker);
+                  const isLatest = idx === arr.length - 1 && !peerInterim && !interimText;
+                  return (
+                    <div
+                      key={`${item.timestamp}-${idx}`}
+                      className={`border-l-2 pl-2.5 transition-opacity ${
+                        isStaffSpeaker ? 'border-emerald-400' : 'border-amber-400'
+                      } ${isLatest ? 'opacity-100' : 'opacity-80'}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] uppercase font-bold tracking-wider ${
+                          isStaffSpeaker ? 'text-emerald-300' : 'text-amber-300'
+                        }`}>
+                          {isMine ? 'Bạn' : (isStaffSpeaker ? calleeName : callerName)}
                         </span>
-                      </span>
-                      {activeSubtitle.needsTranslation && (
-                        <span className="text-[10px] font-medium text-emerald-300 flex items-center gap-1 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                          <Volume2 className={`w-2.5 h-2.5 ${isAiSpeaking ? 'animate-bounce text-emerald-300' : ''}`} />
-                          <span>AI Voice</span>
-                        </span>
+                        {item.needs_translation && (
+                          <span className="text-[9px] text-stone-200/90">
+                            {(item.source_lang || 'en').toUpperCase()} ➔ {(item.target_lang || 'vi').toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-white font-bold leading-snug ${isLatest ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'}`}>
+                        {item.translated_text || item.raw_transcript}
+                      </p>
+                      {item.needs_translation && item.raw_transcript !== item.translated_text && (
+                        <p className="text-stone-200/85 text-[11px] italic leading-tight">
+                          "{item.raw_transcript}"
+                        </p>
                       )}
                     </div>
+                  );
+                })}
 
-                    {activeSubtitle.needsTranslation && activeSubtitle.originalText !== activeSubtitle.translatedText && (
-                      <p className="text-stone-400 text-[11px] sm:text-xs italic leading-tight">
-                        "{activeSubtitle.originalText}"
-                      </p>
-                    )}
-
-                    <p className="text-white text-xs sm:text-sm md:text-base font-semibold leading-relaxed tracking-wide">
-                      {activeSubtitle.translatedText || activeSubtitle.originalText}
+                {peerInterim && (
+                  <div className="border-l-2 border-sky-400 pl-2.5 opacity-95">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-sky-300">
+                      {peerInterim.senderRole === 'staff' ? calleeName : callerName} (đang nói...)
+                    </span>
+                    <p className="text-white text-xs sm:text-sm italic">
+                      "{peerInterim.text}..."
                     </p>
-                  </>
+                  </div>
+                )}
+
+                {interimText && translateMode !== 'bypass' && (
+                  <div className="border-l-2 border-white/60 pl-2.5 opacity-90">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-stone-200">
+                      Bạn (đang nói...)
+                    </span>
+                    <p className="text-stone-100 text-xs sm:text-sm italic">
+                      "{interimText}..."
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* PICTURE-IN-PICTURE: LOCAL SELF VIDEO (GOOGLE MEET STYLE) */}
-          <div className="absolute bottom-20 sm:bottom-24 right-3 sm:right-4 w-24 h-32 sm:w-28 sm:h-36 lg:w-44 lg:h-56 rounded-2xl overflow-hidden bg-[#202124] border border-white/15 shadow-2xl z-20 transition-all">
+          {/* PICTURE-IN-PICTURE: LOCAL SELF VIDEO (LANDSCAPE-OPTIMIZED) */}
+          <div className="absolute bottom-16 sm:bottom-20 right-3 sm:right-4 w-28 h-20 sm:w-36 sm:h-24 lg:w-44 lg:h-32 rounded-2xl overflow-hidden bg-[#141413] border border-white/20 shadow-2xl z-20 transition-all">
             {hasNoCamera ? (
               <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#202124] to-[#141414] p-2 text-center select-none">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#3c4043] flex items-center justify-center mb-1.5 shadow-inner">
@@ -2770,22 +2749,22 @@ export const MessengerVideoCallModal = ({
           </div>
         </div>
 
-        {/* BOTTOM ACTION CONTROLS BAR (GOOGLE MEET FLOATING DOCK STYLE) */}
-        <div className="p-3 sm:p-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-center justify-center z-30 shrink-0 robot-safe-x">
-          <div className="flex items-center gap-2 sm:gap-3 bg-[#202124]/90 backdrop-blur-md px-3 sm:px-5 py-2 sm:py-2.5 rounded-full border border-white/10 shadow-2xl">
+        {/* BOTTOM ACTION CONTROLS BAR (AURORA BLACK/WHITE DOCK - LANDSCAPE COMPACT) */}
+        <div className="p-2 sm:p-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-black/80 via-black/35 to-transparent flex items-center justify-center z-30 shrink-0 robot-safe-x">
+          <div className="flex items-center gap-2 sm:gap-2.5 bg-[#141413]/90 backdrop-blur-md px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-full border border-white/20 shadow-2xl">
             {/* 1. MUTE MIC BUTTON */}
             <button
               type="button"
               onClick={toggleMic}
               title={isMicMuted ? 'Bật mic' : 'Tắt mic'}
               aria-label={isMicMuted ? 'Bật micro' : 'Tắt micro'}
-              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm ${
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 border ${
                 isMicMuted
-                  ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
-                  : 'bg-[#3c4043] hover:bg-[#474a4d] text-white hover:shadow-md'
+                  ? 'bg-[#141413] border-red-500 text-red-400'
+                  : 'bg-[#141413] hover:bg-[#262523] border-white/25 text-white'
               }`}
             >
-              {isMicMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              {isMicMuted ? <MicOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Mic className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
             </button>
 
             {/* 2. CAMERA TOGGLE (STAFF ONLY) */}
@@ -2795,13 +2774,13 @@ export const MessengerVideoCallModal = ({
                 onClick={toggleVideo}
                 title={isVideoDisabled ? 'Bật máy ảnh' : 'Tắt máy ảnh'}
                 aria-label={isVideoDisabled ? 'Bật camera' : 'Tắt camera'}
-                className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm ${
+                className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 border ${
                   isVideoDisabled
-                    ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
-                    : 'bg-[#3c4043] hover:bg-[#474a4d] text-white hover:shadow-md'
+                    ? 'bg-[#141413] border-red-500 text-red-400'
+                    : 'bg-[#141413] hover:bg-[#262523] border-white/25 text-white'
                 }`}
               >
-                {isVideoDisabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+                {isVideoDisabled ? <VideoOff className="w-4 h-4 sm:w-5 sm:h-5" /> : <Video className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
               </button>
             )}
 
@@ -2811,27 +2790,27 @@ export const MessengerVideoCallModal = ({
               onClick={toggleSpeaker}
               title={isSpeakerMuted ? 'Bật loa' : 'Tắt loa'}
               aria-label={isSpeakerMuted ? 'Bật loa' : 'Tắt loa'}
-              className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-sm ${
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-full flex items-center justify-center transition-all cursor-pointer active:scale-95 border ${
                 isSpeakerMuted
-                  ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
-                  : 'bg-[#3c4043] hover:bg-[#474a4d] text-white hover:shadow-md'
+                  ? 'bg-[#141413] border-red-500 text-red-400'
+                  : 'bg-[#141413] hover:bg-[#262523] border-white/25 text-white'
               }`}
             >
-              {isSpeakerMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+              {isSpeakerMuted ? <VolumeX className="w-4 h-4 sm:w-5 sm:h-5" /> : <Volume2 className="w-4 h-4 sm:w-5 sm:h-5 text-white" />}
             </button>
 
             {/* DIVIDER */}
-            <div className="w-px h-6 bg-white/15 mx-1 hidden sm:block" />
+            <div className="w-px h-5 bg-white/20 mx-0.5 hidden sm:block" />
 
-            {/* 4. END CALL BUTTON (GOOGLE MEET RED PILL) */}
+            {/* 4. END CALL BUTTON */}
             <button
               type="button"
               onClick={() => handleEndCall(true)}
               title="Rời khỏi cuộc gọi"
               aria-label="Rời khỏi cuộc gọi"
-              className="px-5 sm:px-6 h-11 sm:h-12 rounded-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 transition-all cursor-pointer active:scale-95"
+              className="px-4 sm:px-5 h-10 sm:h-11 rounded-full bg-red-600 hover:bg-red-500 active:bg-red-700 text-white font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-red-600/30 transition-all cursor-pointer active:scale-95"
             >
-              <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
+              <PhoneOff className="w-4 h-4 text-white" />
               <span className="font-semibold hidden xs:inline sm:inline">Kết thúc</span>
             </button>
           </div>

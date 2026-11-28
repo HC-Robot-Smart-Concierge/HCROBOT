@@ -125,7 +125,7 @@
   },
   {
     "id": "wf-03-room-service",
-    "name": "Workflow 3: Đặt dịch vụ buồng phòng & Gọi taxi đón tại Sảnh",
+    "name": "Workflow 3: Đặt dịch vụ phục vụ phòng (Room Service) & Gọi taxi đón tại Sảnh",
     "description": "Tiếp nhận yêu cầu dọn phòng, xin thêm đồ dùng hoặc đặt xe taxi đón tại cửa sảnh.",
     "trigger_type": "GUEST_TAP",
     "is_active": true,
@@ -144,7 +144,7 @@
       {
         "step_id": "wf3-step-2",
         "type": "COMMUNICATE",
-        "title": "2. Đối thoại ghi nhận dịch vụ buồng phòng & số phòng",
+        "title": "2. Đối thoại ghi nhận dịch vụ phòng & số phòng",
         "params": {
           "input_source": "BOTH",
           "silence_timeout_sec": 30,
@@ -157,10 +157,10 @@
         "type": "CREATE_REQUEST",
         "title": "3. Xác nhận và gửi yêu cầu tới bộ phận phụ trách",
         "params": {
-          "service_type": "HOUSEKEEPING",
+          "service_type": "ROOM_SERVICE",
           "room_source": "verified_guest",
           "urgency": "NORMAL",
-          "target_department": "Housekeeping"
+          "target_department": "Room_Service"
         }
       },
       {

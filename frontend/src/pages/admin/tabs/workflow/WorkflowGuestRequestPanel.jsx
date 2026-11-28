@@ -39,7 +39,7 @@ export function WorkflowGuestRequestPanel({
   const { draft, ticket } = activeSession;
 
   const labels = {
-    cleaning: label('Room cleaning (Housekeeping)', 'Dọn phòng (Buồng phòng)'),
+    cleaning: label('Room cleaning (Room Service)', 'Dọn phòng (Phục vụ phòng)'),
     amenities: label('Extra room amenities', 'Xin thêm đồ dùng phòng'),
     food: label('Food & Beverage (Kitchen)', 'Đặt món ăn / Đồ uống (Bếp)'),
     taxi: label('Taxi from the lobby', 'Đặt taxi đón tại sảnh'),

@@ -7,7 +7,7 @@ import { Pagination } from '../../components/common/Pagination';
 import {
   fetchUnifiedRequests,
   updateGenericRequestStatus,
-  createHousekeepingRequest,
+  createRoomServiceOrder,
   createMaintenanceRequest,
   createOperationalDirective,
 } from '../../services/operationsApi';
@@ -21,7 +21,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   const staffId = currentUser?.id || currentUser?.username || 'user';
 
   const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Pending' | 'In Progress' | 'Completed'
-  const [deptFilter, setDeptFilter] = useState('All'); // 'All' | 'Reception' | 'F&B' | 'Housekeeping' | 'Bell Services' | 'Maintenance'
+  const [deptFilter, setDeptFilter] = useState('All'); // 'All' | 'Reception' | 'F&B' | 'Bell Services' | 'Maintenance'
   const [searchQuery, setSearchQuery] = useState('');
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedDetailReq, setSelectedDetailReq] = useState(null); // Read-only completed detail modal
@@ -43,8 +43,8 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       notes: 'No mayo on one sandwich, please.',
     },
     {
-      id: 'REQ-HK-1042',
-      department: 'Housekeeping',
+      id: 'REQ-RS-1042',
+      department: 'Room Service',
       title: 'Spill cleanup required (Wine spill on carpet)',
       location: 'ROOM 502',
       guestName: 'Mr. John Smith',
@@ -851,12 +851,12 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     await updateGenericRequestStatus(reqId, nextStatus, finalAssignedTo);
 
     const statusMessages = {
-      'Sent to Kitchen': st("Request #{0} sent to the kitchen and added to My Tasks.", reqId),
+      'Sent to Kitchen': st("Request #{0} sent to the kitchen.", reqId),
       'Cooking': st("The kitchen is preparing request #{0}.", reqId),
       'Ready': st("Request #{0} is ready for room delivery.", reqId),
       'Delivering': st("Room Service is delivering request #{0}.", reqId),
       'Completed': st("Request #{0} completed and delivered.", reqId),
-      'In Progress': st("Request #{0} accepted and added to My Tasks.", reqId),
+      'In Progress': st("Request #{0} accepted and marked In Progress.", reqId),
     };
     onNotify(statusMessages[nextStatus] || st("Request #{0} updated: {1}", reqId, nextStatus));
   };
@@ -899,11 +899,12 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     setRequests([created, ...requests]);
 
     // Persist to Database according to department
-    if (newReq.department === 'Housekeeping') {
-      await createHousekeepingRequest({
-        title: newReq.title,
+    if (newReq.department === 'Room Service') {
+      await createRoomServiceOrder({
         room_number: newReq.location || '502',
-        description: newReq.notes,
+        items: [{ name: newReq.title, qty: 1 }],
+        note: newReq.notes,
+        is_service_request: true,
       });
     } else if (newReq.department === 'Maintenance') {
       await createMaintenanceRequest({
@@ -994,7 +995,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
           {isExecutive && (
             <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
               <span className="text-[11px] font-bold text-stone-500 uppercase mr-1">{st("Department:")}</span>
-              {['All', 'Reception', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Concierge', 'Taxi'].map((dept) => (
+              {['All', 'Reception', 'F&B', 'Bell Services', 'Maintenance', 'Concierge', 'Taxi'].map((dept) => (
                 <button
                   key={dept}
                   onClick={() => setDeptFilter(dept)}
@@ -1424,18 +1425,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                             className="px-4 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
                           >
                             <span>{st("Complete task")}</span>
-                          </button>
-                        )}
-
-                        {/* 4. Chuyển sang trang Yêu Cầu Cá Nhân nếu đang phụ trách */}
-                        {isMine && isInProgress && (
-                          <button
-                            onClick={() => onNavigate('MyTasks')}
-                            className="px-3.5 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
-                            title={st("Open My Tasks to track this request")}
-                          >
-                            <User className="w-3.5 h-3.5 text-amber-700" />
-                            <span>{st("My Tasks")}</span>
                           </button>
                         )}
 

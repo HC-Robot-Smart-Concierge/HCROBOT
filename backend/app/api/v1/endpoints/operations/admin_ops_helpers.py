@@ -389,7 +389,6 @@ async def compute_admin_analytics_summary(
         "Concierge": 0,
         "F&B": 0,
         "Kitchen": 0,
-        "Housekeeping": 0,
         "Bell Services": 0,
         "Maintenance": 0,
         "Taxi": 0,
@@ -401,11 +400,9 @@ async def compute_admin_analytics_summary(
             dept_distribution["Concierge"] += 1
         elif "reception" in d or "front desk" in d:
             dept_distribution["Reception"] += 1
-        elif "housekeeping" in d:
-            dept_distribution["Housekeeping"] += 1
         elif "kitchen" in d or "bếp" in d or "restaurant" in d:
             dept_distribution["Kitchen"] += 1
-        elif "f&b" in d or "room service" in d:
+        elif "f&b" in d or "room service" in d or "housekeeping" in d:
             dept_distribution["F&B"] += 1
         elif "bell" in d:
             dept_distribution["Bell Services"] += 1

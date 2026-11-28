@@ -264,9 +264,9 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         support_session_id, call_ticket_code = await create_live_call_session(
             db, request.prompt, current_room
         )
-    elif require_pin:
-        # Tạm dừng tạo ticket tự động - chờ khách bấm xác thực PIN trên màn hình Kiosk
-        logger.info(f"[AIChatService] Service request '{act}' for Room {target_room} requires Touch PIN verification.")
+    elif require_pin or graph_result.get("waiting_for_wakeup_time"):
+        # Tạm dừng tạo ticket tự động - chờ khách bấm xác thực PIN hoặc trả lời giờ báo thức
+        logger.info(f"[AIChatService] Service request '{act}' for Room {target_room} is waiting for PIN or wake-up time.")
     elif act in {
         "housekeeping", "room_service", "maintenance", "bellman",
         "restaurant", "laundry", "wake_up", "reception", "cancel_service",

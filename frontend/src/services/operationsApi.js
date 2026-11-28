@@ -49,6 +49,14 @@ export const fetchReceptionDashboard = async () => {
   );
 };
 
+export const fetchReceptionServiceBills = async ({ serviceType = 'all', roomNumber = '' } = {}) => {
+  const params = new URLSearchParams();
+  if (serviceType && serviceType !== 'all') params.set('service_type', serviceType);
+  if (roomNumber) params.set('room_number', roomNumber);
+  const qs = params.toString();
+  return await fetchWithFallback(`${BASE_URL}/reception/service-bills${qs ? `?${qs}` : ''}`, {}, []);
+};
+
 export const updateReceptionRequest = async (requestId, updateData) => {
   return await fetchWithFallback(
     `${BASE_URL}/tasks/${encodeURIComponent(requestId)}`,
@@ -578,7 +586,6 @@ export const fetchAdminSummary = async () => {
     total_active: 0,
     all_count: 0,
     reception_count: 0,
-    housekeeping_count: 0,
     room_service_count: 0,
     bell_services_count: 0,
     maintenance_count: 0,
@@ -715,7 +722,6 @@ export const fetchAnalyticsSummary = async (period = 'all') => {
       Concierge: 0,
       'F&B': 0,
       Kitchen: 0,
-      Housekeeping: 0,
       'Bell Services': 0,
       Maintenance: 0,
       Taxi: 0,

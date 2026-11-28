@@ -56,14 +56,14 @@ export const KioskServiceForm = ({ activeStep }) => {
               Yêu Cầu Đã Được Tiếp Nhận Thành Công
             </h4>
             <p className="text-xs text-stone-600 mt-1">
-              Phiếu phục vụ phòng <span className="font-extrabold text-stone-900 font-mono text-sm px-1.5 py-0.5 rounded bg-emerald-100/70 border border-emerald-200">#{roomNumber}</span> đã được gửi trực tiếp tới đội Buồng Phòng.
+              Phiếu phục vụ phòng <span className="font-extrabold text-stone-900 font-mono text-sm px-1.5 py-0.5 rounded bg-emerald-100/70 border border-emerald-200">#{roomNumber}</span> đã được gửi trực tiếp tới bộ phận Phục vụ phòng (Room Service).
             </p>
           </div>
 
           <div className="grid grid-cols-2 gap-2.5 pt-1 text-left">
             <div className="p-3 rounded-xl bg-white border border-stone-200 shadow-sm">
               <span className="text-[10px] font-bold text-stone-400 uppercase block">Mã phiếu điện tử</span>
-              <span className="text-xs font-mono font-black text-amber-700">#REQ-{roomNumber}-HK</span>
+              <span className="text-xs font-mono font-black text-amber-700">#REQ-{roomNumber}-RS</span>
             </div>
             <div className="p-3 rounded-xl bg-white border border-stone-200 shadow-sm">
               <span className="text-[10px] font-bold text-stone-400 uppercase block">Thời gian phục vụ dự kiến</span>
@@ -74,7 +74,7 @@ export const KioskServiceForm = ({ activeStep }) => {
           </div>
 
           <div className="text-[11px] text-stone-500 italic pt-1">
-            Nhân viên buồng phòng đang chuẩn bị và sẽ đến phòng quý khách ngay!
+            Nhân viên phục vụ phòng đang chuẩn bị và sẽ đến phòng quý khách ngay!
           </div>
         </div>
       </div>
@@ -91,7 +91,7 @@ export const KioskServiceForm = ({ activeStep }) => {
           </div>
           <div>
             <h4 className="text-xs font-extrabold text-stone-900">
-              Biểu Mẫu Yêu Cầu Dịch Vụ Buồng Phòng
+              Biểu Mẫu Yêu Cầu Dịch Vụ Phòng (Room Service)
             </h4>
             <p className="text-[10px] text-stone-500">Chạm chọn tiện ích cần bổ sung</p>
           </div>
@@ -158,7 +158,7 @@ export const KioskServiceForm = ({ activeStep }) => {
           <MapPin className="w-3.5 h-3.5 text-blue-600" /> Vị trí Robot: Sảnh Tầng 1
         </span>
         <span className="text-emerald-700 font-bold flex items-center gap-1">
-          <Send className="w-3.5 h-3.5 text-emerald-600" /> Đã kết nối Housekeeping Dispatch
+          <Send className="w-3.5 h-3.5 text-emerald-600" /> Đã kết nối Room Service Dispatch
         </span>
       </div>
     </div>

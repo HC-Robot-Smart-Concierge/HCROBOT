@@ -20,19 +20,45 @@ import {
   Building2,
   AlertCircle,
   X,
+  Receipt,
+  Download,
 } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
 import { handleNumericKeyDown, sanitizeDigitsOnly, sanitizePhoneNumber } from '../../utils/numberInputHelper';
+import { exportServiceBillsToExcel } from '../../utils/excelExport';
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import { useStaffText, staffStatusLabel } from '../../context/StaffLanguage';
 import {
   fetchReceptionDashboard,
+  fetchReceptionServiceBills,
   updateReceptionRequest,
   fetchAllRooms,
   checkInRoom,
   checkOutRoom,
   syncRoomsFromRAG,
 } from '../../services/operationsApi';
+
+const parseBillDate = (isoValue) => {
+  if (!isoValue) return null;
+  const raw = String(isoValue).trim();
+  const normalized = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(raw) ? `${raw}Z` : raw;
+  const dt = new Date(normalized);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+};
+
+const formatBillTime = (isoValue) => {
+  const dt = parseBillDate(isoValue);
+  return dt ? dt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '—';
+};
+
+const extractWakeupTimeLabel = (request = {}) => {
+  const code = String(request.ticket_code || request.ticketCode || '').toUpperCase();
+  const isWakeup = code.startsWith('WU-') || request.request_type === 'wake_up';
+  if (!isWakeup) return '';
+  const combined = `${request.title || ''} ${request.description || ''}`;
+  const match = combined.match(/(\d{1,2}(?::\d{2}|h\d{0,2}|\s*(?:giờ|gio)\s*(?:\d{1,2}|rưỡi)?)\s*(?:sáng|trưa|chiều|tối|đêm|am|pm)?)/i);
+  return match ? match[1].trim() : '';
+};
 
 const normalizeRequest = (request = {}) => ({
   ...request,
@@ -63,7 +89,16 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
   const displayFloor = (floor) => st('Floor {0}', String(floor || '—').replace(/^(tầng|floor)\s*/i, ''));
   const staffName = currentUser?.full_name || currentUser?.name || 'Nhân viên Lễ tân';
 
-  const [activeTab, setActiveTab] = useState('requests'); // 'requests' | 'rooms'
+  const [activeTab, setActiveTab] = useState('requests'); // 'requests' | 'rooms' | 'bills'
+
+  const [serviceBills, setServiceBills] = useState([]);
+  const [isLoadingBills, setIsLoadingBills] = useState(false);
+  const [billSearchQuery, setBillSearchQuery] = useState('');
+  const [billRoomFilter, setBillRoomFilter] = useState('all'); // 'all' | room_number
+  const [billSettlementFilter, setBillSettlementFilter] = useState('unsettled'); // 'unsettled' | 'settled' | 'all'
+  const [billTypeFilter, setBillTypeFilter] = useState('all'); // 'all' | 'food' | 'service'
+  const [billDateFrom, setBillDateFrom] = useState('');
+  const [billDateTo, setBillDateTo] = useState('');
 
   const [activeRequest, setActiveRequest] = useState(null);
   const [recentRequests, setRecentRequests] = useState([]);
@@ -129,38 +164,106 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
     }
   }, [onNotify]);
 
+  const loadServiceBills = useCallback(async () => {
+    setIsLoadingBills(true);
+    try {
+      const data = await fetchReceptionServiceBills();
+      if (Array.isArray(data)) {
+        setServiceBills(data);
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải hóa đơn dịch vụ:', err);
+    } finally {
+      setIsLoadingBills(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
     loadRooms();
-  }, [loadData, loadRooms]);
+    loadServiceBills();
+  }, [loadData, loadRooms, loadServiceBills]);
 
-  const handleStartTask = async () => {
-    if (!activeRequest) return;
-    const currentTicket = activeRequest.ticketCode;
-    setActiveRequest((prev) => (prev ? { ...prev, status: 'In Progress', assignedTo: staffName } : null));
+  const billRoomOptions = useMemo(() => {
+    const set = new Set();
+    rooms.forEach((r) => {
+      if (r.room_number) set.add(String(r.room_number));
+    });
+    serviceBills.forEach((b) => {
+      if (b.room_number) set.add(String(b.room_number));
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [rooms, serviceBills]);
 
-    await updateReceptionRequest(
-      activeRequest.ticketCode || activeRequest.id,
-      { status: 'In Progress', assigned_to: staffName }
+  const unsettledBillCount = useMemo(
+    () => serviceBills.filter((b) => !b.is_settled).length,
+    [serviceBills]
+  );
+
+  const filteredBills = useMemo(() => {
+    const q = billSearchQuery.trim().toLowerCase();
+    return serviceBills.filter((bill) => {
+      if (billSettlementFilter === 'unsettled' && bill.is_settled) return false;
+      if (billSettlementFilter === 'settled' && !bill.is_settled) return false;
+      if (billRoomFilter !== 'all' && String(bill.room_number || '') !== billRoomFilter) return false;
+      if (billTypeFilter === 'food' && bill.is_service_request) return false;
+      if (billTypeFilter === 'service' && !bill.is_service_request) return false;
+      if (billDateFrom) {
+        const dt = parseBillDate(bill.completed_at || bill.created_at);
+        const billDay = dt ? dt.toLocaleDateString('en-CA') : '';
+        if (billDay < billDateFrom) return false;
+      }
+      if (billDateTo) {
+        const dt = parseBillDate(bill.completed_at || bill.created_at);
+        const billDay = dt ? dt.toLocaleDateString('en-CA') : '';
+        if (billDay > billDateTo) return false;
+      }
+      if (!q) return true;
+      return (
+        String(bill.order_number || '').toLowerCase().includes(q) ||
+        String(bill.room_number || '').toLowerCase().includes(q) ||
+        String(bill.guest_name || '').toLowerCase().includes(q) ||
+        String(bill.guest_phone || '').toLowerCase().includes(q) ||
+        String(bill.items_summary || '').toLowerCase().includes(q)
+      );
+    });
+  }, [serviceBills, billSearchQuery, billRoomFilter, billSettlementFilter, billTypeFilter, billDateFrom, billDateTo]);
+
+  const billSummary = useMemo(() => {
+    let foodTotal = 0;
+    let serviceTotal = 0;
+    filteredBills.forEach((b) => {
+      const amt = Number(b.total_amount || 0);
+      if (b.is_service_request) serviceTotal += amt;
+      else foodTotal += amt;
+    });
+    return {
+      count: filteredBills.length,
+      foodTotal,
+      serviceTotal,
+      grandTotal: foodTotal + serviceTotal,
+    };
+  }, [filteredBills]);
+
+  const handleUpdateStatus = async (targetStatus, targetRequest = null) => {
+    const target = targetRequest || activeRequest;
+    if (!target) return;
+    const currentTicket = target.ticketCode || target.ticket_code || target.id;
+    if (!targetRequest || (activeRequest && activeRequest.ticketCode === currentTicket)) {
+      setActiveRequest((prev) => (prev ? { ...prev, status: targetStatus, assignedTo: staffName } : null));
+    }
+
+    await updateReceptionRequest(currentTicket, { status: targetStatus, assigned_to: staffName });
+    onNotify(
+      targetStatus === 'Completed'
+        ? st("Completed request {0}.", currentTicket)
+        : st("Updated request {0} to {1}.", currentTicket, targetStatus)
     );
-    onNotify(st("Started request {0}.", currentTicket));
     await loadData();
   };
 
-  const handleComplete = async () => {
-    if (!activeRequest) return;
-    const currentTicket = activeRequest.ticketCode;
-    
-    // Đánh dấu hoàn tất trên server
-    await updateReceptionRequest(
-      activeRequest.ticketCode || activeRequest.id,
-      { status: 'Completed', assigned_to: staffName }
-    );
-    onNotify(st("Completed request {0}.", currentTicket));
-
-    // Tự động tải lại: Nếu còn yêu cầu chờ thì tải yêu cầu tiếp theo, nếu hết thì chuyển sang màn hình hoàn tất
-    await loadData();
-  };
+  const handleStartTask = () => handleUpdateStatus('In Progress');
+  const handleComplete = () => handleUpdateStatus('Completed');
 
   // Check-in & Check-out handlers
   const handleOpenCheckIn = (room) => {
@@ -208,6 +311,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
       onNotify(st("Room {0} checked in. PIN: {1}", res.room_number, res.pin_code));
       setCheckInModalOpen(false);
       await loadRooms();
+      await loadServiceBills();
     } catch (err) {
       onNotify(err.message || st("Unable to check in."));
     } finally {
@@ -223,6 +327,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
       onNotify(st("Room {0} checked out. The PIN has been revoked.", checkOutTargetRoom.room_number));
       setCheckOutTargetRoom(null);
       await loadRooms();
+      await loadServiceBills();
     } catch (err) {
       onNotify(err.message || st("Unable to check out."));
     } finally {
@@ -270,6 +375,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
       const res = await syncRoomsFromRAG();
       onNotify(res.message || st("Rooms synced from the system room directory."));
       await loadRooms();
+      await loadServiceBills();
     } catch (err) {
       console.error('Lỗi khi đồng bộ phòng từ RAG:', err);
       onNotify(st("Unable to sync rooms."));
@@ -317,13 +423,14 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
               type="button"
               onClick={() => {
                 if (activeTab === 'requests') loadData();
+                else if (activeTab === 'bills') loadServiceBills();
                 else loadRooms();
               }}
-              disabled={isLoading || isLoadingRooms}
+              disabled={isLoading || isLoadingRooms || isLoadingBills}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-stone-700 bg-white border border-[#E0DDD8] rounded-lg hover:bg-stone-50 transition-colors shadow-2xs cursor-pointer"
               title={st("Refresh data")}
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isLoading || isLoadingRooms ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${isLoading || isLoadingRooms || isLoadingBills ? 'animate-spin' : ''}`} />
               <span>{st("Refresh")}</span>
             </button>
             {onNavigate && (
@@ -371,6 +478,23 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
               </span>
             )}
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('bills');
+              loadServiceBills();
+            }}
+            aria-pressed={activeTab === 'bills'}
+          >
+            <Receipt className="h-3.5 w-3.5 text-emerald-600" />
+            <span>{st("Hóa đơn dịch vụ")}</span>
+            {unsettledBillCount > 0 && (
+              <span className="px-1.5 py-0.2 bg-emerald-100 text-emerald-800 text-[10px] font-bold rounded-full">
+                {unsettledBillCount}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* ========================================================================= */}
@@ -386,6 +510,11 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                       <span className="rounded bg-[#EFEEEB] px-2.5 py-1 font-mono font-bold tracking-wide text-stone-800">
                         {activeRequest.ticketCode}
                       </span>
+                      {extractWakeupTimeLabel(activeRequest) && (
+                        <span className="inline-flex items-center gap-1 rounded bg-cyan-50 px-2.5 py-1 font-semibold text-cyan-800 border border-cyan-200">
+                          <Clock className="h-3 w-3" /> {st('Wake-up:')} {extractWakeupTimeLabel(activeRequest)}
+                        </span>
+                      )}
                       <span>{st('Created:')} {activeRequest.createdLabel || st('Just now')}</span>
                       <span className={`font-bold ${statusColor}`}>● {st(staffStatusLabel(activeRequest.status))}</span>
                       {isViewingHistory && (
@@ -395,7 +524,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                     <h2 className="mt-2 text-base font-bold text-[#211F1D]">{activeRequest.title || st('Reception & reservation request')}</h2>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {isViewingHistory && (
                       <button
                         type="button"
@@ -405,25 +534,19 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                         <ArrowLeft className="h-3.5 w-3.5" />{st("Back to current request")} </button>
                     )}
 
-                    {isCompleted ? (
-                      <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-bold">
-                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />{st("Completed")} </span>
-                    ) : (
-                      <>
-                        {!isInProgress && (
-                          <button
-                            type="button"
-                            onClick={handleStartTask}
-                            className="rounded-lg bg-stone-900 px-4 py-2 text-[11px] font-bold text-white hover:bg-black cursor-pointer shadow-xs transition-colors"
-                          >{st("Start request")} </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={handleComplete}
-                          className="rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-bold text-white hover:bg-emerald-700 cursor-pointer shadow-xs transition-colors"
-                        >{st("Mark completed")} </button>
-                      </>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateStatus(isCompleted ? 'Pending' : 'Completed')}
+                      title={isCompleted ? st('Click to mark as pending') : st('Click to mark as completed')}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[11px] font-bold transition-colors shadow-xs cursor-pointer ${
+                        isCompleted
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-200'
+                          : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      }`}
+                    >
+                      <CheckCircle2 className={`h-3.5 w-3.5 ${isCompleted ? 'text-emerald-600' : 'text-white'}`} />
+                      {isCompleted ? st('Completed') : st('Mark completed')}
+                    </button>
                   </div>
                 </header>
 
@@ -565,9 +688,16 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                             {rTicket}
                           </span>
                           <div className="min-w-0">
-                            <p className="text-xs font-semibold text-stone-900 truncate">
-                              {r.title}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs font-semibold text-stone-900 truncate">
+                                {r.title}
+                              </p>
+                              {extractWakeupTimeLabel(r) && (
+                                <span className="shrink-0 inline-flex items-center gap-1 rounded bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-cyan-800 border border-cyan-200">
+                                  <Clock className="h-2.5 w-2.5" /> {extractWakeupTimeLabel(r)}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-[11px] text-stone-500">
                               {r.room_number || r.location || st("Lobby")} • {r.guest_name || st("Hotel guest")}
                               {(r.guest_phone || r.guestPhone) ? ` • SĐT: ${r.guest_phone || r.guestPhone}` : ''}
@@ -575,18 +705,22 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3 shrink-0">
-                          <span
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUpdateStatus(isDone ? 'Pending' : 'Completed', r);
+                            }}
+                            title={isDone ? st('Click to mark as pending') : st('Click to mark as completed')}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-colors cursor-pointer ${
                               isDone
-                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                : isProg
-                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-emerald-600 hover:text-white hover:border-emerald-600'
                             }`}
                           >
-                            ● {st(staffStatusLabel(r.status))}
-                          </span>
+                            {isDone ? `✓ ${st('Completed')}` : st('Mark completed')}
+                          </button>
                           <ChevronRight className="h-4 w-4 text-stone-400" />
                         </div>
                       </div>
@@ -606,6 +740,175 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                 )}
               </section>
             )}
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* TAB 3: HÓA ĐƠN DỊCH VỤ & GỌI MÓN ĐÃ HOÀN THÀNH (XUẤT EXCEL) */}
+        {/* ========================================================================= */}
+        {activeTab === 'bills' && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="reception-panel p-4 rounded-xl bg-white border border-[#E8E5E0] shadow-2xs">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#77726D]">{st("Tổng hóa đơn")}</p>
+                <p className="mt-1.5 text-2xl font-black text-stone-900 font-mono">{billSummary.count}</p>
+              </div>
+              <div className="reception-panel p-4 rounded-xl bg-white border border-[#E8E5E0] shadow-2xs">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#77726D]">{st("Gọi món (Bếp)")}</p>
+                <p className="mt-1.5 text-xl font-black text-amber-700 font-mono">{billSummary.foodTotal.toLocaleString('vi-VN')} đ</p>
+              </div>
+              <div className="reception-panel p-4 rounded-xl bg-white border border-[#E8E5E0] shadow-2xs">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#77726D]">{st("Room Service")}</p>
+                <p className="mt-1.5 text-xl font-black text-blue-700 font-mono">{billSummary.serviceTotal.toLocaleString('vi-VN')} đ</p>
+              </div>
+              <div className="reception-panel p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 shadow-2xs">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-800">{st("Tổng doanh thu")}</p>
+                <p className="mt-1.5 text-xl font-black text-emerald-700 font-mono">{billSummary.grandTotal.toLocaleString('vi-VN')} đ</p>
+              </div>
+            </div>
+
+            <div className="reception-panel p-4 rounded-2xl bg-white border border-[#E8E5E0] shadow-2xs flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[260px]">
+                <div className="relative flex-1 min-w-[200px] max-w-xs">
+                  <Search className="h-3.5 w-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={billSearchQuery}
+                    onChange={(e) => setBillSearchQuery(e.target.value)}
+                    placeholder={st("Tìm mã bill, phòng, tên, SĐT, món...")}
+                    className="w-full pl-8 pr-3 py-1.5 text-xs border border-stone-200 rounded-lg focus:outline-none focus:border-stone-400"
+                  />
+                </div>
+                <select
+                  value={billRoomFilter}
+                  onChange={(e) => setBillRoomFilter(e.target.value)}
+                  className="px-3 py-1.5 text-xs font-medium border border-stone-200 rounded-lg bg-white text-stone-700"
+                >
+                  <option value="all">{st("Tất cả phòng")}</option>
+                  {billRoomOptions.map((rn) => (
+                    <option key={rn} value={rn}>{st("Phòng {0}", rn)}</option>
+                  ))}
+                </select>
+                <select
+                  value={billSettlementFilter}
+                  onChange={(e) => setBillSettlementFilter(e.target.value)}
+                  className="px-3 py-1.5 text-xs font-medium border border-stone-200 rounded-lg bg-white text-stone-700"
+                >
+                  <option value="unsettled">{st("Đang ở (Chưa check-out)")}</option>
+                  <option value="settled">{st("Đã check-out (Lịch sử)")}</option>
+                  <option value="all">{st("Tất cả hóa đơn")}</option>
+                </select>
+                <select
+                  value={billTypeFilter}
+                  onChange={(e) => setBillTypeFilter(e.target.value)}
+                  className="px-3 py-1.5 text-xs font-medium border border-stone-200 rounded-lg bg-white text-stone-700"
+                >
+                  <option value="all">{st("Tất cả dịch vụ")}</option>
+                  <option value="food">{st("Gọi món (Bếp)")}</option>
+                  <option value="service">{st("Dịch vụ phòng (Room Service)")}</option>
+                </select>
+                <input
+                  type="date"
+                  value={billDateFrom}
+                  onChange={(e) => setBillDateFrom(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs border border-stone-200 rounded-lg text-stone-700"
+                  title={st("Từ ngày")}
+                />
+                <input
+                  type="date"
+                  value={billDateTo}
+                  onChange={(e) => setBillDateTo(e.target.value)}
+                  className="px-2.5 py-1.5 text-xs border border-stone-200 rounded-lg text-stone-700"
+                  title={st("Đến ngày")}
+                />
+              </div>
+
+              <button
+                type="button"
+                disabled={filteredBills.length === 0}
+                onClick={() => {
+                  const dateTag = new Date().toISOString().slice(0, 10);
+                  exportServiceBillsToExcel(filteredBills, `hoa-don-dich-vu-${dateTag}.xls`);
+                  onNotify(st("Đã xuất {0} hóa đơn ra file Excel.", filteredBills.length));
+                }}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer"
+              >
+                <Download className="h-3.5 w-3.5" />
+                <span>{st("Xuất Excel (.xls)")}</span>
+              </button>
+            </div>
+
+            <div className="reception-panel rounded-2xl bg-white border border-[#E8E5E0] shadow-2xs overflow-x-auto">
+              {isLoadingBills ? (
+                <div className="p-10 text-center text-xs text-stone-500">{st("Đang tải hóa đơn dịch vụ...")}</div>
+              ) : filteredBills.length === 0 ? (
+                <div className="p-10 text-center text-xs text-stone-500">
+                  {st("Chưa có hóa đơn gọi món / Room Service nào hoàn thành.")}
+                </div>
+              ) : (
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-stone-200 bg-stone-50 text-[11px] uppercase tracking-wider text-stone-600">
+                      <th className="py-3 px-3 font-bold">Mã Bill</th>
+                      <th className="py-3 px-3 font-bold">Giờ đặt / Giao xong</th>
+                      <th className="py-3 px-3 font-bold">Phòng</th>
+                      <th className="py-3 px-3 font-bold">Khách hàng & SĐT</th>
+                      <th className="py-3 px-3 font-bold">Loại dịch vụ</th>
+                      <th className="py-3 px-3 font-bold">Món / Dịch vụ đặt</th>
+                      <th className="py-3 px-3 font-bold text-right">Tổng tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-stone-100">
+                    {filteredBills.map((bill) => (
+                      <tr key={bill.id} className="hover:bg-stone-50/70">
+                        <td className="py-3 px-3 font-mono font-bold text-stone-800 whitespace-nowrap">
+                          {bill.order_number}
+                        </td>
+                        <td className="py-3 px-3 text-stone-600 whitespace-nowrap">
+                          <div>Đặt: {formatBillTime(bill.created_at)}</div>
+                          <div className="text-[11px] text-emerald-700">Xong: {formatBillTime(bill.completed_at)}</div>
+                        </td>
+                        <td className="py-3 px-3 font-bold text-stone-900 whitespace-nowrap">
+                          Phòng {bill.room_number}
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="font-semibold text-stone-900">{bill.guest_name}</div>
+                          <div className="text-[11px] text-stone-500">{bill.guest_phone || '—'}</div>
+                        </td>
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            bill.is_service_request
+                              ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-amber-50 text-amber-800 border-amber-200'
+                          }`}>
+                            {bill.service_category}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 max-w-xs">
+                          {Array.isArray(bill.items) && bill.items.length > 0 ? (
+                            <ul className="space-y-0.5">
+                              {bill.items.map((it, idx) => (
+                                <li key={`${bill.id}-it-${idx}`} className="text-stone-700">
+                                  <span className="font-semibold">{it.qty}x</span> {it.name}
+                                  {Number(it.subtotal || 0) > 0 && (
+                                    <span className="text-stone-500"> ({Number(it.subtotal).toLocaleString('vi-VN')} đ)</span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <span className="text-stone-600">{bill.items_summary || '—'}</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-emerald-700 whitespace-nowrap">
+                          {Number(bill.total_amount || 0).toLocaleString('vi-VN')} đ
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         )}
 

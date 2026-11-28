@@ -80,7 +80,6 @@ export const AuroraSidebar = ({
         { id: 'Feedback', label: 'Guest Feedback', icon: Star },
         { id: 'EmotionAlerts', label: 'Unhappy Guests', icon: AlertTriangle },
         { id: 'Requests', label: t('menuRequests'), icon: Inbox },
-        { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
         ...(isKitchen ? [{ id: 'KitchenMenu', label: t('menuKitchenMenu'), icon: UtensilsCrossed }] : []),
         ...(isRoomService ? [{ id: 'RoomServiceMenu', label: t('menuRoomServiceMenu'), icon: ConciergeBell }] : []),
         { id: 'History', label: t('menuHistory'), icon: History },
@@ -90,7 +89,6 @@ export const AuroraSidebar = ({
     : [
         { id: 'Dashboard', label: t('menuDashboard'), icon: LayoutDashboard },
         { id: 'Requests', label: t('menuRequests'), icon: Inbox },
-        { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
         ...(isKitchen ? [{ id: 'KitchenMenu', label: t('menuKitchenMenu'), icon: UtensilsCrossed }] : []),
         ...(isRoomService ? [{ id: 'RoomServiceMenu', label: t('menuRoomServiceMenu'), icon: ConciergeBell }] : []),
         { id: 'Notifications', label: t('menuNotifications'), icon: Bell },

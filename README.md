@@ -214,8 +214,7 @@ HC-Robot/
    | Tên Đăng Nhập (Username) | Mật Khẩu | Tên Bộ Phận / Chức Danh | Phân Hệ Dashboard |
    | :--- | :--- | :--- | :--- |
    | `reception` | `123456` | Nhân viên Lễ tân (Reception) | Lễ tân Hub / Executive |
-   | `roomservice` | `123456` | Nhân viên Phục vụ phòng (F&B) | Room Service |
-   | `housekeeping` | `123456` | Nhân viên Buồng phòng (Housekeeping) | Housekeeping |
+   | `roomservice` | `123456` | Nhân viên Phục vụ phòng (Room Service — dọn phòng, tiện ích & đồ ăn) | Room Service |
    | `bellman` | `123456` | Nhân viên Vận chuyển hành lý (Bellman) | Bell Services |
    | `maintenance` | `123456` | Nhân viên Kỹ thuật & Bảo trì | Maintenance |
    | `manager` | `123456` | Ban Quản lý Khách sạn (Manager) | Executive Hub |
@@ -742,8 +741,7 @@ Khi hệ thống khởi chạy, bạn sẽ thấy 2 cửa sổ hoạt động đ
 - `/api/v1/map`: 3. Định vị bản đồ 2D SLAM LiDAR & điều hướng Robot.
 - `/api/v1/rag`: 4. Bộ phận Lễ tân & Reception tra cứu tri thức khách sạn (ChromaDB Vector Base).
 - `/api/v1/operations/dashboard/reception` và `/reception/*`: Phiếu hỗ trợ khách và điều phối tác vụ của Reception.
-- `/api/v1/operations/room-service/*`: 5. Phục vụ đồ ăn thức uống tại phòng (F&B / Room Service).
-- `/api/v1/operations/housekeeping/*`: 6. Quản lý yêu cầu vệ sinh & buồng phòng (Housekeeping).
+- `/api/v1/operations/room-service/*`: 5. Phục vụ phòng (Room Service): dọn phòng, khăn tắm, tiện ích, giặt ủi và đồ ăn thức uống tại phòng (hợp nhất bộ phận Buồng phòng cũ vào `DEP-ROOMSERVICE`).
 - `/api/v1/operations/bell-services/*`: 7. Quản lý yêu cầu vận chuyển hành lý (Bellman Services).
 - `/api/v1/operations/maintenance/*`: 8. Tiếp nhận ticket sự cố & kỹ thuật bảo trì (Maintenance).
 - `/api/v1/operations/directives`: 9. Tạo yêu cầu điều phối vận hành liên bộ phận.

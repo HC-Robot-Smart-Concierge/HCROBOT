@@ -538,7 +538,8 @@ export const KioskDisplayPreview = ({
 
       {/* 5. CREATE_REQUEST DISPATCH BADGE */}
       {activeStep.type === 'CREATE_REQUEST' && (() => {
-        const deptLabel = params.target_department || (params.service_type === 'CALL_STAFF' ? 'Reception' : 'Housekeeping');
+        const rawDept = params.target_department === 'Housekeeping' ? 'Room Service' : params.target_department;
+        const deptLabel = rawDept || (params.service_type === 'CALL_STAFF' ? 'Reception' : 'Room Service');
         if (preview) {
           return (
             <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-300 shadow-sm space-y-2.5 animate-in fade-in duration-300">

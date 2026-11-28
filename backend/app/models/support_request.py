@@ -1,10 +1,15 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional, List, Dict, Any
 from sqlalchemy import String, DateTime, Text, ForeignKey, JSON, Float, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+
+def _utcnow_naive() -> datetime:
+    """Return UTC naive datetime compatible with TIMESTAMP WITHOUT TIME ZONE."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 if TYPE_CHECKING:
     from app.models.account import Account
@@ -49,8 +54,8 @@ class SupportRequest(Base):
     est_completion: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # e.g. '12m', '4 mins'
     extra_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, default=dict, nullable=True) # For taxi details, custom payloads
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow_naive)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow_naive, onupdate=_utcnow_naive)
 
     # Relationships
     service_type: Mapped[Optional["ServiceType"]] = relationship("ServiceType", back_populates="support_requests")
@@ -136,9 +141,9 @@ class SupportRequest(Base):
 
     @is_service_request.setter
     def is_service_request(self, val: bool):
-        if not self.extra_data:
-            self.extra_data = {}
-        self.extra_data["is_service_request"] = val
+        extra = dict(self.extra_data or {})
+        extra["is_service_request"] = val
+        self.extra_data = extra
 
     @property
     def image_url(self) -> Optional[str]:
@@ -148,9 +153,9 @@ class SupportRequest(Base):
 
     @image_url.setter
     def image_url(self, val: Optional[str]):
-        if not self.extra_data:
-            self.extra_data = {}
-        self.extra_data["image_url"] = val
+        extra = dict(self.extra_data or {})
+        extra["image_url"] = val
+        self.extra_data = extra
 
     @property
     def location(self) -> str:
@@ -186,10 +191,10 @@ class SupportRequest(Base):
             return self._request_type
         if isinstance(self.extra_data, dict) and self.extra_data.get("request_type"):
             return str(self.extra_data["request_type"])
-        if str(self.ticket_code or "").upper().startswith("EA-"):
+        if (self.ticket_code or "").upper().startswith("EA-"):
             return "emotion_alert"
-        st = str(self.service_type_id or "").upper()
-        dep = str(self.department_id or "").upper()
+        st = (self.service_type_id or "").upper()
+        dep = (self.department_id or "").upper()
         text_blob = f"{self.title or ''} {self.description or ''}".lower()
         if "BELL" in st or "LUGGAGE" in st or "BELL" in dep:
             if any(k in text_blob for k in ["thất lạc", "quên đồ", "mất đồ", "rơi đồ", "lost", "missing", "forgot"]):
@@ -231,11 +236,11 @@ class SupportRequest(Base):
         if getattr(self, "_category", None):
             return self._category
         if self.service_type_id:
-            st = str(self.service_type_id).upper()
+            st = self.service_type_id.upper()
             if "BELL" in st:
                 return "Bell Services"
             elif "HOUSEKEEPING" in st:
-                return "Housekeeping"
+                return "Room Service"
             elif "TAXI" in st:
                 return "Taxi & Transportation"
             elif "MAINTENANCE" in st:

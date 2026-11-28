@@ -23,11 +23,11 @@ from app.models import (
 # =====================================================================
 
 TAG_REC: List[Union[str, Enum]] = ["05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"]
-TAG_HK: List[Union[str, Enum]] = ["06. Bộ phận Buồng phòng (Housekeeping Operations)"]
 TAG_BELL: List[Union[str, Enum]] = ["07. Bộ phận Hành lý & Tiền sảnh (Bell Services)"]
 TAG_MNT: List[Union[str, Enum]] = ["08. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
 TAG_ROOM_SERVICE: List[Union[str, Enum]] = ["09. Bộ phận Phục vụ phòng (Room Service)"]
 TAG_FB: List[Union[str, Enum]] = TAG_ROOM_SERVICE  # Backward compatibility alias
+TAG_HK: List[Union[str, Enum]] = TAG_ROOM_SERVICE  # Backward compatibility alias
 TAG_KITCHEN: List[Union[str, Enum]] = ["10. Bộ phận Bếp & Ẩm thực (Kitchen Operations & Menus)"]
 TAG_KITCHEN_FOOD_CATALOG: List[Union[str, Enum]] = TAG_KITCHEN
 TAG_KITCHEN_MENU: List[Union[str, Enum]] = TAG_KITCHEN
@@ -114,8 +114,8 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
                 or ("dịch vụ phòng" in (sr.description or "").lower())
             )
             if "HOUSEKEEPING" in dep_code:
-                dept_label = "Housekeeping"
-                tbl_type = "housekeeping"
+                dept_label = "Room Service"
+                tbl_type = "room_service"
             elif "BELL" in dep_code:
                 dept_label = "Bell Services"
                 tbl_type = "bell"

@@ -89,7 +89,6 @@ tags_metadata = [
     {"name": "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"},
     {"name": "04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)"},
     {"name": "05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"},
-    {"name": "06. Bộ phận Buồng phòng (Housekeeping Operations)"},
     {"name": "07. Bộ phận Hành lý & Tiền sảnh (Bell Services)"},
     {"name": "08. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"},
     {"name": "09. Bộ phận Phục vụ phòng (Room Service)"},

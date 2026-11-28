@@ -33,9 +33,10 @@ router = APIRouter()
     "/dashboard/housekeeping",
     response_model=HousekeepingDashboardResponse,
     tags=TAG_HK,
-    summary="Dashboard vận hành bộ phận Buồng phòng",
+    include_in_schema=False,
+    summary="Dashboard vận hành phục vụ phòng (Legacy alias)",
     responses={
-        200: {"description": "Lấy dữ liệu Dashboard Buồng phòng kèm KPI, danh sách yêu cầu, chỉ thị và nhân sự trực."}
+        200: {"description": "Lấy dữ liệu Dashboard phục vụ phòng (tương thích ngược)."}
     },
 )
 async def get_housekeeping_dashboard(
@@ -43,18 +44,14 @@ async def get_housekeeping_dashboard(
     dir_repo: DirectiveRepository = Depends(get_directive_repository),
     staff_repo: StaffRepository = Depends(get_staff_repository),
 ):
-    """
-    ### Mô tả nghiệp vụ:
-    Truy vấn bảng điều khiển của bộ phận **Buồng phòng (Housekeeping)**.
-    Dữ liệu được truy vấn trực tiếp từ bảng chuẩn hóa `support_requests` có `service_type_id = 'ST-HOUSEKEEPING'` hoặc `department_id = 'DEP-HOUSEKEEPING'`.
-    """
+    """Legacy compatibility alias: routes to Room Service (`DEP-ROOMSERVICE`)."""
     hk_list = await sr_repo.get_recent_by_department(
-        department_ids=["DEP-HOUSEKEEPING"],
-        service_type_ids=["ST-HOUSEKEEPING"],
+        department_ids=["DEP-ROOMSERVICE"],
+        service_type_ids=["ST-ROOM-SERVICE"],
         limit=100,
     )
-    dir_list = await dir_repo.list_by_department(department="Housekeeping")
-    available_staff = await staff_repo.list_staff(department="Housekeeping")
+    dir_list = await dir_repo.list_by_department(department="Room Service")
+    available_staff = await staff_repo.list_staff(department="Room Service")
 
     unified_hk = []
     for h in hk_list:
@@ -123,9 +120,10 @@ async def get_housekeeping_dashboard(
     response_model=HousekeepingRequestResponse,
     status_code=status.HTTP_201_CREATED,
     tags=TAG_HK,
-    summary="Tạo mới yêu cầu dịch vụ buồng phòng",
+    include_in_schema=False,
+    summary="Tạo mới yêu cầu dịch vụ phòng (Legacy alias)",
     responses={
-        201: {"description": "Tạo ticket buồng phòng thành công và lưu vào bảng support_requests."}
+        201: {"description": "Tạo ticket phục vụ phòng thành công và lưu vào bảng support_requests."}
     },
 )
 async def create_housekeeping_request(
@@ -133,12 +131,8 @@ async def create_housekeeping_request(
     sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    ### Mô tả nghiệp vụ:
-    Tiếp nhận yêu cầu dọn phòng, giặt ủi, cấp thêm khăn/nước.
-    Bản ghi được tự động lưu vào bảng `support_requests` với `department_id = 'DEP-HOUSEKEEPING'` và `service_type_id = 'ST-HOUSEKEEPING'`.
-    """
-    ticket_code = f"HK-{random.randint(1044, 9999)}"
+    """Legacy compatibility alias: routes to Room Service (`DEP-ROOMSERVICE`, `ST-ROOM-SERVICE`)."""
+    ticket_code = f"RS-{random.randint(1044, 9999)}"
     new_req = SupportRequest(
         ticket_code=ticket_code,
         source=req_in.source or "From HCRobot",
@@ -146,18 +140,19 @@ async def create_housekeeping_request(
         room_number=req_in.room_number,
         description=req_in.description,
         guest_name=req_in.guest_name or "Hotel Guest",
-        department_id="DEP-HOUSEKEEPING",
-        service_type_id="ST-HOUSEKEEPING",
-        status="Unassigned",
+        department_id="DEP-ROOMSERVICE",
+        service_type_id="ST-ROOM-SERVICE",
+        status="Pending",
+        extra_data={"is_service_request": True},
     )
     await sr_repo.create(new_req)
     await create_department_notification(
         db=db,
-        department="Housekeeping",
-        title=f"Yêu cầu Buồng phòng mới #{ticket_code}",
-        description=f"Phòng {req_in.room_number}: {req_in.title} - {req_in.description or 'Yêu cầu dọn dẹp'}",
+        department="Room Service",
+        title=f"Yêu cầu Phục vụ phòng mới #{ticket_code}",
+        description=f"Phòng {req_in.room_number}: {req_in.title} - {req_in.description or 'Yêu cầu dịch vụ phòng'}",
         request_id=new_req.id,
-        request_type="housekeeping",
+        request_type="room_service",
         type="Request",
     )
     await sr_repo.commit()
@@ -169,7 +164,8 @@ async def create_housekeeping_request(
     "/housekeeping/requests/{request_id}",
     response_model=HousekeepingRequestResponse,
     tags=TAG_HK,
-    summary="Xem chi tiết một yêu cầu Buồng phòng",
+    include_in_schema=False,
+    summary="Xem chi tiết một yêu cầu phục vụ phòng (Legacy alias)",
     responses={
         200: {"description": "Lấy chi tiết yêu cầu buồng phòng thành công."},
         404: {"description": "Không tìm thấy yêu cầu buồng phòng."},

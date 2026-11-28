@@ -628,7 +628,6 @@ export const AdminLogsTab = ({ subTabProp = 'operational', onSelectSubTab }) => 
               >
                 <option value="ALL">{t('logsAllDepartments')}</option>
                 <option value="reception">{t('deptReception')}</option>
-                <option value="housekeeping">{t('deptHousekeeping')}</option>
                 <option value="room_service">{t('deptFB')}</option>
                 <option value="bell_services">{t('deptBell')}</option>
                 <option value="maintenance">{t('deptMaintenance')}</option>

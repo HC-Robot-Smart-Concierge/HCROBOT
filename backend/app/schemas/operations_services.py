@@ -310,7 +310,7 @@ class RoomMaintenanceStatusResponse(BaseModel):
 # ---------------------------------------------------------
 class DirectiveCreate(BaseModel):
     title: str
-    department: str = "Housekeeping"
+    department: str = "Room Service"
     priority: str = "URGENT"
     location: str = "Main Entrance"
     description: Optional[str] = None

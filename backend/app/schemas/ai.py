@@ -157,6 +157,7 @@ class QuickTranslateRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="Mã phiên cuộc gọi video")
     sender_role: Optional[str] = Field("guest", description="Vai trò người nói: 'guest' hoặc 'staff'")
     with_audio: Optional[bool] = Field(True, description="Tự động tổng hợp âm thanh giọng đọc TTS nếu cần dịch")
+    context: Optional[List[str]] = Field(None, description="2-3 câu thoại gần nhất để dịch đúng ngữ cảnh khách sạn")
 
 
 class QuickTranslateResponse(BaseModel):

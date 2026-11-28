@@ -420,7 +420,7 @@ export const WorkflowStepBlock = ({
                 <option value="PROMO_IMAGE">Hình ảnh / Poster quảng cáo</option>
                 <option value="PROMO_SUMMER">Chiếu Slide Ưu Đãi Mùa Hè</option>
                 <option value="LANGUAGE_SELECTOR">Chọn ngôn ngữ</option>
-                <option value="UI_SERVICE_FORM">Biểu mẫu Buồng phòng</option>
+                <option value="UI_SERVICE_FORM">Biểu mẫu Phục vụ phòng (Room Service)</option>
                 <option value="UI_CONFIRMATION">Xác nhận dịch vụ</option>
                 <option value="UI_WAITING_STAFF">Kết nối Lễ tân khẩn cấp</option>
                 <option value="FEEDBACK">Đánh giá mức độ hài lòng</option>
@@ -579,11 +579,14 @@ export const WorkflowStepBlock = ({
             <>
               <span className="font-semibold text-stone-700">Bộ phận</span>
               <select
-                value={params.target_department || (params.service_type === 'CALL_STAFF' ? 'Front_Desk' : 'Housekeeping')}
+                value={
+                  params.target_department === 'Housekeeping'
+                    ? 'Room_Service'
+                    : params.target_department || (params.service_type === 'CALL_STAFF' ? 'Front_Desk' : 'Room_Service')
+                }
                 onChange={(e) => handleFieldChange('target_department', e.target.value)}
                 className="bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-bold border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white cursor-pointer shadow-2xs"
               >
-                <option value="Housekeeping">Buồng Phòng (Housekeeping)</option>
                 <option value="Room_Service">Phục Vụ Phòng (Room Service)</option>
                 <option value="Food_and_Beverage">Nhà Hàng & Bếp (Kitchen)</option>
                 <option value="Front_Desk">Lễ Tân (Front Desk)</option>

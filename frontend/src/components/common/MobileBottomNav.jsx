@@ -72,7 +72,6 @@ export const MobileBottomNav = ({
         { id: 'Feedback', label: 'Feedback', icon: Star },
         { id: 'EmotionAlerts', label: 'Alerts', icon: AlertTriangle },
         { id: 'Requests', label: t('menuRequests'), icon: Inbox },
-        { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
         ...(isKitchen ? [{ id: 'KitchenMenu', label: 'Menu', icon: UtensilsCrossed }] : []),
         ...(isRoomService ? [{ id: 'RoomServiceMenu', label: 'Dịch Vụ', icon: ConciergeBell }] : []),
         { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
@@ -80,7 +79,6 @@ export const MobileBottomNav = ({
     : [
         { id: 'Dashboard', label: t('menuDashboard'), icon: LayoutDashboard },
         { id: 'Requests', label: t('menuRequests'), icon: Inbox },
-        { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
         ...(isKitchen ? [{ id: 'KitchenMenu', label: 'Menu', icon: UtensilsCrossed }] : []),
         ...(isRoomService ? [{ id: 'RoomServiceMenu', label: 'Dịch Vụ', icon: ConciergeBell }] : []),
         { id: 'Notifications', label: t('menuNotifications'), icon: Bell },

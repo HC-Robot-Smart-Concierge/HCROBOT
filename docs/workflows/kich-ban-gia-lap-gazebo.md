@@ -115,16 +115,16 @@ sequenceDiagram
 
 ---
 
-### 🎬 Kịch Bản 3: Đặt Dịch Vụ Buồng Phòng & Gọi Taxi Đón Tại Sảnh
+### 🎬 Kịch Bản 3: Đặt Dịch Vụ Phục Vụ Phòng (Room Service) & Gọi Taxi Đón Tại Sảnh
 * **Mã Workflow**: `Workflow 3`
 * **Cơ chế kích hoạt**: Khách chọn dịch vụ "Gọi xe Taxi" hoặc "Yêu cầu dọn phòng/thêm khăn".
 * **Chuỗi bước thực thi**: `SHOW` $\rightarrow$ `COMMUNICATE` $\rightarrow$ `CREATE_REQUEST` $\rightarrow$ `COMMUNICATE` $\rightarrow$ `SHOW`
 
-1. **Bước 1 (SHOW)**: Màn hình hiển thị danh mục dịch vụ buồng phòng & gọi xe taxi liên kết.
+1. **Bước 1 (SHOW)**: Màn hình hiển thị danh mục dịch vụ phục vụ phòng (Room Service) & gọi xe taxi liên kết.
 2. **Bước 2 (COMMUNICATE)**: Robot hỏi: *"Vui lòng nhập số phòng và mã PIN bảo mật để xác nhận yêu cầu."*
 3. **Bước 3 (CREATE_REQUEST)**:
    * Khách nhập số phòng: `302`, PIN: `****`.
-   * Hệ thống kiểm tra hợp lệ $\rightarrow$ Tạo ticket lên Dashboard Lễ tân/Buồng phòng (`/service_request`).
+   * Hệ thống kiểm tra hợp lệ $\rightarrow$ Tạo ticket lên Dashboard Phục vụ phòng (Room Service) / Concierge-Taxi.
    * Đồng thời kích hoạt thông báo chuông alert tới nhân viên trực ban.
 4. **Bước 4 (COMMUNICATE)**: Robot phát giọng nói: *"Yêu cầu của quý khách đã được chuyển tới bộ phận liên quan. Taxi sẽ đón quý khách tại sảnh sau 5 phút."*
 5. **Bước 5 (SHOW)**: Hiển thị mã vé đặt và trạng thái đang xử lý.
@@ -246,7 +246,7 @@ flowchart TD
 [Giai đoạn 2: Trải nghiệm khách hàng cốt lõi (Guest Journey)]
    └── Chạy Kịch bản 1 (Đón khách tại cửa)
        └── Tiếp nối Kịch bản 2 (Tư vấn tiện ích sảnh)
-           └── Kết thúc bằng Kịch bản 3 (Khách đặt xe Taxi / dịch vụ buồng phòng).
+           └── Kết thúc bằng Kịch bản 3 (Khách đặt xe Taxi / dịch vụ phục vụ phòng Room Service).
 
 [Giai đoạn 3: Tính năng Dẫn đường (Escort Wayfinding)]
    └── Chạy Kịch bản 7: Robot dẫn khách tới Thang Máy,

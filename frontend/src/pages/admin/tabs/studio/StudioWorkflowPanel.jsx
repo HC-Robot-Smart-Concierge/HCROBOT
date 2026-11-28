@@ -154,7 +154,12 @@ export const StudioWorkflowPanel = ({
               )}
               {step.type === 'CREATE_REQUEST' && (
                 <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
-                  Phiếu gửi: <strong>{step.params?.target_department || 'Housekeeping'}</strong>
+                  Phiếu gửi:{' '}
+                  <strong>
+                    {step.params?.target_department === 'Housekeeping'
+                      ? 'Room Service'
+                      : step.params?.target_department || 'Room Service'}
+                  </strong>
                 </div>
               )}
               {step.type === 'FEEDBACK' && (

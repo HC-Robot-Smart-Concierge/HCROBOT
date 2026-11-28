@@ -356,15 +356,7 @@ export const AppRoutes = () => {
             />
           }
         />
-        <Route
-          path="my-tasks"
-          element={
-            <MyTasksPage
-              currentUser={currentUser}
-              onNotify={showNotification}
-            />
-          }
-        />
+        <Route path="my-tasks" element={<Navigate to="/staff/requests" replace />} />
         <Route
           path="kitchen-menu"
           element={

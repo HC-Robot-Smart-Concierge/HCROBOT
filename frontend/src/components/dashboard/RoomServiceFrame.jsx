@@ -28,7 +28,7 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
     concierge: { brand: 'CONCIERGE PORTAL', staff: 'Concierge staff', navigation: 'Concierge navigation', department: 'Concierge' },
   }[portal] || { brand: 'ROOM SERVICE PORTAL', staff: 'Room Service staff', navigation: 'Room Service navigation', department: 'Room Service' };
   const name = currentUser?.full_name || currentUser?.name || st(portalLabels.staff);
-  const operationsActive = ['Requests', 'MyTasks'].includes(activeMenu);
+  const operationsActive = activeMenu === 'Requests';
   const select = (id) => {
     onSelectMenu(id);
     if (window.innerWidth < 768) setCollapsed(true);
@@ -72,7 +72,6 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
                 aria-expanded={operationsActive} onClick={() => select('Requests')}>{t('adminOperations')}</button>
               {operationsActive && <div className="room-service-subnav">
                 {navButton('Requests', t('menuRequests'))}
-                {navButton('MyTasks', t('menuMyTasks'))}
               </div>}
             </>
           ) : (
@@ -82,7 +81,6 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
                 aria-expanded={operationsActive} onClick={() => select('Requests')}>{t('adminOperations')}</button>
               {operationsActive && <div className="room-service-subnav">
                 {navButton('Requests', t('menuRequests'))}
-                {navButton('MyTasks', t('menuMyTasks'))}
               </div>}
               {portal === 'room_service' && navButton('RoomServiceMenu', t('menuRoomServiceMenu'))}
               {portal === 'kitchen' && navButton('KitchenMenu', t('menuKitchenMenu'))}

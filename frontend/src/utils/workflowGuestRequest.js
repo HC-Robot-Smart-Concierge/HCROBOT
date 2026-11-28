@@ -35,8 +35,8 @@ const DEPARTMENT_KIND_MAP = {
 };
 
 const KIND_DEPARTMENT_LABELS = {
-  cleaning: 'Housekeeping / Room Service',
-  amenities: 'Room Service / Housekeeping',
+  cleaning: 'Room Service',
+  amenities: 'Room Service',
   food: 'Kitchen',
   taxi: 'Taxi / Concierge',
   wakeup: 'Reception',

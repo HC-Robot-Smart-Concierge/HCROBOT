@@ -28,12 +28,6 @@ const DEPARTMENT_LOCALIZATIONS = {
     descEN: 'Hotel executive administration & system operations',
     descVI: 'Ban Quản trị và Điều hành hệ thống khách sạn',
   },
-  HOUSEKEEPING: {
-    nameEN: 'Housekeeping',
-    nameVI: 'Buồng Phòng & Vệ Sinh',
-    descEN: 'Room turnover, priority sanitization & robotic cleaning fleet',
-    descVI: 'Bộ phận Buồng phòng & Vệ sinh',
-  },
   KITCHEN: {
     nameEN: 'Kitchen Operations',
     nameVI: 'Bếp & Chế Biến Ẩm Thực',
@@ -54,9 +48,9 @@ const DEPARTMENT_LOCALIZATIONS = {
   },
   ROOMSERVICE: {
     nameEN: 'Room Service & In-Room Dining',
-    nameVI: 'Phục Vụ Phòng',
-    descEN: 'In-room food & beverage orders delivery and coordination',
-    descVI: 'Bộ phận Phục vụ phòng (Room Service)',
+    nameVI: 'Phục Vụ Phòng (Room Service)',
+    descEN: 'In-room dining, room cleaning, extra towels & guest amenities coordination',
+    descVI: 'Bộ phận Phục vụ phòng, dọn phòng & tiện ích (Room Service)',
   },
   TAXI: {
     nameEN: 'Taxi & Transportation',

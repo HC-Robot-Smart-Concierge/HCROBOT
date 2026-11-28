@@ -1,7 +1,7 @@
 import re
 import urllib.parse
 import logging
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -142,7 +142,7 @@ class TranslationService:
                 f"https://translate.googleapis.com/translate_a/single"
                 f"?client=gtx&sl={src_lang}&tl={target_lang}&dt=t&q={encoded_text}"
             )
-            async with httpx.AsyncClient(timeout=3.0) as client:
+            async with httpx.AsyncClient(timeout=5.0) as client:
                 res = await client.get(url)
             if res.status_code == 200:
                 data = res.json()
@@ -160,26 +160,49 @@ class TranslationService:
         self, text: str, src_lang: str, target_lang: str
     ) -> Optional[str]:
         """
-        Dự phòng dịch qua Gemini nếu mạng ngoài Google GTX bị chặn hoặc lỗi.
+        Dự phòng dịch qua Gemini raw model (không dùng Rora persona prompt) nếu Google GTX bị chặn hoặc lỗi.
         """
         try:
+            import asyncio
             from app.services.ai.gemini_service import gemini_service
-            if not gemini_service.is_configured:
+            if not gemini_service.is_configured or not getattr(gemini_service, "client", None):
                 return None
 
             src_name = "Vietnamese" if src_lang == "vi" else "English"
             tgt_name = "English" if target_lang == "en" else "Vietnamese"
             prompt = (
-                f"Translate the following hospitality/hotel spoken dialogue sentence from {src_name} to {tgt_name}.\n"
-                f"Provide ONLY the direct translated sentence without quotes, explanations or extra words.\n\n"
-                f"Original: {text}"
+                f"You are a pure hotel translator. Translate the spoken sentence from {src_name} to {tgt_name}. "
+                f"Return ONLY the direct translated sentence without quotes, explanations, or assistant greetings.\n"
+                f"Text: {text}"
             )
-            reply = await gemini_service.generate_reply(prompt=prompt, timeout=8.0)
+
+            def _call_raw():
+                resp = gemini_service.client.models.generate_content(
+                    model=gemini_service.model_name,
+                    contents=prompt,
+                )
+                return getattr(resp, "text", None)
+
+            reply = await asyncio.wait_for(asyncio.to_thread(_call_raw), timeout=6.0)
             if reply and reply.strip():
-                return reply.strip().strip('"').strip("'")
+                cleaned = reply.strip().strip('"').strip("'")
+                if re.search(r"\b(i am rora|unable to perform|concierge robot)\b", cleaned, re.IGNORECASE):
+                    return None
+                return cleaned
         except Exception as e:
             logger.warning(f"[TranslationService] Gemini fallback translation failed: {e}")
         return None
+
+    @staticmethod
+    def _polish_hospitality_translation(translated: str, target_code: str) -> str:
+        """Chuẩn hóa thuật ngữ khách sạn 5 sao để câu dịch tự nhiên hơn."""
+        if not translated:
+            return translated
+        out = translated.strip()
+        if target_code == "vi":
+            out = re.sub(r"\bphòng dịch vụ\b", "dịch vụ phòng (Room Service)", out, flags=re.IGNORECASE)
+            out = re.sub(r"\bbàn phía trước\b", "quầy lễ tân", out, flags=re.IGNORECASE)
+        return out
 
     async def translate(
         self,
@@ -188,6 +211,7 @@ class TranslationService:
         target_lang: str = "vi",
         sender_role: str = "guest",
         with_audio: bool = False,
+        context: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Thực hiện dịch thuật tách biệt Ngôn ngữ câu nói (source_lang) và Ngôn ngữ đích của người nhận (target_lang):
@@ -290,6 +314,7 @@ class TranslationService:
             translated = clean_text
             needs_translation = False
         else:
+            translated = self._polish_hospitality_translation(translated, target_code)
             needs_translation = (translated.strip().lower() != clean_text.strip().lower()) or (detected_src != target_code)
 
         audio_b64 = None

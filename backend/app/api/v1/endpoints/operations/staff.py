@@ -23,7 +23,7 @@ _DEPARTMENT_DASHBOARD_MAP = {
     "DEP-KITCHEN": "restaurant",
     "DEP-FB": "room_service",
     "DEP-RESTAURANT": "restaurant",
-    "DEP-HOUSEKEEPING": "housekeeping",
+    "DEP-HOUSEKEEPING": "room_service",
     "DEP-BELL": "bell_services",
     "DEP-TAXI": "bell_services",
     "DEP-MAINTENANCE": "maintenance",
@@ -46,8 +46,8 @@ async def _resolve_department_assignment(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
                     f"Mã phòng ban (department_id) '{resolved_dept_id}' không tồn tại. "
-                    "Vui lòng chọn trong: DEP-HOUSEKEEPING, DEP-BELL, DEP-TAXI, "
-                    "DEP-MAINTENANCE, DEP-RECEPTION, DEP-CONCIERGE, DEP-ROOMSERVICE, DEP-KITCHEN."
+                    "Vui lòng chọn trong: DEP-ROOMSERVICE, DEP-BELL, DEP-TAXI, "
+                    "DEP-MAINTENANCE, DEP-RECEPTION, DEP-CONCIERGE, DEP-KITCHEN."
                 ),
             )
         resolved_dept_name = dept.name
@@ -71,13 +71,13 @@ async def _resolve_department_assignment(
 async def list_staff(
     department_id: Optional[str] = Query(
         None,
-        description="Lọc theo mã phòng ban chuẩn (vd: `DEP-HOUSEKEEPING`, `DEP-BELL`, `DEP-TAXI`, `DEP-MAINTENANCE`, `DEP-RECEPTION`, `DEP-ROOMSERVICE`, `DEP-KITCHEN`)",
-        examples=["DEP-HOUSEKEEPING", "DEP-BELL"],
+        description="Lọc theo mã phòng ban chuẩn (vd: `DEP-ROOMSERVICE`, `DEP-BELL`, `DEP-TAXI`, `DEP-MAINTENANCE`, `DEP-RECEPTION`, `DEP-KITCHEN`)",
+        examples=["DEP-ROOMSERVICE", "DEP-BELL"],
     ),
     department: Optional[str] = Query(
         None,
-        description="Lọc theo tên phòng ban hiển thị (vd: `Housekeeping`, `Bell Services`, `F&B`, `Maintenance`, `Reception`)",
-        examples=["Housekeeping", "Bell Services"],
+        description="Lọc theo tên phòng ban hiển thị (vd: `Room Service`, `Bell Services`, `Kitchen`, `Maintenance`, `Reception`)",
+        examples=["Room Service", "Bell Services"],
     ),
     status_filter: Optional[str] = Query(
         None,
@@ -88,7 +88,7 @@ async def list_staff(
     role: Optional[str] = Query(
         None,
         description="Lọc theo chức danh / vai trò tài khoản",
-        examples=["Housekeeping Lead", "Bell Captain"],
+        examples=["Room Service Staff", "Bell Captain"],
     ),
     include_inactive: bool = Query(
         False,
@@ -139,8 +139,8 @@ async def create_staff(
     ### Quy tắc xử lý tự động:
     1. **Kiểm tra trùng Username**: `username` được chuẩn hóa viết thường, không được trùng với bất kỳ tài khoản nào khác.
     2. **Tự động ánh xạ Phòng ban (Department Resolution)**:
-       - Nếu truyền `department_id` (vd: `DEP-HOUSEKEEPING`): Kiểm tra tính hợp lệ trong bảng `departments` và tự động gắn tên phòng ban chuẩn.
-       - Nếu chỉ truyền `department` (vd: `Housekeeping`): Tự động tìm kiếm phòng ban tương ứng trong database để gán `department_id`.
+       - Nếu truyền `department_id` (vd: `DEP-ROOMSERVICE`): Kiểm tra tính hợp lệ trong bảng `departments` và tự động gắn tên phòng ban chuẩn.
+       - Nếu chỉ truyền `department` (vd: `Room Service`): Tự động tìm kiếm phòng ban tương ứng trong database để gán `department_id`.
     3. **Tự động gán Dashboard mặc định**:
        - `DEP-RECEPTION` -> `reception`
        - `DEP-CONCIERGE` -> `concierge`
@@ -148,7 +148,6 @@ async def create_staff(
        - `DEP-KITCHEN` -> `restaurant`
        - `DEP-FB` -> `room_service`
        - `DEP-RESTAURANT` -> `restaurant`
-       - `DEP-HOUSEKEEPING` -> `housekeeping`
        - `DEP-BELL` hoặc `DEP-TAXI` -> `bell_services`
        - `DEP-MAINTENANCE` -> `maintenance`
        - Role Quản trị viên (`ADMIN`) -> `admin_portal`

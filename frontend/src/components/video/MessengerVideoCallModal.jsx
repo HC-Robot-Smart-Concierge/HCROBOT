@@ -33,6 +33,7 @@ const ICE_SERVERS = {
     { urls: 'stun:stun2.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:relay.metered.ca:80' },
+    { urls: 'stun:openrelay.metered.ca:80' },
     {
       urls: 'turn:relay.metered.ca:80',
       username: 'openrelayproject',
@@ -40,6 +41,26 @@ const ICE_SERVERS = {
     },
     {
       urls: 'turn:relay.metered.ca:80?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:relay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turns:relay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turns:openrelay.metered.ca:443?transport=tcp',
       username: 'openrelayproject',
       credential: 'openrelayproject',
     },
@@ -248,12 +269,33 @@ export const MessengerVideoCallModal = ({
       return createFakeVideoStream(role === 'staff' ? 'Concierge Staff' : 'Hotel Guest');
     }
 
-    // Tầng 1: Thử camera trước + mic tiêu chuẩn
+    // Tầng 1: Thử camera vật lý (tránh chọn nhầm OBS Virtual Camera nếu có webcam thật) + mic tiêu chuẩn
     try {
+      let preferredVideoConstraint = role === 'staff'
+        ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+        : { width: { ideal: 1280 }, height: { ideal: 720 } };
+
+      if (typeof navigator.mediaDevices.enumerateDevices === 'function') {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoInputs = devices.filter((d) => d.kind === 'videoinput');
+          const physicalCam = videoInputs.find(
+            (d) => d.label && !/obs|virtual|snap|droidcam|iriun/i.test(d.label)
+          );
+          if (physicalCam && physicalCam.deviceId && videoInputs.some((d) => /obs|virtual/i.test(d.label || ''))) {
+            preferredVideoConstraint = {
+              deviceId: { exact: physicalCam.deviceId },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+            };
+          }
+        } catch {
+          // Ignore enumerateDevices errors
+        }
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: role === 'staff'
-          ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
-          : { width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: preferredVideoConstraint,
         audio: true,
       });
       setHasNoCamera(false);
@@ -707,31 +749,30 @@ export const MessengerVideoCallModal = ({
       pc.ontrack = (event) => {
         console.log('[VideoCall] ontrack received track:', event.track.kind, event.track.id);
 
-        if (!remoteStreamRef.current) {
-          remoteStreamRef.current = new MediaStream();
-        }
+        const existingTracks = remoteStreamRef.current ? remoteStreamRef.current.getTracks() : [];
+        const hasTrack = existingTracks.some((t) => t.id === event.track.id);
+        const nextTracks = hasTrack ? existingTracks : [...existingTracks, event.track];
+        // Tạo MediaStream mới mỗi khi có track mới (video đến sau audio) để buộc <video> render lại hình ảnh
+        remoteStreamRef.current = new MediaStream(nextTracks);
 
         event.track.enabled = true;
 
-        if (!remoteStreamRef.current.getTracks().some((t) => t.id === event.track.id)) {
-          remoteStreamRef.current.addTrack(event.track);
-        }
-
         event.track.onunmute = () => {
           if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = new MediaStream(remoteStreamRef.current.getTracks());
             remoteVideoRef.current.play().catch(() => {});
           }
         };
 
         if (remoteVideoRef.current) {
-          if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
-            remoteVideoRef.current.srcObject = remoteStreamRef.current;
-          }
+          remoteVideoRef.current.srcObject = remoteStreamRef.current;
           const playPromise = remoteVideoRef.current.play();
           if (playPromise !== undefined) {
             playPromise.catch((e) => {
               if (e.name !== 'AbortError' && e.name === 'NotAllowedError' && remoteVideoRef.current) {
                 remoteVideoRef.current.muted = true;
+                isSpeakerMutedRef.current = true;
+                setIsSpeakerMuted(true);
                 remoteVideoRef.current.play().catch(() => {});
               }
             });
@@ -839,6 +880,28 @@ export const MessengerVideoCallModal = ({
             mode: translateModeRef.current,
             manualLocked: isManualLockedRef.current,
           }));
+        }
+        // Fallback: nếu sau 3.5s phía guest vẫn chưa kết nối ICE -> chủ động gửi lại offer
+        if (role === 'guest') {
+          setTimeout(async () => {
+            if (
+              !isEndingRef.current &&
+              pcRef.current &&
+              pcRef.current.connectionState !== 'connected' &&
+              pcRef.current.signalingState === 'stable' &&
+              wsRef.current &&
+              wsRef.current.readyState === WebSocket.OPEN
+            ) {
+              try {
+                const offer = await pcRef.current.createOffer({
+                  offerToReceiveAudio: true,
+                  offerToReceiveVideo: true,
+                });
+                await pcRef.current.setLocalDescription(offer);
+                wsRef.current.send(JSON.stringify({ type: 'offer', sdp: offer }));
+              } catch {}
+            }
+          }, 3500);
         }
       };
 

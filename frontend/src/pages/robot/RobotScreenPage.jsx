@@ -185,9 +185,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, []);
 
   // Giữ mã QR URL cố định để không bị giật ma trận khi đồng hồ 8s đếm ngược re-render
+  // Đường chặng 1 theo vị trí robot do FloorMap tính (null nếu chưa có layout Tầng Trệt / vị trí robot)
+  const [qrLegExtra, setQrLegExtra] = useState(null);
   const qrMapUrl = useMemo(() => {
-    return getMobileGuestMapUrl(navigationDestinationKey, preferredQrHostIp);
-  }, [navigationDestinationKey, preferredQrHostIp]);
+    return getMobileGuestMapUrl(navigationDestinationKey, preferredQrHostIp, qrLegExtra);
+  }, [navigationDestinationKey, preferredQrHostIp, qrLegExtra]);
 
   const [language, setLanguage] = useState('Tiếng Việt');
   const languageRef = useRef('Tiếng Việt');
@@ -4094,6 +4096,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 onOpenQrModal={handleOpenQrModalManual}
                 currentStepExternal={navigationStep}
                 onStepChange={setNavigationStep}
+                onQrExtraChange={setQrLegExtra}
                 defaultZoom={1.0}
               />
 

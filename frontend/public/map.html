@@ -448,6 +448,8 @@
             <g id="svgWorldGroup" transform="translate(0, 1840) rotate(-90)">
               <rect x="0" y="0" width="1840" height="1174" rx="22" fill="#FFFFFF" stroke="#E3DFD5" stroke-width="5" />
               <image id="floorImage" href="/maps/floor_1.png" x="0" y="0" width="1840" height="1174" preserveAspectRatio="none" />
+              <!-- Layout mới do Admin vẽ (tab "Map chỉ đường"), đã quy về khung 1840x1174. Trống => dùng ảnh cũ -->
+              <g id="layoutLayer"></g>
 
               <!-- Lớp 1: Đường hào quang vector nhẹ (Không dùng feDropShadow để mượt 120fps trên iPhone) -->
               <path id="svgHalo" d="" fill="none" stroke="#38BDF8" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" opacity="0.28" />
@@ -568,6 +570,17 @@
     const ROUTE_GROUND_TO_ELEVATOR = 'M 350 580 L 350 860 Q 350 880, 370 880 L 1330 880 Q 1350 880, 1362 864 L 1568 576 Q 1580 560, 1600 560 L 1715 560';
 
     const DESTINATIONS = {
+      locker_room: {
+        name: 'Phòng Thay Đồ & Tắm (Locker Room)',
+        shortLabel: 'PHÒNG THAY ĐỒ',
+        floorId: '7',
+        floorLevel: 'TẦNG 5',
+        isDiff: true,
+        step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
+        step2: 'Chặng 2: Ra khỏi thang máy, phòng thay đồ & tắm nằm cạnh khu hồ bơi, phía cánh trái tầng 5.',
+        coords: { x: 190, y: 800 },
+        route: 'M 1715 560 L 1005 560 Q 940 560, 900 620 L 820 745 L 560 745 L 380 690 L 190 800'
+      },
       // === TẦNG 5: HỒ BƠI, SPA & GYM ===
       infinity_pool: {
         name: 'Hồ Bơi Vô Cực (Infinity Pool)',
@@ -605,13 +618,13 @@
 
       // === TẦNG 2: BẾP & NHÀ HÀNG ===
       restaurant: {
-        name: 'Nhà Hàng & Quầy Nhận Món',
+        name: 'Bếp Trung Tâm & Room Service 24/7 (Quầy Nhận Món)',
         shortLabel: 'NHÀ HÀNG',
         floorId: '4',
         floorLevel: 'TẦNG 2',
         isDiff: true,
         step1: 'Chặng 1: Đi từ sảnh tiếp tân ra Thang máy A và bấm lên Tầng 2.',
-        step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang vào Quầy Nhận Món & Nhà hàng.',
+        step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang vào Quầy Nhận Món. Khách sạn không có nhà hàng tại chỗ, phục vụ ăn uống tận phòng 24/7.',
         coords: { x: 1080, y: 230 },
         route: 'M 1715 560 L 1080 560 Q 1080 530, 1080 480 L 1080 230'
       },
@@ -692,7 +705,7 @@
         floorLevel: 'TẦNG 6',
         isDiff: true,
         step1: 'Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6 (Cao nhất).',
-        step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang qua cửa trung tâm vào khu vực Rooftop Coffee.',
+        step2: 'Chặng 2: Ra khỏi thang máy, rẽ trái là tới Rooftop Coffee với view toàn cảnh thành phố.',
         coords: { x: 380, y: 230 },
         route: 'M 1715 560 L 1005 560 Q 940 560, 900 620 L 870 700 Q 855 745, 820 745 L 680 745 Q 600 745, 600 680 L 600 360 Q 600 270, 520 250 L 380 230'
       },
@@ -703,7 +716,7 @@
         floorLevel: 'TẦNG 6',
         isDiff: true,
         step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
-        step2: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Quầy Bar ở giữa.',
+        step2: 'Chặng 2: Ra khỏi thang máy, rẽ trái đi khoảng 10m là tới Sky Lounge Bar.',
         coords: { x: 1080, y: 230 },
         route: 'M 1715 560 L 1120 560 Q 1080 560, 1080 520 L 1080 458 L 1080 230'
       },
@@ -714,7 +727,7 @@
         floorLevel: 'TẦNG 6',
         isDiff: true,
         step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
-        step2: 'Chặng 2: Ra khỏi thang máy, rẽ trái theo hành lang vào Phòng VIP Karaoke.',
+        step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng sang cánh phải tầng 6 là Phòng VIP Karaoke.',
         coords: { x: 1450, y: 880 },
         route: 'M 1715 560 L 1490 560 Q 1450 560, 1450 600 L 1450 715 L 1450 880'
       },
@@ -820,6 +833,65 @@
 
     const dest = DESTINATIONS[currentDestKey] || DESTINATIONS.infinity_pool;
     let activeStep = dest.isDiff ? 1 : 2;
+
+    // === LAYOUT MỚI (Admin vẽ) — chỉ thay nền + đường, giữ nguyên toàn bộ cơ chế xoay/camera/vé ===
+    // GUEST_LEGS[1|2] = { svg, path, start, end } ; null => dùng ảnh + đường cũ như trước
+    const GUEST_LEGS = { 1: null, 2: null };
+    const NAV_MAP_PARAM = urlParams.get('nm');   // map Nav2 của Tầng Trệt (robot)
+    const LEG1_PARAM = urlParams.get('l1');      // đường từ vị trí robot, px khung 1840x1174
+
+    function safeSvg(markup) {
+      // Chỉ nhận SVG tĩnh do editor tạo; bỏ qua nếu có dấu hiệu script
+      return typeof markup === 'string' && !/<script|\son\w+\s*=|javascript:/i.test(markup) ? markup : null;
+    }
+    function parsePoints(str) {
+      const pts = String(str || '').split(';').map(function (pair) {
+        const xy = pair.split(',').map(Number);
+        return { x: xy[0], y: xy[1] };
+      }).filter(function (p) { return isFinite(p.x) && isFinite(p.y) && p.x >= -50 && p.x <= 1890 && p.y >= -50 && p.y <= 1224; });
+      return pts.length >= 2 ? pts : null;
+    }
+    function roundedPath(pts, r) {
+      let d = 'M ' + pts[0].x + ' ' + pts[0].y;
+      for (let i = 1; i < pts.length - 1; i += 1) {
+        const a = pts[i - 1], p = pts[i], b = pts[i + 1];
+        const la = Math.hypot(p.x - a.x, p.y - a.y) || 1, lb = Math.hypot(b.x - p.x, b.y - p.y) || 1;
+        const k = Math.min(r, la / 2, lb / 2);
+        d += ' L ' + (p.x + (a.x - p.x) / la * k).toFixed(1) + ' ' + (p.y + (a.y - p.y) / la * k).toFixed(1)
+          + ' Q ' + p.x + ' ' + p.y + ' ' + (p.x + (b.x - p.x) / lb * k).toFixed(1) + ' ' + (p.y + (b.y - p.y) / lb * k).toFixed(1);
+      }
+      const last = pts[pts.length - 1];
+      return d + ' L ' + last.x + ' ' + last.y;
+    }
+    function fetchGuestView(key) {
+      return fetch('/api/v1/guest-nav/layouts/' + encodeURIComponent(key))
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) { return d && d.guestView && safeSvg(d.guestView.svg) ? d.guestView : null; })
+        .catch(function () { return null; });
+    }
+    async function loadGuestLegs() {
+      const jobs = [];
+      // Chặng xuất phát từ robot (chặng 1, hoặc chặng duy nhất nếu điểm đến ở Tầng Trệt)
+      const robotPts = parsePoints(LEG1_PARAM);
+      if (NAV_MAP_PARAM && robotPts) {
+        jobs.push(fetchGuestView(NAV_MAP_PARAM).then(function (gv) {
+          if (!gv) return;
+          GUEST_LEGS[dest.isDiff ? 1 : 2] = {
+            svg: gv.svg, path: roundedPath(robotPts, 18), start: robotPts[0], end: robotPts[robotPts.length - 1],
+          };
+        }));
+      }
+      // Chặng 2: thang máy -> điểm đến trên layout tầng đích (đường tính sẵn khi Admin lưu)
+      if (dest.isDiff && dest.floorId) {
+        jobs.push(fetchGuestView('floor-' + dest.floorId).then(function (gv) {
+          const r = gv && gv.routes && gv.routes[currentDestKey];
+          if (!r || !r.d) return;
+          GUEST_LEGS[2] = { svg: gv.svg, path: r.d, start: r.start, end: r.end };
+        }));
+      }
+      await Promise.all(jobs);
+      if (GUEST_LEGS[1] || GUEST_LEGS[2]) updateStepView();
+    }
 
     // Preload sẵn ảnh tầng để khi chuyển Chặng 1 <-> Chặng 2 không bị khựng load ảnh
     try {
@@ -987,6 +1059,16 @@
     }
 
     function getActiveLegPoints() {
+      const g = GUEST_LEGS[activeStep];
+      if (g) {
+        return activeStep === 1
+          ? { path: g.path, start: g.start, end: g.end, startLabel: 'BẠN Ở ĐÂY', endLabel: 'THANG MÁY A' }
+          : {
+            path: g.path, start: g.start, end: g.end,
+            startLabel: dest.isDiff ? 'RA THANG MÁY' : 'BẠN Ở ĐÂY',
+            endLabel: dest.shortLabel || dest.name.toUpperCase().slice(0, 16),
+          };
+      }
       if (activeStep === 1) {
         return {
           path: ROUTE_GROUND_TO_ELEVATOR,
@@ -1041,6 +1123,12 @@
         instText.innerText = (dest.isDiff ? dest.step2 : dest.step1) || `Ra khỏi thang máy, đi theo chỉ dẫn tới ${dest.name}.`;
         if (nextLegBtnText) nextLegBtnText.innerText = '← Chặng 1';
       }
+
+      // Có layout mới cho chặng này => ẩn ảnh cũ, vẽ layout; không có => giữ ảnh cũ
+      const guestLeg = GUEST_LEGS[activeStep];
+      const layoutLayer = document.getElementById('layoutLayer');
+      if (layoutLayer) layoutLayer.innerHTML = guestLeg ? guestLeg.svg : '';
+      floorImg.style.display = guestLeg ? 'none' : '';
 
       halo.setAttribute('d', leg.path);
       track.setAttribute('d', leg.path);
@@ -1307,6 +1395,8 @@
     updateControlButtonsUI();
     render();
     checkExpiry();
+    // Nạp layout mới (nếu Admin đã vẽ) rồi vẽ lại; lỗi/không có => giữ map cũ
+    loadGuestLegs();
     setInterval(checkExpiry, 1000);
   </script>
 </body>

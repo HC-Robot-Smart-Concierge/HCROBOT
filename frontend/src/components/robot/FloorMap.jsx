@@ -26,6 +26,30 @@ import {
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { calculateFloorRoute } from '../../services/indoorNavigation/index.js';
+import { useGuideMap, useRobotMapPose, worldToCell, findGridPath, roundedPath } from '../../services/robotFloorPose.js';
+import { NavLayoutLayer, NAV_THEME, metersToCell } from './guestNavSymbols.jsx';
+import {
+  floorLayoutKey, floorMapFromLayout, rasterizeLayout, routeOnGrid, findLayoutDestination,
+} from '../../services/layoutRouting.js';
+import { fetchGuestNavLayout } from '../../services/guestNavLayoutApi.js';
+import { guestFrameFor, cellToFrame, encodeFramePoints } from '../../services/guestFrame.js';
+
+// Layout tầng khách sạn (Admin vẽ) – nạp theo tầng, giữ trong bộ nhớ
+const floorLayoutCache = new Map();
+const useHotelFloorLayout = (floorId) => {
+  const key = floorId ? floorLayoutKey(floorId) : null;
+  const [layout, setLayout] = useState(() => (key ? floorLayoutCache.get(key) ?? null : null));
+  useEffect(() => {
+    if (!key) { setLayout(null); return undefined; }
+    let alive = true;
+    setLayout(floorLayoutCache.get(key) ?? null);
+    fetchGuestNavLayout(key)
+      .then((l) => { floorLayoutCache.set(key, l); if (alive) setLayout(l); })
+      .catch(() => { if (alive) setLayout(null); });
+    return () => { alive = false; };
+  }, [key]);
+  return layout;
+};
 
 // Danh sách cấu hình 8 Tầng trong khách sạn
 export const HOTEL_FLOORS = [
@@ -71,6 +95,21 @@ export const HOTEL_DESTINATIONS = {
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống phía dưới để vào Phòng Gym.',
     coords: { x: 1450, y: 880 },
     routeTarget: 'M 1715 560 L 1490 560 Q 1450 560, 1450 600 L 1450 715 L 1450 880',
+  },
+  locker_room: {
+    id: 'locker_room',
+    name: 'Phòng Thay Đồ & Tắm (Locker Room)',
+    floorId: '7',
+    floorLevel: 'TẦNG 5',
+    category: 'Tiện Ích Hồ Bơi & Gym',
+    icon: '',
+    time: '3 Phút',
+    distance: '110m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, phòng thay đồ & tắm nằm cạnh khu hồ bơi, phía cánh trái tầng 5.',
+    coords: { x: 190, y: 800 },
+    routeTarget: 'M 1715 560 L 1005 560 Q 940 560, 900 620 L 820 745 L 560 745 L 380 690 L 190 800',
   },
   spa: {
     id: 'spa',
@@ -482,7 +521,7 @@ export const HOTEL_DESTINATIONS = {
     distance: '130m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6 (Cao nhất).',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang qua cửa trung tâm vào khu vực Rooftop Coffee.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái là tới Rooftop Coffee với view toàn cảnh thành phố.',
     coords: { x: 380, y: 230 },
     routeTarget: 'M 1715 560 L 1005 560 Q 940 560, 900 620 L 870 700 Q 855 745, 820 745 L 680 745 Q 600 745, 600 680 L 600 360 Q 600 270, 520 250 L 380 230',
   },
@@ -497,7 +536,7 @@ export const HOTEL_DESTINATIONS = {
     distance: '120m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Quầy Bar ở giữa.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái đi khoảng 10m là tới Sky Lounge Bar.',
     coords: { x: 1080, y: 230 },
     routeTarget: 'M 1715 560 L 1120 560 Q 1080 560, 1080 520 L 1080 458 L 1080 230',
   },
@@ -512,7 +551,7 @@ export const HOTEL_DESTINATIONS = {
     distance: '125m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái theo hành lang vào Phòng VIP Karaoke.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng sang cánh phải tầng 6 là Phòng VIP Karaoke.',
     coords: { x: 1450, y: 880 },
     routeTarget: 'M 1715 560 L 1490 560 Q 1450 560, 1450 600 L 1450 715 L 1450 880',
   },
@@ -632,7 +671,7 @@ const qrTicketCache = new Map();
 
 // Hàm tạo URL chỉ đường di động siêu nhẹ (Standalone 15KB map.html) tối ưu cho quét QR
 // Kèm theo tham số dự phòng &dest= để đảm bảo Alternative Flow luôn đọc được điểm đến
-export const getMobileGuestMapUrl = (destKey, preferredHostIp = null) => {
+export const getMobileGuestMapUrl = (destKey, preferredHostIp = null, extra = null) => {
   const safeDestKey = destKey || 'infinity_pool';
   const { tailscaleIp, lanIp } = getDetectedNetworkHosts();
 
@@ -656,7 +695,11 @@ export const getMobileGuestMapUrl = (destKey, preferredHostIp = null) => {
     resolvedHostIp = lanIp || tailscaleIp;
   }
 
-  const cacheKey = `${safeDestKey}__${resolvedHostIp}`;
+  // Đường chặng 1 theo vị trí robot (nếu có) cho trang QR vẽ trên layout mới
+  const extraQuery = extra && extra.nm && extra.l1
+    ? `&nm=${encodeURIComponent(extra.nm)}&l1=${encodeURIComponent(extra.l1)}`
+    : '';
+  const cacheKey = `${safeDestKey}__${resolvedHostIp}__${extraQuery}`;
   const now = Date.now();
   const cached = qrTicketCache.get(cacheKey);
   // Nếu đã tạo vé trong vòng 10 phút thì giữ nguyên mã QR để không bị giật/đổi hình
@@ -679,13 +722,13 @@ export const getMobileGuestMapUrl = (destKey, preferredHostIp = null) => {
       // Sử dụng cổng HTTP 8000 (FastAPI Static Guest Map) khi quét qua Wi-Fi / Tailscale nội bộ:
       // 1. Tránh 100% lỗi cảnh báo chứng chỉ SSL tự ký (basicSsl) trên Safari / Chrome điện thoại
       // 2. Tránh 100% Service Worker cũ ở port 3000 chặn request và đẩy về Trang chủ (/)
-      url = `http://${resolvedHostIp}:8000/map.html?t=${token}&dest=${encodedDest}`;
+      url = `http://${resolvedHostIp}:8000/map.html?t=${token}&dest=${encodedDest}${extraQuery}`;
     } else {
       // Nếu chạy qua domain công khai / Cloudflare Tunnel / Ngrok thì giữ nguyên origin
-      url = `${window.location.origin}/map.html?t=${token}&dest=${encodedDest}`;
+      url = `${window.location.origin}/map.html?t=${token}&dest=${encodedDest}${extraQuery}`;
     }
   } catch {
-    url = `http://${resolvedHostIp}:8000/map.html?t=${token}&dest=${encodedDest}`;
+    url = `http://${resolvedHostIp}:8000/map.html?t=${token}&dest=${encodedDest}${extraQuery}`;
   }
 
   qrTicketCache.set(cacheKey, { url, expiresAt: now + 15 * 60 * 1000 });
@@ -877,6 +920,7 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   if (['nhà hàng', 'nha hang', 'buffet', 'ăn sáng', 'quầy nhận món', 'pickup', 'restaurant'].some((k) => p.includes(k))) return 'restaurant';
 
   // 5. Tầng 5 & 6 tiện ích
+  if (['phòng thay đồ', 'phong thay do', 'thay đồ', 'thay do', 'locker', 'tủ đồ', 'tu do', 'tủ khoá', 'phòng tắm chung', 'tắm tráng', 'shower'].some((k) => p.includes(k))) return 'locker_room';
   if (['hồ bơi', 'ho boi', 'bể bơi', 'pool', 'bơi'].some((k) => p.includes(k))) return 'infinity_pool';
   if (['rooftop', 'cafe', 'cà phê', 'coffee'].some((k) => p.includes(k))) return 'rooftop_coffee';
   if (['quầy bar', 'quay bar', 'sky bar', 'sky lounge', 'uống rượu', 'bar', 'quầy ba', 'quay ba', 'quán ba', 'quan ba', 'sky ba', 'rooftop ba', 'ba ở đâu', 'ba o dau', 'lên ba', 'len ba', 'đi ba', 'di ba', 'uống ở ba'].some((k) => p.includes(k))) return 'bar';
@@ -911,16 +955,22 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
 };
 
 // Danh sách các cơ sở vật chất chính của khách sạn cho bộ chọn nhanh
+// Bộ chọn nhanh điểm đến — theo bảng tra cứu RAG (hotel_facilities_floor_layout_rag.md, mục 10)
 export const HOTEL_KEY_FACILITIES = [
-  { key: 'room_401', name: 'Phòng Nghỉ Cao Cấp (401 - 409)', floor: 'TẦNG 4' },
-  { key: 'room_301', name: 'Phòng Nghỉ Tiêu Chuẩn (301 - 309)', floor: 'TẦNG 3' },
-  { key: 'infinity_pool', name: 'Hồ Bơi Vô Cực Nước Ấm', floor: 'TẦNG 5' },
+  { key: 'front_desk', name: 'Sảnh Chính & Quầy Lễ Tân', floor: 'TẦNG TRỆT' },
+  { key: 'room_301', name: 'Phòng Nghỉ Tiêu Chuẩn (301 - 310)', floor: 'TẦNG 3' },
+  { key: 'room_401', name: 'Phòng Nghỉ Cao Cấp (401 - 410)', floor: 'TẦNG 4' },
+  { key: 'infinity_pool', name: 'Hồ Bơi Vô Cực', floor: 'TẦNG 5' },
+  { key: 'locker_room', name: 'Phòng Thay Đồ & Tắm', floor: 'TẦNG 5' },
   { key: 'spa', name: 'Thảo Mộc Spa & Massage', floor: 'TẦNG 5' },
   { key: 'gym', name: 'Trung Tâm Fitness & Gym', floor: 'TẦNG 5' },
+  { key: 'rooftop_coffee', name: 'Rooftop Coffee (City View)', floor: 'TẦNG 6' },
+  { key: 'bar', name: 'Sky Lounge Bar', floor: 'TẦNG 6' },
+  { key: 'gift_shop', name: 'Aurora Gift Shop', floor: 'TẦNG 6' },
+  { key: 'karaoke', name: 'Phòng VIP Karaoke', floor: 'TẦNG 6' },
   { key: 'restaurant', name: 'Bếp Trung Tâm & Room Service 24/7', floor: 'TẦNG 2' },
-  { key: 'rooftop_coffee', name: 'Rooftop Sky Bar & Cafe', floor: 'TẦNG 6' },
-  { key: 'front_desk', name: 'Quầy Lễ Tân & Sảnh', floor: 'TẦNG TRỆT' },
-  { key: 'parking_car', name: 'Bãi Đỗ Xe & Sạc EV', floor: 'HẦM B2' },
+  { key: 'parking_bike', name: 'Bãi Xe Máy & Xe Đạp', floor: 'HẦM B1' },
+  { key: 'parking_car', name: 'Bãi Đỗ Ô Tô & Sạc EV', floor: 'HẦM B2' },
 ];
 
 export const FloorMap = ({
@@ -935,6 +985,7 @@ export const FloorMap = ({
   onOpenQrModal = null,
   currentStepExternal = null,
   onStepChange = null,
+  onQrExtraChange = null, // báo đường chặng 1 (theo vị trí robot) cho nơi khác tạo mã QR
 }) => {
   // Điểm đến được chọn (hỗ trợ chuyển đổi nhanh trực tiếp giữa các cơ sở vật chất)
   const [selectedDestKey, setSelectedDestKey] = useState(destinationKey);
@@ -989,9 +1040,6 @@ export const FloorMap = ({
   }, []);
 
   // Giữ URL mã QR cố định trong suốt vòng đời của điểm đến này để mã QR không bị giật ma trận
-  const qrMapUrl = useMemo(() => {
-    return getMobileGuestMapUrl(currentDest.id, preferredHostIp);
-  }, [currentDest.id, preferredHostIp]);
 
   // Trạng thái Chặng:
   // 1: Chặng 1 (Tầng Trệt ra Thang Máy)
@@ -1043,6 +1091,90 @@ export const FloorMap = ({
   }, [activeStep, currentDest]);
 
   const activeFloor = HOTEL_FLOORS.find((f) => f.id === activeFloorId) || HOTEL_FLOORS[2];
+
+  // Chặng 1 trên map thật Nav2 đang nạp: vị trí robot từ ROS 2 (/tf + /odom) -> waypoint "Thang máy".
+  // Thiếu map / waypoint / vị trí => physicalLeg1 = null => giữ nguyên map khách sạn như cũ.
+  const guideMap = useGuideMap(true);
+  const robotPose = useRobotMapPose(Boolean(guideMap));
+  const physicalLeg1 = useMemo(() => {
+    if (activeStep !== 1 || !currentDest.isDifferentFloor || !guideMap || !robotPose) return null;
+    const { map, grid, elevator } = guideMap;
+    const start = worldToCell(robotPose, map);
+    const goal = worldToCell(elevator, map);
+    if (start.x < 0 || start.y < 0 || start.x > map.width || start.y > map.height) return null;
+    const cells = findGridPath(grid, start, goal);
+    if (!cells) return null;
+    const pts = [start, ...cells.map((c) => ({ x: c.x + 0.5, y: c.y + 0.5 })), goal];
+    return {
+      map,
+      image: guideMap.image,
+      navLayout: guideMap.navLayout,
+      elevator,
+      start,
+      goal,
+      yaw: robotPose.yaw,
+      robot: true,
+      goalName: elevator.name,
+      pathString: roundedPath(pts, 3),
+      lengthM: pts.slice(1).reduce((sum, p, i) => sum + Math.hypot(p.x - pts[i].x, p.y - pts[i].y), 0) * map.resolution,
+    };
+  }, [activeStep, currentDest.isDifferentFloor, guideMap, robotPose]);
+
+  // Điểm đến ngay Tầng Trệt (lễ tân, WC sảnh...): robot -> điểm đến trên map Nav2, nếu layout có đặt điểm đó
+  const groundLeg = useMemo(() => {
+    if (currentDest.isDifferentFloor || currentDest.floorId !== '3' || !guideMap || !robotPose) return null;
+    const destObj = findLayoutDestination(guideMap.navLayout, currentDest.id);
+    if (!destObj) return null;
+    const r = routeOnGrid(guideMap.grid, guideMap.map, robotPose, destObj);
+    if (!r) return null;
+    return {
+      ...r, map: guideMap.map, image: guideMap.image, navLayout: guideMap.navLayout,
+      yaw: robotPose.yaw, robot: true, goalName: destObj.label || currentDest.name,
+    };
+  }, [currentDest, guideMap, robotPose]);
+
+  // Chặng 2: thang máy -> điểm đến, trên layout Admin vẽ cho tầng đích (nếu có đủ thang máy + điểm đến)
+  const destFloorLayout = useHotelFloorLayout(currentDest.isDifferentFloor ? currentDest.floorId : null);
+  const floorLeg = useMemo(() => {
+    if (activeStep !== 2 || !currentDest.isDifferentFloor || !destFloorLayout) return null;
+    const elevator = (destFloorLayout.objects || []).find((o) => o.type === 'elevator');
+    const destObj = findLayoutDestination(destFloorLayout, currentDest.id);
+    if (!elevator || !destObj) return null;
+    const map = floorMapFromLayout(destFloorLayout, floorLayoutKey(currentDest.floorId));
+    const r = routeOnGrid(rasterizeLayout(destFloorLayout, map), map, elevator, destObj);
+    if (!r) return null;
+    return { ...r, map, navLayout: destFloorLayout, robot: false, goalName: destObj.label || currentDest.name, startName: elevator.label || 'Thang máy' };
+  }, [activeStep, currentDest, destFloorLayout]);
+  const guideLeg = physicalLeg1 || groundLeg || floorLeg;
+
+  // Đường xuất phát từ robot cho trang QR: tính không phụ thuộc chặng đang xem trên kiosk
+  const qrExtra = useMemo(() => {
+    if (!guideMap || !robotPose) return null;
+    const nl = guideMap.navLayout;
+    if (!nl || !((nl.walls || []).length || (nl.objects || []).length)) return null; // chưa có layout Tầng Trệt
+    let target = null;
+    if (currentDest.isDifferentFloor) target = guideMap.elevator;
+    else if (currentDest.floorId === '3') target = findLayoutDestination(nl, currentDest.id);
+    if (!target) return null;
+    const { map, grid } = guideMap;
+    const start = worldToCell(robotPose, map);
+    const goal = worldToCell(target, map);
+    const cells = findGridPath(grid, start, goal);
+    if (!cells) return null;
+    const f = guestFrameFor(map);
+    const pts = [start, ...cells.map((c) => ({ x: c.x + 0.5, y: c.y + 0.5 })), goal].map((p) => cellToFrame(p, f));
+    return { nm: map.mapId, l1: encodeFramePoints(pts) };
+  }, [guideMap, robotPose, currentDest]);
+
+  // Link QR: giữ nguyên cơ chế cũ (token 15 phút, chọn Wi-Fi/Tailscale), kèm đường chặng 1 nếu có
+  const qrNm = qrExtra?.nm || null;
+  const qrL1 = qrExtra?.l1 || null;
+  const qrMapUrl = useMemo(() => {
+    return getMobileGuestMapUrl(currentDest.id, preferredHostIp, qrNm && qrL1 ? { nm: qrNm, l1: qrL1 } : null);
+  }, [currentDest.id, preferredHostIp, qrNm, qrL1]);
+  useEffect(() => {
+    onQrExtraChange?.(qrNm && qrL1 ? { nm: qrNm, l1: qrL1 } : null);
+  }, [qrNm, qrL1, onQrExtraChange]);
 
   // Tự động chuyển chặng từ 1 sang 2 sau 10 giây (nếu không có điều phối ngoài) để khách thấy toàn bộ hành trình
   useEffect(() => {
@@ -1126,7 +1258,7 @@ export const FloorMap = ({
               <div className="absolute top-full left-0 mt-1.5 z-50 w-64 max-h-[280px] overflow-y-auto no-scrollbar rounded-2xl bg-white/95 backdrop-blur-xl border border-[#E3DFD5] shadow-2xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
                 <div className="text-[10px] font-extrabold uppercase tracking-wider text-stone-500 px-2.5 py-1 border-b border-[#E3DFD5] flex items-center justify-between">
                   <span>Chọn cơ sở vật chất</span>
-                  <span className="text-[9px] font-mono text-stone-400">7 ĐIỂM ĐẾN</span>
+                  <span className="text-[9px] font-mono text-stone-400">{HOTEL_KEY_FACILITIES.length} ĐIỂM ĐẾN</span>
                 </div>
                 {HOTEL_KEY_FACILITIES.map((fac) => {
                   const isSelected = fac.key === selectedDestKey;
@@ -1288,6 +1420,10 @@ export const FloorMap = ({
               transformOrigin: 'center center',
             }}
           >
+            {guideLeg ? (
+              <GuideLegView leg={guideLeg} />
+            ) : (
+            <>
             {/* Ảnh mặt bằng gốc của tầng - key bắt buộc để mobile Safari render lại texture khi đổi tầng */}
             <img
               key={activeFloor.image}
@@ -1389,6 +1525,8 @@ export const FloorMap = ({
                 </g>
               )}
             </svg>
+            </>
+            )}
           </div>
         </div>
       )}
@@ -1492,6 +1630,89 @@ export const FloorMap = ({
         </div>
       )}
 
+    </div>
+  );
+};
+
+/** Khung nhìn (đơn vị ô map) bao layout / vùng đã quét + robot + đích. */
+const leg1ViewBox = (leg) => {
+  const { map, navLayout, image, start, goal } = leg;
+  const xs = [start.x, goal.x];
+  const ys = [start.y, goal.y];
+  const hasLayout = navLayout && ((navLayout.walls || []).length || (navLayout.objects || []).length);
+  if (hasLayout) {
+    for (const w of navLayout.walls || []) for (const [x, y] of w.points) { const c = metersToCell(x, y, map); xs.push(c.x); ys.push(c.y); }
+    for (const o of navLayout.objects || []) {
+      const c = metersToCell(o.x, o.y, map);
+      const r = Math.max(o.w, o.h) / map.resolution / 2;
+      xs.push(c.x - r, c.x + r); ys.push(c.y - r, c.y + r);
+    }
+  } else if (image?.bbox) {
+    xs.push(image.bbox.x, image.bbox.x + image.bbox.w); ys.push(image.bbox.y, image.bbox.y + image.bbox.h);
+  } else {
+    xs.push(0, map.width); ys.push(0, map.height);
+  }
+  const pad = Math.max(map.width, map.height) * 0.06;
+  const x0 = Math.min(...xs) - pad;
+  const y0 = Math.min(...ys) - pad;
+  return { x: x0, y: y0, w: Math.max(...xs) + pad - x0, h: Math.max(...ys) + pad - y0, hasLayout };
+};
+
+/**
+ * Khung chỉ đường trên layout Admin vẽ / map Nav2:
+ *  - robot=true : xuất phát từ vị trí thật của robot (chặng 1, điểm đến ở Tầng Trệt)
+ *  - robot=false: xuất phát từ thang máy của tầng đích (chặng 2)
+ */
+const GuideLegView = ({ leg }) => {
+  const { map, image, navLayout, start, goal, yaw, pathString, lengthM, robot, goalName, startName } = leg;
+  const vb = leg1ViewBox(leg);
+  const u = Math.max(vb.w, vb.h) / 100; // đơn vị nét theo khung nhìn
+  const pill = (x, y, text, color) => {
+    const fs = u * 2.6;
+    const w = text.length * fs * 0.56 + fs * 1.4;
+    return (
+      <g transform={`translate(${x}, ${y})`}>
+        <rect x={-w / 2} y={-fs * 0.95} width={w} height={fs * 1.9} rx={fs * 0.95} fill="#FFFFFF" stroke={color} strokeWidth={u * 0.35} />
+        <text textAnchor="middle" dominantBaseline="central" fontSize={fs} fontWeight="800" fill={color}>{text}</text>
+      </g>
+    );
+  };
+  const head = robot ? { x: start.x + Math.cos(yaw) * u * 4.5, y: start.y - Math.sin(yaw) * u * 4.5 } : null;
+  // Nhãn đích: nếu layout đã ghi tên ngay dưới icon thì không lặp lại
+  const goalHasLabel = vb.hasLayout && (navLayout.objects || []).some((o) => o.label && Math.hypot(metersToCell(o.x, o.y, map).x - goal.x, metersToCell(o.x, o.y, map).y - goal.y) < 1);
+  return (
+    <div className="w-full h-full relative" style={{ background: NAV_THEME.floor }}>
+      <svg viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`} className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="xMidYMid meet">
+        {vb.hasLayout ? (
+          <NavLayoutLayer layout={navLayout} map={map} />
+        ) : (
+          image && <image href={image.url} x={image.bbox.x} y={image.bbox.y} width={image.bbox.w} height={image.bbox.h} />
+        )}
+        <path d={pathString} fill="none" stroke="#7DD3FC" strokeWidth={u * 2.6} strokeLinecap="round" strokeLinejoin="round" opacity="0.35" />
+        <path d={pathString} fill="none" stroke="#0EA5E9" strokeWidth={u * 1.2} strokeLinecap="round" strokeLinejoin="round"
+          strokeDasharray={`${u * 2.6} ${u * 1.8}`} className="animate-routeDash" />
+        {/* Đích */}
+        <circle cx={goal.x} cy={goal.y} r={u * 3.2} fill="#38BDF8" opacity="0.22" />
+        <circle cx={goal.x} cy={goal.y} r={u * 1.7} fill="#0EA5E9" stroke="#fff" strokeWidth={u * 0.6} />
+        {!goalHasLabel && pill(goal.x, goal.y - u * 5.5, goalName, '#0369A1')}
+        {/* Xuất phát */}
+        {robot ? (
+          <>
+            <circle cx={start.x} cy={start.y} r={u * 4.2} fill="#0EA5E9" opacity="0.16" className="animate-pulse" />
+            <line x1={start.x} y1={start.y} x2={head.x} y2={head.y} stroke="#0369A1" strokeWidth={u * 1} strokeLinecap="round" />
+            <circle cx={start.x} cy={start.y} r={u * 2} fill="#0369A1" stroke="#fff" strokeWidth={u * 0.7} />
+            {pill(start.x, start.y + u * 6.5, 'Bạn đang ở đây', '#0369A1')}
+          </>
+        ) : (
+          <>
+            <circle cx={start.x} cy={start.y} r={u * 3} fill="#38BDF8" opacity="0.25" />
+            <circle cx={start.x} cy={start.y} r={u * 1.6} fill="#0EA5E9" stroke="#fff" strokeWidth={u * 0.6} />
+          </>
+        )}
+      </svg>
+      <div className="absolute bottom-2 left-2 text-[10px] font-semibold text-stone-600 bg-white/90 border border-[#E3DFD5] rounded-full px-2 py-0.5">
+        {robot ? `Vị trí thật của robot · ~${lengthM.toFixed(1)} m tới ${goalName}` : `Từ ${startName} · ~${lengthM.toFixed(0)} m tới ${goalName}`}
+      </div>
     </div>
   );
 };

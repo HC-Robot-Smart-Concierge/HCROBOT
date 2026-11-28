@@ -8,14 +8,11 @@ import {
 import { GeneralSection } from './settings/GeneralSection';
 import { SecuritySection } from './settings/SecuritySection';
 import { NotificationsSection } from './settings/NotificationsSection';
-import { IntegrationsSection } from './settings/IntegrationsSection';
-import { AdvancedSection } from './settings/AdvancedSection';
-import { ResetSettingsModal } from './settings/ResetSettingsModal';
 import { useLanguage } from '../../../context/LanguageContext';
 
 export const AdminSettingsTab = ({ currentUser = {} }) => {
   const { t } = useLanguage();
-  const [activeSubTab, setActiveSubTab] = useState('general'); // 'general' | 'security' | 'notifications' | 'integrations' | 'advanced'
+  const [activeSubTab, setActiveSubTab] = useState('general');
   const [settings, setSettings] = useState(() => {
     try {
       const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -28,9 +25,6 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
   const [initialSettings, setInitialSettings] = useState(() => settings);
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
-  const [showPmsKey, setShowPmsKey] = useState(false);
-  const [isTestingPms, setIsTestingPms] = useState(false);
-  const [showResetModal, setShowResetModal] = useState(false);
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -51,25 +45,6 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
   const handleDiscard = () => {
     setSettings(initialSettings);
     showToast('Unsaved changes discarded.');
-  };
-
-  const handleTestPmsConnection = () => {
-    setIsTestingPms(true);
-    setTimeout(() => {
-      setIsTestingPms(false);
-      showToast('✅ PMS Oracle OPERA Cloud connection: 200 OK (Latency 42ms)');
-    }, 1000);
-  };
-
-  const handleClearMapCache = () => {
-    showToast('🧹 SLAM map cache cleared. Robot is reloading floor map.');
-  };
-
-  const handleFactoryReset = () => {
-    setSettings(DEFAULT_SETTINGS);
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
-    setShowResetModal(false);
-    showToast('⚠️ All settings restored to manufacturer defaults.');
   };
 
   return (
@@ -99,7 +74,7 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
 
       <div className="p-4 space-y-4">
 
-      {/* 2. Top Sub-Tabs Navigation (Matching the 5 sub-tabs from Figma design) */}
+      {/* 2. Settings navigation */}
       <div className="border-b border-stone-200 flex items-center gap-1 overflow-x-auto">
         {SUB_TABS.map((tab) => {
           const Icon = tab.icon;
@@ -139,27 +114,6 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
         <NotificationsSection settings={settings} setSettings={setSettings} />
       )}
 
-      {activeSubTab === 'integrations' && (
-        <IntegrationsSection
-          settings={settings}
-          setSettings={setSettings}
-          showPmsKey={showPmsKey}
-          setShowPmsKey={setShowPmsKey}
-          isTestingPms={isTestingPms}
-          handleTestPmsConnection={handleTestPmsConnection}
-        />
-      )}
-
-      {activeSubTab === 'advanced' && (
-        <AdvancedSection
-          settings={settings}
-          setSettings={setSettings}
-          showToast={showToast}
-          handleClearMapCache={handleClearMapCache}
-          setShowResetModal={setShowResetModal}
-        />
-      )}
-
       {/* 4. Bottom Persistent Action Bar across all sub-tabs */}
       <div className="pt-4 border-t border-stone-200 flex items-center justify-end gap-3">
         <button
@@ -181,12 +135,6 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
         </button>
       </div>
 
-      {/* 5. MODAL: FACTORY RESET CONFIRMATION */}
-      <ResetSettingsModal
-        showResetModal={showResetModal}
-        setShowResetModal={setShowResetModal}
-        handleFactoryReset={handleFactoryReset}
-      />
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import { Sliders, ShieldCheck, Bell, Network, Box } from 'lucide-react';
+import { Sliders, ShieldCheck, Bell } from 'lucide-react';
 
 export const SETTINGS_STORAGE_KEY = 'aurora_admin_settings';
 
@@ -31,26 +31,10 @@ export const DEFAULT_SETTINGS = {
     walkieTalkie: true,
   },
   escalationTimeout: 'Alert Manager after 5 minutes of no response',
-
-  // 4. Integrations (PMS)
-  pmsProvider: 'Oracle OPERA Cloud',
-  pmsApiUrl: 'https://api.operacloud.com/v1/hotel/grandplaza',
-  pmsAuthKey: 'ak_live_98f4a7c8192e0b65d14',
-  pmsStatus: 'CONNECTED',
-  smartElevatorApi: true,
-  elevatorVendor: 'Schindler PORT Technology',
-  automaticDoorControls: true,
-
-  // 5. Advanced
-  auditLogsRetention: '90 Days',
-  anonymizeVoiceData: true,
-  enableBetaNav: false,
 };
 
 export const SUB_TABS = [
   { id: 'general', label: 'General', icon: Sliders },
   { id: 'security', label: 'Security & Access', icon: ShieldCheck },
   { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'integrations', label: 'Integrations (PMS)', icon: Network },
-  { id: 'advanced', label: 'Advanced', icon: Box },
 ];

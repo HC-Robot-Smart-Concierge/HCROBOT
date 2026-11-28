@@ -174,12 +174,17 @@ class TranslationService:
                 if c5_res.status_code == 200:
                     c5_data = c5_res.json()
                     if isinstance(c5_data, list) and c5_data:
-                        first = c5_data[0]
-                        if isinstance(first, str) and first.strip():
-                            return first.strip(), None
-                        if isinstance(first, list) and first and isinstance(first[0], str) and first[0].strip():
-                            det = first[1] if len(first) > 1 and isinstance(first[1], str) else None
-                            return first[0].strip(), det
+                        c5_parts = []
+                        detected_c5 = None
+                        for item in c5_data:
+                            if isinstance(item, str) and item.strip():
+                                c5_parts.append(item.strip())
+                            elif isinstance(item, list) and item and isinstance(item[0], str) and item[0].strip():
+                                c5_parts.append(item[0].strip())
+                                if not detected_c5 and len(item) > 1 and isinstance(item[1], str):
+                                    detected_c5 = item[1]
+                        if c5_parts:
+                            return " ".join(c5_parts).strip(), detected_c5
         except Exception as e:
             logger.warning(f"[TranslationService] Google GTX/clients5 failed ({e}), attempting fallback...")
         return None, None
@@ -187,31 +192,48 @@ class TranslationService:
     async def _translate_via_mymemory(
         self, text: str, src_lang: str, target_lang: str
     ) -> Optional[str]:
-        """Dự phòng dịch qua MyMemory API miễn phí khi Google Translate bị rate-limit."""
+        """Dự phòng dịch qua MyMemory API miễn phí; tự chia nhỏ câu dài (> 400 ký tự) theo dấu câu."""
         try:
             src_code = "vi" if src_lang == "vi" else "en"
             tgt_code = "en" if target_lang == "en" else "vi"
             if src_code == tgt_code:
                 return text
+
+            sentences = re.split(r"(?<=[.!?])\s+", text.strip()) if len(text) > 400 else [text.strip()]
+            chunks: List[str] = []
+            buf = ""
+            for sent in sentences:
+                if buf and len(buf) + len(sent) + 1 > 400:
+                    chunks.append(buf)
+                    buf = sent
+                else:
+                    buf = f"{buf} {sent}".strip() if buf else sent
+            if buf:
+                chunks.append(buf)
+
+            translated_chunks: List[str] = []
             async with httpx.AsyncClient(timeout=5.0) as client:
-                res = await client.get(
-                    "https://api.mymemory.translated.net/get",
-                    params={"q": text, "langpair": f"{src_code}|{tgt_code}"},
-                )
-            if res.status_code == 200:
-                payload = res.json()
-                translated = (payload.get("responseData") or {}).get("translatedText")
-                if isinstance(translated, str) and translated.strip():
-                    return translated.strip()
+                for chunk in chunks:
+                    res = await client.get(
+                        "https://api.mymemory.translated.net/get",
+                        params={"q": chunk, "langpair": f"{src_code}|{tgt_code}"},
+                    )
+                    if res.status_code == 200:
+                        payload = res.json()
+                        part = (payload.get("responseData") or {}).get("translatedText")
+                        if isinstance(part, str) and part.strip():
+                            translated_chunks.append(part.strip())
+            if translated_chunks and len(translated_chunks) == len(chunks):
+                return " ".join(translated_chunks).strip()
         except Exception as e:
             logger.warning(f"[TranslationService] MyMemory fallback translation failed: {e}")
         return None
 
     async def _translate_via_gemini_fallback(
-        self, text: str, src_lang: str, target_lang: str
+        self, text: str, src_lang: str, target_lang: str, context: Optional[List[str]] = None
     ) -> Optional[str]:
         """
-        Dự phòng dịch qua Gemini raw model (không dùng Rora persona prompt) nếu Google GTX bị chặn hoặc lỗi.
+        Dự phòng dịch qua Gemini raw model (không dùng Rora persona prompt) có kèm ngữ cảnh hội thoại.
         """
         try:
             import asyncio
@@ -221,10 +243,17 @@ class TranslationService:
 
             src_name = "Vietnamese" if src_lang == "vi" else "English"
             tgt_name = "English" if target_lang == "en" else "Vietnamese"
+            ctx_block = ""
+            if context:
+                recent = [c.strip() for c in context[-2:] if c and c.strip()]
+                if recent:
+                    ctx_block = "Recent conversation context (for pronoun/tone accuracy only, do not translate this):\n" + "\n".join(recent) + "\n\n"
             prompt = (
-                f"You are a pure hotel translator. Translate the spoken sentence from {src_name} to {tgt_name}. "
-                f"Return ONLY the direct translated sentence without quotes, explanations, or assistant greetings.\n"
-                f"Text: {text}"
+                f"You are a pure 5-star hotel translator. Translate the spoken sentence from {src_name} to {tgt_name}. "
+                f"Preserve all clauses accurately and keep polite hospitality pronouns (you/I/we). "
+                f"Return ONLY the direct translated sentence without quotes, explanations, or assistant greetings.\n\n"
+                f"{ctx_block}"
+                f"Text to translate: {text}"
             )
 
             def _call_raw():
@@ -360,7 +389,7 @@ class TranslationService:
         if not translated:
             translated = await self._translate_via_mymemory(clean_text, detected_src, target_code)
         if not translated:
-            translated = await self._translate_via_gemini_fallback(clean_text, detected_src, target_code)
+            translated = await self._translate_via_gemini_fallback(clean_text, detected_src, target_code, context=context)
 
         if not translated:
             logger.warning("[TranslationService] All translation providers failed, returning original text.")

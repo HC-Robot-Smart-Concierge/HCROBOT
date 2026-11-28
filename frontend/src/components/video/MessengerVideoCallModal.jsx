@@ -82,7 +82,7 @@ function base64ToUint8Array(base64) {
 // - 1.000ms (1.0s) là chuẩn vàng trong Voice Bot (Google Assistant, Retell, Vapi):
 //   + Đủ hấp thu khoảng ngắt nghỉ tự nhiên (~700ms - 800ms) giữa các vế câu mà không cướp lời.
 //   + Khi người nói dừng lời, chốt câu dứt khoát sau 1.0s, không bị trễ và không cộng dồn các lượt nói riêng biệt.
-const STAFF_CONVERSATIONAL_SILENCE_MS = 600;
+const STAFF_CONVERSATIONAL_SILENCE_MS = 750;
 
 export const MessengerVideoCallModal = ({
   isOpen = false,
@@ -1611,12 +1611,12 @@ export const MessengerVideoCallModal = ({
       // Tối ưu siêu nhạy (0.0018 thay vì 0.0028): bắt trọn cả tiếng nói nhỏ/thì thầm, không cần hét
       const SPEECH_RMS_THRESHOLD = 0.0018;
       const SILENCE_RMS_THRESHOLD = 0.0011;
-      // 550ms im lặng liên tục để chốt câu nhanh và tự nhiên
-      const SILENCE_FRAMES_TO_FLUSH = Math.max(3, Math.round(550 / frameDurationMs));
+      // 750ms im lặng liên tục để chốt câu dài/nhiều mệnh đề tự nhiên hơn (không ngắt khi nghỉ lấy hơi)
+      const SILENCE_FRAMES_TO_FLUSH = Math.max(3, Math.round(750 / frameDurationMs));
       // Tối thiểu 300ms âm thanh thực tế để loại bỏ tiếng click
       const MIN_SPEECH_FRAMES = Math.max(2, Math.round(300 / frameDurationMs));
-      // Tối đa 8 giây âm thanh liên tục
-      const MAX_SPEECH_FRAMES = Math.round(8000 / frameDurationMs);
+      // Tối đa 15 giây âm thanh liên tục cho các câu nói dài, phức tạp
+      const MAX_SPEECH_FRAMES = Math.round(15000 / frameDurationMs);
 
       const flushAudioSegment = async (chunksToFlush) => {
         if (!chunksToFlush || chunksToFlush.length < MIN_SPEECH_FRAMES || state.stopped) return;

@@ -11,6 +11,7 @@ import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
 import { AdminAdvertisementsTab } from './tabs/AdminAdvertisementsTab';
 import { AdminVideoCallsTab } from './tabs/AdminVideoCallsTab';
+import { AdminGuestNavMapTab } from './tabs/AdminGuestNavMapTab';
 import { useLanguage } from '../../context/LanguageContext';
 import {
   fetchNotifications,
@@ -176,6 +177,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Operations',    label: t('adminOperations') },
     { id: 'Robot Control', label: t('adminRobotControl') },
     { id: 'Manage Robot',  label: t('adminManageRobot') },
+    { id: 'Guest Map',     label: 'Map chỉ đường' },
     { id: 'Knowledge',     label: t('adminKnowledge') },
     { id: 'Advertisements',label: t('adminAdvertisements') },
     { id: 'Department',    label: t('adminDepartment') },
@@ -589,7 +591,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
         {/* Dynamic Tab Body */}
-        <main className={`flex-1 min-h-0 ${activeMenu === 'Robot Control' || activeMenu === 'Manage Robot' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
+        <main className={`flex-1 min-h-0 ${activeMenu === 'Robot Control' || activeMenu === 'Manage Robot' || activeMenu === 'Guest Map' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
 
           {activeMenu === 'Dashboard' && (
             <AdminDashboardTab
@@ -651,6 +653,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               subTabProp={logsSubTab}
               onSelectSubTab={setLogsSubTab}
             />
+          )}
+
+          {activeMenu === 'Guest Map' && (
+            <AdminGuestNavMapTab onNotify={onNotify} />
           )}
 
           {(activeMenu === 'Advertisements' || activeMenu === 'Hotel Content') && (

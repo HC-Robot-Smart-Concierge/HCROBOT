@@ -86,6 +86,9 @@ flowchart LR
   * Danh mục các ROS 2 Nodes: `odom_encoder_node`, `safety_controller_node` (phanh khẩn cấp <= 0.5m), `motor_driver_node`, `person_detection_node` (YOLOv8n) và `person_fusion_tracker`.
 * **[[guides/static-map-navigation|Hướng Dẫn Điều Hướng Bản Đồ Tĩnh (guides/static-map-navigation.md)]]**:
   * Tích hợp bản đồ 2D sảnh khách sạn và quản lý danh sách Waypoints / POIs định danh (Lobby, Reception, Elevator, Restroom, Sofa,...).
+* **[[guides/configmap|Configmap — Bản Đồ Chỉ Đường 2D Cấu Hình Bởi Admin (guides/configmap.md)]]**:
+  * Tab Admin "Configmap": vẽ layout 8 tầng (Tầng Trệt chồng lên map Nav2), ký hiệu, cửa, điểm đến gắn mã, tự tính đường, phác thảo từ map cũ.
+  * Nối vào luồng hỏi đường (FloorMap RT-05) và trang QR điện thoại (`map.html`); đồng bộ điểm đến với RAG.
 * **[[guides/robot_movement_commands|Bảng Tra Cứu Lệnh Di Chuyển, Quét Map & Tự Hành (guides/robot_movement_commands.md)]]**:
   * Bảng đối chiếu các nút trên Frontend Web Admin (Menu COMMANDS) với lệnh Terminal WSL2 tương đương: Quét SLAM, Foxglove, Tự hành Frontier Exploration, Lưu bản đồ, Dẫn đường AMCL/Nav2, Lái xe WASD và Phanh khẩn cấp E-STOP.
 * **[[guides/distributed_ros2|Kiến Trúc Mạng ROS 2 Phân Tán (guides/distributed_ros2.md)]]**:

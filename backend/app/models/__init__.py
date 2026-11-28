@@ -77,3 +77,4 @@ __all__ = [
     "DialogueScenario",
     "Advertisement",
 ]
+from app.models.guest_nav_layout import GuestNavLayout

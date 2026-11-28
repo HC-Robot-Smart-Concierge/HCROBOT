@@ -1,6 +1,6 @@
 import logging
 from fastapi import APIRouter
-from app.api.v1.endpoints import ai, scenarios, rag, operations, auth, logs, workflows, advertisements
+from app.api.v1.endpoints import ai, scenarios, rag, operations, auth, logs, workflows, advertisements, guest_nav_layout
 from app.interceptors import RouteInterceptor
 from app.schemas.response import (
     AUTH_RESPONSES,
@@ -79,4 +79,11 @@ api_router.include_router(
     prefix="/advertisements",
     tags=["18. Quản lý Quảng cáo & Truyền thông Robot (Advertisements & Media)"],
     responses={**BUSINESS_ERROR_RESPONSES, **NOT_FOUND_RESPONSES},
+)
+
+# Layout 2D chỉ đường cho khách, vẽ chồng lên map Nav2 (bảng riêng, không đụng dữ liệu tự hành)
+api_router.include_router(
+    guest_nav_layout.router,
+    prefix="/guest-nav",
+    tags=["19. Layout chỉ đường khách trên map Nav2 (Guest Nav Layout)"],
 )

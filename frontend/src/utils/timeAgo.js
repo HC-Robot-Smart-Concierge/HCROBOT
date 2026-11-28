@@ -1,4 +1,35 @@
 /**
+ * Parse a backend timestamp into a Date, treating timezone-naive ISO strings as UTC.
+ */
+export const parseUtcDate = (dateInput) => {
+  if (!dateInput) return null;
+  let normalized = String(dateInput).trim();
+  if (!normalized) return null;
+
+  normalized = normalized.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/, '$1T$2');
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(normalized) && !normalized.endsWith('Z') && !/[+-]\d{2}(?::\d{2})?$/.test(normalized)) {
+    normalized += 'Z';
+  }
+
+  const date = new Date(normalized);
+  return isNaN(date.getTime()) ? null : date;
+};
+
+/**
+ * Format an ISO timestamp into Vietnamese locale date/time, normalizing naive UTC strings.
+ */
+export const formatDateTimeVN = (dateInput, fallback = 'Vừa xong', timeZone = undefined) => {
+  if (!dateInput) return fallback;
+  try {
+    const date = parseUtcDate(dateInput);
+    if (!date) return fallback;
+    return date.toLocaleString('vi-VN', timeZone ? { timeZone } : undefined);
+  } catch {
+    return fallback;
+  }
+};
+
+/**
  * Utility to format ISO timestamp or date into relative time-ago string (Vietnamese / English).
  * Automatically normalizes UTC timestamps without trailing 'Z' to avoid UTC+7 skew.
  */
@@ -11,18 +42,8 @@ export const formatTimeAgo = (dateInput, fallback = 'Vừa đặt', lang = 'vi')
   }
 
   try {
-    let normalized = String(dateInput).trim();
-
-    // Chuẩn hoá khoảng trắng giữa ngày và giờ thành ký tự 'T' chuẩn ISO
-    normalized = normalized.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/, '$1T$2');
-
-    // If ISO date string without explicit timezone, treat as UTC from backend datetime.utcnow()
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(normalized) && !normalized.endsWith('Z') && !/[+-]\d{2}(?::\d{2})?$/.test(normalized)) {
-      normalized += 'Z';
-    }
-
-    const date = new Date(normalized);
-    if (isNaN(date.getTime())) {
+    const date = parseUtcDate(dateInput);
+    if (!date) {
       return typeof dateInput === 'string' && dateInput.trim() ? dateInput : fallback;
     }
 

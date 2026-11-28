@@ -1,5 +1,6 @@
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ChatRequest(BaseModel):
@@ -146,6 +147,14 @@ class FeedbackResponse(BaseModel):
     comment: Optional[str] = None
     guest_name: Optional[str] = None
     room_number: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    @field_validator("created_at", mode="after")
+    @classmethod
+    def ensure_utc_created_at(cls, value: Optional[datetime]) -> Optional[datetime]:
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
     model_config = ConfigDict(from_attributes=True)
 

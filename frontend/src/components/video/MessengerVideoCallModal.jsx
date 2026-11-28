@@ -109,6 +109,7 @@ export const MessengerVideoCallModal = ({
   const [hasNoCamera, setHasNoCamera] = useState(false);
   const [remoteFallbackFrame, setRemoteFallbackFrame] = useState('');
   const [hasRemoteVideoFrame, setHasRemoteVideoFrame] = useState(false);
+  const [peerHasWebRtcVideo, setPeerHasWebRtcVideo] = useState(false);
 
   // Live Subtitle & Auto-Translation State (EN ⇄ VI)
   const isInitialGuestVi =
@@ -883,10 +884,11 @@ export const MessengerVideoCallModal = ({
           setCallStatus('ringing');
           callStatusRef.current = 'ringing';
         }
-        if (ws.readyState === WebSocket.OPEN) {
+        if (role === 'guest' && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({
             type: 'translate_mode_sync',
             mode: translateModeRef.current,
+            guestLang: activeGuestLanguageRef.current,
             manualLocked: isManualLockedRef.current,
           }));
         }
@@ -930,10 +932,11 @@ export const MessengerVideoCallModal = ({
               clearTimeout(peerReconnectTimerRef.current);
               peerReconnectTimerRef.current = null;
             }
-            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            if (role === 'guest' && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
               wsRef.current.send(JSON.stringify({
                 type: 'translate_mode_sync',
                 mode: translateModeRef.current,
+                guestLang: activeGuestLanguageRef.current,
                 manualLocked: isManualLockedRef.current,
               }));
             }
@@ -1064,15 +1067,62 @@ export const MessengerVideoCallModal = ({
                 );
               }
 
+              let finalTranslatedText = data.translatedText;
+              let finalNeedsTranslation = Boolean(data.needsTranslation);
+              let finalSourceLang = data.sourceLang;
+              let finalTargetLang = data.targetLang;
+
+              // Nếu khách đang bật EN ('auto') nhưng staff chưa kịp sync nên gửi câu Tiếng Việt chưa dịch -> tự dịch ngay cho khách & nhắc staff sync
+              if (
+                role === 'guest' &&
+                translateModeRef.current === 'auto' &&
+                data.senderRole === 'staff' &&
+                !finalNeedsTranslation &&
+                data.originalText
+              ) {
+                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify({
+                    type: 'translate_mode_sync',
+                    mode: 'auto',
+                    guestLang: 'English',
+                    manualLocked: true,
+                  }));
+                }
+                try {
+                  const fallbackTrans = await quickTranslateText({
+                    text: data.originalText,
+                    sourceLang: 'vi',
+                    targetLang: 'en',
+                    sessionId,
+                    senderRole: 'staff',
+                    withAudio: false,
+                  });
+                  if (fallbackTrans?.translated_text) {
+                    finalTranslatedText = fallbackTrans.translated_text;
+                    finalNeedsTranslation = true;
+                    finalSourceLang = 'vi';
+                    finalTargetLang = 'en';
+                  }
+                } catch {}
+              }
+
               // Nếu câu đã dịch hoặc đang ở chế độ dịch -> tự bật song ngữ để hiển thị phụ đề rõ ràng
-              if (data.needsTranslation && translateModeRef.current === 'bypass') {
+              if (finalNeedsTranslation && translateModeRef.current === 'bypass') {
                 setTranslateMode('auto');
                 translateModeRef.current = 'auto';
               }
 
+              const normalizedPayload = {
+                ...data,
+                translatedText: finalTranslatedText,
+                needsTranslation: finalNeedsTranslation,
+                sourceLang: finalSourceLang,
+                targetLang: finalTargetLang,
+              };
+
               // Hiển thị phụ đề cho người nhận (kể cả khi giữ nguyên câu gốc cùng ngôn ngữ khi đang ở chế độ dịch)
-              if (data.needsTranslation || translateModeRef.current !== 'bypass') {
-                setActiveSubtitle(data);
+              if (finalNeedsTranslation || translateModeRef.current !== 'bypass') {
+                setActiveSubtitle(normalizedPayload);
                 if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
                 subtitleTimeoutRef.current = setTimeout(() => {
                   setActiveSubtitle(null);
@@ -1085,10 +1135,10 @@ export const MessengerVideoCallModal = ({
                 speaker: data.senderRole === 'staff' ? 'Staff' : 'Guest',
                 speaker_name: data.senderRole === 'staff' ? calleeName : callerName,
                 raw_transcript: data.originalText,
-                translated_text: data.translatedText,
-                needs_translation: data.needsTranslation,
-                source_lang: data.sourceLang,
-                target_lang: data.targetLang,
+                translated_text: finalTranslatedText,
+                needs_translation: finalNeedsTranslation,
+                source_lang: finalSourceLang,
+                target_lang: finalTargetLang,
                 timestamp: new Date().toISOString(),
               };
               setCallTranscripts((prev) => [...prev, transcriptItem]);
@@ -1131,6 +1181,10 @@ export const MessengerVideoCallModal = ({
           } else if (data.type === 'video_frame') {
             if (data.senderRole !== role && data.frame) {
               setRemoteFallbackFrame(data.frame);
+            }
+          } else if (data.type === 'webrtc_video_ready') {
+            if (data.senderRole !== role) {
+              setPeerHasWebRtcVideo(true);
             }
           } else if (data.type === 'translate_mode_change' || data.type === 'translate_mode_sync') {
             if (data.mode) {
@@ -1199,6 +1253,7 @@ export const MessengerVideoCallModal = ({
       setErrorMessage('');
       setRemoteFallbackFrame('');
       setHasRemoteVideoFrame(false);
+      setPeerHasWebRtcVideo(false);
       setActiveSubtitle(null);
       setInterimText('');
       setPeerInterim(null);
@@ -1255,11 +1310,17 @@ export const MessengerVideoCallModal = ({
     if (isIceReady && remoteVideoRef.current && remoteVideoRef.current.videoWidth > 0) {
       setHasRemoteVideoFrame(true);
       setRemoteFallbackFrame('');
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+          type: 'webrtc_video_ready',
+          senderRole: role,
+        }));
+      }
     }
-  }, []);
+  }, [role]);
 
   useEffect(() => {
-    if (!isOpen || callStatus !== 'connected' || hasRemoteVideoFrame) return;
+    if (!isOpen || callStatus !== 'connected' || peerHasWebRtcVideo) return;
     const canvas = document.createElement('canvas');
     canvas.width = 480;
     canvas.height = 270;
@@ -1295,7 +1356,7 @@ export const MessengerVideoCallModal = ({
     }, 120);
 
     return () => clearInterval(timer);
-  }, [isOpen, callStatus, hasRemoteVideoFrame, hasNoCamera, isVideoDisabled, role]);
+  }, [isOpen, callStatus, peerHasWebRtcVideo, hasNoCamera, isVideoDisabled, role]);
 
   // Dừng riêng adapter thu âm STT từ localStreamRef (KHÔNG làm dừng track WebRTC gốc)
   const stopCallAudioSttAdapter = useCallback(() => {
@@ -1837,6 +1898,7 @@ export const MessengerVideoCallModal = ({
             wsRef.current.send(
               JSON.stringify({
                 type: 'live_interim',
+                senderRole: role,
                 speaker: 'Staff',
                 text: combinedPreview,
               })
@@ -2121,6 +2183,7 @@ export const MessengerVideoCallModal = ({
         wsRef.current.send(
           JSON.stringify({
             type: 'live_interim',
+            senderRole: role,
             speaker: role === 'staff' ? 'Staff' : 'Guest',
             text: cleanText,
           })
@@ -2744,7 +2807,9 @@ export const MessengerVideoCallModal = ({
                         <span className={`text-[10px] uppercase font-bold tracking-wider ${
                           isStaffSpeaker ? 'text-emerald-300' : 'text-amber-300'
                         }`}>
-                          {isStaffSpeaker ? calleeName : callerName}
+                          {isStaffSpeaker
+                            ? (role === 'guest' && translateMode === 'auto' ? 'Support Staff' : calleeName)
+                            : callerName}
                         </span>
                         {item.needs_translation && (
                           <span className="text-[9px] text-stone-200/90">
@@ -2767,7 +2832,10 @@ export const MessengerVideoCallModal = ({
                 {peerInterim && (
                   <div className="border-l-2 border-sky-400 pl-2.5 opacity-95">
                     <span className="text-[10px] uppercase font-bold tracking-wider text-sky-300">
-                      {peerInterim.senderRole === 'staff' ? calleeName : callerName} (đang nói...)
+                      {peerInterim.senderRole === 'staff'
+                        ? (role === 'guest' && translateMode === 'auto' ? 'Support Staff' : calleeName)
+                        : callerName}{' '}
+                      {role === 'guest' && translateMode === 'auto' ? '(speaking...)' : '(đang nói...)'}
                     </span>
                     <p className="text-white text-xs sm:text-sm italic">
                       "{peerInterim.text}..."

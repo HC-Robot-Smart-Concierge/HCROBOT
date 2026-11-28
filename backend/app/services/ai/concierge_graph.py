@@ -206,8 +206,28 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
             "response": intro_reply,
         }
 
-    # Kiểm tra yêu cầu mở menu thực đơn món ăn / ẩm thực nhà bếp (Food & Dining Menu) trước khi bắt buộc số phòng
+    # Kiểm tra yêu cầu báo thức nhưng khách chưa nêu giờ cụ thể -> Hỏi giờ báo thức trước khi hỏi phòng / mã PIN
     raw_prompt = state.get("prompt") or ""
+    if action == "wake_up":
+        from app.services.ai.concierge_router_nodes import extract_wakeup_time
+        has_wakeup_time = extract_wakeup_time(items or "") or extract_wakeup_time(raw_prompt)
+        if not has_wakeup_time:
+            ask_time_reply = (
+                "What time would you like me to schedule your wake-up call?"
+                if is_en
+                else "Dạ quý khách muốn đặt báo thức lúc mấy giờ ạ?"
+            )
+            return {
+                "missing_room_number": False,
+                "require_room_pin": False,
+                "waiting_for_wakeup_time": True,
+                "room_number": current_room,
+                "action": "wake_up",
+                "trigger_video_call": False,
+                "response": ask_time_reply,
+            }
+
+    # Kiểm tra yêu cầu mở menu thực đơn món ăn / ẩm thực nhà bếp (Food & Dining Menu) trước khi bắt buộc số phòng
     is_general_food_menu_request = any(k in f"{items or ''} {raw_prompt}".lower() for k in [
         "thực đơn", "thuc don", "menu món", "menu do an", "menu đồ ăn",
         "đặt món", "dat mon", "gọi món", "goi mon", "chọn món", "chon mon",
@@ -227,6 +247,27 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
             "response": food_reply,
             "trigger_menu": "food_menu",
             "action": "open_food_menu",
+            "require_room_pin": False,
+        }
+
+    # Kiểm tra yêu cầu mở menu / tiện ích & dịch vụ buồng phòng tổng quát (Room Service & Amenities) trước khi bắt buộc số phòng (giống Kitchen)
+    is_general_svc_menu_request = any(k in f"{items or ''} {raw_prompt}".lower() for k in [
+        "đặt dịch vụ", "dat dich vu", "dịch vụ lên phòng", "dich vu len phong",
+        "đặt thêm dịch vụ", "dat them dich vu", "thêm dịch vụ", "them dich vu",
+        "dịch vụ phòng", "dich vu phong", "tiện ích phòng", "tien ich phong", "room service"
+    ])
+    if action in ["room_service", "housekeeping", "laundry"] and is_general_svc_menu_request:
+        if is_en:
+            svc_reply = f"Certainly! I have opened our Room Service menu on screen{' for Room ' + current_room if current_room else ''}. Please browse and choose your favorite items!"
+        else:
+            svc_reply = f"Dạ em đã mở danh mục Dịch vụ phòng trên màn hình{' cho Phòng ' + current_room if current_room else ''} rồi ạ. Quý khách chạm chọn khăn tắm, massage spa hoặc giặt ủi nhé ạ!"
+        return {
+            "missing_room_number": False,
+            "room_number": current_room,
+            "target_room_number": current_room,
+            "response": svc_reply,
+            "trigger_menu": "room_service",
+            "action": "open_room_service_menu",
             "require_room_pin": False,
         }
 

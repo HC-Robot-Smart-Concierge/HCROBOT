@@ -463,6 +463,19 @@ async def check_out_room(
     room.tag_code = None
     room.status = "CLEANING"
 
+    # Đánh dấu các hóa đơn gọi món & room service đã hoàn thành của phòng này sang 'Settled' (đã check-out)
+    from sqlalchemy import update
+    from app.models.room_service import RoomServiceOrder
+
+    await db.execute(
+        update(RoomServiceOrder)
+        .where(
+            RoomServiceOrder.room_number == room.room_number,
+            RoomServiceOrder.status == "Completed",
+        )
+        .values(status="Settled")
+    )
+
     await db.commit()
     await db.refresh(room)
     return room

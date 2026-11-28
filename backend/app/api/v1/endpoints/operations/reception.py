@@ -2,17 +2,22 @@
 
 import random
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import timezone
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.models import Room, SupportRequest
+from app.models import Room, RoomServiceOrder, SupportRequest
 from app.repositories import SupportRequestRepository, get_support_request_repository
 from app.schemas.operations import (
     ReceptionDashboardResponse,
     ReceptionRequestCreate,
     ReceptionRequestResponse,
+    ServiceBillResponse,
 )
 from .reception_rooms import router as rooms_router
 from .shared import TAG_REC, create_department_notification
@@ -158,3 +163,87 @@ async def get_reception_request(
     if not request:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Lễ tân")
     return request
+
+
+@router.get(
+    "/reception/service-bills",
+    response_model=List[ServiceBillResponse],
+    tags=TAG_REC,
+    summary="Danh sách hóa đơn (bill) dịch vụ phòng & gọi món đã giao hoàn thành chuyển về Lễ tân",
+)
+async def get_reception_service_bills(
+    service_type: Optional[str] = Query("all", description="Lọc theo loại: all, food, service"),
+    room_number: Optional[str] = Query(None, description="Lọc theo số phòng"),
+    settlement_status: Optional[str] = Query("all", description="Lọc trạng thái check-out: unsettled, settled, all"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Trả về toàn bộ đơn gọi món bếp và dịch vụ phòng đã hoàn thành (Completed) hoặc đã check-out (Settled) kèm tên khách, SĐT, món đặt và tổng tiền."""
+    if settlement_status == "unsettled":
+        allowed_statuses = ["Completed"]
+    elif settlement_status == "settled":
+        allowed_statuses = ["Settled"]
+    else:
+        allowed_statuses = ["Completed", "Settled"]
+
+    stmt = (
+        select(RoomServiceOrder)
+        .options(selectinload(RoomServiceOrder.order_items), selectinload(RoomServiceOrder.room))
+        .where(RoomServiceOrder.status.in_(allowed_statuses))
+        .order_by(RoomServiceOrder.updated_at.desc(), RoomServiceOrder.created_at.desc())
+    )
+    if service_type == "food":
+        stmt = stmt.where(RoomServiceOrder.is_service_request.is_(False))
+    elif service_type == "service":
+        stmt = stmt.where(RoomServiceOrder.is_service_request.is_(True))
+    if room_number:
+        stmt = stmt.where(RoomServiceOrder.room_number == room_number.strip())
+
+    orders = (await db.execute(stmt)).scalars().all()
+    if not orders:
+        return []
+
+    rooms_by_num = {}
+    missing_phone_rooms = {o.room_number for o in orders if o.room_number and not (o.room and o.room.current_guest_phone)}
+    if missing_phone_rooms:
+        room_rows = (await db.execute(select(Room).where(Room.room_number.in_(missing_phone_rooms)))).scalars().all()
+        rooms_by_num = {r.room_number: r for r in room_rows}
+
+    bills = []
+    for o in orders:
+        linked_room = o.room or rooms_by_num.get(o.room_number)
+        guest_name = o.guest_name or (linked_room.current_guest_name if linked_room else None) or f"Khách Phòng {o.room_number}"
+        guest_phone = o.guest_phone or o.room_phone or (linked_room.current_guest_phone if linked_room else None)
+        bill_items = [
+            {
+                "name": oi.item_name,
+                "qty": oi.quantity,
+                "unit_price": float(oi.unit_price or 0.0),
+                "subtotal": float(oi.subtotal or 0.0),
+            }
+            for oi in (o.order_items or [])
+        ]
+        summary = ", ".join(f"{it['qty']}x {it['name']}" for it in bill_items) or (o.note or "")
+        created_dt = o.created_at.replace(tzinfo=timezone.utc) if (o.created_at and o.created_at.tzinfo is None) else o.created_at
+        completed_raw = o.updated_at or o.created_at
+        completed_dt = completed_raw.replace(tzinfo=timezone.utc) if (completed_raw and completed_raw.tzinfo is None) else completed_raw
+        bills.append(
+            {
+                "id": o.id,
+                "order_number": o.order_number,
+                "created_at": created_dt,
+                "completed_at": completed_dt,
+                "room_number": o.room_number,
+                "guest_name": guest_name,
+                "guest_phone": guest_phone,
+                "service_category": "Dịch vụ phòng (Room Service)" if o.is_service_request else "Gọi món (Bếp)",
+                "is_service_request": bool(o.is_service_request),
+                "is_settled": o.status == "Settled",
+                "status": o.status,
+                "items": bill_items,
+                "items_summary": summary,
+                "total_amount": float(o.total_amount or 0.0),
+                "assigned_staff_name": o.assigned_staff_name,
+                "note": o.note,
+            }
+        )
+    return bills

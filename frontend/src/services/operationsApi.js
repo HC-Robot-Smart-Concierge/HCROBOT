@@ -49,6 +49,14 @@ export const fetchReceptionDashboard = async () => {
   );
 };
 
+export const fetchReceptionServiceBills = async ({ serviceType = 'all', roomNumber = '' } = {}) => {
+  const params = new URLSearchParams();
+  if (serviceType && serviceType !== 'all') params.set('service_type', serviceType);
+  if (roomNumber) params.set('room_number', roomNumber);
+  const qs = params.toString();
+  return await fetchWithFallback(`${BASE_URL}/reception/service-bills${qs ? `?${qs}` : ''}`, {}, []);
+};
+
 export const updateReceptionRequest = async (requestId, updateData) => {
   return await fetchWithFallback(
     `${BASE_URL}/tasks/${encodeURIComponent(requestId)}`,

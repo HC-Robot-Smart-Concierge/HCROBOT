@@ -851,12 +851,12 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     await updateGenericRequestStatus(reqId, nextStatus, finalAssignedTo);
 
     const statusMessages = {
-      'Sent to Kitchen': st("Request #{0} sent to the kitchen and added to My Tasks.", reqId),
+      'Sent to Kitchen': st("Request #{0} sent to the kitchen.", reqId),
       'Cooking': st("The kitchen is preparing request #{0}.", reqId),
       'Ready': st("Request #{0} is ready for room delivery.", reqId),
       'Delivering': st("Room Service is delivering request #{0}.", reqId),
       'Completed': st("Request #{0} completed and delivered.", reqId),
-      'In Progress': st("Request #{0} accepted and added to My Tasks.", reqId),
+      'In Progress': st("Request #{0} accepted and marked In Progress.", reqId),
     };
     onNotify(statusMessages[nextStatus] || st("Request #{0} updated: {1}", reqId, nextStatus));
   };
@@ -1424,18 +1424,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                             className="px-4 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
                           >
                             <span>{st("Complete task")}</span>
-                          </button>
-                        )}
-
-                        {/* 4. Chuyển sang trang Yêu Cầu Cá Nhân nếu đang phụ trách */}
-                        {isMine && isInProgress && (
-                          <button
-                            onClick={() => onNavigate('MyTasks')}
-                            className="px-3.5 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
-                            title={st("Open My Tasks to track this request")}
-                          >
-                            <User className="w-3.5 h-3.5 text-amber-700" />
-                            <span>{st("My Tasks")}</span>
                           </button>
                         )}
 

@@ -190,11 +190,12 @@ export async function dispatchVerifiedServiceRequest({
   }
 
   if (action === 'wake_up') {
+    const wakeupLabel = text || (isEn ? 'Wake-up call' : 'Yêu cầu gọi báo thức');
     const res = await postReceptionRequestStrict({
-      title: text ? `Yêu cầu Báo thức (Phòng ${room}): ${text.slice(0, 80)}` : `Yêu cầu Báo thức (Phòng ${room})`,
+      title: `Yêu cầu Báo thức (Phòng ${room}): ${wakeupLabel.slice(0, 80)}`,
       room_number: room || 'Lobby Desk',
       guest_name: room ? `Khách Phòng ${room}` : 'Hotel Guest',
-      description: text || 'Khách yêu cầu đặt lịch gọi báo thức qua Robot Kiosk',
+      description: `Giờ báo thức: ${wakeupLabel} • Phòng ${room}`,
       request_type: 'wake_up',
       source,
     });
@@ -203,8 +204,8 @@ export async function dispatchVerifiedServiceRequest({
       ticketCode: code,
       department: 'Reception',
       spokenMessage: isEn
-        ? `Your wake-up call for Room ${room} has been scheduled and sent to Reception${code ? ` (#${code})` : ''}.`
-        : `Dạ Rora đã đặt lịch gọi báo thức cho Phòng ${room} và chuyển tới bộ phận Lễ tân${code ? ` (mã #${code})` : ''} ạ.`,
+        ? `Your wake-up call (${wakeupLabel}) for Room ${room} has been scheduled and sent to Reception${code ? ` (#${code})` : ''}.`
+        : `Dạ Rora đã đặt lịch gọi báo thức (${wakeupLabel}) cho Phòng ${room} và chuyển tới bộ phận Lễ tân${code ? ` (mã #${code})` : ''} ạ.`,
       rawResult: res,
     };
   }

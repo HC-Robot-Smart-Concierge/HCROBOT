@@ -169,6 +169,32 @@ class ReceptionDashboardResponse(BaseModel):
     recent_requests: List[ReceptionRequestResponse] = []
 
 
+class ServiceBillItemSchema(BaseModel):
+    name: str
+    qty: int = 1
+    unit_price: float = 0.0
+    subtotal: float = 0.0
+
+
+class ServiceBillResponse(BaseModel):
+    id: str
+    order_number: str
+    created_at: datetime
+    completed_at: datetime
+    room_number: str
+    guest_name: str
+    guest_phone: Optional[str] = None
+    service_category: str
+    is_service_request: bool = False
+    is_settled: bool = False
+    status: str = "Completed"
+    items: List[ServiceBillItemSchema] = []
+    items_summary: str = ""
+    total_amount: float = 0.0
+    assigned_staff_name: Optional[str] = None
+    note: Optional[str] = None
+
+
 # ---------------------------------------------------------
 # Concierge & Live Support Schemas (Trợ lý Concierge & Live Call)
 # ---------------------------------------------------------

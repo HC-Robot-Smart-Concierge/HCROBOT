@@ -234,6 +234,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
 
             fsm_state = await service_fsm_node({
                 "action": action,
+                "prompt": request.prompt,
                 "session_id": sid,
                 "is_room_authenticated": session_manager.is_room_authenticated(sid, effective_room),
                 "room_number": effective_room,
@@ -244,12 +245,13 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             fsm_reply = fsm_state.get("response", "")
             is_call = bool(fsm_state.get("trigger_video_call") or action == "concierge")
             missing_room = bool(fsm_state.get("missing_room_number", False))
+            waiting_wakeup_time = bool(fsm_state.get("waiting_for_wakeup_time", False))
             fsm_items = router_state.get("items") or request.prompt
 
-            # CHỈ TẠO TICKET KHI ĐÃ CÓ ĐẦY ĐỦ SỐ PHÒNG
+            # CHỈ TẠO TICKET KHI ĐÃ CÓ ĐẦY ĐỦ SỐ PHÒNG (VÀ ĐÃ CÓ GIỜ BÁO THỨC NẾU LÀ WAKE_UP)
             ticket_code = None
             fsm_action = fsm_state.get("action") or action  # e.g. the FSM opened a menu instead
-            if not is_call and not missing_room and not fsm_state.get("require_room_pin") and effective_room and fsm_action in {
+            if not is_call and not missing_room and not waiting_wakeup_time and not fsm_state.get("require_room_pin") and effective_room and fsm_action in {
                 "housekeeping", "room_service", "maintenance", "bellman",
                 "restaurant", "laundry", "wake_up", "reception", "cancel_service",
             }:
@@ -314,6 +316,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
                 "lang_code": final_lang_code,
                 "room_number": valid_response_room,
                 "missing_room_number": missing_room,
+                "waiting_for_wakeup_time": waiting_wakeup_time,
                 "action": fsm_action,
                 "trigger_menu": fsm_state.get("trigger_menu"),
                 "trigger_video_call": is_call,

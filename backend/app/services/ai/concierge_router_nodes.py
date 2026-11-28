@@ -85,6 +85,37 @@ def _is_map_or_nav_view_query(prompt_lower: str) -> bool:
     return has_map_kw and not has_service_kw
 
 
+def extract_wakeup_time(text: str) -> Optional[str]:
+    """Trích xuất giờ báo thức từ câu nói của khách (vd: 6h30, 06:30, 6.00 sáng, 6h giờ sáng, 7 giờ, 6 am)."""
+    if not text:
+        return None
+    m = re.search(
+        r"\b(\d{1,2})\s*(?:h\s*(?:giờ|gio)?|:|\.|giờ|gio)\s*(\d{1,2}|rưỡi|ruoi)?\s*(?:phút|phut)?\s*(sáng|sang|trưa|trua|chiều|chieu|tối|toi|đêm|dem|am|pm|a\.m\.|p\.m\.)?\b",
+        text,
+        re.IGNORECASE,
+    )
+    if m:
+        hour = int(m.group(1))
+        if 0 <= hour <= 24:
+            minute_raw = (m.group(2) or "").lower()
+            period = (m.group(3) or "").strip()
+            if minute_raw in ("rưỡi", "ruoi"):
+                minute_str = "30"
+            elif minute_raw.isdigit() and 0 <= int(minute_raw) <= 59:
+                minute_str = f"{int(minute_raw):02d}"
+            else:
+                minute_str = "00"
+            base = f"{hour:02d}:{minute_str}"
+            return f"{base} {period}".strip() if period else base
+
+    m_en = re.search(r"\b(\d{1,2})\s*(am|pm|a\.m\.|p\.m\.|o'clock)\b", text, re.IGNORECASE)
+    if m_en:
+        hour = int(m_en.group(1))
+        if 0 <= hour <= 24:
+            return f"{hour:02d}:00 {m_en.group(2).strip()}"
+    return None
+
+
 async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
     """
     Node 1: Dynamic Fast-Path Rule Engine.
@@ -221,8 +252,8 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
     # Lệnh mở trực tiếp Menu Dịch vụ phòng (khăn tắm, gối chăn, dọn phòng, spa, giặt ủi)
     if not is_asking_info_fp and re.search(
-        r"\b(?:mở|mo|xem|hiện|hien|cho xem|open|show)\b.*\b(?:menu\s*dịch vụ|dịch vụ phòng|dich vu phong|tiện ích phòng|tien ich phong|room service)\b"
-        r"|^(?:menu\s*dịch vụ(?:\s*phòng)?|open room service(?:\s*menu)?)$",
+        r"\b(?:mở|mo|xem|hiện|hien|cho xem|đặt|dat|gọi|goi|muốn|muon|cần|can|open|show|order)\b.*\b(?:menu\s*dịch vụ|dịch vụ phòng|dich vu phong|tiện ích phòng|tien ich phong|room service)\b"
+        r"|^(?:menu\s*dịch vụ(?:\s*phòng)?|dịch vụ phòng|dich vu phong|room service|open room service(?:\s*menu)?)$",
         prompt_lower_fp,
     ):
         lang_name_rs, lang_code_rs = (
@@ -610,8 +641,48 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
         action = "bellman"
 
     items_text = clean_prompt
+    if pending and pending.get("waiting_for_wakeup_time") and not action:
+        wk_time = extract_wakeup_time(clean_prompt)
+        if wk_time:
+            action = "wake_up"
+            items_text = f"Báo thức lúc {wk_time}"
+            if current_room:
+                session_manager.clear_pending_intent(session_id)
+            else:
+                session_manager.set_pending_intent(session_id, {
+                    "action": "wake_up",
+                    "items": items_text,
+                    "prompt": clean_prompt,
+                })
+            return {
+                "intent_category": "service",
+                "action": "wake_up",
+                "items": items_text,
+                "room_number": current_room,
+                "session_id": session_id,
+            }
+
     if action:
         category = "service"
+        if action == "wake_up":
+            wk_time = extract_wakeup_time(clean_prompt)
+            if wk_time:
+                items_text = f"Báo thức lúc {wk_time}"
+            else:
+                items_text = ""
+                session_manager.set_pending_intent(session_id, {
+                    "action": "wake_up",
+                    "items": "",
+                    "prompt": clean_prompt,
+                    "waiting_for_wakeup_time": True,
+                })
+                return {
+                    "intent_category": category,
+                    "action": action,
+                    "items": "",
+                    "room_number": current_room,
+                    "session_id": session_id,
+                }
         # Nếu đã có số phòng thì xóa pending_intent cũ nếu có
         if current_room:
             session_manager.clear_pending_intent(session_id)
@@ -619,7 +690,7 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
             # Chưa có số phòng -> Lưu pending_intent để chờ câu sau khách trả lời số phòng
             session_manager.set_pending_intent(session_id, {
                 "action": action,
-                "items": clean_prompt,
+                "items": items_text,
                 "prompt": clean_prompt,
             })
     elif extracted_room and pending:
@@ -675,6 +746,7 @@ _FOLLOWUP_SKIP_ACTIONS = {
 _FOLLOWUP_SKIP_TEXT_RE = re.compile(
     r"(không có phòng|does not have room|không tồn tại|chưa làm thủ tục nhận phòng|chưa check-in|"
     r"xin số phòng|nhập mã pin|4-digit room pin|enter your pin|"
+    r"đặt báo thức lúc mấy giờ|schedule your wake-up call|"
     r"đánh giá dịch vụ|rate our service|tạm biệt|goodbye|hẹn gặp lại)",
     re.IGNORECASE,
 )

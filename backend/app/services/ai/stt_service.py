@@ -274,14 +274,23 @@ def transcribe_audio_wav_detailed(
                     vad_parameters=dict(min_silence_duration_ms=400),
                     initial_prompt=HOTEL_STT_INITIAL_PROMPT,
                 )
+                raw_whisper_lang = (getattr(info, "language", "") or "").lower()
                 results = [seg.text.strip() for seg in segments if seg.text.strip()]
                 full_text = " ".join(results).strip()
                 normalized_text = normalize_hotel_stt_transcript(full_text)
                 if normalized_text:
-                    # Kiểm tra nếu Whisper nhận diện sang chữ tượng hình ngoại lai (CJK) -> Bỏ qua kết quả hallucinate này để chuyển sang bộ chấm điểm song ngữ
-                    if re.search(r'[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]', normalized_text):
+                    # Hệ thống chỉ hỗ trợ Tiếng Việt (vi) và Tiếng Anh (en).
+                    # Chặn triệt để ngôn ngữ khác (Thái, Lào, Khmer, Ả Rập, Cyrillic, CJK...) để chuyển sang Google Bilingual EN/VI.
+                    has_non_vi_en_script = bool(
+                        re.search(
+                            r'[\u0400-\u04ff\u0600-\u06ff\u0900-\u097f\u0e00-\u0eff\u1780-\u17ff\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]',
+                            normalized_text,
+                        )
+                    )
+                    is_unsupported_whisper_lang = bool(raw_whisper_lang and raw_whisper_lang[:2] not in ("vi", "en"))
+                    if has_non_vi_en_script or is_unsupported_whisper_lang:
                         logger.warning(
-                            f"[STT Service - Whisper Auto] Rejected foreign script hallucination: '{normalized_text}'"
+                            f"[STT Service - Whisper Auto] Rejected non-EN/VI output (lang={raw_whisper_lang}): '{normalized_text}'"
                         )
                     else:
                         _, response_lang = detect_turn_language(normalized_text, pref)

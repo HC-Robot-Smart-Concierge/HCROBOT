@@ -82,7 +82,7 @@ function base64ToUint8Array(base64) {
 // - 1.000ms (1.0s) là chuẩn vàng trong Voice Bot (Google Assistant, Retell, Vapi):
 //   + Đủ hấp thu khoảng ngắt nghỉ tự nhiên (~700ms - 800ms) giữa các vế câu mà không cướp lời.
 //   + Khi người nói dừng lời, chốt câu dứt khoát sau 1.0s, không bị trễ và không cộng dồn các lượt nói riêng biệt.
-const STAFF_CONVERSATIONAL_SILENCE_MS = 1000;
+const STAFF_CONVERSATIONAL_SILENCE_MS = 600;
 
 export const MessengerVideoCallModal = ({
   isOpen = false,
@@ -1137,6 +1137,9 @@ export const MessengerVideoCallModal = ({
               setTranslateMode(data.mode);
               translateModeRef.current = data.mode;
             }
+            const syncedLang = data.guestLang || (data.mode === 'bypass' ? 'Tiếng Việt' : 'English');
+            setActiveGuestLanguage(syncedLang);
+            activeGuestLanguageRef.current = syncedLang;
             if (data.manualLocked !== undefined) {
               isManualLockedRef.current = Boolean(data.manualLocked);
             }
@@ -1458,6 +1461,14 @@ export const MessengerVideoCallModal = ({
       return false;
     }
 
+    // Hệ thống chỉ hỗ trợ Tiếng Việt và Tiếng Anh; chặn ký tự ngoài Latin/Việt (Thái, Trung, Hàn, Nhật, Ả Rập...)
+    if (/[\u0400-\u04ff\u0600-\u06ff\u0900-\u097f\u0e00-\u0eff\u1780-\u17ff\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/.test(evalRes.cleanText)) {
+      console.warn(
+        `[VideoCall Flow] [${role}] step=STT_SKIPPED reason=NON_EN_VI_SCRIPT engine=${sttEngine}`
+      );
+      return false;
+    }
+
     if (pendingWebSpeechFallbackTimerRef.current) {
       clearTimeout(pendingWebSpeechFallbackTimerRef.current);
       pendingWebSpeechFallbackTimerRef.current = null;
@@ -1535,20 +1546,20 @@ export const MessengerVideoCallModal = ({
       // Tối ưu siêu nhạy (0.0018 thay vì 0.0028): bắt trọn cả tiếng nói nhỏ/thì thầm, không cần hét
       const SPEECH_RMS_THRESHOLD = 0.0018;
       const SILENCE_RMS_THRESHOLD = 0.0011;
-      // 950ms im lặng liên tục để chốt câu hoàn chỉnh, tránh ngắt cụt câu khi người dùng ngắt nhịp tự nhiên giữa các từ
-      const SILENCE_FRAMES_TO_FLUSH = Math.max(4, Math.round(950 / frameDurationMs));
-      // Tối thiểu 350ms âm thanh thực tế để loại bỏ tiếng click
-      const MIN_SPEECH_FRAMES = Math.max(2, Math.round(350 / frameDurationMs));
-      // Tối đa 9 giây âm thanh liên tục
-      const MAX_SPEECH_FRAMES = Math.round(9000 / frameDurationMs);
+      // 550ms im lặng liên tục để chốt câu nhanh và tự nhiên
+      const SILENCE_FRAMES_TO_FLUSH = Math.max(3, Math.round(550 / frameDurationMs));
+      // Tối thiểu 300ms âm thanh thực tế để loại bỏ tiếng click
+      const MIN_SPEECH_FRAMES = Math.max(2, Math.round(300 / frameDurationMs));
+      // Tối đa 8 giây âm thanh liên tục
+      const MAX_SPEECH_FRAMES = Math.round(8000 / frameDurationMs);
 
       const flushAudioSegment = async (chunksToFlush) => {
         if (!chunksToFlush || chunksToFlush.length < MIN_SPEECH_FRAMES || state.stopped) return;
-        // Chỉ bỏ qua fallback Whisper ở phía Staff khi Web Speech API thực sự vừa trả kết quả (< 4s).
+        // Chỉ bỏ qua fallback Whisper ở phía Staff khi Web Speech API thực sự vừa trả kết quả (< 2.5s).
         // Nếu Web Speech lỗi network/im lặng trên laptop, tự động fallback sang backend STT.
         const hasRecentWebSpeech =
           lastWebSpeechResultAtRef.current > 0 &&
-          Date.now() - lastWebSpeechResultAtRef.current < 4000;
+          Date.now() - lastWebSpeechResultAtRef.current < 2500;
         if (
           role === 'staff' &&
           speechRecognitionRef.current &&
@@ -1560,8 +1571,18 @@ export const MessengerVideoCallModal = ({
         const wavBlob = encodeWavBlobFromFloat32(chunksToFlush, ctx.sampleRate || 16000);
         if (!wavBlob || wavBlob.size < 2500) return;
 
-        const curInputMode = translateModeRef.current === 'bypass' ? 'vi' : inputLangModeRef.current;
-        const preferredLang = role === 'staff' ? 'vi' : 'en';
+        // Hệ thống chỉ hỗ trợ Tiếng Việt ('vi') và Tiếng Anh ('en'):
+        // Nhân viên mặc định nói Tiếng Việt ('vi'); Khách nói theo ngôn ngữ đang chọn ('vi' hoặc 'en').
+        const guestSelectedCode = normalizeLanguageCode(activeGuestLanguageRef.current) || 'en';
+        const curInputMode =
+          role === 'staff'
+            ? 'vi'
+            : translateModeRef.current === 'bypass'
+              ? 'vi'
+              : inputLangModeRef.current !== 'auto'
+                ? inputLangModeRef.current
+                : guestSelectedCode;
+        const preferredLang = role === 'staff' ? 'vi' : guestSelectedCode;
 
         state.inflight = true;
         try {
@@ -2095,6 +2116,17 @@ export const MessengerVideoCallModal = ({
         `[VideoCall Flow] [${role} -> ${effectivePeerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${translateModeRef.current} step=TRANSLATE_REQUEST srcHint=${hintLang} tgt=${effectiveTargetLang} len=${cleanText.length}`
       );
 
+      // Gửi ngay bản text gốc qua live_interim để đối phương thấy tức thì trong lúc chờ API dịch
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: 'live_interim',
+            speaker: role === 'staff' ? 'Staff' : 'Guest',
+            text: cleanText,
+          })
+        );
+      }
+
       const recentContext = (callTranscriptsRef.current || [])
         .slice(-2)
         .map((t) => `${t.speaker}: ${t.raw_transcript}`)
@@ -2470,19 +2502,39 @@ export const MessengerVideoCallModal = ({
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {callStatus === 'connected' && (
-              <button
-                type="button"
-                onClick={() => handleToggleTranslateMode(translateMode === 'auto' ? 'bypass' : 'auto')}
-                className={`w-8 h-8 rounded-full bg-[#141413] hover:bg-[#262523] text-white flex items-center justify-center transition-all cursor-pointer border ${
-                  translateMode === 'auto'
-                    ? 'border-amber-400'
-                    : 'border-white/20 opacity-80'
-                }`}
-                title={translateMode === 'auto' ? 'Đang bật dịch EN ⇄ VI (bấm để tắt)' : 'Đang tắt dịch (bấm để bật EN ⇄ VI)'}
-                aria-label="Bật tắt dịch phụ đề"
+              <div
+                className="flex items-center gap-1 p-0.5 rounded-full bg-[#141413] border border-white/20"
+                role="group"
+                aria-label="Chọn ngôn ngữ giao tiếp"
               >
-                <Languages className={`w-4 h-4 ${translateMode === 'auto' ? 'text-amber-300' : 'text-white'}`} />
-              </button>
+                <Languages className="w-3.5 h-3.5 text-stone-300 ml-2 mr-0.5 shrink-0" />
+                <button
+                  type="button"
+                  onClick={() => handleToggleTranslateMode('bypass', 'Tiếng Việt')}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide transition-all cursor-pointer ${
+                    translateMode === 'bypass'
+                      ? 'bg-emerald-500 text-stone-950 shadow-sm'
+                      : 'text-white/80 hover:text-white hover:bg-[#262523]'
+                  }`}
+                  title="Tiếng Việt (không dịch)"
+                  aria-label="Chọn Tiếng Việt"
+                >
+                  VI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleTranslateMode('auto', 'English')}
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide transition-all cursor-pointer ${
+                    translateMode === 'auto'
+                      ? 'bg-amber-400 text-stone-950 shadow-sm'
+                      : 'text-white/80 hover:text-white hover:bg-[#262523]'
+                  }`}
+                  title="Tiếng Anh (tự động dịch Việt - Anh)"
+                  aria-label="Chọn Tiếng Anh"
+                >
+                  EN
+                </button>
+              </div>
             )}
 
             {/* CALL DURATION BADGE */}

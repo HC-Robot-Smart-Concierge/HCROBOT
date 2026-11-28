@@ -1053,13 +1053,19 @@ export const MessengerVideoCallModal = ({
                 );
               }
 
+              // Nếu câu đã dịch hoặc đang ở chế độ dịch -> tự bật song ngữ để hiển thị phụ đề rõ ràng
+              if (data.needsTranslation && translateModeRef.current === 'bypass') {
+                setTranslateMode('auto');
+                translateModeRef.current = 'auto';
+              }
+
               // Hiển thị phụ đề cho người nhận (kể cả khi giữ nguyên câu gốc cùng ngôn ngữ khi đang ở chế độ dịch)
               if (data.needsTranslation || translateModeRef.current !== 'bypass') {
                 setActiveSubtitle(data);
                 if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
                 subtitleTimeoutRef.current = setTimeout(() => {
                   setActiveSubtitle(null);
-                }, 6000);
+                }, 8000);
               } else {
                 setActiveSubtitle(null);
               }
@@ -1959,8 +1965,28 @@ export const MessengerVideoCallModal = ({
       const targetConfig = resolveTranslationTarget(role, curMode, activeGuestLanguageRef.current);
       const { peerRole, targetLang, ttsLangCode, ttsVoice, isBypassMode } = targetConfig;
 
-      // 1. CHẾ ĐỘ THUẦN VIỆT (BYPASS DO NGƯỜI DÙNG CHỌN): Không dịch, không phát TTS
-      if (isBypassMode) {
+      // 1. CHẾ ĐỘ THUẦN VIỆT (BYPASS): Không dịch nếu cả 2 nói Tiếng Việt;
+      // nhưng hễ phát hiện câu nói Tiếng Anh -> tự động bật dịch Việt ⇄ Anh ngay câu đó
+      const hasVietnameseDiacritics = /[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ]/i.test(cleanText);
+      const detectedEnFromMeta = normalizeLanguageCode(meta.detectedLang) === 'en';
+      const looksLikeEnglishSentence =
+        !hasVietnameseDiacritics &&
+        (detectedEnFromMeta ||
+          /\b(hello|hi|hey|please|thank|thanks|help|room|water|towel|food|menu|order|check|where|what|when|how|can|could|would|need|want|need|sorry|excuse|morning|evening|night|hotel|reception|staff|pool|spa|gym|bar|coffee|breakfast|wifi|password|taxi|airport|luggage|broken|clean)\b/i.test(cleanText));
+
+      if (isBypassMode && looksLikeEnglishSentence && !isManualLockedRef.current) {
+        setTranslateMode('auto');
+        translateModeRef.current = 'auto';
+        setActiveGuestLanguage('English');
+        activeGuestLanguageRef.current = 'English';
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({
+            type: 'translate_mode_sync',
+            mode: 'auto',
+            manualLocked: false,
+          }));
+        }
+      } else if (isBypassMode) {
         const payload = {
           type: 'live_subtitle',
           senderRole: role,
@@ -1980,6 +2006,12 @@ export const MessengerVideoCallModal = ({
         return;
       }
 
+      const activeTargetConfig = isBypassMode
+        ? resolveTranslationTarget(role, 'auto', 'English')
+        : targetConfig;
+      const effectivePeerRole = activeTargetConfig.peerRole;
+      const effectiveTargetLang = activeTargetConfig.targetLang;
+
       // 2. XÁC ĐỊNH NGÔN NGỮ NGUỒN CỦA CÂU NÓI (CHUẨN HÓA DUY NHẤT 'vi' HOẶC 'en')
       const normalizedMetaLang = normalizeLanguageCode(meta.detectedLang);
       const normalizedInputMode = normalizeLanguageCode(inputLangModeRef.current);
@@ -1990,13 +2022,13 @@ export const MessengerVideoCallModal = ({
       const currentSeq = ++seqRef.current;
 
       console.log(
-        `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${curMode} step=TRANSLATE_REQUEST srcHint=${hintLang} tgt=${targetLang} len=${cleanText.length}`
+        `[VideoCall Flow] [${role} -> ${effectivePeerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${translateModeRef.current} step=TRANSLATE_REQUEST srcHint=${hintLang} tgt=${effectiveTargetLang} len=${cleanText.length}`
       );
 
       const res = await quickTranslateText({
         text: cleanText,
         sourceLang: hintLang,
-        targetLang,
+        targetLang: effectiveTargetLang,
         sessionId,
         senderRole: role,
         withAudio: false,
@@ -2004,11 +2036,11 @@ export const MessengerVideoCallModal = ({
 
       const normalizedResSource = normalizeLanguageCode(res.source_lang);
       const resolvedSourceLang = normalizedResSource || (hintLang !== 'auto' ? hintLang : (role === 'staff' ? 'vi' : 'en'));
-      const needsTranslation = Boolean(res.needs_translation) && resolvedSourceLang !== targetLang;
+      const needsTranslation = Boolean(res.needs_translation) && resolvedSourceLang !== effectiveTargetLang;
       const finalTranslatedText = needsTranslation ? (res.translated_text || cleanText) : cleanText;
 
       console.log(
-        `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${curMode} step=TRANSLATED src=${resolvedSourceLang} tgt=${targetLang} needsTrans=${needsTranslation}`
+        `[VideoCall Flow] [${role} -> ${effectivePeerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${translateModeRef.current} step=TRANSLATED src=${resolvedSourceLang} tgt=${effectiveTargetLang} needsTrans=${needsTranslation}`
       );
 
       const payload = {
@@ -2020,7 +2052,7 @@ export const MessengerVideoCallModal = ({
         translatedText: finalTranslatedText,
         needsTranslation,
         sourceLang: resolvedSourceLang,
-        targetLang,
+        targetLang: effectiveTargetLang,
         audioBase64: null,
         timestamp: Date.now(),
       };
@@ -2378,8 +2410,8 @@ export const MessengerVideoCallModal = ({
                     }`}
                     title="Bật chế độ Thông dịch AI: Khách nói tiếng Anh ➔ Dịch tiếng Việt (phát âm Hoài My); Nhân viên nói tiếng Việt ➔ Dịch tiếng Anh (phát âm Jenny); Tự động giữ nguyên nếu cùng ngôn ngữ"
                   >
-                    <Languages className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
-                    <span>EN ⇄ VI</span>
+                    <Languages className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Dịch EN ⇄ VI</span>
                   </button>
 
                   {/* 2. NÚT THUẦN VIỆT (KHÔNG DỊCH) */}
@@ -2391,96 +2423,12 @@ export const MessengerVideoCallModal = ({
                         ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 shadow-sm'
                         : 'text-stone-300 hover:text-white hover:bg-white/10'
                     }`}
-                    title="Bật chế độ Thuần Việt: Cả 2 bên nói tiếng Việt trực tiếp, không dịch, không phát âm AI"
+                    title="Bật chế độ Thuần Việt: Nói tiếng Việt trực tiếp, không dịch"
                   >
                     <span>Thuần Việt</span>
                   </button>
-
-                  {/* 3. NÚT CHỌN NGÔN NGỮ ĐẦU VÀO MICRO (AUTO EN/VI | EN | VI) */}
-                  {translateMode === 'auto' && (
-                    <button
-                      type="button"
-                      onClick={cycleInputLangMode}
-                      className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold text-sky-300 hover:bg-white/10 transition-all cursor-pointer"
-                      title="Chuyển chế độ nhận diện ngôn ngữ đầu vào của Micro: Đa ngữ tự động (AUTO EN/VI) / Cố định EN / Cố định VI"
-                    >
-                      <span>Nghe: {inputLangMode === 'auto' ? 'Đa ngữ' : inputLangMode.toUpperCase()}</span>
-                    </button>
-                  )}
-
-                  {/* 4. NÚT TEST NHANH GIỌNG ĐỌC AI & PHỤ ĐỀ */}
-                  <button
-                    type="button"
-                    onClick={() => setShowTestPanel(!showTestPanel)}
-                    className={`hidden md:flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
-                      showTestPanel
-                        ? 'bg-amber-500 text-stone-950 font-bold shadow-md'
-                        : 'text-stone-300 hover:text-white hover:bg-white/10'
-                    }`}
-                    title="Mở bảng công cụ Thử nghiệm Nhanh: 1-click test giọng đọc Edge TTS & phiên dịch tức thì"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>🧪 Thử AI</span>
-                  </button>
                 </div>
-
-                {isAiSpeaking && (
-                  <span className="flex items-center gap-1 text-[10px] text-emerald-300 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-500/50 animate-pulse font-medium">
-                    <Volume2 className="w-3 h-3 text-emerald-400" />
-                    <span className="hidden sm:inline">AI Đang nói</span>
-                  </span>
-                )}
-
-                {ttsStatus?.status === 'generating' && (
-                  <span className="flex items-center gap-1 text-[10px] text-amber-300 bg-amber-950/80 px-2.5 py-1 rounded-full border border-amber-500/50 animate-pulse font-medium">
-                    <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
-                    <span className="hidden sm:inline">Đang tạo giọng...</span>
-                  </span>
-                )}
-
-                {ttsStatus?.status === 'failed' && (
-                  <span
-                    className="flex items-center gap-1 text-[10px] text-rose-300 bg-rose-950/80 px-2.5 py-1 rounded-full border border-rose-500/50 font-medium"
-                    title={ttsStatus.message}
-                  >
-                    <AlertCircle className="w-3 h-3 text-rose-400" />
-                    <span className="hidden sm:inline">{ttsStatus.code || 'Lỗi TTS'}</span>
-                  </span>
-                )}
               </div>
-            )}
-
-            {/* LIVE STT LISTENING BADGE / 1-CLICK TOGGLE MIC */}
-            {callStatus === 'connected' && (
-              <button
-                type="button"
-                onClick={toggleMic}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-mono font-medium border cursor-pointer transition-all active:scale-95 ${
-                  isMicMuted
-                    ? 'bg-red-950/80 text-red-300 border-red-500/70 shadow-sm animate-pulse'
-                    : 'bg-[#202124]/90 hover:bg-white/10 border-white/10 text-stone-200'
-                }`}
-                title={
-                  isMicMuted
-                    ? 'Micro đang TẮT - Nhấn để BẬT lại micro'
-                    : `Micro đang BẬT (${micLangBadgeLabel}) - Nhấn để TẮT tạm thời`
-                }
-              >
-                {isMicMuted ? (
-                  <>
-                    <MicOff className="w-2.5 h-2.5 text-red-400" />
-                    <span className="font-bold text-red-300">Mic: TẮT</span>
-                  </>
-                ) : (
-                  <>
-                    <Mic className="w-2.5 h-2.5 text-emerald-400 animate-pulse" />
-                    <span className="hidden sm:inline">Mic:</span>
-                    <span className="text-emerald-300 font-semibold">
-                      {micLangBadgeLabel}
-                    </span>
-                  </>
-                )}
-              </button>
             )}
 
             {/* CALL DURATION BADGE */}
@@ -2669,43 +2617,47 @@ export const MessengerVideoCallModal = ({
             </div>
           )}
 
-          {/* FLOATING CINEMA SUBTITLE BAR (GOOGLE MEET CLOSED CAPTIONS STYLE) */}
+          {/* FLOATING LIVE CAPTIONS BAR (CLEAR & HIGH CONTRAST) */}
           {(activeSubtitle || (interimText && translateMode !== 'bypass')) && (
-            <div className="absolute bottom-20 sm:bottom-24 lg:bottom-26 left-3 right-3 sm:left-6 sm:right-6 z-25 flex justify-center pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="bg-[#202124]/95 backdrop-blur-md border border-white/10 rounded-2xl px-5 py-3 sm:px-6 sm:py-3.5 max-w-2xl text-center shadow-2xl space-y-1.5 pointer-events-auto">
+            <div className="absolute bottom-20 sm:bottom-24 left-3 right-24 sm:left-6 sm:right-36 lg:right-52 z-25 flex justify-start sm:justify-center pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="bg-black/80 backdrop-blur-md border border-white/15 rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 max-w-xl w-full sm:w-auto text-left sm:text-center shadow-2xl space-y-1 pointer-events-auto">
                 {interimText && !activeSubtitle && (
-                  <p className="text-stone-300 text-xs sm:text-sm italic font-mono animate-pulse">
+                  <p className="text-stone-300 text-xs sm:text-sm italic animate-pulse">
                     "{interimText}..."
                   </p>
                 )}
 
                 {activeSubtitle && (
                   <>
-                    <div className="flex items-center justify-center gap-2 mb-0.5 flex-wrap">
-                      <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-0.5 rounded-full bg-white/10 text-stone-200 border border-white/10">
+                    <div className="flex items-center sm:justify-center gap-2 flex-wrap">
+                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full border ${
+                        activeSubtitle.senderRole === 'staff'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                      }`}>
                         {activeSubtitle.senderRole === role
                           ? 'Bạn'
                           : (activeSubtitle.senderRole === 'staff' ? calleeName : callerName)}
                       </span>
-                      <span className="text-[10px] font-semibold text-amber-400 flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                        <Languages className="w-3 h-3" />
+                      <span className="text-[10px] font-semibold text-stone-300 flex items-center gap-1">
+                        <Languages className="w-3 h-3 text-amber-400" />
                         <span>
                           {activeSubtitle.needsTranslation
                             ? `${(activeSubtitle.sourceLang || 'en').toUpperCase()} ➔ ${(activeSubtitle.targetLang || 'vi').toUpperCase()}`
-                            : `${(activeSubtitle.sourceLang || 'vi').toUpperCase()} (Gốc)`}
+                            : `${(activeSubtitle.sourceLang || 'vi').toUpperCase()}`}
                         </span>
                       </span>
                     </div>
+
+                    <p className="text-white text-sm sm:text-base md:text-lg font-bold leading-snug">
+                      {activeSubtitle.translatedText || activeSubtitle.originalText}
+                    </p>
 
                     {activeSubtitle.needsTranslation && activeSubtitle.originalText !== activeSubtitle.translatedText && (
                       <p className="text-stone-400 text-[11px] sm:text-xs italic leading-tight">
                         "{activeSubtitle.originalText}"
                       </p>
                     )}
-
-                    <p className="text-white text-xs sm:text-sm md:text-base font-semibold leading-relaxed tracking-wide">
-                      {activeSubtitle.translatedText || activeSubtitle.originalText}
-                    </p>
                   </>
                 )}
               </div>
@@ -2713,7 +2665,7 @@ export const MessengerVideoCallModal = ({
           )}
 
           {/* PICTURE-IN-PICTURE: LOCAL SELF VIDEO (GOOGLE MEET STYLE) */}
-          <div className="absolute bottom-20 sm:bottom-24 right-3 sm:right-4 w-24 h-32 sm:w-28 sm:h-36 lg:w-44 lg:h-56 rounded-2xl overflow-hidden bg-[#202124] border border-white/15 shadow-2xl z-20 transition-all">
+          <div className="absolute bottom-20 sm:bottom-24 right-3 sm:right-4 w-20 h-28 sm:w-28 sm:h-36 lg:w-40 lg:h-52 rounded-2xl overflow-hidden bg-[#202124] border border-white/15 shadow-2xl z-20 transition-all">
             {hasNoCamera ? (
               <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-[#202124] to-[#141414] p-2 text-center select-none">
                 <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#3c4043] flex items-center justify-center mb-1.5 shadow-inner">

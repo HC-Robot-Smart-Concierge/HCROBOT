@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_, func
 
 from app.models.support import HumanSupportSession
+from app.models.support_request import SupportRequest
 from app.models.chat_session import ChatSession, ChatMessage
 from app.repositories.base import BaseRepository
 
@@ -43,15 +44,24 @@ class SupportSessionRepository(BaseRepository[HumanSupportSession]):
         return res.scalar() or 0
 
     async def get_by_id_or_code(self, identifier: str) -> Optional[HumanSupportSession]:
-        """Fetch session by ID, session_code, or linked_request_id."""
+        """Fetch session by ID, session_code, linked_request_id, or CCG- ticket_code."""
         target = identifier.strip()
-        stmt = select(HumanSupportSession).where(
-            or_(
-                HumanSupportSession.id == target,
-                HumanSupportSession.session_code == target,
-                HumanSupportSession.linked_request_id == target,
-                HumanSupportSession.room_number.ilike(f"%{target}%"),
-            )
+        conditions = [
+            HumanSupportSession.id == target,
+            HumanSupportSession.session_code == target,
+            HumanSupportSession.linked_request_id == target,
+            HumanSupportSession.room_number.ilike(f"%{target}%"),
+        ]
+        if target.upper().startswith("CCG-"):
+            conditions.append(HumanSupportSession.session_code == f"LIVE-{target[4:]}")
+            req_subq = select(SupportRequest.id).where(SupportRequest.ticket_code == target)
+            conditions.append(HumanSupportSession.linked_request_id.in_(req_subq))
+
+        stmt = (
+            select(HumanSupportSession)
+            .where(or_(*conditions))
+            .order_by(desc(HumanSupportSession.created_at))
+            .limit(1)
         )
         res = await self.db.execute(stmt)
         return res.scalar_one_or_none()

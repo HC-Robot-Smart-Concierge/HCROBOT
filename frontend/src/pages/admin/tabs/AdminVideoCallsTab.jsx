@@ -16,6 +16,7 @@ import {
   Cloud,
   Copy,
   Check,
+  MessageSquareText,
 } from 'lucide-react';
 import {
   fetchHumanSupportSessions,
@@ -58,6 +59,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
   const [retryCount, setRetryCount] = useState(0);
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [detectedDuration, setDetectedDuration] = useState(null);
+  const [transcriptSession, setTranscriptSession] = useState(null);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(() => {
@@ -572,41 +574,58 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
                         {statusBadge}
                       </td>
                       <td className="py-2.5 px-3.5 text-right">
-                        {hasUrl ? (
-                          <div className="inline-flex items-center justify-end gap-1">
-                            {/* Minimal Google-style Play Button */}
-                            <button
-                              onClick={() => handleOpenVideoPlayer(session)}
-                              title="Xem video bản ghi"
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-neutral-800 bg-neutral-100 hover:bg-neutral-200 transition-colors cursor-pointer"
-                            >
-                              <Play className="w-3 h-3 fill-current text-neutral-700" />
-                              <span>Xem</span>
-                            </button>
-                            {/* Minimal Ghost External Link Button */}
-                            <a
-                              href={session.recording_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="Mở tab mới"
-                              className="p-1 rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </a>
-                          </div>
-                        ) : effectiveStatus === 'failed' ? (
-                          <button
-                            onClick={handleSyncCloudinary}
-                            disabled={isSyncing}
-                            title="Đồng bộ lại từ Cloudinary"
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors cursor-pointer"
-                          >
-                            <RefreshCw className="w-3 h-3" />
-                            <span>Khôi phục</span>
-                          </button>
-                        ) : (
-                          <span className="text-neutral-300 text-xs">—</span>
-                        )}
+                        {(() => {
+                          const hasMessages = Array.isArray(session.messages) && session.messages.length > 0;
+                          if (!hasUrl && !hasMessages && effectiveStatus !== 'failed') {
+                            return <span className="text-neutral-300 text-xs">—</span>;
+                          }
+                          return (
+                            <div className="inline-flex items-center justify-end gap-1">
+                              {hasUrl && (
+                                <>
+                                  <button
+                                    onClick={() => handleOpenVideoPlayer(session)}
+                                    title="Xem video bản ghi"
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-neutral-800 bg-neutral-100 hover:bg-neutral-200 transition-colors cursor-pointer"
+                                  >
+                                    <Play className="w-3 h-3 fill-current text-neutral-700" />
+                                    <span>Xem</span>
+                                  </button>
+                                  <a
+                                    href={session.recording_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    title="Mở tab mới"
+                                    className="p-1 rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                </>
+                              )}
+                              {hasMessages && (
+                                <button
+                                  onClick={() => setTranscriptSession(session)}
+                                  title="Xem nội dung hội thoại"
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-neutral-800 bg-neutral-100 hover:bg-neutral-200 transition-colors cursor-pointer"
+                                >
+                                  <MessageSquareText className="w-3 h-3 text-neutral-700" />
+                                  <span>Hội thoại ({session.messages.length})</span>
+                                </button>
+                              )}
+                              {!hasUrl && effectiveStatus === 'failed' && (
+                                <button
+                                  onClick={handleSyncCloudinary}
+                                  disabled={isSyncing}
+                                  title="Đồng bộ lại từ Cloudinary"
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors cursor-pointer"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                  <span>Khôi phục</span>
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );
@@ -781,6 +800,62 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
                   <ExternalLink className="w-3 h-3 text-neutral-400" />
                 </a>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transcript / Conversation Modal */}
+      {transcriptSession && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden shadow-2xl border border-neutral-200 flex flex-col">
+            <div className="px-5 py-3.5 border-b border-neutral-200 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-900">
+                  Nội dung hội thoại - {transcriptSession.session_code || transcriptSession.id}
+                </h3>
+                <p className="text-xs text-neutral-500">
+                  {transcriptSession.room_number || 'Robot Kiosk'} • {Array.isArray(transcriptSession.messages) ? transcriptSession.messages.length : 0} lượt nói
+                </p>
+              </div>
+              <button
+                onClick={() => setTranscriptSession(null)}
+                className="p-1.5 rounded-full hover:bg-neutral-100 text-neutral-500 hover:text-neutral-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-3 bg-neutral-50 flex-1">
+              {(transcriptSession.messages || []).map((msg, i) => {
+                const isStaff = String(msg.speaker || '').toLowerCase() === 'staff';
+                const mainText = msg.translated_text || msg.text || msg.raw_transcript || '';
+                const rawText = msg.raw_transcript || '';
+                return (
+                  <div
+                    key={i}
+                    className={`p-3 rounded-xl border ${
+                      isStaff
+                        ? 'bg-emerald-50/70 border-emerald-200'
+                        : 'bg-white border-neutral-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[11px] font-semibold mb-1">
+                      <span className={isStaff ? 'text-emerald-700' : 'text-amber-700'}>
+                        {msg.speaker_name || (isStaff ? 'Nhân viên hỗ trợ' : 'Khách tại Sảnh')}
+                      </span>
+                      {msg.source_lang && msg.target_lang && msg.needs_translation && (
+                        <span className="text-neutral-400 uppercase">
+                          {msg.source_lang} {'->'} {msg.target_lang}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-neutral-900 font-medium">{mainText}</p>
+                    {rawText && rawText !== mainText && (
+                      <p className="text-xs text-neutral-500 italic mt-1">"{rawText}"</p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
